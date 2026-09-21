@@ -1,0 +1,3 @@
+[submodule "kernel/utkernel/mtk3_bsp2"]
+	path = kernel/utkernel/mtk3_bsp2
+	url = https://github.com/kons-9/mtk3_bsp2.git

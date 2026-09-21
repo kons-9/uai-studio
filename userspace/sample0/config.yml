@@ -1,0 +1,4 @@
+target: STM32N6570-DK
+kernel: utkernel
+build_system: cmake
+execution_mode: ram-development

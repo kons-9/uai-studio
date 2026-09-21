@@ -18,3 +18,9 @@ dist/
 # OS
 Thumbs.db
 .DS_Store
+
+# CMake build tree
+/build/
+
+# Locally installed vendor tools
+/.tools/
