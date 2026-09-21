@@ -1,305 +1,424 @@
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 
 #include <tk/tkernel.h>
 
-extern "C" {
+#include "driver/display_driver.hpp"
+#include "memory_manager.hpp"
+#include "person_detector.hpp"
+
+extern "C"
+{
 #include <tm/tmonitor.h>
 
+#include "stm32n6570_discovery_camera.h"
+#include "stm32n6570_discovery_lcd.h"
 #include "stm32n6xx_hal.h"
-#include "stm32n6570_discovery_xspi.h"
-#include "npu_cache.h"
-#include "stai_network.h"
+
+    extern DCMIPP_HandleTypeDef hcamera_dcmipp;
 }
 
-/* The generated model owns the concrete context size and alignment. */
-STAI_NETWORK_CONTEXT_DECLARE(network_context, STAI_NETWORK_CONTEXT_SIZE)
-
-extern "C" void npu_cache_enable_clocks_and_reset(void)
+namespace
 {
-    __HAL_RCC_CACHEAXIRAM_MEM_CLK_ENABLE();
-    __HAL_RCC_CACHEAXI_CLK_ENABLE();
-    __HAL_RCC_CACHEAXI_FORCE_RESET();
-    __HAL_RCC_CACHEAXI_RELEASE_RESET();
-}
 
-extern "C" void npu_cache_disable_clocks_and_reset(void)
-{
-    __HAL_RCC_CACHEAXIRAM_MEM_CLK_DISABLE();
-    __HAL_RCC_CACHEAXI_CLK_DISABLE();
-    __HAL_RCC_CACHEAXI_FORCE_RESET();
-}
+    constexpr std::size_t kFrameBytes = 800U * 480U * 2U;
+    constexpr std::size_t kFrameWidth = 800U;
+    constexpr std::size_t kFrameHeight = 480U;
+    constexpr std::size_t kInferenceCropX = 160U;
+    constexpr std::size_t kInferenceSize = 480U;
+    constexpr std::size_t kLcdBufferCount = 2U;
+    constexpr TMO kDisplayHoldTicks = 20;
+    constexpr std::size_t kMaxDetections = 100U;
 
-/* cubemx_entry.c suspends the HAL SysTick before µT-Kernel starts.  The DK
- * NOR BSP uses HAL_GetTick()/HAL_Delay() while entering memory-mapped mode,
- * so bridge those two weak HAL hooks to the running µT-Kernel clock. */
-extern "C" uint32_t HAL_GetTick(void)
-{
-    SYSTIM time = {};
-    if (tk_get_otm(&time) != E_OK) {
-        return 0;
-    }
-    return time.lo;
-}
+    /* usermain is the μT-Kernel initial task and has only a 1 KiB stack. */
+    static inference::ObjectDetection detection_results[kMaxDetections] = {};
 
-extern "C" void HAL_Delay(uint32_t milliseconds)
-{
-    if (milliseconds != 0U) {
-        tk_dly_tsk(milliseconds);
-    }
-}
+    volatile std::uintptr_t completed_camera_frame = 0;
+    volatile std::uint32_t camera_frame_events = 0;
+    std::uintptr_t next_camera_frame = 0;
+    std::uintptr_t camera_frame0 = 0;
+    std::uintptr_t camera_frame1 = 0;
+    memory::Buffer lcd_frames[kLcdBufferCount]{};
+    std::size_t next_lcd_buffer = 0U;
 
-namespace {
-
-void put(const char *message)
-{
-    tm_putstring(reinterpret_cast<const UB *>(message));
-}
-
-[[noreturn]] void stop(const char *message)
-{
-    put("sample2: ");
-    put(message);
-    put("\n");
-    for (;;) {
-        tk_dly_tsk(1000);
-    }
-}
-
-void check_status(stai_return_code status, const char *where)
-{
-    if (status != STAI_SUCCESS) {
-        tm_printf(reinterpret_cast<const UB *>("sample2: %s failed (%x)\n"),
-                  where, static_cast<unsigned int>(status));
-        stop("STEdgeAI returned an error");
-    }
-}
-
-void check_hal(HAL_StatusTypeDef status, const char *where)
-{
-    if (status != HAL_OK) {
-        tm_printf(reinterpret_cast<const UB *>("sample2: %s failed (%x)\n"),
-                  where, static_cast<unsigned int>(status));
-        stop("HAL returned an error");
-    }
-}
-
-void check_bsp(int32_t status, const char *where)
-{
-    if (status != BSP_ERROR_NONE) {
-        tm_printf(reinterpret_cast<const UB *>("sample2: %s failed (%x)\n"),
-                  where, static_cast<unsigned int>(status));
-        stop("BSP returned an error");
-    }
-}
-
-void cache_clean(void *address, stai_size size)
-{
-    if (address == nullptr || size == 0) {
-        return;
+    int clamp_coordinate(float value, int maximum)
+    {
+        if (value <= 0.0f)
+        {
+            return 0;
+        }
+        if (value >= static_cast<float>(maximum))
+        {
+            return maximum;
+        }
+        return static_cast<int>(value);
     }
 
-    const uintptr_t start = reinterpret_cast<uintptr_t>(address) & ~uintptr_t(31);
-    const uintptr_t end = (reinterpret_cast<uintptr_t>(address) + size + 31U) & ~uintptr_t(31);
-    SCB_CleanDCache_by_Addr(reinterpret_cast<uint32_t *>(start),
-                             static_cast<int32_t>(end - start));
-}
-
-void cache_invalidate(void *address, stai_size size)
-{
-    if (address == nullptr || size == 0) {
-        return;
+    int normalized_to_screen_x(float value)
+    {
+        return static_cast<int>(kInferenceCropX) +
+               clamp_coordinate(value * static_cast<float>(kInferenceSize),
+                                static_cast<int>(kInferenceSize - 1U));
     }
 
-    const uintptr_t start = reinterpret_cast<uintptr_t>(address) & ~uintptr_t(31);
-    const uintptr_t end = (reinterpret_cast<uintptr_t>(address) + size + 31U) & ~uintptr_t(31);
-    SCB_InvalidateDCache_by_Addr(reinterpret_cast<uint32_t *>(start),
-                                  static_cast<int32_t>(end - start));
-}
-
-void enable_npu_ram()
-{
-    __HAL_RCC_NPU_CLK_ENABLE();
-    __HAL_RCC_NPU_FORCE_RESET();
-    __HAL_RCC_NPU_RELEASE_RESET();
-
-    __HAL_RCC_AXISRAM3_MEM_CLK_ENABLE();
-    __HAL_RCC_AXISRAM4_MEM_CLK_ENABLE();
-    __HAL_RCC_AXISRAM5_MEM_CLK_ENABLE();
-    __HAL_RCC_AXISRAM6_MEM_CLK_ENABLE();
-    __HAL_RCC_RAMCFG_CLK_ENABLE();
-
-    RAMCFG_HandleTypeDef ramcfg = {};
-    ramcfg.Instance = RAMCFG_SRAM3_AXI;
-    HAL_RAMCFG_EnableAXISRAM(&ramcfg);
-    ramcfg.Instance = RAMCFG_SRAM4_AXI;
-    HAL_RAMCFG_EnableAXISRAM(&ramcfg);
-    ramcfg.Instance = RAMCFG_SRAM5_AXI;
-    HAL_RAMCFG_EnableAXISRAM(&ramcfg);
-    ramcfg.Instance = RAMCFG_SRAM6_AXI;
-    HAL_RAMCFG_EnableAXISRAM(&ramcfg);
-}
-
-void configure_security()
-{
-    __HAL_RCC_RIFSC_CLK_ENABLE();
-
-    RIMC_MasterConfig_t master = {};
-    master.MasterCID = RIF_CID_1;
-    master.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV;
-    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_NPU, &master);
-    HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_NPU,
-                                          RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-}
-
-void configure_xspi_clock()
-{
-    RCC_PeriphCLKInitTypeDef clocks = {};
-    clocks.PeriphClockSelection = RCC_PERIPHCLK_XSPI1 | RCC_PERIPHCLK_XSPI2;
-    clocks.Xspi1ClockSelection = RCC_XSPI1CLKSOURCE_HCLK;
-    clocks.Xspi2ClockSelection = RCC_XSPI2CLKSOURCE_HCLK;
-    check_hal(HAL_RCCEx_PeriphCLKConfig(&clocks), "XSPI2 clock");
-}
-
-void initialize_nor()
-{
-    check_bsp(BSP_XSPI_RAM_Init(0), "XSPI1 PSRAM init");
-    check_bsp(BSP_XSPI_RAM_EnableMemoryMappedMode(0), "XSPI1 memory map");
-
-    BSP_XSPI_NOR_Init_t nor = {};
-    nor.InterfaceMode = BSP_XSPI_NOR_OPI_MODE;
-    nor.TransferRate = BSP_XSPI_NOR_DTR_TRANSFER;
-    check_bsp(BSP_XSPI_NOR_Init(0, &nor), "XSPI2 NOR init");
-    check_bsp(BSP_XSPI_NOR_EnableMemoryMappedMode(0), "XSPI2 memory map");
-}
-
-void keep_inference_clocks_on_sleep()
-{
-    __HAL_RCC_XSPI1_CLK_SLEEP_ENABLE();
-    __HAL_RCC_XSPI2_CLK_SLEEP_ENABLE();
-    __HAL_RCC_NPU_CLK_SLEEP_ENABLE();
-    __HAL_RCC_CACHEAXI_CLK_SLEEP_ENABLE();
-    __HAL_RCC_AXISRAM3_MEM_CLK_SLEEP_ENABLE();
-    __HAL_RCC_AXISRAM4_MEM_CLK_SLEEP_ENABLE();
-    __HAL_RCC_AXISRAM5_MEM_CLK_SLEEP_ENABLE();
-    __HAL_RCC_AXISRAM6_MEM_CLK_SLEEP_ENABLE();
-}
-
-void initialize_hardware()
-{
-    SCB_EnableICache();
-    MEMSYSCTL->MSCR |= MEMSYSCTL_MSCR_DCACTIVE_Msk;
-    SCB_EnableDCache();
-
-    /* HAL_Init(), clocks, GPIO and the console UART are already done by the
-     * pre-kernel CubeMX entry point used by sample0. */
-    configure_xspi_clock();
-    enable_npu_ram();
-    configure_security();
-    npu_cache_enable();
-    initialize_nor();
-    keep_inference_clocks_on_sleep();
-
-    HAL_NVIC_SetPriority(NPU0_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(NPU0_IRQn);
-}
-
-void fill_input(stai_ptr input, stai_size size, uint8_t seed)
-{
-    if (input == nullptr) {
-        stop("generated model returned a null input");
+    int normalized_to_screen_y(float value)
+    {
+        return clamp_coordinate(value * static_cast<float>(kInferenceSize),
+                                static_cast<int>(kFrameHeight - 1U));
     }
 
-    for (stai_size index = 0; index < size; ++index) {
-        input[index] = static_cast<uint8_t>(seed + (index * 13U));
+    void draw_pixel(const memory::Buffer &lcd_frame, int x, int y,
+                    std::uint16_t color)
+    {
+        if (x < 0 || y < 0 || x >= static_cast<int>(kFrameWidth) ||
+            y >= static_cast<int>(kFrameHeight))
+        {
+            return;
+        }
+        auto *pixels = reinterpret_cast<std::uint16_t *>(lcd_frame.address);
+        pixels[static_cast<std::size_t>(y) * kFrameWidth +
+               static_cast<std::size_t>(x)] = color;
     }
-    cache_clean(input, size);
-}
 
-void print_output(const stai_tensor &tensor, stai_ptr output)
-{
-    if (output == nullptr) {
-        stop("generated model returned a null output");
-    }
+    void draw_box(const memory::Buffer &lcd_frame,
+                  const inference::ObjectDetection &detection)
+    {
+        const int x0 = normalized_to_screen_x(
+            detection.x_center - detection.width * 0.5f);
+        const int y0 = normalized_to_screen_y(
+            detection.y_center - detection.height * 0.5f);
+        const int x1 = normalized_to_screen_x(
+            detection.x_center + detection.width * 0.5f);
+        const int y1 = normalized_to_screen_y(
+            detection.y_center + detection.height * 0.5f);
+        constexpr int kThickness = 5;
+        constexpr std::uint16_t kRedRgb565 = 0xF800U;
 
-    cache_invalidate(output, tensor.size_bytes);
-    tm_printf(reinterpret_cast<const UB *>("sample2: output bytes=%u format=0x%x\n"),
-              static_cast<unsigned int>(tensor.size_bytes),
-              static_cast<unsigned int>(tensor.format));
-
-    const stai_size preview_size = tensor.size_bytes < 16U ? tensor.size_bytes : 16U;
-    put("sample2: output[0..15]=");
-    for (stai_size index = 0; index < preview_size; ++index) {
-        tm_printf(reinterpret_cast<const UB *>("%02x "),
-                  static_cast<unsigned int>(output[index]));
-    }
-    put("\n");
-
-    if (tensor.format == STAI_FORMAT_FLOAT32 && tensor.size_bytes >= sizeof(float)) {
-        const float *values = reinterpret_cast<const float *>(output);
-        const stai_size count = tensor.size_bytes / sizeof(float);
-        stai_size best = 0;
-        for (stai_size index = 1; index < count; ++index) {
-            if (values[index] > values[best]) {
-                best = index;
+        for (int offset = 0; offset < kThickness; ++offset)
+        {
+            for (int x = x0; x <= x1; ++x)
+            {
+                draw_pixel(lcd_frame, x, y0 + offset, kRedRgb565);
+                draw_pixel(lcd_frame, x, y1 - offset, kRedRgb565);
+            }
+            for (int y = y0; y <= y1; ++y)
+            {
+                draw_pixel(lcd_frame, x0 + offset, y, kRedRgb565);
+                draw_pixel(lcd_frame, x1 - offset, y, kRedRgb565);
             }
         }
-        tm_printf(reinterpret_cast<const UB *>("sample2: float32 argmax=%u\n"),
-                  static_cast<unsigned int>(best));
-    }
-}
-
-void run_network()
-{
-    stai_network_info info = {};
-    check_status(stai_network_get_info(network_context, &info), "stai_network_get_info");
-
-    stai_ptr inputs[STAI_NETWORK_IN_NUM] = {};
-    stai_size input_count = STAI_NETWORK_IN_NUM;
-    check_status(stai_network_get_inputs(network_context, inputs, &input_count),
-                 "stai_network_get_inputs");
-    if (input_count != info.n_inputs) {
-        stop("generated model input count is inconsistent");
-    }
-    for (stai_size index = 0; index < input_count; ++index) {
-        fill_input(inputs[index], info.inputs[index].size_bytes,
-                   static_cast<uint8_t>(0x20U + index));
     }
 
-    stai_ptr outputs[STAI_NETWORK_OUT_NUM] = {};
-    stai_size output_count = STAI_NETWORK_OUT_NUM;
-    check_status(stai_network_get_outputs(network_context, outputs, &output_count),
-                 "stai_network_get_outputs");
-    if (output_count != info.n_outputs) {
-        stop("generated model output count is inconsistent");
+    void draw_detections(const memory::Buffer &lcd_frame,
+                         const inference::ObjectDetection *detections,
+                         std::uint32_t count)
+    {
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            draw_box(lcd_frame, detections[i]);
+        }
     }
 
-    check_status(stai_network_run(network_context, STAI_MODE_SYNC),
-                 "stai_network_run");
-
-    for (stai_size index = 0; index < output_count; ++index) {
-        print_output(info.outputs[index], outputs[index]);
+    [[noreturn]] void halt_with_message(const char *message)
+    {
+        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(message)));
+        for (;;)
+        {
+            tk_dly_tsk(1000);
+        }
     }
-}
+
+    bool stage_camera_frame(std::uintptr_t frame,
+                            memory::Manager &memory,
+                            memory::Buffer &lcd_frame)
+    {
+        if (frame == 0U)
+        {
+            return false;
+        }
+
+        lcd_frame = lcd_frames[next_lcd_buffer];
+        next_lcd_buffer = (next_lcd_buffer + 1U) % kLcdBufferCount;
+        if (!lcd_frame)
+        {
+            return false;
+        }
+
+        /* The camera writes PSRAM directly. Invalidate before the CPU reads it,
+         * then stage this complete frame in an independent LCD buffer. */
+        const memory::Buffer camera_frame{
+            frame, kFrameBytes, memory::Region::kExternalPsram};
+        memory.PrepareForCpuRead(camera_frame);
+        std::memcpy(reinterpret_cast<void *>(lcd_frame.address),
+                    reinterpret_cast<const void *>(frame), kFrameBytes);
+        return true;
+    }
+
+    bool submit_lcd_frame(
+        const memory::Buffer &lcd_frame,
+        memory::Manager &memory,
+        const inference::ObjectDetection *detections,
+        std::uint32_t detection_count)
+    {
+        if (!lcd_frame)
+        {
+            return false;
+        }
+        if (detections != nullptr)
+        {
+            draw_detections(lcd_frame, detections, detection_count);
+        }
+        memory.PrepareForDisplayRead(lcd_frame);
+
+        const bool submitted =
+            BSP_LCD_Reload(0, BSP_LCD_RELOAD_NONE) == BSP_ERROR_NONE &&
+            BSP_LCD_SetLayerAddress(0, 0,
+                                    static_cast<uint32_t>(lcd_frame.address)) ==
+                BSP_ERROR_NONE &&
+            BSP_LCD_SetLayerVisible(0, 0, ENABLE) == BSP_ERROR_NONE &&
+            BSP_LCD_Reload(0, BSP_LCD_RELOAD_VERTICAL_BLANKING) ==
+                BSP_ERROR_NONE;
+        if (submitted)
+        {
+            /* Let the vertical-blanking reload complete before this buffer can be
+             * selected again. This adds a small latency but prevents the CPU from
+             * writing a buffer while LTDC is scanning it. */
+            tk_dly_tsk(kDisplayHoldTicks);
+        }
+        return submitted;
+    }
 
 } // namespace
 
+extern "C" void BSP_CAMERA_FrameEventCallback(uint32_t Instance)
+{
+    (void)Instance;
+    ++camera_frame_events;
+    completed_camera_frame = next_camera_frame;
+    next_camera_frame = (next_camera_frame == camera_frame0)
+                            ? camera_frame1
+                            : camera_frame0;
+}
+
+extern "C" void DCMIPP_IRQHandler(void)
+{
+    HAL_DCMIPP_IRQHandler(&hcamera_dcmipp);
+}
+
+extern "C" void CSI_IRQHandler(void)
+{
+    HAL_DCMIPP_CSI_IRQHandler(&hcamera_dcmipp);
+}
+
+extern "C" void IAC_IRQHandler(void)
+{
+    const uint32_t flags0 = IAC->ISR[0];
+    const uint32_t flags1 = IAC->ISR[1];
+    const uint32_t flags2 = IAC->ISR[2];
+    const uint32_t flags3 = IAC->ISR[3];
+    const uint32_t flags4 = IAC->ISR[4];
+    const uint32_t flags5 = IAC->ISR[5];
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: IAC flags=%x,%x,%x,%x,%x,%x\n"),
+              static_cast<unsigned int>(flags0),
+              static_cast<unsigned int>(flags1),
+              static_cast<unsigned int>(flags2),
+              static_cast<unsigned int>(flags3),
+              static_cast<unsigned int>(flags4),
+              static_cast<unsigned int>(flags5));
+    if ((flags4 & 0x00400000U) != 0U)
+    {
+        /* IAC register 4 bit 22 is RISAF12 (XSPI2).  Capture the
+         * transaction metadata before HAL_RIF_IRQHandler clears the source. */
+        tm_printf(reinterpret_cast<const UB *>(
+                      "ai: RISAF12 iasr=%x iaesr=%x iaddr=%x\n"),
+                  static_cast<unsigned int>(RISAF12->IASR),
+                  static_cast<unsigned int>(RISAF12->IAR->IAESR),
+                  static_cast<unsigned int>(RISAF12->IAR->IADDR));
+    }
+    HAL_RIF_IRQHandler();
+}
+
 extern "C" INT usermain(void)
 {
-    put("sample2: Neural-ART inference smoke test\n");
-    initialize_hardware();
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+        "camera: external-PSRAM camera test\n")));
 
-    check_status(stai_runtime_init(), "stai_runtime_init");
-    check_status(stai_network_init(network_context), "stai_network_init");
+    memory::Manager memory;
+    if (!memory.Initialize(true))
+    {
+        halt_with_message("memory: PSRAM initialization failed\n");
+    }
 
-    stai_network_info info = {};
-    check_status(stai_network_get_info(network_context, &info), "stai_network_get_info");
-    tm_printf(reinterpret_cast<const UB *>("sample2: model=%s inputs=%u outputs=%u\n"),
-              info.c_model_name != nullptr ? info.c_model_name : "(unknown)",
-              static_cast<unsigned int>(info.n_inputs),
-              static_cast<unsigned int>(info.n_outputs));
+    uai::driver::DisplayDriver display;
+    if (!uai::driver::IsOk(display.Initialize()))
+    {
+        halt_with_message("display: initialization failed\n");
+    }
 
-    for (;;) {
-        run_network();
-        tk_dly_tsk(2000);
+    const auto camera_buffer0 = memory.Allocate(
+        memory::Region::kExternalPsram, kFrameBytes);
+    const auto camera_buffer1 = memory.Allocate(
+        memory::Region::kExternalPsram, kFrameBytes);
+    lcd_frames[0] = memory.Allocate(
+        memory::Region::kExternalPsram, kFrameBytes, 0x00100000U);
+    lcd_frames[1] = memory.Allocate(
+        memory::Region::kExternalPsram, kFrameBytes, 0x00100000U);
+    if (!camera_buffer0 || !camera_buffer1 || !lcd_frames[0] ||
+        !lcd_frames[1])
+    {
+        halt_with_message("memory: camera buffer allocation failed\n");
+    }
+
+    camera_frame0 = camera_buffer0.address;
+    camera_frame1 = camera_buffer1.address;
+    memory.PrepareForDmaWrite(camera_buffer0);
+    memory.PrepareForDmaWrite(camera_buffer1);
+
+    if (BSP_CAMERA_Init(0, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) !=
+        BSP_ERROR_NONE)
+    {
+        halt_with_message("camera: initialization failed\n");
+    }
+
+    memory.KeepInferenceClocksOnSleep();
+
+    completed_camera_frame = 0;
+    next_camera_frame = camera_frame0;
+    if (BSP_CAMERA_DoubleBufferStart(
+            0, reinterpret_cast<uint8_t *>(camera_frame0),
+            reinterpret_cast<uint8_t *>(camera_frame1),
+            CAMERA_MODE_CONTINUOUS) != BSP_ERROR_NONE)
+    {
+        halt_with_message("camera: start failed\n");
+    }
+
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+        "camera: preview started\n")));
+
+    person::Detector detector;
+    enum class AiState
+    {
+        kShowCameraFirst,
+        kInitialize,
+        kReady,
+        kCameraOnly,
+    };
+    AiState ai_state = AiState::kShowCameraFirst;
+
+    for (;;)
+    {
+        if (BSP_CAMERA_BackgroundProcess() != BSP_ERROR_NONE)
+        {
+            halt_with_message("camera: background process failed\n");
+        }
+
+        const std::uintptr_t frame = completed_camera_frame;
+        completed_camera_frame = 0;
+        if (frame == 0U)
+        {
+            tk_dly_tsk(1);
+            continue;
+        }
+
+        if (camera_frame_events <= 3U)
+        {
+            tm_printf(reinterpret_cast<const UB *>(
+                          "camera: frame event %u\n"),
+                      static_cast<unsigned int>(camera_frame_events));
+        }
+
+        /* Stage one complete camera frame before touching the AI runtime.
+         * This keeps the display usable even when model loading or inference
+         * fails, and gives inference a stable copy that the camera cannot
+         * overwrite. */
+        if (ai_state == AiState::kShowCameraFirst)
+        {
+            memory::Buffer lcd_frame;
+            if (!stage_camera_frame(frame, memory, lcd_frame) ||
+                !submit_lcd_frame(lcd_frame, memory, nullptr, 0U))
+            {
+                halt_with_message("display: process failed\n");
+            }
+            tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+                "camera: preview visible\n")));
+            ai_state = AiState::kInitialize;
+            tk_dly_tsk(1);
+            continue;
+        }
+
+        memory::Buffer lcd_frame;
+        if (!stage_camera_frame(frame, memory, lcd_frame))
+        {
+            halt_with_message("camera: frame staging failed\n");
+        }
+
+        if (ai_state == AiState::kInitialize)
+        {
+            /* Show this frame before NOR/model initialization, so an AI-side
+             * fault cannot leave the display showing only the first frame. */
+            if (!submit_lcd_frame(lcd_frame, memory, nullptr, 0U))
+            {
+                halt_with_message("display: process failed\n");
+            }
+            tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+                "ai: initialize begin\n")));
+            const bool model_ready = detector.Initialize(memory);
+            tm_printf(reinterpret_cast<const UB *>(
+                          "ai: initialize returned=%u error=%x\n"),
+                      model_ready ? 1U : 0U,
+                      static_cast<unsigned int>(detector.LastError()));
+            if (model_ready)
+            {
+                ai_state = AiState::kReady;
+                tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+                    "ai: person model ready\n")));
+            }
+            else
+            {
+                ai_state = AiState::kCameraOnly;
+                tm_printf(reinterpret_cast<const UB *>(
+                              "ai: person model init error=%x; camera-only\n"),
+                          static_cast<unsigned int>(detector.LastError()));
+                tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+                    "ai: person model unavailable; camera-only\n")));
+            }
+        }
+
+        std::uint32_t detection_count = 0U;
+        if (ai_state == AiState::kReady &&
+            !detector.Infer(lcd_frame.address, memory, detection_results,
+                            kMaxDetections,
+                            &detection_count))
+        {
+            ai_state = AiState::kCameraOnly;
+            tm_printf(reinterpret_cast<const UB *>(
+                          "ai: person model inference error=%x; camera-only\n"),
+                      static_cast<unsigned int>(detector.LastError()));
+            tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+                "ai: person model inference failed; camera-only\n")));
+            detection_count = 0U;
+        }
+
+        static std::uint32_t inference_frames = 0U;
+        if (ai_state == AiState::kReady)
+        {
+            ++inference_frames;
+            if ((inference_frames % 10U) == 0U)
+            {
+                tm_printf(reinterpret_cast<const UB *>(
+                              "ai: infer frame=%u detections=%u\n"),
+                          static_cast<unsigned int>(inference_frames),
+                          static_cast<unsigned int>(detection_count));
+            }
+        }
+
+        if (!submit_lcd_frame(lcd_frame, memory, detection_results,
+                              detection_count))
+        {
+            halt_with_message("display: process failed\n");
+        }
+        tk_dly_tsk(1);
     }
 }
