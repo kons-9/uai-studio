@@ -1,20 +1,20 @@
 # Changes outside `sample1/`
 
-The current `sample1` is temporarily restored to the original monolithic LCD
-and camera implementation because the separated display path produced a blank
-panel on the target. The reusable `kernel/driver` implementation is retained
-for the next A/B step, but is not linked by the current `sample1` executable.
+`sample1` keeps the original LCD/camera initialization sequence, but the
+implementation is now linked from `kernel/driver` through `DisplayDriver` and
+`CameraDriver`. The application only sequences the two classes and runs the
+camera background process.
 
 The required changes outside this directory are:
 
 - `CMakeLists.txt`: add `sample1` to the application choices and add the
   `kernel/driver` subdirectory when `APP_TARGET` is `sample1`.
-- `kernel/driver/`: contains the common `CameraDriver`/`DisplayDriver` classes
-  and the STM32N6570-DK implementation. These files are currently kept out of
-  the `sample1` link while the original display path is being verified.
-- `userspace/sample1/CMakeLists.txt` and `userspace/sample1/src/`: restored the
-  original direct BSP/HAL/ISP source layout, including the LCD BSP, DCMIPP,
-  LTDC, DMA2D, RIF, media SRAM setup, HAL time functions, and camera IRQs.
+- `kernel/driver/`: contains the `CameraDriver`/`DisplayDriver` classes and the
+  STM32N6570-DK implementation, including the LCD/camera BSP, DCMIPP/LTDC/
+  DMA2D/RIF HAL sources, media SRAM setup, HAL time functions, and camera IRQs.
+- `userspace/sample1/CMakeLists.txt` and `userspace/sample1/src/`: now contain
+  only the application sequencing code; the working BSP call order remains in
+  the driver architecture layer.
 - `Makefile`: export `STM32CUBE_N6_DIR` and pass it from the
   command line/environment into CMake so `kernel/driver` can locate the
   official STM32CubeN6 BSP and ISP sources.

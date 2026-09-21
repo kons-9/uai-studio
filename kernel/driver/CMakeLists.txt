@@ -66,16 +66,21 @@ target_compile_definitions(utkernel PUBLIC
 
 add_library(uai_driver STATIC
     src/camera_driver.cpp
+    src/display_driver.cpp
     src/arch/stm32n6570-dk/board_media.cpp
     src/arch/stm32n6570-dk/camera_driver_arch.cpp
+    src/arch/stm32n6570-dk/display_driver_arch.cpp
     "${DRIVER_BSP_ROOT}/stm32n6570_discovery_bus.c"
     "${DRIVER_BSP_ROOT}/stm32n6570_discovery_camera.c"
+    "${DRIVER_BSP_ROOT}/stm32n6570_discovery_lcd.c"
     "${DRIVER_COMPONENT_ROOT}/imx335/imx335.c"
     "${DRIVER_COMPONENT_ROOT}/imx335/imx335_reg.c"
     "${DRIVER_ISP_ROOT}/isp/Src/isp_core.c"
     "${DRIVER_ISP_ROOT}/isp/Src/isp_algo.c"
     "${DRIVER_ISP_ROOT}/isp/Src/isp_services.c"
     "${DRIVER_HAL_ROOT}/Src/stm32n6xx_hal_dcmipp.c"
+    "${DRIVER_HAL_ROOT}/Src/stm32n6xx_hal_dma2d.c"
+    "${DRIVER_HAL_ROOT}/Src/stm32n6xx_hal_ltdc.c"
     "${DRIVER_HAL_ROOT}/Src/stm32n6xx_hal_ramcfg.c"
     "${DRIVER_HAL_ROOT}/Src/stm32n6xx_hal_rif.c")
 
@@ -101,9 +106,12 @@ target_compile_definitions(uai_driver PRIVATE
     STM32N657xx
     USE_FULL_LL_DRIVER
     CPU_IN_SECURE_STATE)
+# Keep the pre-kernel OBJECT library out of this archive. Linking it here
+# changes the final application's object order and weak startup-hook
+# resolution. Applications must link uai::stm32n6570_dk directly, as the
+# original working sample1 did.
 target_link_libraries(uai_driver PUBLIC
     uai::utkernel
-    uai::stm32n6570_dk
     "${DRIVER_EVISION_ROOT}/Lib/libn6-evision-st-ae_gcc.a"
     "${DRIVER_EVISION_ROOT}/Lib/libn6-evision-awb_gcc.a")
 
