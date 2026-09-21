@@ -1,0 +1,6 @@
+# STEdgeAI output and source model files are external/generated artifacts.
+source/*
+model1/*
+!model1/README.md
+model2/*
+!model2/README.md

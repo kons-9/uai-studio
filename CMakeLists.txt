@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 # ble-locator firmware.  Adding a new userspace application should not require
 # changing the kernel project.
 set(APP_TARGET "sample0" CACHE STRING "Userspace application to build")
-set_property(CACHE APP_TARGET PROPERTY STRINGS sample0)
+set_property(CACHE APP_TARGET PROPERTY STRINGS sample0 sample1)
 
 option(CMAKE_EXPORT_COMPILE_COMMANDS
        "Generate compile_commands.json for IDEs"
@@ -31,4 +31,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(kernel/utkernel)
+add_subdirectory(kernel/pre_kernel/stm32n6570-dk)
+if(APP_TARGET STREQUAL "sample1")
+    add_subdirectory(kernel/driver)
+endif()
 add_subdirectory("userspace/${APP_TARGET}")
+
+uai_add_stm32_cli_targets("${APP_TARGET}")

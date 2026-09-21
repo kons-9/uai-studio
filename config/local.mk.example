@@ -1,0 +1,32 @@
+# Copy this file to config/local.mk and adjust only the values for your host.
+# Command-line assignments still override these settings.
+
+# Optional when arm-none-eabi-* is not on PATH.
+ARM_NONE_EABI_TOOLCHAIN_PATH ?=
+
+# Set these for the host and board in use.
+STM32_PROGRAMMER_ROOT ?=
+STM32_PROGRAM_SERIAL ?=
+STM32_PROGRAM_PORT ?= swd
+
+# STM32N6570-DK RAM image layout.
+STM32_RAM_ADDRESS ?= 0x34000400
+STM32_RAM_ENTRY ?= 0x34000800
+STM32_RAM_STACK ?= 0x34200000
+STM32_RAM_XPSR ?= 0x01000000
+
+# Host UART settings.
+# Use `auto` to resolve the ST-LINK VCP from STM32_PROGRAM_SERIAL, or set an
+# explicit /dev/ttyACM* path.
+UART_DEVICE ?= auto
+UART_BAUD ?= 115200
+
+# Classic STM32CubeMX 6.x CLI generation for STM32N657 (not CubeMX2/C5).
+# Set CUBEMX_EXECUTABLE to the Linux STM32CubeMX launcher when installed.
+CUBEMX_EXECUTABLE ?= STM32CubeMX
+CUBEMX_IOC ?= userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc
+CUBEMX_OUTPUT_DIR ?= build/cubemx
+
+# STM32CubeN6 package root, required by sample1 camera/display drivers.
+# Example:
+# STM32CUBE_N6_DIR ?= /opt/STM32Cube/Repository/STM32Cube_FW_N6_V1.3.0

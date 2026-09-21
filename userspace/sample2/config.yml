@@ -1,0 +1,9 @@
+name: sample2
+description: >-
+  STM32N6570-DK Neural-ART NPU inference smoke test. The input is a
+  deterministic synthetic tensor and the output is printed on the T-Monitor
+  UART; camera/display integration remains in sample1.
+models:
+  model1: efficientnet_v2B1_240_fft_qdq_int8.onnx
+  model2: mobilenet_v1_0.25_96_tfs_int8.tflite
+weight_address: 0x70380000

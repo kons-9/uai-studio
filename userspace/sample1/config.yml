@@ -1,0 +1,31 @@
+# sample1: STM32N6570-DK camera preview
+
+`sample1` initializes the DK display and the on-board IMX335 camera, then
+continuously sends the camera's 800x480 RGB565 frames to the LCD layer.
+
+The startup and external-memory initialization are inherited from the working
+`sample0` CubeMX project. The camera and LCD peripherals are initialized by the
+official STM32N6570-DK BSP from the STM32CubeN6 package.
+
+Build with:
+
+```sh
+make APP_TARGET=sample1 \
+  STM32CUBE_N6_DIR=/home/toshiki/STM32Cube/Repository/STM32Cube_FW_N6_V1.3.0 \
+  CUBEMX_EXECUTABLE=/home/toshiki/STM32CubeMX/STM32CubeMX \
+  build
+```
+
+The runtime path is:
+
+1. FSBL setup from the same CubeMX configuration used by `sample0`.
+2. SRAM3/4 clock and power enable for the media buffers.
+3. µT-Kernel-backed HAL tick/delay functions for BSP initialization.
+4. LTDC layer 0 setup by `BSP_LCD_Init()`.
+5. IMX335 + DCMIPP + ISP setup by `BSP_CAMERA_Init()`.
+6. Continuous RGB565 capture into `LCD_LAYER_0_ADDRESS`.
+7. `BSP_CAMERA_BackgroundProcess()` from the µT-Kernel task loop.
+
+See `OUTSIDE_CHANGES.md` for the small root-level build integration changes
+that are required because the existing project originally exposed only
+`sample0` as an application target.

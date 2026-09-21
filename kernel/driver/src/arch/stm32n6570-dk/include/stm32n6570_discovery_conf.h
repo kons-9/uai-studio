@@ -1,0 +1,18 @@
+#ifndef STM32N6570_DISCOVERY_CONF_H
+#define STM32N6570_DISCOVERY_CONF_H
+
+#include "stm32n6xx_hal.h"
+
+#define USE_COM_LOG                         0U
+#define USE_BSP_COM_FEATURE                 0U
+
+#define LCD_LAYER_0_ADDRESS                 0x34200000U
+#define LCD_LAYER_1_ADDRESS                 0x32100000U
+
+#define BSP_CAMERA_ISP_DEFAULT_WHITE_BALANCE    255U
+#define BSP_CAMERA_ISP_DEFAULT_EXPOSURE         128U
+#define BSP_CAMERA_ISP_DEFAULT_CONTRAST         130U
+#define BSP_CAMERA_ISP_STATISTICS_AREA_HEIGHT   1940
+#define BSP_CAMERA_ISP_STATISTICS_AREA_WIDTH    2592
+
+#endif
