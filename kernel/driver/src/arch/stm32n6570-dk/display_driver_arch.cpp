@@ -18,6 +18,33 @@ DriverStatus InitializeDisplay()
     }
 
     BSP_LCD_DisplayOn(0);
+
+    /* Do not expose the capture buffer until the camera has completed a
+     * frame. The LTDC background color is black while the layer is hidden. */
+    if (BSP_LCD_SetLayerVisible(0, 0, DISABLE) != BSP_ERROR_NONE) {
+        return DriverStatus::kHardwareError;
+    }
+    return DriverStatus::kOk;
+}
+
+DriverStatus ProcessDisplay()
+{
+    const std::uintptr_t frame = TakeCompletedCameraFrame();
+    if (frame == 0) {
+        return DriverStatus::kOk;
+    }
+
+    /* Stage the address and visibility change, then apply both at the next
+     * vertical blanking period so LTDC never scans a partially switched frame. */
+    if (BSP_LCD_Reload(0, BSP_LCD_RELOAD_NONE) != BSP_ERROR_NONE ||
+        BSP_LCD_SetLayerAddress(0, 0, static_cast<uint32_t>(frame)) !=
+            BSP_ERROR_NONE ||
+        BSP_LCD_SetLayerVisible(0, 0, ENABLE) != BSP_ERROR_NONE ||
+        BSP_LCD_Reload(0, BSP_LCD_RELOAD_VERTICAL_BLANKING) !=
+            BSP_ERROR_NONE) {
+        return DriverStatus::kHardwareError;
+    }
+
     return DriverStatus::kOk;
 }
 

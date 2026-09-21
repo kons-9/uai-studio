@@ -17,4 +17,12 @@ DriverStatus DisplayDriver::Initialize()
     return status;
 }
 
+DriverStatus DisplayDriver::Process()
+{
+    if (!initialized_) {
+        return DriverStatus::kNotInitialized;
+    }
+    return arch::ProcessDisplay();
+}
+
 } // namespace uai::driver

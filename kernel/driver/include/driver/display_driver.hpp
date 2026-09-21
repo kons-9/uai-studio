@@ -8,6 +8,7 @@ namespace uai::driver {
 class DisplayDriver final {
 public:
     DriverStatus Initialize();
+    DriverStatus Process();
 
 private:
     bool initialized_ = false;

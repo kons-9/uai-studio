@@ -25,12 +25,20 @@ DriverStatus InitializeMedia()
 
     LL_MEM_EnableClock(LL_MEM_AXISRAM3);
     LL_MEM_EnableClock(LL_MEM_AXISRAM4);
+    LL_MEM_EnableClock(LL_MEM_AXISRAM5);
+    LL_MEM_EnableClock(LL_MEM_AXISRAM6);
 
     RAMCFG_HandleTypeDef ramcfg = {};
     ramcfg.Instance = RAMCFG_SRAM3_AXI;
     HAL_RAMCFG_EnableAXISRAM(&ramcfg);
 
     ramcfg.Instance = RAMCFG_SRAM4_AXI;
+    HAL_RAMCFG_EnableAXISRAM(&ramcfg);
+
+    ramcfg.Instance = RAMCFG_SRAM5_AXI;
+    HAL_RAMCFG_EnableAXISRAM(&ramcfg);
+
+    ramcfg.Instance = RAMCFG_SRAM6_AXI;
     HAL_RAMCFG_EnableAXISRAM(&ramcfg);
 
     __HAL_RCC_RIFSC_CLK_ENABLE();

@@ -46,6 +46,9 @@ extern "C" INT usermain(void)
         if (!uai::driver::IsOk(camera.Process())) {
             halt_with_message("sample1: camera background process failed\n");
         }
+        if (!uai::driver::IsOk(display.Process())) {
+            halt_with_message("sample1: display process failed\n");
+        }
         tk_dly_tsk(1);
     }
 }
