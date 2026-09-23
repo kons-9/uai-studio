@@ -15,6 +15,13 @@ endif()
 
 file(GLOB CUBEMX_HAL_SOURCES CONFIGURE_DEPENDS
     "${CUBEMX_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/*.c")
+# The installed newer HAL removed the automatic DDTR bit handling from
+# HAL_XSPI_Command(), while the MX66UW1G45G component used by both BSPs still
+# relies on it for OPI-DTR status/configuration commands.  Keep the ref XSPI
+# HAL implementation until the component and HAL are updated as a pair.
+list(FILTER CUBEMX_HAL_SOURCES EXCLUDE REGEX "/stm32n6xx_hal_xspi\\.c$")
+list(APPEND CUBEMX_HAL_SOURCES
+    "${CMAKE_SOURCE_DIR}/ref/STM32N6_Survivor_Detection/STM32Cube_FW_N6/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_xspi.c")
 file(GLOB CUBEMX_EXTMEM_SOURCES CONFIGURE_DEPENDS
     "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/*.c"
     "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/boot/*.c"
@@ -34,6 +41,8 @@ add_library(stm32n6570_dk OBJECT
     ${CUBEMX_FSBL_SOURCES}
     ${CUBEMX_HAL_SOURCES}
     ${CUBEMX_EXTMEM_SOURCES}
+    ram_entry.S
+    ram_entry.c
     cubemx_entry.c
 )
 
@@ -50,6 +59,15 @@ target_include_directories(stm32n6570_dk
         "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/boot"
         "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/sal"
         "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/nor_sfdp"
+        "${STM32CUBE_N6_DIR}/Drivers/BSP/Components/mx66uw1g45g"
+        "${STM32CUBE_N6_DIR}/Drivers/BSP/STM32N6570-DK"
+        "${CMAKE_SOURCE_DIR}/userspace/sample2/src/board"
+        "${CMAKE_SOURCE_DIR}/userspace/sample2/config"
+    PRIVATE
+        "${CMAKE_SOURCE_DIR}/kernel/utkernel/mtk3_bsp2"
+        "${CMAKE_SOURCE_DIR}/kernel/utkernel/mtk3_bsp2/config"
+        "${CMAKE_SOURCE_DIR}/kernel/utkernel/mtk3_bsp2/include"
+        "${CMAKE_SOURCE_DIR}/kernel/utkernel/mtk3_bsp2/mtkernel/include"
 )
 
 target_compile_definitions(stm32n6570_dk PRIVATE

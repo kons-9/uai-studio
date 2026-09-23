@@ -14,12 +14,12 @@
 #define HAL_SAI_MODULE_ENABLED
 #define HAL_UART_MODULE_ENABLED
 #define HAL_XSPI_MODULE_ENABLED
+#define HAL_CACHEAXI_MODULE_ENABLED
 #define HAL_GPIO_MODULE_ENABLED
 #define HAL_DMA_MODULE_ENABLED
 #define HAL_RCC_MODULE_ENABLED
 #define HAL_PWR_MODULE_ENABLED
 #define HAL_CORTEX_MODULE_ENABLED
-
 #define HSE_VALUE              24000000UL
 #define HSE_STARTUP_TIMEOUT    100UL
 #define HSI_VALUE              64000000UL
@@ -55,5 +55,6 @@
 #include "stm32n6xx_hal_sai.h"
 #include "stm32n6xx_hal_uart.h"
 #include "stm32n6xx_hal_xspi.h"
+#include "stm32n6xx_hal_cacheaxi.h"
 
 #endif

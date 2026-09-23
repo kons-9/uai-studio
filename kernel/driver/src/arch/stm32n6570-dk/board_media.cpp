@@ -73,15 +73,35 @@ DriverStatus InitializeMedia()
 
 } // namespace uai::driver::arch
 
+extern "C" volatile std::uint32_t uai_hal_tick_calls;
+extern "C" volatile std::uint32_t uai_hal_tick_first;
+extern "C" volatile std::uint32_t uai_hal_tick_last;
+extern "C" volatile std::uint32_t uai_hal_tick_probe[4];
+extern "C" std::uint32_t knl_get_current_time_low(void);
+
 /* BSP drivers use HAL timeouts, while µT-Kernel owns the SysTick exception.
  * This object is always linked through InitializeMedia(). */
 extern "C" uint32_t HAL_GetTick(void)
 {
-    SYSTIM time = {};
-    if (tk_get_otm(&time) != E_OK) {
-        return 0U;
+    /* This µT-Kernel build advances the low word of its internal LSYSTIM.
+     * Its SYSTIM conversion is not usable by the HAL timeout layer on this
+     * BSP, so take the monotonic low word directly. */
+    const std::uint32_t tick = knl_get_current_time_low();
+    const std::uint32_t call = uai_hal_tick_calls++;
+    if (call == 0U) {
+        uai_hal_tick_probe[2] = tick;
+        uai_hal_tick_probe[3] = 0U;
+        uai_hal_tick_first = tick;
     }
-    return time.lo;
+    uai_hal_tick_last = tick;
+    return tick;
+}
+
+extern "C" HAL_StatusTypeDef HAL_InitTick(uint32_t /*tick_priority*/)
+{
+    /* µT-Kernel owns SysTick.  The default HAL implementation would install
+     * a second time base before the kernel exception table is active. */
+    return HAL_OK;
 }
 
 extern "C" void HAL_Delay(uint32_t delay)

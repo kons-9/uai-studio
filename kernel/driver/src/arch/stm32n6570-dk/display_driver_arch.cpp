@@ -48,6 +48,23 @@ DriverStatus ProcessDisplay()
     return DriverStatus::kOk;
 }
 
+DriverStatus ProcessDisplay(std::uintptr_t frame)
+{
+    if (frame == 0U) {
+        return DriverStatus::kHardwareError;
+    }
+
+    if (BSP_LCD_Reload(0, BSP_LCD_RELOAD_NONE) != BSP_ERROR_NONE ||
+        BSP_LCD_SetLayerAddress(0, 0, static_cast<uint32_t>(frame)) !=
+            BSP_ERROR_NONE ||
+        BSP_LCD_SetLayerVisible(0, 0, ENABLE) != BSP_ERROR_NONE ||
+        BSP_LCD_Reload(0, BSP_LCD_RELOAD_VERTICAL_BLANKING) !=
+            BSP_ERROR_NONE) {
+        return DriverStatus::kHardwareError;
+    }
+    return DriverStatus::kOk;
+}
+
 } // namespace uai::driver::arch
 
 /* The DK BSP expects this CubeMX hook, while the common clock setup is in
@@ -59,7 +76,9 @@ extern "C" HAL_StatusTypeDef MX_LTDC_ClockConfig(LTDC_HandleTypeDef *hltdc)
     RCC_PeriphCLKInitTypeDef clock = {};
     clock.PeriphClockSelection = RCC_PERIPHCLK_LTDC;
     clock.LtdcClockSelection = RCC_LTDCCLKSOURCE_IC16;
-    clock.ICSelection[RCC_IC16].ClockSelection = RCC_ICCLKSOURCE_PLL1;
-    clock.ICSelection[RCC_IC16].ClockDivider = 48;
+    /* Match the BSP/reference LCD pixel clock: PLL4 is 50 MHz, divided by 2
+     * for the panel's 25 MHz LTDC clock. PLL1/48 is only about 16.7 MHz. */
+    clock.ICSelection[RCC_IC16].ClockSelection = RCC_ICCLKSOURCE_PLL4;
+    clock.ICSelection[RCC_IC16].ClockDivider = 2;
     return HAL_RCCEx_PeriphCLKConfig(&clock);
 }

@@ -94,12 +94,11 @@ namespace memory
             master.MasterCID = RIF_CID_1;
             master.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV;
 
+            /* Make the external frame-buffer path self-contained. */
             /* CubeMX assigns the NPU RIMC master to CID0 (NPU_CID_RIMU=0).  This is
              * separate from the secure CPU/media masters, which use CID1. */
             RIMC_MasterConfig_t npu_master = master;
             npu_master.MasterCID = RIF_CID_0;
-
-            /* Make the external frame-buffer path self-contained. */
             HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_NPU, &npu_master);
             HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DMA2D, &master);
             HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DCMIPP, &master);

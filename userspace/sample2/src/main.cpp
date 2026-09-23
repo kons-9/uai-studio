@@ -1,236 +1,883 @@
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
 
 #include <tk/tkernel.h>
 
-#include "driver/display_driver.hpp"
-#include "memory_manager.hpp"
-#include "person_detector.hpp"
+#include "camera_driver/camera_driver.hpp"
+#include "common/error.hpp"
+#include "lcd_driver/lcd_driver.hpp"
+#include "memory_manager/memory_manager.hpp"
+#include "model_manager/model_manager.hpp"
+#include "npu_driver/npu_hardware.hpp"
 
-extern "C"
-{
+extern "C" {
 #include <tm/tmonitor.h>
-
-#include "stm32n6570_discovery_camera.h"
-#include "stm32n6570_discovery_lcd.h"
 #include "stm32n6xx_hal.h"
 
-    extern DCMIPP_HandleTypeDef hcamera_dcmipp;
+int cubemx_initialize_external_memory(void);
+void NPU0_IRQHandler(void);
+void IAC_IRQHandler(void);
+extern volatile unsigned int g_aton_irq_count;
+extern volatile unsigned int g_aton_last_irqs;
+extern volatile unsigned int g_npu_cache_init_status;
+extern volatile unsigned int g_npu_cache_enable_status;
+extern volatile unsigned int g_npu_cache_invalidate_status;
+extern volatile unsigned int g_npu_cache_cr1;
+extern volatile unsigned int g_npu_cache_sr;
+extern volatile unsigned int g_camera_frame_event_count;
+extern volatile unsigned int g_camera_vsync_event_count;
+extern volatile unsigned int g_camera_recovery_count;
+extern volatile unsigned int g_camera_recovery_error_count;
+extern volatile unsigned int g_camera_isp_error_count;
+extern volatile unsigned int g_camera_dcmipp_last_status;
+extern volatile unsigned int g_camera_dcmipp_error_count;
+extern volatile unsigned int g_camera_camera_error_count;
+extern volatile unsigned int g_camera_csi_last_status;
+extern volatile unsigned int g_camera_csi_last_status1;
+extern volatile unsigned int g_camera_csi_error_count;
+extern volatile unsigned int g_camera_csi_last_error_code;
+extern volatile unsigned int g_sample2_last_exposure_request_us;
+extern volatile unsigned int g_sample2_last_exposure_lines;
+int32_t Sample2GetSensorGainMdB(void);
+int32_t Sample2ReadSensorRegisters(std::uint32_t *vmax,
+                                   std::uint32_t *shutter,
+                                   std::uint32_t *gain);
 }
 
-namespace
+extern "C" volatile std::uint32_t uai_hal_tick_calls = 0U;
+extern "C" volatile std::uint32_t uai_hal_tick_first = 0U;
+extern "C" volatile std::uint32_t uai_hal_tick_last = 0U;
+extern "C" volatile std::uint32_t uai_hal_tick_probe[4] = {};
+extern "C" volatile std::uint32_t uai_systick_count = 0U;
+extern "C" volatile unsigned int g_camera_frame_event_count = 0U;
+
+namespace {
+
+using uai::sample2::memory_manager::BoxSet;
+using uai::sample2::memory_manager::InferenceFrame;
+using uai::sample2::memory_manager::MemoryManager;
+using uai::sample2::common::Error;
+using uai::sample2::common::ErrorCode;
+using NpuStatus = uai::sample2::npu_driver::Status;
+using NpuHardware = uai::sample2::npu_driver::NpuHardware;
+
+constexpr UINT kExternalMemoryReady = 0x01U;
+constexpr std::uint32_t kInferencePeriod = 1000U;
+constexpr std::uint32_t kBoxLifetimeMs = 3000U;
+constexpr std::size_t kFrameQueueDepth = 4U;
+constexpr std::size_t kBoxQueueDepth = 4U;
+constexpr SZ kInitializationTaskStackSize = 32U * 1024U;
+constexpr SZ kCameraTaskStackSize = 32U * 1024U;
+constexpr SZ kInferenceTaskStackSize = 16U * 1024U;
+
+struct InferenceMessage {
+    InferenceFrame frame{};
+};
+
+struct BoxMessage {
+    BoxSet boxes{};
+};
+
+static MemoryManager g_memory;
+static volatile std::uint32_t g_app_stage = 0U;
+static volatile bool g_external_nor_ready = false;
+static ID g_external_memory_ready = 0;
+static ID g_frame_queue = 0;
+static ID g_box_queue = 0;
+alignas(8) static UB g_frame_queue_storage[
+    sizeof(InferenceMessage) * kFrameQueueDepth] = {};
+alignas(8) static UB g_box_queue_storage[sizeof(BoxMessage) * kBoxQueueDepth] = {};
+static INT g_initialization_task_stack[
+    kInitializationTaskStackSize / sizeof(INT)] = {};
+static INT g_camera_task_stack[kCameraTaskStackSize / sizeof(INT)] = {};
+static INT g_inference_task_stack[kInferenceTaskStackSize / sizeof(INT)] = {};
+
+void StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
+               const char *name);
+void camera_render_task(void);
+void inference_task(void);
+
+[[noreturn]] void Halt(const char *message)
 {
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(message)));
+    for (;;) {
+        tk_dly_tsk(1000);
+    }
+}
 
-    constexpr std::size_t kFrameBytes = 800U * 480U * 2U;
-    constexpr std::size_t kFrameWidth = 800U;
-    constexpr std::size_t kFrameHeight = 480U;
-    constexpr std::size_t kInferenceCropX = 160U;
-    constexpr std::size_t kInferenceSize = 480U;
-    constexpr std::size_t kLcdBufferCount = 2U;
-    constexpr TMO kDisplayHoldTicks = 20;
-    constexpr std::size_t kMaxDetections = 100U;
+void LogStatus(const char *component, const Error &error)
+{
+    if (!error.Ok()) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "error: component=%s operation=%s code=%u detail=%x\n"),
+                  component, error.operation,
+                  static_cast<unsigned int>(error.code),
+                  static_cast<unsigned int>(error.detail));
+    }
+}
 
-    /* usermain is the μT-Kernel initial task and has only a 1 KiB stack. */
-    static inference::ObjectDetection detection_results[kMaxDetections] = {};
+void LogFrameBrightness(
+    const uai::sample2::memory_manager::CaptureFrame &capture)
+{
+    if ((capture.sequence % 30U) != 0U) {
+        return;
+    }
 
-    volatile std::uintptr_t completed_camera_frame = 0;
-    volatile std::uint32_t camera_frame_events = 0;
-    std::uintptr_t next_camera_frame = 0;
-    std::uintptr_t camera_frame0 = 0;
-    std::uintptr_t camera_frame1 = 0;
-    memory::Buffer lcd_frames[kLcdBufferCount]{};
-    std::size_t next_lcd_buffer = 0U;
+    const Error cache_status = g_memory.PrepareForCpuRead(capture.buffer);
+    if (!cache_status.Ok()) {
+        LogStatus("camera-luminance", cache_status);
+        return;
+    }
 
-    int clamp_coordinate(float value, int maximum)
-    {
-        if (value <= 0.0f)
-        {
-            return 0;
+    const auto *pixels =
+        reinterpret_cast<const std::uint16_t *>(capture.buffer.address);
+    constexpr std::size_t kPixelCount =
+        uai::sample2::memory_manager::kFrameBytes / sizeof(*pixels);
+    constexpr std::size_t kSampleStep = 64U;
+    std::uint32_t luminance_sum = 0U;
+    std::uint32_t luminance_peak = 0U;
+    std::uint32_t sample_count = 0U;
+    for (std::size_t i = 0U; i < kPixelCount; i += kSampleStep) {
+        const std::uint16_t pixel = pixels[i];
+        const std::uint32_t red = ((pixel >> 11U) & 0x1FU) * 255U / 31U;
+        const std::uint32_t green = ((pixel >> 5U) & 0x3FU) * 255U / 63U;
+        const std::uint32_t blue = (pixel & 0x1FU) * 255U / 31U;
+        const std::uint32_t luminance =
+            (77U * red + 150U * green + 29U * blue) >> 8U;
+        luminance_sum += luminance;
+        if (luminance > luminance_peak) {
+            luminance_peak = luminance;
         }
-        if (value >= static_cast<float>(maximum))
-        {
-            return maximum;
+        ++sample_count;
+    }
+
+    std::uint32_t sensor_vmax = 0U;
+    std::uint32_t sensor_shutter = 0U;
+    std::uint32_t sensor_gain = 0U;
+    const int32_t sensor_register_status = Sample2ReadSensorRegisters(
+        &sensor_vmax, &sensor_shutter, &sensor_gain);
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: image brightness seq=%u mean=%u peak=%u exposure_us=%u exposure_lines=%u gain_mdB=%d regs=%d/%u,%u,%u\n"),
+              static_cast<unsigned int>(capture.sequence),
+              static_cast<unsigned int>(luminance_sum / sample_count),
+              static_cast<unsigned int>(luminance_peak),
+              g_sample2_last_exposure_request_us,
+              g_sample2_last_exposure_lines,
+              static_cast<int>(Sample2GetSensorGainMdB()),
+              static_cast<int>(sensor_register_status),
+              static_cast<unsigned int>(sensor_vmax),
+              static_cast<unsigned int>(sensor_shutter),
+              static_cast<unsigned int>(sensor_gain));
+}
+
+void LogNpuStatus(const NpuStatus &status)
+{
+    const auto &execution = status.execution;
+    const auto &hardware = execution.hardware;
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: npu state=%u stai=%x epoch=%x addr=%x irq=%x label=%x bc=%x int=%x\n"),
+              static_cast<unsigned int>(execution.state),
+              static_cast<unsigned int>(execution.stai_status),
+              static_cast<unsigned int>(hardware.epoch_control),
+              static_cast<unsigned int>(hardware.epoch_address),
+              static_cast<unsigned int>(hardware.epoch_irq),
+              static_cast<unsigned int>(hardware.epoch_label),
+              static_cast<unsigned int>(hardware.epoch_byte_counter),
+              static_cast<unsigned int>(hardware.interrupt_status));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: npu intctrl=%x or=%x and=%x bus=%x/%x stream=%x/%x/%x\n"),
+              static_cast<unsigned int>(hardware.interrupt_control),
+              static_cast<unsigned int>(hardware.interrupt_or_mask),
+              static_cast<unsigned int>(hardware.interrupt_and_mask),
+              static_cast<unsigned int>(hardware.busif0_control),
+              static_cast<unsigned int>(hardware.busif0_error),
+              static_cast<unsigned int>(hardware.stream0_control),
+              static_cast<unsigned int>(hardware.stream0_address),
+              static_cast<unsigned int>(hardware.stream0_irq));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: npu stream_cfg fsize=%x depth=%x limiten=%x limit=%x limitaddr=%x cnt=%x/%x/%x/%x\n"),
+              static_cast<unsigned int>(hardware.stream0_frame_size),
+              static_cast<unsigned int>(hardware.stream0_depth),
+              static_cast<unsigned int>(hardware.stream0_limit_enable),
+              static_cast<unsigned int>(hardware.stream0_limit),
+              static_cast<unsigned int>(hardware.stream0_limit_address),
+              static_cast<unsigned int>(hardware.stream0_depth_count),
+              static_cast<unsigned int>(hardware.stream0_pixel_count),
+              static_cast<unsigned int>(hardware.stream0_line_count),
+              static_cast<unsigned int>(hardware.stream0_frame_count));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: npu isr count=%u last=%x\n"),
+              g_aton_irq_count, g_aton_last_irqs);
+}
+
+void DumpCoreRegisters(const char *stage)
+{
+    const auto *vector_table =
+        reinterpret_cast<volatile const std::uint32_t *>(SCB->VTOR);
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: core dump begin stage=%s\n"),
+              stage);
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: core vtor=%x msp=%x psp=%x control=%x ipsr=%x xpsr=%x\n"),
+              static_cast<unsigned int>(SCB->VTOR),
+              static_cast<unsigned int>(__get_MSP()),
+              static_cast<unsigned int>(__get_PSP()),
+              static_cast<unsigned int>(__get_CONTROL()),
+              static_cast<unsigned int>(__get_IPSR()),
+              static_cast<unsigned int>(__get_xPSR()));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: core primask=%x basepri=%x faultmask=%x icsr=%x shcsr=%x cfsr=%x hfsr=%x mmfar=%x bfar=%x ccr=%x\n"),
+              static_cast<unsigned int>(__get_PRIMASK()),
+              static_cast<unsigned int>(__get_BASEPRI()),
+              static_cast<unsigned int>(__get_FAULTMASK()),
+              static_cast<unsigned int>(SCB->ICSR),
+              static_cast<unsigned int>(SCB->SHCSR),
+              static_cast<unsigned int>(SCB->CFSR),
+              static_cast<unsigned int>(SCB->HFSR),
+              static_cast<unsigned int>(SCB->MMFAR),
+              static_cast<unsigned int>(SCB->BFAR),
+              static_cast<unsigned int>(SCB->CCR));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: core aircr=%x demcr=%x dwt_ctrl=%x dwt_cyccnt=%x\n"),
+              static_cast<unsigned int>(SCB->AIRCR),
+              static_cast<unsigned int>(CoreDebug->DEMCR),
+              static_cast<unsigned int>(DWT->CTRL),
+              static_cast<unsigned int>(DWT->CYCCNT));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: vector iac=%x npu=%x dcmipp=%x csi=%x ltdc=%x\n"),
+              static_cast<unsigned int>(vector_table[16U + IAC_IRQn]),
+              static_cast<unsigned int>(vector_table[16U + NPU0_IRQn]),
+              static_cast<unsigned int>(vector_table[16U + DCMIPP_IRQn]),
+              static_cast<unsigned int>(vector_table[16U + CSI_IRQn]),
+                  static_cast<unsigned int>(vector_table[16U + LTDC_UP_ERR_IRQn]));
+
+    const auto dump_irq = [](const char *name, IRQn_Type irq) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "debug: irq %s n=%d en=%u pend=%u active=%u pri=%u\n"),
+                  name, static_cast<int>(irq),
+                  static_cast<unsigned int>(NVIC_GetEnableIRQ(irq)),
+                  static_cast<unsigned int>(NVIC_GetPendingIRQ(irq)),
+                  static_cast<unsigned int>(NVIC_GetActive(irq)),
+                  static_cast<unsigned int>(NVIC_GetPriority(irq)));
+    };
+    dump_irq("IAC", IAC_IRQn);
+    dump_irq("NPU0", NPU0_IRQn);
+    dump_irq("DCMIPP", DCMIPP_IRQn);
+    dump_irq("CSI", CSI_IRQn);
+    dump_irq("LTDC_UP_ERR", LTDC_UP_ERR_IRQn);
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: core dump end stage=%s\n"),
+              stage);
+}
+
+void DumpPeripheralRegisters(const char *stage)
+{
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: peripheral dump begin stage=%s\n"),
+              stage);
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: rcc cr=%x csr=%x ahb5enr=%x ahb5ensr=%x memenr=%x memensr=%x ahb5rstr=%x ahb5rstsr=%x\n"),
+              static_cast<unsigned int>(RCC->CR),
+              static_cast<unsigned int>(RCC->CSR),
+              static_cast<unsigned int>(RCC->AHB5ENR),
+              static_cast<unsigned int>(RCC->AHB5ENSR),
+              static_cast<unsigned int>(RCC->MEMENR),
+              static_cast<unsigned int>(RCC->MEMENSR),
+              static_cast<unsigned int>(RCC->AHB5RSTR),
+              static_cast<unsigned int>(RCC->AHB5RSTSR));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: cache cr1=%x sr=%x ier=%x fcr=%x cr2=%x cmd_start=%x cmd_end=%x\n"),
+              static_cast<unsigned int>(CACHEAXI->CR1),
+              static_cast<unsigned int>(CACHEAXI->SR),
+              static_cast<unsigned int>(CACHEAXI->IER),
+              static_cast<unsigned int>(CACHEAXI->FCR),
+              static_cast<unsigned int>(CACHEAXI->CR2),
+              static_cast<unsigned int>(CACHEAXI->CMDRSADDRR),
+              static_cast<unsigned int>(CACHEAXI->CMDREADDRR));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: iac ier=%x,%x,%x,%x,%x isr=%x,%x,%x,%x,%x\n"),
+              static_cast<unsigned int>(IAC->IER[0]),
+              static_cast<unsigned int>(IAC->IER[1]),
+              static_cast<unsigned int>(IAC->IER[2]),
+              static_cast<unsigned int>(IAC->IER[3]),
+              static_cast<unsigned int>(IAC->IER[4]),
+              static_cast<unsigned int>(IAC->ISR[0]),
+              static_cast<unsigned int>(IAC->ISR[1]),
+              static_cast<unsigned int>(IAC->ISR[2]),
+              static_cast<unsigned int>(IAC->ISR[3]),
+              static_cast<unsigned int>(IAC->ISR[4]));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: rifsc cr=%x seccfgr=%x,%x,%x,%x,%x,%x rimc=%x attr=%x\n"),
+              static_cast<unsigned int>(RIFSC->RISC_CR),
+              static_cast<unsigned int>(RIFSC->RISC_SECCFGRx[0]),
+              static_cast<unsigned int>(RIFSC->RISC_SECCFGRx[1]),
+              static_cast<unsigned int>(RIFSC->RISC_SECCFGRx[2]),
+              static_cast<unsigned int>(RIFSC->RISC_SECCFGRx[3]),
+              static_cast<unsigned int>(RIFSC->RISC_SECCFGRx[4]),
+              static_cast<unsigned int>(RIFSC->RISC_SECCFGRx[5]),
+              static_cast<unsigned int>(RIFSC->RIMC_CR),
+              static_cast<unsigned int>(RIFSC->RIMC_ATTRx[0]));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: risaf12 cr=%x iasr=%x iacr=%x iaesr=%x iaddr=%x reg0=%x/%x/%x/%x\n"),
+              static_cast<unsigned int>(RISAF12->CR),
+              static_cast<unsigned int>(RISAF12->IASR),
+              static_cast<unsigned int>(RISAF12->IACR),
+              static_cast<unsigned int>(RISAF12->IAR[0].IAESR),
+              static_cast<unsigned int>(RISAF12->IAR[0].IADDR),
+              static_cast<unsigned int>(RISAF12->REG[0].CFGR),
+              static_cast<unsigned int>(RISAF12->REG[0].STARTR),
+              static_cast<unsigned int>(RISAF12->REG[0].ENDR),
+              static_cast<unsigned int>(RISAF12->REG[0].CIDCFGR));
+
+    const auto hardware = NpuHardware{}.ReadSnapshot();
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: npu epoch=%x/%x/%x irq=%x label=%x bc=%x int=%x/%x/%x bus=%x/%x\n"),
+              static_cast<unsigned int>(hardware.epoch_control),
+              static_cast<unsigned int>(hardware.epoch_version),
+              static_cast<unsigned int>(hardware.epoch_address),
+              static_cast<unsigned int>(hardware.epoch_irq),
+              static_cast<unsigned int>(hardware.epoch_label),
+              static_cast<unsigned int>(hardware.epoch_byte_counter),
+              static_cast<unsigned int>(hardware.interrupt_control),
+              static_cast<unsigned int>(hardware.interrupt_status),
+              static_cast<unsigned int>(hardware.interrupt_or_mask),
+              static_cast<unsigned int>(hardware.busif0_control),
+              static_cast<unsigned int>(hardware.busif0_error));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: npu stream ctrl=%x addr=%x fsize=%x depth=%x lim=%x/%x addr=%x cnt=%x/%x/%x/%x irq=%x\n"),
+              static_cast<unsigned int>(hardware.stream0_control),
+              static_cast<unsigned int>(hardware.stream0_address),
+              static_cast<unsigned int>(hardware.stream0_frame_size),
+              static_cast<unsigned int>(hardware.stream0_depth),
+              static_cast<unsigned int>(hardware.stream0_limit_enable),
+              static_cast<unsigned int>(hardware.stream0_limit),
+              static_cast<unsigned int>(hardware.stream0_limit_address),
+              static_cast<unsigned int>(hardware.stream0_depth_count),
+              static_cast<unsigned int>(hardware.stream0_pixel_count),
+              static_cast<unsigned int>(hardware.stream0_line_count),
+              static_cast<unsigned int>(hardware.stream0_frame_count),
+              static_cast<unsigned int>(hardware.stream0_irq));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "debug: peripheral dump end stage=%s aton_irq=%u last=%x\n"),
+              stage, g_aton_irq_count, g_aton_last_irqs);
+}
+
+bool IsBestEffort(ErrorCode code)
+{
+    return code == ErrorCode::kNoFrame || code == ErrorCode::kNoBuffer ||
+           code == ErrorCode::kQueueFull;
+}
+
+std::uint32_t Now()
+{
+    SYSTIM time = {};
+    return tk_get_otm(&time) == E_OK ? time.lo : 0U;
+}
+
+BoxSet EmptyBoxes()
+{
+    return {};
+}
+
+bool DrainLatestBoxes(BoxSet *active)
+{
+    BoxMessage message{};
+    bool received = false;
+    for (;;) {
+        const INT size = tk_rcv_mbf(g_box_queue, &message, TMO_POL);
+        if (size < 0) {
+            break;
         }
-        return static_cast<int>(value);
+        if (size == static_cast<INT>(sizeof(message))) {
+            *active = message.boxes;
+            received = true;
+        }
     }
-
-    int normalized_to_screen_x(float value)
-    {
-        return static_cast<int>(kInferenceCropX) +
-               clamp_coordinate(value * static_cast<float>(kInferenceSize),
-                                static_cast<int>(kInferenceSize - 1U));
+    if (received) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "lcd: box source=ai sequence=%u capture=%u count=%u\n"),
+                  static_cast<unsigned int>(active->model_sequence),
+                  static_cast<unsigned int>(active->capture_sequence),
+                  static_cast<unsigned int>(active->count));
+        const std::uint32_t count =
+            active->count < uai::sample2::memory_manager::kMaxBoxes
+                ? active->count
+                : uai::sample2::memory_manager::kMaxBoxes;
+        for (std::uint32_t i = 0U; i < count; ++i) {
+            const auto &box = active->boxes[i];
+            const auto confidence_milli = box.confidence > 0.0F
+                                              ? static_cast<std::uint32_t>(
+                                                    box.confidence * 1000.0F +
+                                                    0.5F)
+                                              : 0U;
+            tm_printf(reinterpret_cast<const UB *>(
+                          "lcd: box active index=%u x=%d y=%d w=%d h=%d conf_milli=%u\n"),
+                      static_cast<unsigned int>(i),
+                      static_cast<int>(box.x), static_cast<int>(box.y),
+                      static_cast<int>(box.width),
+                      static_cast<int>(box.height),
+                      static_cast<unsigned int>(confidence_milli));
+        }
     }
+    return received;
+}
 
-    int normalized_to_screen_y(float value)
-    {
-        return clamp_coordinate(value * static_cast<float>(kInferenceSize),
-                                static_cast<int>(kFrameHeight - 1U));
-    }
-
-    void draw_pixel(const memory::Buffer &lcd_frame, int x, int y,
-                    std::uint16_t color)
-    {
-        if (x < 0 || y < 0 || x >= static_cast<int>(kFrameWidth) ||
-            y >= static_cast<int>(kFrameHeight))
-        {
+void SendLatestBoxes(const BoxSet &boxes)
+{
+    BoxMessage message{};
+    message.boxes = boxes;
+    for (;;) {
+        const ER error = tk_snd_mbf(g_box_queue, &message, sizeof(message),
+                                    TMO_POL);
+        if (error == E_OK) {
             return;
         }
-        auto *pixels = reinterpret_cast<std::uint16_t *>(lcd_frame.address);
-        pixels[static_cast<std::size_t>(y) * kFrameWidth +
-               static_cast<std::size_t>(x)] = color;
+        BoxMessage discarded{};
+        if (tk_rcv_mbf(g_box_queue, &discarded, TMO_POL) < 0) {
+            return;
+        }
     }
+}
 
-    void draw_box(const memory::Buffer &lcd_frame,
-                  const inference::ObjectDetection &detection)
-    {
-        const int x0 = normalized_to_screen_x(
-            detection.x_center - detection.width * 0.5f);
-        const int y0 = normalized_to_screen_y(
-            detection.y_center - detection.height * 0.5f);
-        const int x1 = normalized_to_screen_x(
-            detection.x_center + detection.width * 0.5f);
-        const int y1 = normalized_to_screen_y(
-            detection.y_center + detection.height * 0.5f);
-        constexpr int kThickness = 5;
-        constexpr std::uint16_t kRedRgb565 = 0xF800U;
+void SendInferenceFrame(const InferenceFrame &frame)
+{
+    InferenceMessage message{};
+    message.frame = frame;
+    const ER error = tk_snd_mbf(g_frame_queue, &message, sizeof(message),
+                                TMO_POL);
+    if (error != E_OK) {
+        const Error status = g_memory.ReleaseInferenceBuffer(frame);
+        LogStatus("memory", status);
+        tm_printf(reinterpret_cast<const UB *>(
+                      "ai: frame dropped reason=queue_full sequence=%u\n"),
+                  static_cast<unsigned int>(frame.capture_sequence));
+    }
+}
 
-        for (int offset = 0; offset < kThickness; ++offset)
-        {
-            for (int x = x0; x <= x1; ++x)
-            {
-                draw_pixel(lcd_frame, x, y0 + offset, kRedRgb565);
-                draw_pixel(lcd_frame, x, y1 - offset, kRedRgb565);
+void ConfigureReferenceInterruptPriorities()
+{
+    /* The ref application normalizes all peripheral IRQ priorities to the
+     * SysTick priority before it touches either external memory.  Preserve
+     * that ordering because the image is launched from RAM and may inherit
+     * stale priorities from the previous image. */
+    uint32_t preempt_priority = 0U;
+    uint32_t sub_priority = 0U;
+    HAL_NVIC_GetPriority(SysTick_IRQn, HAL_NVIC_GetPriorityGrouping(),
+                         &preempt_priority, &sub_priority);
+    for (IRQn_Type irq = PVD_PVM_IRQn; irq <= LTDC_UP_ERR_IRQn;
+         irq = static_cast<IRQn_Type>(static_cast<int32_t>(irq) + 1)) {
+        HAL_NVIC_SetPriority(irq, preempt_priority, sub_priority);
+    }
+}
+
+void application_initialize_task(void)
+{
+    /* HAL tick is suspended while the pre-kernel clock tree is installed.
+     * Resume it once µT-Kernel is running so Cube HAL timeout loops used by
+     * the external-memory BSP can make progress. */
+    HAL_ResumeTick();
+    ConfigureReferenceInterruptPriorities();
+    /* The RAM-launch trampoline disables D-cache to prevent stale lines from
+     * the previous image overwriting the freshly programmed image.  Re-enable
+     * it after C runtime/kernel startup, as the reference application does;
+     * otherwise PSRAM frame copies and RGB conversion become prohibitively
+     * slow and starve the display pipeline. */
+    SCB_EnableDCache();
+    tm_printf(reinterpret_cast<const UB *>(
+                  "boot: dcache enabled ccr=%x\n"),
+              static_cast<unsigned int>(SCB->CCR));
+    g_app_stage = 1U;
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+        "boot: external memory init begin\n")));
+
+    const Error status = g_memory.Initialize();
+    if (!status.Ok()) {
+        LogStatus("memory", status);
+        Halt("sample2: memory initialization failed\n");
+    }
+    g_memory.KeepInferenceClocksOnSleep();
+    /* Match ref's device order: initialize PSRAM first, then XSPI2 NOR,
+     * before applying the final peripheral-access policy. */
+    const int nor_status = cubemx_initialize_external_memory();
+    g_external_nor_ready = nor_status == 0;
+    /* The external-memory adapter emits a long register snapshot on failure.
+     * Keep other tasks from writing to the same T-Monitor UART while that
+     * snapshot is being transferred, otherwise the diagnostic lines become
+     * interleaved and unreadable.  Interrupts remain enabled, so HAL tick
+     * timeouts used by the BSP continue to work. */
+    if (!g_external_nor_ready) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "ai: external NOR unavailable status=%d; inference disabled\n"),
+                  nor_status);
+    }
+    const Error access_status = g_memory.InitializePeripheralAccess();
+    if (!access_status.Ok()) {
+        LogStatus("memory", access_status);
+        Halt("sample2: peripheral access initialization failed\n");
+    }
+    g_app_stage = 2U;
+    g_app_stage = 3U;
+    g_app_stage = 4U;
+    DumpPeripheralRegisters("after_access");
+    tm_printf(reinterpret_cast<const UB *>(
+                  "boot: npu cache init=%x enable=%x invalidate=%x cr1=%x sr=%x\n"),
+              g_npu_cache_init_status, g_npu_cache_enable_status,
+              g_npu_cache_invalidate_status, g_npu_cache_cr1,
+              g_npu_cache_sr);
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+        "boot: external memory init result=ok detail=0\n")));
+    if (g_external_nor_ready) {
+        const volatile std::uint32_t *model_data =
+            reinterpret_cast<const volatile std::uint32_t *>(0x70380000UL);
+        tm_printf(reinterpret_cast<const UB *>(
+                      "boot: model data @70380000=%x,%x,%x,%x\n"),
+                  static_cast<unsigned int>(model_data[0]),
+                  static_cast<unsigned int>(model_data[1]),
+                  static_cast<unsigned int>(model_data[2]),
+                  static_cast<unsigned int>(model_data[3]));
+    } else {
+        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+            "boot: model data read skipped; NOR is not mapped\n")));
+    }
+    (void)tk_set_flg(g_external_memory_ready, kExternalMemoryReady);
+
+    /* Keep the hardware initialization ahead of both application tasks, but
+     * do the work on a dedicated stack rather than the small µT-Kernel
+     * initial-task stack. */
+    StartTask(reinterpret_cast<FP>(camera_render_task), g_camera_task_stack,
+              kCameraTaskStackSize, 5, "camera_render");
+    g_app_stage = 5U;
+    StartTask(reinterpret_cast<FP>(inference_task), g_inference_task_stack,
+              kInferenceTaskStackSize, 6, "inference");
+    g_app_stage = 6U;
+
+    for (;;) {
+        tk_slp_tsk(TMO_FEVR);
+    }
+}
+
+void camera_render_task(void)
+{
+    Error status{};
+
+    uai::sample2::LcdDriver lcd;
+    uai::sample2::CameraDriver camera;
+    const BoxSet initial = EmptyBoxes();
+
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+        "lcd: initialize begin\n")));
+    status = lcd.Initialize(g_memory);
+    if (!status.Ok()) {
+        LogStatus("lcd", status);
+        Halt("sample2: lcd initialization failed\n");
+    }
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+        "lcd: initialize result=ok\n")));
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+        "lcd: initial frame begin\n")));
+    status = lcd.ShowInitialFrame(initial);
+    if (!status.Ok()) {
+        LogStatus("lcd", status);
+        Halt("sample2: initial frame failed\n");
+    }
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+        "lcd: initial buffer ready box_count=0\n")));
+
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+        "camera: initialize begin\n")));
+    status = camera.Initialize(g_memory);
+    if (!status.Ok()) {
+        LogStatus("camera", status);
+        Halt("sample2: camera initialization failed\n");
+    }
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+        "camera: initialize result=ok\n")));
+    status = camera.Start();
+    if (!status.Ok()) {
+        LogStatus("camera", status);
+        Halt("sample2: camera start failed\n");
+    }
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+        "camera: start result=ok detail=0\n")));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: irq dcmipp=%u/%u csi=%u/%u\n"),
+              static_cast<unsigned int>(NVIC_GetEnableIRQ(DCMIPP_IRQn)),
+              static_cast<unsigned int>(NVIC_GetPendingIRQ(DCMIPP_IRQn)),
+              static_cast<unsigned int>(NVIC_GetEnableIRQ(CSI_IRQn)),
+              static_cast<unsigned int>(NVIC_GetPendingIRQ(CSI_IRQn)));
+
+    BoxSet active_boxes = initial;
+    bool first_frame = true;
+    std::uint32_t next_inference = 0U;
+
+    std::uint32_t loop_count = 0U;
+    unsigned int reported_pipe_errors = 0U;
+    unsigned int reported_camera_errors = 0U;
+    unsigned int reported_csi_errors = 0U;
+    unsigned int reported_recoveries = 0U;
+    unsigned int reported_recovery_errors = 0U;
+    unsigned int reported_isp_errors = 0U;
+    std::uint32_t last_box_update = Now();
+    for (;;) {
+        ++loop_count;
+        status = camera.Process();
+        if (!status.Ok()) {
+            LogStatus("camera", status);
+            Halt("sample2: camera process failed\n");
+        }
+        if (reported_pipe_errors != g_camera_dcmipp_error_count ||
+            reported_camera_errors != g_camera_camera_error_count ||
+            reported_csi_errors != g_camera_csi_error_count ||
+            reported_isp_errors != g_camera_isp_error_count) {
+            reported_pipe_errors = g_camera_dcmipp_error_count;
+            reported_camera_errors = g_camera_camera_error_count;
+            reported_csi_errors = g_camera_csi_error_count;
+            reported_isp_errors = g_camera_isp_error_count;
+            tm_printf(reinterpret_cast<const UB *>(
+                          "camera: async errors pipe=%u sensor=%u csi=%u isp=%u dcmipp=%x csi0=%x csi1=%x code=%x\n"),
+                      reported_pipe_errors, reported_camera_errors,
+                      reported_csi_errors, reported_isp_errors,
+                      g_camera_dcmipp_last_status,
+                      g_camera_csi_last_status,
+                      g_camera_csi_last_status1,
+                      g_camera_csi_last_error_code);
+        }
+        if (reported_recoveries != g_camera_recovery_count ||
+            reported_recovery_errors != g_camera_recovery_error_count) {
+            reported_recoveries = g_camera_recovery_count;
+            reported_recovery_errors = g_camera_recovery_error_count;
+            tm_printf(reinterpret_cast<const UB *>(
+                          "camera: recovery attempts=%u failed=%u frames=%u vsync=%u\n"),
+                      reported_recoveries, reported_recovery_errors,
+                      g_camera_frame_event_count, g_camera_vsync_event_count);
+        }
+
+        const std::uint32_t now = Now();
+        if (DrainLatestBoxes(&active_boxes)) {
+            last_box_update = now;
+        } else if (active_boxes.count > 0U &&
+                   static_cast<std::uint32_t>(now - last_box_update) >=
+                       kBoxLifetimeMs) {
+            active_boxes = EmptyBoxes();
+            tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+                "lcd: stale inference boxes cleared\n")));
+        }
+        uai::sample2::memory_manager::CaptureFrame capture{};
+        status = camera.TakeCompletedCapture(&capture);
+        if (!status.Ok()) {
+            if (status.code != ErrorCode::kNoFrame) {
+                LogStatus("camera", status);
             }
-            for (int y = y0; y <= y1; ++y)
-            {
-                draw_pixel(lcd_frame, x0 + offset, y, kRedRgb565);
-                draw_pixel(lcd_frame, x1 - offset, y, kRedRgb565);
+            tk_dly_tsk(1);
+            continue;
+        }
+
+        if (capture.sequence <= 3U ||
+            (capture.sequence % 10U) == 0U) {
+            tm_printf(reinterpret_cast<const UB *>(
+                          "camera: frame captured sequence=%u buffer=%x event=%u aton_irq=%u last=%x\n"),
+                      static_cast<unsigned int>(capture.sequence),
+                      static_cast<unsigned int>(capture.buffer.address),
+                      g_camera_frame_event_count, g_aton_irq_count,
+                      g_aton_last_irqs);
+        }
+        LogFrameBrightness(capture);
+
+        /* The ref project commits the display buffer on every completed
+         * camera frame.  Keep the same behavior so LCD refresh does not
+         * depend on the tick source while the HAL is being serviced. */
+        const bool display_due = true;
+        const bool inference_due = g_external_nor_ready &&
+                                    (first_frame ||
+                                    static_cast<std::int32_t>(now -
+                                                              next_inference) >=
+                                        0);
+        if (display_due) {
+            if (capture.sequence <= 3U ||
+                (capture.sequence % 10U) == 0U) {
+                tm_printf(reinterpret_cast<const UB *>(
+                              "lcd: compose begin sequence=%u\n"),
+                          static_cast<unsigned int>(capture.sequence));
+            }
+            status = lcd.ComposeAndPresent(capture, active_boxes);
+            if (!status.Ok()) {
+                LogStatus("lcd", status);
+                if (!IsBestEffort(status.code)) {
+                    Halt("sample2: lcd compose failed\n");
+                }
+            } else if (capture.sequence <= 3U ||
+                       (capture.sequence % 10U) == 0U) {
+                tm_printf(reinterpret_cast<const UB *>(
+                              "lcd: frame presented sequence=%u buffer=%x\n"),
+                          static_cast<unsigned int>(capture.sequence),
+                          static_cast<unsigned int>(capture.buffer.address));
+            }
+            if (capture.sequence <= 3U ||
+                (capture.sequence % 10U) == 0U) {
+                tm_printf(reinterpret_cast<const UB *>(
+                              "lcd: compose end sequence=%u aton_irq=%u last=%x\n"),
+                          static_cast<unsigned int>(capture.sequence),
+                          g_aton_irq_count, g_aton_last_irqs);
             }
         }
+
+        if (inference_due) {
+            tm_printf(reinterpret_cast<const UB *>(
+                          "ai: snapshot begin sequence=%u\n"),
+                      static_cast<unsigned int>(capture.sequence));
+            InferenceFrame inference{};
+            status = g_memory.SnapshotForInference(capture, &inference);
+            tm_printf(reinterpret_cast<const UB *>(
+                          "ai: snapshot end sequence=%u code=%u detail=%x buffer=%x\n"),
+                      static_cast<unsigned int>(capture.sequence),
+                      static_cast<unsigned int>(status.code),
+                      static_cast<unsigned int>(status.detail),
+                      static_cast<unsigned int>(inference.buffer.address));
+            if (status.Ok()) {
+                SendInferenceFrame(inference);
+                tm_printf(reinterpret_cast<const UB *>(
+                              "ai: frame copied sequence=%u buffer=%x irq=%u last=%x\n"),
+                          static_cast<unsigned int>(capture.sequence),
+                          static_cast<unsigned int>(inference.buffer.address),
+                          g_aton_irq_count, g_aton_last_irqs);
+            } else if (!IsBestEffort(status.code)) {
+                LogStatus("memory", status);
+            }
+            next_inference = now + kInferencePeriod;
+        }
+        first_frame = false;
+        if ((loop_count % 1000U) == 0U) {
+            tm_printf(reinterpret_cast<const UB *>(
+                          "camera: heartbeat loop=%u sequence=%u aton_irq=%u last=%x\n"),
+                      static_cast<unsigned int>(loop_count),
+                      static_cast<unsigned int>(capture.sequence),
+                      g_aton_irq_count, g_aton_last_irqs);
+        }
+        tk_dly_tsk(1);
+    }
+}
+
+void inference_task(void)
+{
+    UINT pattern = 0U;
+    const ER error = tk_wai_flg(g_external_memory_ready, kExternalMemoryReady,
+                                TWF_ANDW, &pattern, TMO_FEVR);
+    if (error != E_OK) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "error: component=ai operation=wait_memory code=%x detail=0\n"),
+                  static_cast<unsigned int>(error));
+        return;
     }
 
-    void draw_detections(const memory::Buffer &lcd_frame,
-                         const inference::ObjectDetection *detections,
-                         std::uint32_t count)
-    {
-        for (std::uint32_t i = 0; i < count; ++i)
-        {
-            draw_box(lcd_frame, detections[i]);
-        }
+    uai::sample2::ModelManager model;
+    const Error model_status =
+        g_external_nor_ready
+            ? model.Initialize(g_memory)
+            : Error{ErrorCode::kNotInitialized, 0U,
+                    "ai.external_nor_unavailable"};
+    if (model_status.Ok()) {
+        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+            "ai: model loaded; inference execution enabled\n")));
+    } else {
+        LogStatus("ai", model_status);
+        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+            "ai: model load failed; inference disabled\n")));
     }
 
-    [[noreturn]] void halt_with_message(const char *message)
-    {
-        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(message)));
-        for (;;)
-        {
-            tk_dly_tsk(1000);
+    for (;;) {
+        InferenceMessage message{};
+        const INT size = tk_rcv_mbf(g_frame_queue, &message, TMO_FEVR);
+        if (size != static_cast<INT>(sizeof(message))) {
+            continue;
+        }
+
+        Error status = g_memory.ClaimInferenceBuffer(message.frame);
+        if (!status.Ok()) {
+            LogStatus("memory", status);
+            continue;
+        }
+
+        BoxSet boxes{};
+        if (model_status.Ok()) {
+            tm_printf(reinterpret_cast<const UB *>(
+                          "ai: inference begin sequence=%u\n"),
+                      static_cast<unsigned int>(message.frame.capture_sequence));
+            tm_printf(reinterpret_cast<const UB *>(
+                          "ai: inference run begin sequence=%u input=%x irq=%u last=%x\n"),
+                      static_cast<unsigned int>(message.frame.capture_sequence),
+                      static_cast<unsigned int>(message.frame.buffer.address),
+                      g_aton_irq_count, g_aton_last_irqs);
+            status = model.TryInfer(message.frame, &boxes);
+            tm_printf(reinterpret_cast<const UB *>(
+                          "ai: inference run end sequence=%u code=%u detail=%x irq=%u last=%x\n"),
+                      static_cast<unsigned int>(message.frame.capture_sequence),
+                      static_cast<unsigned int>(status.code),
+                      static_cast<unsigned int>(status.detail),
+                      g_aton_irq_count, g_aton_last_irqs);
+        } else {
+            status = {ErrorCode::kNotInitialized, 0U, "ai.infer_disabled"};
+        }
+        const Error release_status =
+            g_memory.ReleaseInferenceBuffer(message.frame);
+        LogStatus("memory", release_status);
+        if (status.Ok()) {
+            SendLatestBoxes(boxes);
+            tm_printf(reinterpret_cast<const UB *>(
+                          "ai: inference sequence=%u capture=%u count=%u\n"),
+                      static_cast<unsigned int>(boxes.model_sequence),
+                      static_cast<unsigned int>(boxes.capture_sequence),
+                      static_cast<unsigned int>(boxes.count));
+        } else if (model_status.Ok()) {
+            LogStatus("ai", status);
+            LogNpuStatus(model.LastNpuStatus());
         }
     }
+}
 
-    bool stage_camera_frame(std::uintptr_t frame,
-                            memory::Manager &memory,
-                            memory::Buffer &lcd_frame)
-    {
-        if (frame == 0U)
-        {
-            return false;
-        }
-
-        lcd_frame = lcd_frames[next_lcd_buffer];
-        next_lcd_buffer = (next_lcd_buffer + 1U) % kLcdBufferCount;
-        if (!lcd_frame)
-        {
-            return false;
-        }
-
-        /* The camera writes PSRAM directly. Invalidate before the CPU reads it,
-         * then stage this complete frame in an independent LCD buffer. */
-        const memory::Buffer camera_frame{
-            frame, kFrameBytes, memory::Region::kExternalPsram};
-        memory.PrepareForCpuRead(camera_frame);
-        std::memcpy(reinterpret_cast<void *>(lcd_frame.address),
-                    reinterpret_cast<const void *>(frame), kFrameBytes);
-        return true;
+void StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
+               const char *name)
+{
+    T_CTSK task = {};
+    /* The stack argument is a statically allocated application stack.  Keep
+     * it owned by the task instead of silently replacing it with a kernel
+     * heap allocation. */
+    task.tskatr = TA_HLNG | TA_USERBUF;
+    task.task = entry;
+    task.itskpri = priority;
+    task.stksz = stack_size;
+    task.bufptr = stack;
+    const ID task_id = tk_cre_tsk(&task);
+    if (task_id < E_OK) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "error: component=main operation=create_%s code=%x detail=0\n"),
+                  name, static_cast<unsigned int>(task_id));
+        Halt("sample2: task create failed\n");
     }
-
-    bool submit_lcd_frame(
-        const memory::Buffer &lcd_frame,
-        memory::Manager &memory,
-        const inference::ObjectDetection *detections,
-        std::uint32_t detection_count)
-    {
-        if (!lcd_frame)
-        {
-            return false;
-        }
-        if (detections != nullptr)
-        {
-            draw_detections(lcd_frame, detections, detection_count);
-        }
-        memory.PrepareForDisplayRead(lcd_frame);
-
-        const bool submitted =
-            BSP_LCD_Reload(0, BSP_LCD_RELOAD_NONE) == BSP_ERROR_NONE &&
-            BSP_LCD_SetLayerAddress(0, 0,
-                                    static_cast<uint32_t>(lcd_frame.address)) ==
-                BSP_ERROR_NONE &&
-            BSP_LCD_SetLayerVisible(0, 0, ENABLE) == BSP_ERROR_NONE &&
-            BSP_LCD_Reload(0, BSP_LCD_RELOAD_VERTICAL_BLANKING) ==
-                BSP_ERROR_NONE;
-        if (submitted)
-        {
-            /* Let the vertical-blanking reload complete before this buffer can be
-             * selected again. This adds a small latency but prevents the CPU from
-             * writing a buffer while LTDC is scanning it. */
-            tk_dly_tsk(kDisplayHoldTicks);
-        }
-        return submitted;
+    const ER error = tk_sta_tsk(task_id, 0);
+    if (error != E_OK) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "error: component=main operation=start_%s code=%x detail=0\n"),
+                  name, static_cast<unsigned int>(error));
+        Halt("sample2: task start failed\n");
     }
+}
 
 } // namespace
 
-extern "C" void BSP_CAMERA_FrameEventCallback(uint32_t Instance)
-{
-    (void)Instance;
-    ++camera_frame_events;
-    completed_camera_frame = next_camera_frame;
-    next_camera_frame = (next_camera_frame == camera_frame0)
-                            ? camera_frame1
-                            : camera_frame0;
-}
-
-extern "C" void DCMIPP_IRQHandler(void)
-{
-    HAL_DCMIPP_IRQHandler(&hcamera_dcmipp);
-}
-
-extern "C" void CSI_IRQHandler(void)
-{
-    HAL_DCMIPP_CSI_IRQHandler(&hcamera_dcmipp);
-}
-
 extern "C" void IAC_IRQHandler(void)
 {
-    const uint32_t flags0 = IAC->ISR[0];
-    const uint32_t flags1 = IAC->ISR[1];
-    const uint32_t flags2 = IAC->ISR[2];
-    const uint32_t flags3 = IAC->ISR[3];
-    const uint32_t flags4 = IAC->ISR[4];
-    const uint32_t flags5 = IAC->ISR[5];
+    const std::uint32_t flags0 = IAC->ISR[0];
+    const std::uint32_t flags1 = IAC->ISR[1];
+    const std::uint32_t flags2 = IAC->ISR[2];
+    const std::uint32_t flags3 = IAC->ISR[3];
+    const std::uint32_t flags4 = IAC->ISR[4];
     tm_printf(reinterpret_cast<const UB *>(
-                  "ai: IAC flags=%x,%x,%x,%x,%x,%x\n"),
+                  "ai: IAC flags=%x,%x,%x,%x,%x\n"),
               static_cast<unsigned int>(flags0),
               static_cast<unsigned int>(flags1),
               static_cast<unsigned int>(flags2),
               static_cast<unsigned int>(flags3),
-              static_cast<unsigned int>(flags4),
-              static_cast<unsigned int>(flags5));
-    if ((flags4 & 0x00400000U) != 0U)
-    {
-        /* IAC register 4 bit 22 is RISAF12 (XSPI2).  Capture the
-         * transaction metadata before HAL_RIF_IRQHandler clears the source. */
+              static_cast<unsigned int>(flags4));
+    if ((flags4 & 0x00400000U) != 0U) {
         tm_printf(reinterpret_cast<const UB *>(
                       "ai: RISAF12 iasr=%x iaesr=%x iaddr=%x\n"),
                   static_cast<unsigned int>(RISAF12->IASR),
@@ -242,183 +889,64 @@ extern "C" void IAC_IRQHandler(void)
 
 extern "C" INT usermain(void)
 {
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "camera: external-PSRAM camera test\n")));
+    DumpCoreRegisters("usermain");
 
-    memory::Manager memory;
-    if (!memory.Initialize(true))
-    {
-        halt_with_message("memory: PSRAM initialization failed\n");
+    /* µT-Kernel replaces the startup vector table with its RAM table.  Keep
+     * the Neural-ART and RIF handlers as direct IRQ handlers in that table;
+     * they already have the Cortex-M exception entry/return ABI and must not
+     * be called through the TA_HLNG wrapper (which adds an intno argument). */
+    T_DINT npu_interrupt = {};
+    npu_interrupt.intatr = TA_ASM;
+    npu_interrupt.inthdr = reinterpret_cast<FP>(NPU0_IRQHandler);
+    const ER npu_interrupt_status =
+        tk_def_int(static_cast<UINT>(NPU0_IRQn), &npu_interrupt);
+
+    T_DINT iac_interrupt = {};
+    iac_interrupt.intatr = TA_ASM;
+    iac_interrupt.inthdr = reinterpret_cast<FP>(IAC_IRQHandler);
+    const ER iac_interrupt_status =
+        tk_def_int(static_cast<UINT>(IAC_IRQn), &iac_interrupt);
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: kernel interrupts npu=%x iac=%x\n"),
+              static_cast<unsigned int>(npu_interrupt_status),
+              static_cast<unsigned int>(iac_interrupt_status));
+    if (npu_interrupt_status != E_OK || iac_interrupt_status != E_OK) {
+        Halt("sample2: interrupt registration failed\n");
+    }
+    DumpCoreRegisters("after_interrupts");
+
+    T_CFLG flag = {};
+    flag.flgatr = TA_TFIFO | TA_WSGL;
+    g_external_memory_ready = tk_cre_flg(&flag);
+    if (g_external_memory_ready < E_OK) {
+        Halt("sample2: event flag create failed\n");
     }
 
-    uai::driver::DisplayDriver display;
-    if (!uai::driver::IsOk(display.Initialize()))
-    {
-        halt_with_message("display: initialization failed\n");
+    T_CMBF frame_queue = {};
+    frame_queue.mbfatr = TA_TFIFO;
+    frame_queue.bufsz = sizeof(g_frame_queue_storage);
+    frame_queue.maxmsz = sizeof(InferenceMessage);
+    frame_queue.bufptr = g_frame_queue_storage;
+    g_frame_queue = tk_cre_mbf(&frame_queue);
+    if (g_frame_queue < E_OK) {
+        Halt("sample2: frame queue create failed\n");
     }
 
-    const auto camera_buffer0 = memory.Allocate(
-        memory::Region::kExternalPsram, kFrameBytes);
-    const auto camera_buffer1 = memory.Allocate(
-        memory::Region::kExternalPsram, kFrameBytes);
-    lcd_frames[0] = memory.Allocate(
-        memory::Region::kExternalPsram, kFrameBytes, 0x00100000U);
-    lcd_frames[1] = memory.Allocate(
-        memory::Region::kExternalPsram, kFrameBytes, 0x00100000U);
-    if (!camera_buffer0 || !camera_buffer1 || !lcd_frames[0] ||
-        !lcd_frames[1])
-    {
-        halt_with_message("memory: camera buffer allocation failed\n");
+    T_CMBF box_queue = {};
+    box_queue.mbfatr = TA_TFIFO;
+    box_queue.bufsz = sizeof(g_box_queue_storage);
+    box_queue.maxmsz = sizeof(BoxMessage);
+    box_queue.bufptr = g_box_queue_storage;
+    g_box_queue = tk_cre_mbf(&box_queue);
+    if (g_box_queue < E_OK) {
+        Halt("sample2: box queue create failed\n");
     }
 
-    camera_frame0 = camera_buffer0.address;
-    camera_frame1 = camera_buffer1.address;
-    memory.PrepareForDmaWrite(camera_buffer0);
-    memory.PrepareForDmaWrite(camera_buffer1);
+    StartTask(reinterpret_cast<FP>(application_initialize_task),
+              g_initialization_task_stack, kInitializationTaskStackSize, 5,
+              "application_initialize");
 
-    if (BSP_CAMERA_Init(0, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) !=
-        BSP_ERROR_NONE)
-    {
-        halt_with_message("camera: initialization failed\n");
-    }
-
-    memory.KeepInferenceClocksOnSleep();
-
-    completed_camera_frame = 0;
-    next_camera_frame = camera_frame0;
-    if (BSP_CAMERA_DoubleBufferStart(
-            0, reinterpret_cast<uint8_t *>(camera_frame0),
-            reinterpret_cast<uint8_t *>(camera_frame1),
-            CAMERA_MODE_CONTINUOUS) != BSP_ERROR_NONE)
-    {
-        halt_with_message("camera: start failed\n");
-    }
-
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "camera: preview started\n")));
-
-    person::Detector detector;
-    enum class AiState
-    {
-        kShowCameraFirst,
-        kInitialize,
-        kReady,
-        kCameraOnly,
-    };
-    AiState ai_state = AiState::kShowCameraFirst;
-
-    for (;;)
-    {
-        if (BSP_CAMERA_BackgroundProcess() != BSP_ERROR_NONE)
-        {
-            halt_with_message("camera: background process failed\n");
-        }
-
-        const std::uintptr_t frame = completed_camera_frame;
-        completed_camera_frame = 0;
-        if (frame == 0U)
-        {
-            tk_dly_tsk(1);
-            continue;
-        }
-
-        if (camera_frame_events <= 3U)
-        {
-            tm_printf(reinterpret_cast<const UB *>(
-                          "camera: frame event %u\n"),
-                      static_cast<unsigned int>(camera_frame_events));
-        }
-
-        /* Stage one complete camera frame before touching the AI runtime.
-         * This keeps the display usable even when model loading or inference
-         * fails, and gives inference a stable copy that the camera cannot
-         * overwrite. */
-        if (ai_state == AiState::kShowCameraFirst)
-        {
-            memory::Buffer lcd_frame;
-            if (!stage_camera_frame(frame, memory, lcd_frame) ||
-                !submit_lcd_frame(lcd_frame, memory, nullptr, 0U))
-            {
-                halt_with_message("display: process failed\n");
-            }
-            tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-                "camera: preview visible\n")));
-            ai_state = AiState::kInitialize;
-            tk_dly_tsk(1);
-            continue;
-        }
-
-        memory::Buffer lcd_frame;
-        if (!stage_camera_frame(frame, memory, lcd_frame))
-        {
-            halt_with_message("camera: frame staging failed\n");
-        }
-
-        if (ai_state == AiState::kInitialize)
-        {
-            /* Show this frame before NOR/model initialization, so an AI-side
-             * fault cannot leave the display showing only the first frame. */
-            if (!submit_lcd_frame(lcd_frame, memory, nullptr, 0U))
-            {
-                halt_with_message("display: process failed\n");
-            }
-            tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-                "ai: initialize begin\n")));
-            const bool model_ready = detector.Initialize(memory);
-            tm_printf(reinterpret_cast<const UB *>(
-                          "ai: initialize returned=%u error=%x\n"),
-                      model_ready ? 1U : 0U,
-                      static_cast<unsigned int>(detector.LastError()));
-            if (model_ready)
-            {
-                ai_state = AiState::kReady;
-                tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-                    "ai: person model ready\n")));
-            }
-            else
-            {
-                ai_state = AiState::kCameraOnly;
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: person model init error=%x; camera-only\n"),
-                          static_cast<unsigned int>(detector.LastError()));
-                tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-                    "ai: person model unavailable; camera-only\n")));
-            }
-        }
-
-        std::uint32_t detection_count = 0U;
-        if (ai_state == AiState::kReady &&
-            !detector.Infer(lcd_frame.address, memory, detection_results,
-                            kMaxDetections,
-                            &detection_count))
-        {
-            ai_state = AiState::kCameraOnly;
-            tm_printf(reinterpret_cast<const UB *>(
-                          "ai: person model inference error=%x; camera-only\n"),
-                      static_cast<unsigned int>(detector.LastError()));
-            tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-                "ai: person model inference failed; camera-only\n")));
-            detection_count = 0U;
-        }
-
-        static std::uint32_t inference_frames = 0U;
-        if (ai_state == AiState::kReady)
-        {
-            ++inference_frames;
-            if ((inference_frames % 10U) == 0U)
-            {
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: infer frame=%u detections=%u\n"),
-                          static_cast<unsigned int>(inference_frames),
-                          static_cast<unsigned int>(detection_count));
-            }
-        }
-
-        if (!submit_lcd_frame(lcd_frame, memory, detection_results,
-                              detection_count))
-        {
-            halt_with_message("display: process failed\n");
-        }
-        tk_dly_tsk(1);
+    for (;;) {
+        tk_slp_tsk(TMO_FEVR);
     }
 }

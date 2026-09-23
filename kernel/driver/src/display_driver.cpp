@@ -25,4 +25,12 @@ DriverStatus DisplayDriver::Process()
     return arch::ProcessDisplay();
 }
 
+DriverStatus DisplayDriver::Process(std::uintptr_t buffer)
+{
+    if (!initialized_) {
+        return DriverStatus::kNotInitialized;
+    }
+    return arch::ProcessDisplay(buffer);
+}
+
 } // namespace uai::driver

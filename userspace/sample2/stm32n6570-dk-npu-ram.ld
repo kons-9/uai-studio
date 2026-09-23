@@ -6,7 +6,10 @@
  * application state in all of AXISRAM1 (1 MiB), leaving AXISRAM2-6 to the
  * generated NPU memory pools.
  */
-ENTRY(Reset_Handler)
+/* A RAM image can inherit stale CPU cache lines from the previous image.
+ * Start through the cache-sanitizing trampoline before entering CubeMX's
+ * C runtime startup. */
+ENTRY(uai_ram_entry)
 
 MEMORY
 {
@@ -31,7 +34,9 @@ SECTIONS
     . = ALIGN(4);
     KEEP(*(.text.Reset_Handler))
     *(.text)
-    *(.text*)
+    /* ram_entry.S is placed separately below so it is not part of the
+     * ordinary code range. */
+    *(EXCLUDE_FILE (*ram_entry.S.obj *ram_entry.c.obj) .text*)
     *(.glue_7)
     *(.glue_7t)
     *(.eh_frame)
@@ -49,16 +54,11 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  .ARM :
-  {
-    . = ALIGN(4);
-    __exidx_start = .;
-    *(.ARM.exidx*)
-    __exidx_end = .;
-    . = ALIGN(4);
-  } >APP
-
-  .preinit_array :
+  /* Keep the C runtime callback tables outside the old image's populated
+   * range. A RAM launch can retain cache lines from that image, and stale
+   * lines at the original table address were observed to erase these entries
+   * before __libc_init_array() consumed them. */
+  .preinit_array 0x34048000 :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__preinit_array_start = .);
@@ -67,7 +67,7 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  .init_array :
+  .init_array 0x34048000 :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__init_array_start = .);
@@ -77,13 +77,38 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  .fini_array :
+  .fini_array 0x34048010 :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__fini_array_start = .);
     KEEP(*(SORT(.fini_array.*)))
     KEEP(*(.fini_array*))
     PROVIDE_HIDDEN(__fini_array_end = .);
+    . = ALIGN(4);
+  } >APP
+
+  /* Keep the launch entry away from the normal code range so the first fetch
+   * cannot be satisfied by an instruction-cache line from the old image. */
+  .text.uai_ram_entry 0x34050000 :
+  {
+    . = ALIGN(4);
+    KEEP(*(.text.uai_ram_entry))
+    . = ALIGN(4);
+  } >APP
+
+  .network_blobs 0x34085000 :
+  {
+    . = ALIGN(64);
+    KEEP(*(.network_blobs))
+    . = ALIGN(64);
+  } >APP
+
+  .ARM :
+  {
+    . = ALIGN(4);
+    __exidx_start = .;
+    *(.ARM.exidx*)
+    __exidx_end = .;
     . = ALIGN(4);
   } >APP
 

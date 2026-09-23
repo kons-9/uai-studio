@@ -34,8 +34,8 @@
 #define LL_ATON_EC_Network_Init_network person_LL_ATON_EC_Network_Init_network
 #define LL_ATON_EC_Inference_Init_network person_LL_ATON_EC_Inference_Init_network
 
-#include "../models/person/network.c"
-#include "../models/person/stai_network.c"
+#include "../../models/person/network.c"
+#include "../../models/person/stai_network.c"
 
 extern stai_return_code stai_ext_wfe(void);
 
@@ -54,11 +54,6 @@ static stai_return_code person_deinit(void)
 static stai_return_code person_get_info(stai_network_info *info)
 {
     return person_stai_network_get_info(person_context, info);
-}
-
-static stai_return_code person_get_error(void)
-{
-    return person_stai_network_get_error(person_context);
 }
 
 static stai_return_code person_get_inputs(stai_ptr *inputs, stai_size *count)
@@ -96,7 +91,7 @@ static stai_return_code person_new_inference(void)
     return person_stai_ext_network_new_inference(person_context);
 }
 
-const model_api person_model = {
+const sample2_model_api person_model = {
     "PERSON",
     480U,
     480U,
@@ -104,7 +99,6 @@ const model_api person_model = {
     person_init,
     person_deinit,
     person_get_info,
-    person_get_error,
     person_get_inputs,
     person_get_outputs,
     person_run,

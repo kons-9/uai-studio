@@ -1,4 +1,3 @@
-/* Local configuration for the STM32N6570-DK Octo NOR driver. */
 #ifndef MX66UW1G45G_CONF_H
 #define MX66UW1G45G_CONF_H
 
@@ -11,4 +10,4 @@
 #define DUMMY_CYCLES_REG_OCTAL 4U
 #define DUMMY_CYCLES_REG_OCTAL_DTR 5U
 
-#endif
+#endif /* MX66UW1G45G_CONF_H */

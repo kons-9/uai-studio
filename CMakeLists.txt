@@ -32,7 +32,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(kernel/utkernel)
 add_subdirectory(kernel/pre_kernel/stm32n6570-dk)
-if(APP_TARGET STREQUAL "sample1")
+if(APP_TARGET STREQUAL "sample1" OR APP_TARGET STREQUAL "sample2")
     add_subdirectory(kernel/driver)
 endif()
 add_subdirectory("userspace/${APP_TARGET}")

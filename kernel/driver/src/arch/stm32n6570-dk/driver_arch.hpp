@@ -11,9 +11,12 @@ DriverStatus InitializeMedia();
 DriverStatus InitializeDisplay();
 DriverStatus InitializeCamera();
 DriverStatus StartCamera();
+DriverStatus StartCamera(std::uintptr_t first_buffer,
+                         std::uintptr_t second_buffer);
 DriverStatus ProcessCamera();
 std::uintptr_t TakeCompletedCameraFrame();
 DriverStatus ProcessDisplay();
+DriverStatus ProcessDisplay(std::uintptr_t buffer);
 
 } // namespace uai::driver::arch
 
