@@ -1,6 +1,6 @@
 # μAI-Studio
 
-STM32N6570-DK上でµT-Kernel 3.0の`sample0`を動かすためのプロジェクトです。
+STM32N6570-DK上でµT-Kernel 3.0のサンプル群を動かすためのプロジェクトです。
 ネイティブLinuxからST-LINK経由でRAMへロードし、T-MonitorのUSART1へ出力します。
 
 ## 環境構築
@@ -105,6 +105,6 @@ make ram-run
 ## 関連ファイル
 
 - [`config/local.mk.example`](config/local.mk.example): ホスト固有設定のテンプレート
-- [`userspace/sample0/config/stm32n6570-dk-fullsecure.ioc`](userspace/sample0/config/stm32n6570-dk-fullsecure.ioc): `sample0`のSTM32N657向けCubeMX設定
+- [`userspace/sample-hello-world/config/stm32n6570-dk-fullsecure.ioc`](userspace/sample-hello-world/config/stm32n6570-dk-fullsecure.ioc): `sample-hello-world`のSTM32N657向けCubeMX設定
 - [`kernel/pre_kernel/stm32n6570-dk/`](kernel/pre_kernel/stm32n6570-dk/): µT-Kernel起動前のCubeMX/HAL初期化と接続
-- [`userspace/sample0/`](userspace/sample0/): RAM実行用サンプル
+- [`userspace/sample-hello-world/`](userspace/sample-hello-world/): RAM実行用サンプル

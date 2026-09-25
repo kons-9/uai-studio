@@ -1,0 +1,18 @@
+# sample-camera-pipe2: STM32N6570-DK dual DCMIPP pipe preview
+
+`sample-camera-pipe2` initializes the IMX335 camera and drives DCMIPP Pipe1 (main) and
+Pipe2 (ancillary) at the same time. Each pipe produces a 400x480 RGB565 frame;
+the LCD shows the left and right sensor crops side by side.
+
+The CubeMX input is shared with sample-camera-lcd because the peripheral, pin, and secure
+startup configuration is identical. The application-specific Pipe1/Pipe2
+configuration is performed in `src/driver/camera_driver.cpp`.
+
+Build with:
+
+```sh
+make APP_TARGET=sample-camera-pipe2 \
+  STM32CUBE_N6_DIR=/home/toshiki/STM32Cube/Repository/STM32Cube_FW_N6_V1.3.0 \
+  CUBEMX_EXECUTABLE=/home/toshiki/STM32CubeMX/STM32CubeMX \
+  build
+```

@@ -27,6 +27,7 @@ CUBEMX_EXECUTABLE ?= STM32CubeMX
 CUBEMX_IOC ?= userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc
 CUBEMX_OUTPUT_DIR ?= build/cubemx
 
-# STM32CubeN6 package root, required by sample1 camera/display drivers.
+# STM32CubeN6 package root, required by sample-camera-lcd and
+# sample-camera-pipe2 camera/display drivers.
 # Example:
 # STM32CUBE_N6_DIR ?= /opt/STM32Cube/Repository/STM32Cube_FW_N6_V1.3.0

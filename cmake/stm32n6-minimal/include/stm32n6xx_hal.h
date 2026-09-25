@@ -3,7 +3,7 @@
  * target.
  *
  * BSP2 includes the family HAL header unconditionally from its generic device
- * header.  sample0 does not enable any HAL-backed I2C/ADC driver, so no HAL
+ * header.  sample-hello-world does not enable any HAL-backed I2C/ADC driver, so no HAL
  * declarations are needed to compile this target.  Pass
  * -DSTM32CUBE_N6_DIR=/path/to/STM32CubeN6 when those drivers or Cube HAL
  * initialization are introduced.

@@ -3,7 +3,7 @@
 ENV_FILE ?= env.mk
 -include $(ENV_FILE)
 
-APP_TARGET ?= sample0
+APP_TARGET ?= sample-hello-world
 BUILD_DIR ?= build
 CMAKE ?= cmake
 
@@ -13,6 +13,18 @@ CONFIG_FILE ?= config/local.mk
 -include $(CONFIG_FILE)
 
 CUBEMX_IOC ?= userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc
+# sample-camera-pipe2 uses the sample-camera-lcd CubeMX peripheral/startup project and configures
+# the second DCMIPP pipe in the application.
+ifeq ($(APP_TARGET),sample-camera-pipe2)
+ifneq ($(filter userspace/sample-ai/config/stm32n6570-dk-sample-ai.ioc,$(CUBEMX_IOC)),)
+CUBEMX_IOC := userspace/sample-camera-lcd/config/stm32n6570-dk-fullsecure.ioc
+endif
+ifeq ($(origin CUBEMX_IOC),file)
+ifeq ($(wildcard $(CUBEMX_IOC)),)
+CUBEMX_IOC := userspace/sample-camera-lcd/config/stm32n6570-dk-fullsecure.ioc
+endif
+endif
+endif
 CUBEMX_OUTPUT_DIR ?= $(BUILD_DIR)/cubemx
 UART_DEVICE ?= auto
 UART_BAUD ?= 115200

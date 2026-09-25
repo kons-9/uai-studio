@@ -3,8 +3,9 @@ cmake_minimum_required(VERSION 3.16)
 # Keep the application selection at the top level, like the existing
 # ble-locator firmware.  Adding a new userspace application should not require
 # changing the kernel project.
-set(APP_TARGET "sample0" CACHE STRING "Userspace application to build")
-set_property(CACHE APP_TARGET PROPERTY STRINGS sample0 sample1)
+set(APP_TARGET "sample-hello-world" CACHE STRING "Userspace application to build")
+set_property(CACHE APP_TARGET PROPERTY STRINGS
+    sample-hello-world sample-camera-lcd sample-ai sample-camera-pipe2)
 
 option(CMAKE_EXPORT_COMPILE_COMMANDS
        "Generate compile_commands.json for IDEs"
@@ -31,9 +32,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(kernel/utkernel)
-if(APP_TARGET STREQUAL "sample1")
+if(APP_TARGET STREQUAL "sample-camera-lcd" OR
+   APP_TARGET STREQUAL "sample-camera-pipe2")
     target_include_directories(utkernel PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/userspace/sample1/src/driver/board/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/userspace/${APP_TARGET}/src/driver/board/include"
         "${STM32CUBE_N6_DIR}/Drivers/CMSIS/Device/ST/STM32N6xx/Include"
         "${STM32CUBE_N6_DIR}/Drivers/CMSIS/Include")
     target_compile_definitions(utkernel PRIVATE
@@ -45,7 +47,7 @@ if(APP_TARGET STREQUAL "sample1")
         CPU_IN_SECURE_STATE)
 endif()
 add_subdirectory(kernel/pre_kernel/stm32n6570-dk)
-if(APP_TARGET STREQUAL "sample2" AND
+if(APP_TARGET STREQUAL "sample-ai" AND
    EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kernel/driver/CMakeLists.txt")
     add_subdirectory(kernel/driver)
 endif()

@@ -8,7 +8,7 @@
 
 void knl_start_mtkernel(void);
 
-#if defined(UAI_SAMPLE1_CAMERA_CLOCKS)
+#if defined(UAI_CAMERA_LCD_CLOCKS)
 static void board_camera_buffer_memory_config(void)
 {
     RAMCFG_HandleTypeDef ramcfg = {0};
@@ -58,7 +58,7 @@ static void board_system_clock_config(void)
     oscillator.HSIDiv = RCC_HSI_DIV1;
     oscillator.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
 
-#if defined(UAI_SAMPLE1_CAMERA_CLOCKS)
+#if defined(UAI_CAMERA_LCD_CLOCKS)
     /* STM32Cube's STM32N6570-DK camera configuration uses PLL1=1200 MHz,
      * then IC17/4 for DCMIPP (300 MHz) and IC18/60 for CSI (20 MHz). */
     oscillator.PLL1.PLLState = RCC_PLL_ON;
@@ -121,7 +121,7 @@ static void board_system_clock_config(void)
     clocks.APB2CLKDivider = RCC_APB2_DIV1;
     clocks.APB4CLKDivider = RCC_APB4_DIV1;
     clocks.APB5CLKDivider = RCC_APB5_DIV1;
-#if defined(UAI_SAMPLE1_CAMERA_CLOCKS)
+#if defined(UAI_CAMERA_LCD_CLOCKS)
     clocks.IC1Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
     clocks.IC1Selection.ClockDivider = 2U;
     clocks.IC2Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
@@ -164,7 +164,7 @@ int main(void)
     MX_XSPI1_Init();
     MX_XSPI2_Init();
     SystemIsolation_Config();
-#if defined(UAI_SAMPLE1_CAMERA_CLOCKS)
+#if defined(UAI_CAMERA_LCD_CLOCKS)
     board_camera_buffer_memory_config();
     board_camera_display_master_config();
 #endif

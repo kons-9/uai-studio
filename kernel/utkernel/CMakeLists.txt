@@ -5,7 +5,7 @@ set(MTKERNEL_ROOT "${MTK3_BSP2_ROOT}/mtkernel")
 
 # BSP2's STM32Cube device header includes the family HAL header even when all
 # optional HAL device drivers are disabled.  A full STM32CubeN6 checkout can
-# be supplied later with -DSTM32CUBE_N6_DIR=..., while sample0 keeps a tiny
+# be supplied later with -DSTM32CUBE_N6_DIR=..., while sample-hello-world keeps a tiny
 # compile-only compatibility header so the kernel itself remains buildable.
 set(STM32CUBE_N6_DIR "" CACHE PATH "STM32CubeN6 package root")
 if(STM32CUBE_N6_DIR)
@@ -91,8 +91,17 @@ target_include_directories(utkernel
         "${MTKERNEL_ROOT}/include"
     PRIVATE
         "${MTKERNEL_ROOT}/kernel/knlinc"
+        "${CUBEMX_OUTPUT_DIR}/FSBL/Core/Inc"
+        "${CUBEMX_OUTPUT_DIR}/Appli/Core/Inc"
         "${STM32N6_HAL_INCLUDE_DIR}"
 )
+
+if(STM32CUBE_N6_DIR)
+    target_include_directories(utkernel PRIVATE
+        "${STM32CUBE_N6_DIR}/Drivers/CMSIS/Device/ST/STM32N6xx/Include"
+        "${STM32CUBE_N6_DIR}/Drivers/CMSIS/Include")
+    target_compile_definitions(utkernel PRIVATE STM32N657xx)
+endif()
 
 target_compile_definitions(utkernel
     PUBLIC

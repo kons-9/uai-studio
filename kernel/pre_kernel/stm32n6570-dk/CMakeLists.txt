@@ -68,10 +68,11 @@ target_include_directories(stm32n6570_dk
         "${CMAKE_SOURCE_DIR}/kernel/utkernel/mtk3_bsp2/mtkernel/include"
 )
 
-if(NOT APP_TARGET STREQUAL "sample1")
+if(NOT APP_TARGET STREQUAL "sample-camera-lcd" AND
+   NOT APP_TARGET STREQUAL "sample-camera-pipe2")
     target_include_directories(stm32n6570_dk PUBLIC
-        "${CMAKE_SOURCE_DIR}/userspace/sample2/src/board"
-        "${CMAKE_SOURCE_DIR}/userspace/sample2/config")
+        "${CMAKE_SOURCE_DIR}/userspace/sample-ai/src/board"
+        "${CMAKE_SOURCE_DIR}/userspace/sample-ai/config")
 endif()
 
 target_compile_definitions(stm32n6570_dk PRIVATE
@@ -81,11 +82,16 @@ target_compile_definitions(stm32n6570_dk PRIVATE
     STM32N657xx
     USE_FULL_LL_DRIVER
     USER_TZ_SAU_SETUP
-    $<$<STREQUAL:${APP_TARGET},sample1>:UAI_SAMPLE1_CAMERA_CLOCKS>
     # GCC 10.3's freestanding newlib math.h omits the C99 float_t typedef,
     # while CubeMX's STM32N6 clock update code uses it.
     float_t=float
 )
+
+if(APP_TARGET STREQUAL "sample-camera-lcd" OR
+   APP_TARGET STREQUAL "sample-camera-pipe2")
+    target_compile_definitions(stm32n6570_dk PRIVATE
+        UAI_CAMERA_LCD_CLOCKS)
+endif()
 
 target_compile_options(stm32n6570_dk PRIVATE
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>
