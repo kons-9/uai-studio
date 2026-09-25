@@ -1,12 +1,12 @@
-#ifndef UAI_AI_CAMERA_IMX335_REGISTERS_HPP
-#define UAI_AI_CAMERA_IMX335_REGISTERS_HPP
+#ifndef UAI_AI_IMAGER_REGISTERS_IMX335_REGISTERS_HPP
+#define UAI_AI_IMAGER_REGISTERS_IMX335_REGISTERS_HPP
 
 #include <cstddef>
 #include <cstdint>
 
 #include "common/error.hpp"
 
-namespace uai::ai::camera::registers {
+namespace uai::ai::imager::registers {
 
 /*
  * IMX335 register addresses used by the ai capture use cases.
@@ -67,11 +67,14 @@ public:
                         std::size_t size) const;
 
     common::Error SetStreaming(bool enabled) const;
+    common::Error Configure(int test_pattern_mode, int32_t framerate) const;
+    common::Error SetExposureMicroseconds(int32_t exposure) const;
+    common::Error SetGainMilliDb(int32_t gain_mdB) const;
     /* Apply the known-good two-lane 891 Mbps timing profile. */
     common::Error ConfigureMipi891Mbps() const;
     common::Error ReadSnapshot(SensorRegisterSnapshot *snapshot) const;
 };
 
-} // namespace uai::ai::camera::registers
+} // namespace uai::ai::imager::registers
 
-#endif // UAI_AI_CAMERA_IMX335_REGISTERS_HPP
+#endif // UAI_AI_IMAGER_REGISTERS_IMX335_REGISTERS_HPP

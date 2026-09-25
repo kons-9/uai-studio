@@ -3,7 +3,7 @@
 
 #include <tk/tkernel.h>
 
-#include "driver/imager_driver/imager_driver.hpp"
+#include "driver/imager_driver/usecase/imager_use_case.hpp"
 #include "driver/lcd_driver/lcd_driver.hpp"
 #include "task/task_context.hpp"
 
@@ -14,7 +14,7 @@ void camera_render_task(void)
     Error status{};
 
     uai::ai::LcdDriver lcd;
-    uai::ai::ImagerDriver imager;
+    uai::ai::imager::usecase::ImagerUseCase imager;
     const BoxSet initial = EmptyBoxes();
 
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
@@ -233,8 +233,7 @@ void camera_render_task(void)
               static_cast<unsigned int>(NVIC_GetPendingIRQ(CSI_IRQn)));
 
     BoxSet active_boxes = initial;
-    bool first_frame = true;
-    std::uint32_t next_inference = 0U;
+    std::uint32_t next_inference = Now() + kInferencePeriod;
 
     std::uint32_t loop_count = 0U;
     unsigned int reported_pipe_errors = 0U;
@@ -327,10 +326,9 @@ void camera_render_task(void)
         const bool inference_due = kCopyInferenceFrames &&
                                     (kInferenceMode == InferenceMode::kCopyOnly ||
                                      g_external_nor_ready) &&
-                                    (first_frame ||
-                                     static_cast<std::int32_t>(now -
-                                                               next_inference) >=
-                                         0);
+                                    static_cast<std::int32_t>(now -
+                                                              next_inference) >=
+                                        0;
         if (display_due) {
             if (capture.sequence <= 3U ||
                 (capture.sequence % 10U) == 0U) {
@@ -425,7 +423,6 @@ void camera_render_task(void)
             }
             next_inference = now + kInferencePeriod;
         }
-        first_frame = false;
         if ((loop_count % 1000U) == 0U) {
             tm_printf(reinterpret_cast<const UB *>(
                           "camera: heartbeat loop=%u sequence=%u aton_irq=%u last=%x\n"),

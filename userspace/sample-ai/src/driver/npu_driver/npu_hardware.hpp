@@ -27,6 +27,8 @@ struct NpuHardwareSnapshot {
 
     std::uint32_t busif0_control = 0U;
     std::uint32_t busif0_error = 0U;
+    std::uint32_t busif1_control = 0U;
+    std::uint32_t busif1_error = 0U;
 
     std::uint32_t stream0_control = 0U;
     std::uint32_t stream0_address = 0U;

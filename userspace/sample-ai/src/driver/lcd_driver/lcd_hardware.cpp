@@ -1,4 +1,4 @@
-#include "driver/display_driver.hpp"
+#include "driver/lcd_driver/lcd_hardware.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
@@ -16,7 +16,7 @@ constexpr std::uint32_t kInitialDisplayBuffer = 0x91200000U;
 
 } // namespace
 
-DriverStatus DisplayDriver::Initialize()
+DriverStatus LcdHardware::Initialize()
 {
     if (initialized_) {
         return DriverStatus::kAlreadyInitialized;
@@ -49,17 +49,17 @@ DriverStatus DisplayDriver::Initialize()
     return DriverStatus::kOk;
 }
 
-DriverStatus DisplayDriver::Synchronize()
+DriverStatus LcdHardware::Synchronize()
 {
     return initialized_ ? DriverStatus::kOk : DriverStatus::kNotInitialized;
 }
 
-DriverStatus DisplayDriver::Process()
+DriverStatus LcdHardware::Process()
 {
     return initialized_ ? DriverStatus::kOk : DriverStatus::kNotInitialized;
 }
 
-DriverStatus DisplayDriver::Process(std::uintptr_t buffer)
+DriverStatus LcdHardware::Process(std::uintptr_t buffer)
 {
     if (!initialized_) {
         return DriverStatus::kNotInitialized;

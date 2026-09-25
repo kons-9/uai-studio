@@ -5,7 +5,7 @@
 #include "memory_manager/memory_hardware.hpp"
 #include "memory_manager/memory_manager.hpp"
 
-#include "driver/display_driver.hpp"
+#include "driver/lcd_driver/lcd_hardware.hpp"
 
 namespace uai::ai {
 
@@ -30,12 +30,14 @@ private:
                                  bool coordinate_pattern);
     static void DrawBoxes(const memory_manager::DisplayBuffer &buffer,
                           const memory_manager::BoxSet &boxes);
+    static void DrawMask(const memory_manager::DisplayBuffer &buffer,
+                         const memory_manager::BoxSet &boxes);
     static common::Error FromBackend(uai::driver::DriverStatus status,
                                      const char *operation);
 
     memory_manager::MemoryManager *memory_ = nullptr;
     memory_manager::MemoryHardware *memory_hardware_ = nullptr;
-    uai::driver::DisplayDriver backend_{};
+    uai::driver::LcdHardware backend_{};
     bool initialized_ = false;
 };
 

@@ -78,6 +78,10 @@ void inference_task(void)
             LogStatus("ai", status);
             LogNpuStatus(model.LastNpuStatus());
         }
+#if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
+        /* The diagnostic build is deliberately limited to one NPU attempt. */
+        (void)tk_ext_tsk();
+#endif
     }
 }
 

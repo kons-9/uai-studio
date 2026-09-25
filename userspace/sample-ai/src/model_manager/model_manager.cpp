@@ -17,6 +17,7 @@ namespace {
 
 using memory_manager::BoxSet;
 
+#if !defined(AI_MODEL_SEGMENTATION)
 constexpr std::size_t kInputCropX = 160U;
 constexpr std::size_t kInputSize = 480U;
 constexpr std::uint32_t kMaxDetections = 100U;
@@ -241,6 +242,67 @@ void LogBoxes(const char *stage, const BoxSet &boxes)
                   static_cast<unsigned int>(ConfidenceMilli(box.confidence)));
     }
 }
+#else
+constexpr std::size_t kSegmentationInputWidth = 320U;
+constexpr std::size_t kSegmentationInputHeight = 320U;
+constexpr std::size_t kSegmentationInputCropX = 160U;
+constexpr std::size_t kSegmentationCropWidth = 480U;
+constexpr std::size_t kSegmentationMaskWidth = 320U;
+constexpr std::size_t kSegmentationMaskHeight = 320U;
+constexpr std::size_t kSegmentationMaskBytes =
+    kSegmentationMaskWidth * kSegmentationMaskHeight;
+constexpr std::uintptr_t kSegmentationMaskBuffers[2] = {
+    0x91700000UL,
+    0x91720000UL,
+};
+
+void ConvertInput(std::uintptr_t source_address, stai_ptr destination)
+{
+    const auto *source =
+        reinterpret_cast<const std::uint16_t *>(source_address);
+    auto *output = reinterpret_cast<std::uint8_t *>(destination);
+    for (std::size_t y = 0U; y < kSegmentationInputHeight; ++y) {
+        const std::size_t source_y =
+            y * memory_manager::kFrameHeight / kSegmentationInputHeight;
+        for (std::size_t x = 0U; x < kSegmentationInputWidth; ++x) {
+            const std::size_t source_x =
+                kSegmentationInputCropX +
+                x * kSegmentationCropWidth / kSegmentationInputWidth;
+            const std::uint16_t pixel =
+                source[source_y * memory_manager::kFrameWidth + source_x];
+            const std::uint8_t red = static_cast<std::uint8_t>(
+                ((pixel >> 11U) & 0x1FU) * 255U / 31U);
+            const std::uint8_t green = static_cast<std::uint8_t>(
+                ((pixel >> 5U) & 0x3FU) * 255U / 63U);
+            const std::uint8_t blue =
+                static_cast<std::uint8_t>((pixel & 0x1FU) * 255U / 31U);
+            const std::size_t offset =
+                (y * kSegmentationInputWidth + x) * 3U;
+            output[offset] = red;
+            output[offset + 1U] = green;
+            output[offset + 2U] = blue;
+        }
+    }
+}
+
+bool ConvertSegmentationMask(stai_ptr output, std::uint8_t mask_index,
+                             BoxSet *result)
+{
+    if (output == nullptr || result == nullptr || mask_index > 1U) {
+        return false;
+    }
+    const auto *logits = reinterpret_cast<const std::int8_t *>(output);
+    auto *mask = reinterpret_cast<std::uint8_t *>(
+        kSegmentationMaskBuffers[mask_index]);
+    for (std::size_t i = 0U; i < kSegmentationMaskBytes; ++i) {
+        mask[i] = logits[2U * i + 1U] > logits[2U * i] ? 1U : 0U;
+    }
+    result->mask_address = kSegmentationMaskBuffers[mask_index];
+    result->mask_width = static_cast<std::uint16_t>(kSegmentationMaskWidth);
+    result->mask_height = static_cast<std::uint16_t>(kSegmentationMaskHeight);
+    return true;
+}
+#endif
 
 } // namespace
 
@@ -262,7 +324,14 @@ Error ModelManager::Initialize(memory_manager::MemoryManager &memory,
     npu_status = npu_.GetInfo(&info_);
     last_npu_status_ = npu_status;
     last_error_ = npu_status.error.detail;
-    if (!npu_status.Ok() || info_.n_inputs != 1U || info_.n_outputs != 3U ||
+    const std::uint16_t expected_outputs =
+#if defined(AI_MODEL_SEGMENTATION)
+        1U;
+#else
+        3U;
+#endif
+    if (!npu_status.Ok() || info_.n_inputs != 1U ||
+        info_.n_outputs != expected_outputs ||
         info_.inputs == nullptr || info_.outputs == nullptr) {
         return {ErrorCode::kModel, last_error_, "ai.model_info"};
     }
@@ -277,13 +346,22 @@ Error ModelManager::Initialize(memory_manager::MemoryManager &memory,
     }
     npu_status = npu_.GetOutputs(outputs_, &output_count);
     last_npu_status_ = npu_status;
-    if (!npu_status.Ok() || output_count != 3U) {
+    if (!npu_status.Ok() || output_count != expected_outputs) {
         last_error_ = npu_status.error.detail;
         return {ErrorCode::kModel, last_error_, "ai.model_outputs"};
     }
+#if defined(AI_MODEL_SEGMENTATION)
+    if (info_.inputs[0].size_bytes !=
+            kSegmentationInputWidth * kSegmentationInputHeight * 3U ||
+        info_.outputs[0].size_bytes != kSegmentationMaskBytes * 2U) {
+        return {ErrorCode::kModel, 0U, "ai.segmentation_tensor_shape"};
+    }
+#endif
+#if !defined(AI_MODEL_SEGMENTATION)
     if (!InitializePostprocess(info_)) {
         return {ErrorCode::kModel, 0U, "ai.postprocess_initialize"};
     }
+#endif
 
     initialized_ = true;
     last_error_ = 0U;
@@ -312,6 +390,9 @@ Error ModelManager::TryInfer(
     result->count = 0U;
     result->capture_sequence = frame.capture_sequence;
     result->model_sequence = ++model_sequence_;
+    result->mask_address = 0U;
+    result->mask_width = 0U;
+    result->mask_height = 0U;
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: convert input begin sequence=%u source=%x destination=%x\n"),
               static_cast<unsigned int>(frame.capture_sequence),
@@ -359,10 +440,17 @@ Error ModelManager::TryInfer(
             return status;
         }
     }
+#if defined(AI_MODEL_SEGMENTATION)
+    if (!ConvertSegmentationMask(outputs_[0], mask_buffer_index_, result)) {
+        return {ErrorCode::kModel, 0U, "ai.segmentation_postprocess"};
+    }
+    mask_buffer_index_ ^= 1U;
+#else
     if (!ConvertDetections(outputs_, result)) {
         return {ErrorCode::kModel, 0U, "ai.postprocess"};
     }
     LogBoxes("postprocess", *result);
+#endif
 
     const npu_driver::Status npu_status = npu_.NewInference();
     last_npu_status_ = npu_status;

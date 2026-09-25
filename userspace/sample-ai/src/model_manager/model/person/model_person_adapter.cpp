@@ -1,7 +1,7 @@
-#include "model_manager/model_person_adapter.hpp"
+#include "model_manager/model/person/model_person_adapter.hpp"
 
 extern "C" {
-#include "model_manager/model_person_c_api.h"
+#include "model_manager/model/person/model_person_c_api.h"
 }
 
 namespace uai::ai::model_manager {

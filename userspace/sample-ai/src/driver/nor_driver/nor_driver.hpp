@@ -1,6 +1,8 @@
 #ifndef UAI_AI_DRIVER_XSPI_NOR_DRIVER_HPP
 #define UAI_AI_DRIVER_XSPI_NOR_DRIVER_HPP
 
+#include "driver/nor_driver/nor_hardware.hpp"
+
 namespace uai::ai::driver::xspi {
 
 /* Application-facing C++ driver for the STM32N6570-DK model NOR.
@@ -12,6 +14,7 @@ public:
     int Initialize();
 
 private:
+    NorHardware hardware_{};
     bool initialized_ = false;
 };
 

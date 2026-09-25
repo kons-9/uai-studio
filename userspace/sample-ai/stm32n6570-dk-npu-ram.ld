@@ -54,11 +54,11 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  /* Keep the C runtime callback tables outside the old image's populated
-   * range. A RAM launch can retain cache lines from that image, and stale
-   * lines at the original table address were observed to erase these entries
-   * before __libc_init_array() consumed them. */
-  .preinit_array 0x34048000 :
+  /* Reserve the 0x34049000 gap after .rodata and before the RAM entry at
+   * 0x34050000 for the C runtime callback tables. NPU-on adds command data to
+   * .rodata through 0x340486df, so the former 0x34048000 slot overlaps it.
+   * Keep a fixed table location for RAM launch startup. */
+  .preinit_array 0x34049000 :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__preinit_array_start = .);
@@ -67,7 +67,7 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  .init_array 0x34048000 :
+  .init_array 0x34049000 :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__init_array_start = .);
@@ -77,7 +77,7 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  .fini_array 0x34048010 :
+  .fini_array 0x34049010 :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__fini_array_start = .);

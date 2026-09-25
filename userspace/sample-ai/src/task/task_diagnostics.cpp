@@ -1,4 +1,5 @@
 #include "task/task_context.hpp"
+#include "driver/npu_driver/npu_hardware.hpp"
 
 namespace uai::ai::task {
 
@@ -77,7 +78,8 @@ void LogFrameBrightness(
 void LogNpuStatus(const NpuStatus &status)
 {
     const auto &execution = status.execution;
-    const auto &npu_hardware = execution.npu_hardware;
+    const auto npu_hardware =
+        uai::ai::npu_driver::NpuHardware{}.ReadSnapshot();
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu state=%u stai=%x epoch=%x addr=%x irq=%x label=%x bc=%x int=%x\n"),
               static_cast<unsigned int>(execution.state),
@@ -233,7 +235,8 @@ void DumpPeripheralRegisters(const char *stage)
               static_cast<unsigned int>(RISAF12->REG[0].ENDR),
               static_cast<unsigned int>(RISAF12->REG[0].CIDCFGR));
 
-    const auto npu_hardware = NpuHardware{}.ReadSnapshot();
+    const auto npu_hardware =
+        uai::ai::npu_driver::NpuHardware{}.ReadSnapshot();
     tm_printf(reinterpret_cast<const UB *>(
                   "debug: npu epoch=%x/%x/%x irq=%x label=%x bc=%x int=%x/%x/%x bus=%x/%x\n"),
               static_cast<unsigned int>(npu_hardware.epoch_control),
@@ -428,4 +431,3 @@ void DumpFrozenCapture(const uai::ai::memory_manager::CaptureFrame &frame)
 }
 
 } // namespace uai::ai::task
-

@@ -52,7 +52,7 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 set(STM32N657_CPU_FLAGS
     "-mcpu=cortex-m55 -mthumb -mfloat-abi=hard")
 set(STM32N657_COMMON_FLAGS
-    "${STM32N657_CPU_FLAGS} -ffreestanding -fno-common -ffunction-sections -fdata-sections -Wall -Wextra")
+    "${STM32N657_CPU_FLAGS} -O3 -ffreestanding -fno-common -ffunction-sections -fdata-sections -Wall -Wextra")
 
 set(CMAKE_C_FLAGS
     "${STM32N657_COMMON_FLAGS}"

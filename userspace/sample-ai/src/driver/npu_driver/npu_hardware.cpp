@@ -44,6 +44,8 @@ NpuHardwareSnapshot NpuHardware::ReadSnapshot() const
 
     snapshot.busif0_control = ATON_BUSIF_CTRL_GET(kBusInterface);
     snapshot.busif0_error = ATON_BUSIF_ERR_GET(kBusInterface);
+    snapshot.busif1_control = ATON_BUSIF_CTRL_GET(1U);
+    snapshot.busif1_error = ATON_BUSIF_ERR_GET(1U);
 
     snapshot.stream0_control = ATON_STRENG_CTRL_GET(kStreamEngine);
     snapshot.stream0_address = ATON_STRENG_ADDR_GET(kStreamEngine);

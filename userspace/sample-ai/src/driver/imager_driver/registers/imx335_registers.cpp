@@ -1,13 +1,25 @@
-#include "driver/camera/registers/imx335_registers.hpp"
+#include "driver/imager_driver/registers/imx335_registers.hpp"
 
 #include <cstring>
 
 extern "C" {
 #include "imx335.h"
+#include "isp_core.h"
 extern void *Camera_CompObj;
 }
 
-namespace uai::ai::camera::registers {
+extern "C" {
+volatile unsigned int g_ai_last_exposure_request_us = 0U;
+volatile unsigned int g_ai_last_exposure_lines = 0U;
+volatile unsigned int g_ai_last_sensor_gain_mdB = 0U;
+}
+
+namespace {
+constexpr std::uint32_t kVmaxAt30Fps = 4500U;
+constexpr std::uint32_t kMinimumShutterLines = 9U;
+}
+
+namespace uai::ai::imager::registers {
 namespace {
 
 using common::Error;
@@ -54,6 +66,11 @@ constexpr RegisterDescription kDescriptions[] = {
     {Imx335Register::kChipId, "CHIP_ID",
      "Read-only sensor identification value.", 1U},
 };
+
+IMX335_Object_t *Sensor()
+{
+    return static_cast<IMX335_Object_t *>(Camera_CompObj);
+}
 
 const RegisterDescription *Find(Imx335Register address)
 {
@@ -126,6 +143,38 @@ Error Imx335RegisterLayer::SetStreaming(bool enabled) const
     return Write(Imx335Register::kModeSelect, &mode, sizeof(mode));
 }
 
+Error Imx335RegisterLayer::Configure(int test_pattern_mode,
+                                     int32_t framerate) const
+{
+    IMX335_Object_t *sensor = Sensor();
+    if (sensor == nullptr ||
+        IMX335_SetTestPattern(sensor, test_pattern_mode) != IMX335_OK ||
+        IMX335_SetFramerate(sensor, framerate) != IMX335_OK) {
+        return HardwareError("camera.sensor.configure", IMX335_ERROR);
+    }
+    return {ErrorCode::kOk, 0U, "camera.sensor.configure"};
+}
+
+Error Imx335RegisterLayer::SetExposureMicroseconds(int32_t exposure) const
+{
+    IMX335_Object_t *sensor = Sensor();
+    if (sensor == nullptr || exposure < 0 ||
+        IMX335_SetExposure(sensor, exposure) != IMX335_OK) {
+        return HardwareError("camera.sensor.exposure", IMX335_ERROR);
+    }
+    return {ErrorCode::kOk, 0U, "camera.sensor.exposure"};
+}
+
+Error Imx335RegisterLayer::SetGainMilliDb(int32_t gain_mdB) const
+{
+    IMX335_Object_t *sensor = Sensor();
+    if (sensor == nullptr || gain_mdB < IMX335_GAIN_MIN ||
+        IMX335_SetGain(sensor, gain_mdB) != IMX335_OK) {
+        return HardwareError("camera.sensor.gain", IMX335_ERROR);
+    }
+    return {ErrorCode::kOk, 0U, "camera.sensor.gain"};
+}
+
 Error Imx335RegisterLayer::ConfigureMipi891Mbps() const
 {
     const std::uint8_t incksel1[] = {0x29U, 0x01U};
@@ -194,4 +243,84 @@ Error Imx335RegisterLayer::ReadSnapshot(SensorRegisterSnapshot *snapshot) const
     return {ErrorCode::kOk, 0U, "camera.register.snapshot"};
 }
 
-} // namespace uai::ai::camera::registers
+} // namespace uai::ai::imager::registers
+
+extern "C" ISP_StatusTypeDef AiSetImx335Exposure(uint32_t instance,
+                                                   int32_t exposure)
+{
+    (void)instance;
+    using uai::ai::imager::registers::Imx335RegisterLayer;
+    if (exposure < 0) return ISP_ERR_EINVAL;
+
+    g_ai_last_exposure_request_us = static_cast<unsigned int>(exposure);
+    const std::uint32_t lines = static_cast<std::uint32_t>(
+        static_cast<float>(exposure) / (1000000.0F / (4500U * 30U)));
+    const std::uint32_t limited_lines =
+        lines > kVmaxAt30Fps - kMinimumShutterLines
+            ? kVmaxAt30Fps - kMinimumShutterLines
+            : lines;
+    g_ai_last_exposure_lines = limited_lines;
+    const auto status = Imx335RegisterLayer{}.SetExposureMicroseconds(
+        static_cast<int32_t>(limited_lines * 7U));
+    return status.Ok() ? ISP_OK : ISP_ERR_EINVAL;
+}
+
+extern "C" ISP_StatusTypeDef AiGetImx335Exposure(uint32_t instance,
+                                                   int32_t *exposure)
+{
+    (void)instance;
+    if (exposure == nullptr || Camera_CompObj == nullptr) return ISP_ERR_EINVAL;
+    *exposure = static_cast<int32_t>(g_ai_last_exposure_request_us);
+    return ISP_OK;
+}
+
+extern "C" ISP_StatusTypeDef AiSetImx335Gain(uint32_t instance,
+                                               int32_t gain_mdB)
+{
+    (void)instance;
+    using uai::ai::imager::registers::Imx335RegisterLayer;
+    if (gain_mdB < IMX335_GAIN_MIN) return ISP_ERR_EINVAL;
+    if (gain_mdB > 30000) gain_mdB = 30000;
+    const auto status = Imx335RegisterLayer{}.SetGainMilliDb(gain_mdB);
+    if (!status.Ok()) return ISP_ERR_EINVAL;
+    g_ai_last_sensor_gain_mdB = static_cast<unsigned int>(gain_mdB);
+    return ISP_OK;
+}
+
+extern "C" ISP_StatusTypeDef AiGetImx335Gain(uint32_t instance,
+                                               int32_t *gain_mdB)
+{
+    (void)instance;
+    if (gain_mdB == nullptr || Camera_CompObj == nullptr) return ISP_ERR_EINVAL;
+    *gain_mdB = static_cast<int32_t>(g_ai_last_sensor_gain_mdB);
+    return ISP_OK;
+}
+
+extern "C" void AiResetImx335ControlState(void)
+{
+    g_ai_last_exposure_request_us = 0U;
+    g_ai_last_exposure_lines = 0U;
+    g_ai_last_sensor_gain_mdB = IMX335_GAIN_MIN;
+}
+
+extern "C" int32_t AiGetSensorGainMdB(void)
+{
+    return static_cast<int32_t>(g_ai_last_sensor_gain_mdB);
+}
+
+extern "C" int32_t AiReadSensorRegisters(uint32_t *vmax,
+                                           uint32_t *shutter,
+                                           uint32_t *gain)
+{
+    if (vmax == nullptr || shutter == nullptr || gain == nullptr) return -1;
+    uai::ai::imager::registers::SensorRegisterSnapshot snapshot{};
+    if (!uai::ai::imager::registers::Imx335RegisterLayer{}
+             .ReadSnapshot(&snapshot)
+             .Ok()) {
+        return -1;
+    }
+    *vmax = snapshot.vmax;
+    *shutter = snapshot.shutter;
+    *gain = snapshot.gain;
+    return 0;
+}

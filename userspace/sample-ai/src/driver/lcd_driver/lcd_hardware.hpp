@@ -1,5 +1,5 @@
-#ifndef UAI_AI_DISPLAY_DRIVER_HPP
-#define UAI_AI_DISPLAY_DRIVER_HPP
+#ifndef UAI_AI_LCD_HARDWARE_HPP
+#define UAI_AI_LCD_HARDWARE_HPP
 
 #include <cstdint>
 
@@ -7,7 +7,9 @@
 
 namespace uai::driver {
 
-class DisplayDriver final {
+/* LCD BSP boundary.  Rendering and frame composition belong to LcdDriver;
+ * this class only controls the display peripheral and its active buffer. */
+class LcdHardware final {
 public:
     DriverStatus Initialize();
     DriverStatus Synchronize();
@@ -20,4 +22,4 @@ private:
 
 } // namespace uai::driver
 
-#endif
+#endif // UAI_AI_LCD_HARDWARE_HPP

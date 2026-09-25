@@ -2036,6 +2036,10 @@ static int32_t IMX335_Probe(uint32_t Resolution, uint32_t PixelFormat)
     {
       Camera_Drv = (CAMERA_Drv_t *) &IMX335_CAMERA_Driver;
       Camera_CompObj = &IMX335Obj;
+      /* BSP_CAMERA_Init resets camera power before probing. Clear the
+       * component state so IMX335_Init reapplies its register tables after
+       * that hardware reset instead of trusting stale IsInitialized state. */
+      (void)IMX335_DeInit(&IMX335Obj);
       if (Camera_Drv->Init(Camera_CompObj, Resolution, PixelFormat) != IMX335_OK)
       {
         ret = BSP_ERROR_COMPONENT_FAILURE;

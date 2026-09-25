@@ -42,7 +42,11 @@ int32_t AiGetSensorGainMdB(void);
 int32_t AiReadSensorRegisters(std::uint32_t *vmax,
                                    std::uint32_t *shutter,
                                    std::uint32_t *gain);
+#if defined(AI_MODEL_SEGMENTATION)
+void NPU0_IRQHandler(UINT intno);
+#else
 void NPU0_IRQHandler(void);
+#endif
 }
 
 namespace uai::ai::task {
@@ -53,11 +57,13 @@ using BoxSet = uai::ai::memory_manager::BoxSet;
 using InferenceFrame = uai::ai::memory_manager::InferenceFrame;
 using MemoryHardware = uai::ai::memory_manager::MemoryHardware;
 using MemoryManager = uai::ai::memory_manager::MemoryManager;
-using NpuHardware = uai::ai::npu_driver::NpuHardware;
-
 inline constexpr UINT kExternalMemoryReady = 0x01U;
-inline constexpr std::uint32_t kInferencePeriod = 1000U;
+inline constexpr std::uint32_t kInferencePeriod = 5000U;
+#if defined(AI_MODEL_SEGMENTATION)
+inline constexpr std::uint32_t kBoxLifetimeMs = 7000U;
+#else
 inline constexpr std::uint32_t kBoxLifetimeMs = 3000U;
+#endif
 
 enum class InferenceMode : std::uint8_t {
     kDisabled,
@@ -72,7 +78,7 @@ enum class DisplayDiagnosticMode : std::uint8_t {
     kLiveCaptureFreeze,
 };
 
-inline constexpr InferenceMode kInferenceMode = InferenceMode::kDisabled;
+inline constexpr InferenceMode kInferenceMode = InferenceMode::kNpu;
 inline constexpr DisplayDiagnosticMode kDisplayDiagnosticMode =
     DisplayDiagnosticMode::kCameraPreview;
 inline constexpr bool kDisplayCoordinatePatternDiagnostic =

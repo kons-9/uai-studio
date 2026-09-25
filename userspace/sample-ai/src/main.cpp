@@ -3,14 +3,12 @@
 
 #include <tk/tkernel.h>
 
-#include "driver/imager_driver/imager_driver.hpp"
 #include "common/error.hpp"
 #include "driver/lcd_driver/lcd_driver.hpp"
 #include "memory_manager/memory_hardware.hpp"
 #include "memory_manager/memory_manager.hpp"
 #include "model_manager/model_manager.hpp"
 #include "driver/npu_driver/debug.h"
-#include "driver/npu_driver/npu_hardware.hpp"
 #include "task/task_context.hpp"
 
 /* C/C++境界: monitor/HAL とカーネル・ドライバーの C ABI 関数を
@@ -21,7 +19,11 @@ extern "C" {
 
 extern DCMIPP_HandleTypeDef hcamera_dcmipp;
 
+#if defined(AI_MODEL_SEGMENTATION)
+void NPU0_IRQHandler(UINT intno);
+#else
 void NPU0_IRQHandler(void);
+#endif
 void IAC_IRQHandler(void);
 /* カメラ診断値はaiのcamera use caseが定義する。 */
 extern volatile unsigned int g_camera_vsync_event_count;
@@ -252,12 +254,16 @@ extern "C" INT usermain(void)
 {
     DumpCoreRegisters("usermain");
 
-    /* µT-Kernel replaces the startup vector table with its RAM table.  Keep
-     * the Neural-ART and RIF handlers as direct IRQ handlers in that table;
-     * they already have the Cortex-M exception entry/return ABI and must not
-     * be called through the TA_HLNG wrapper (which adds an intno argument). */
+    /* µT-Kernel replaces the startup vector table with its RAM table. Use its
+     * HLL wrapper for segmentation's NPU IRQ so the handler can signal the
+     * inference task through an event flag. Keep the other vendor IRQ handlers
+     * direct because they already provide the exception entry/return ABI. */
     T_DINT npu_interrupt = {};
+#if defined(AI_MODEL_SEGMENTATION)
+    npu_interrupt.intatr = TA_HLNG;
+#else
     npu_interrupt.intatr = TA_ASM;
+#endif
     npu_interrupt.inthdr = reinterpret_cast<FP>(NPU0_IRQHandler);
     const ER npu_interrupt_status =
         tk_def_int(static_cast<UINT>(NPU0_IRQn), &npu_interrupt);

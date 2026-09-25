@@ -185,6 +185,45 @@ void LcdDriver::DrawBoxes(const memory_manager::DisplayBuffer &buffer,
     }
 }
 
+void LcdDriver::DrawMask(const memory_manager::DisplayBuffer &buffer,
+                         const memory_manager::BoxSet &boxes)
+{
+    if (boxes.mask_address == 0U || boxes.mask_width == 0U ||
+        boxes.mask_height == 0U) {
+        return;
+    }
+
+    const auto *mask = reinterpret_cast<const std::uint8_t *>(
+        boxes.mask_address);
+    auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
+    constexpr std::size_t crop_width = 480U;
+    constexpr std::size_t crop_x =
+        (memory_manager::kFrameWidth - crop_width) / 2U;
+    for (std::size_t y = 0U; y < memory_manager::kFrameHeight; ++y) {
+        const std::size_t mask_y = y * boxes.mask_height /
+                                   memory_manager::kFrameHeight;
+        for (std::size_t x = 0U; x < crop_width; ++x) {
+            const std::size_t mask_x = x * boxes.mask_width / crop_width;
+            if (mask[mask_y * boxes.mask_width + mask_x] == 0U) {
+                continue;
+            }
+            const std::size_t pixel_index =
+                y * memory_manager::kFrameWidth + crop_x + x;
+            const std::uint16_t original = pixels[pixel_index];
+            const std::uint16_t red =
+                static_cast<std::uint16_t>((original >> 11U) & 0x1FU);
+            const std::uint16_t green =
+                static_cast<std::uint16_t>((original >> 5U) & 0x3FU);
+            const std::uint16_t blue =
+                static_cast<std::uint16_t>(original & 0x1FU);
+            pixels[pixel_index] = static_cast<std::uint16_t>(
+                (((red * 2U) / 3U) << 11U) |
+                (((green * 2U + 63U) / 3U) << 5U) |
+                ((blue * 2U) / 3U));
+        }
+    }
+}
+
 Error LcdDriver::ShowInitialFrame(
     const memory_manager::BoxSet &boxes,
     bool coordinate_pattern)
@@ -300,6 +339,7 @@ Error LcdDriver::ComposeAndPresent(
                         display.buffer.address),
                     memory_manager::kFrameBytes)
             : 0U;
+    DrawMask(display, boxes);
     DrawBoxes(display, boxes);
 
     status = memory_hardware_->PrepareForPeripheralRead(display.buffer);

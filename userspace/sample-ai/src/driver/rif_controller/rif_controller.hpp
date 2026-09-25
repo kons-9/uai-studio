@@ -2,6 +2,7 @@
 #define UAI_AI_RIF_CONTROLLER_HPP
 
 #include "common/error.hpp"
+#include "driver/rif_controller/rif_hardware.hpp"
 
 namespace uai::ai::driver {
 
@@ -12,6 +13,7 @@ public:
     common::Error Initialize();
 
 private:
+    RifHardware hardware_{};
     bool initialized_ = false;
 };
 

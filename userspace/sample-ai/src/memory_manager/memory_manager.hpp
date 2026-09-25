@@ -70,6 +70,9 @@ struct BoxSet {
     std::uint32_t count = 0U;
     std::uint32_t model_sequence = 0U;
     std::uint32_t capture_sequence = 0U;
+    std::uintptr_t mask_address = 0U;
+    std::uint16_t mask_width = 0U;
+    std::uint16_t mask_height = 0U;
     Box boxes[kMaxBoxes]{};
 };
 

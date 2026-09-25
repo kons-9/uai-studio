@@ -1,28 +1,29 @@
-#include "driver/camera/usecase/camera_use_case.hpp"
+#include "driver/imager_driver/usecase/imager_use_case.hpp"
+
+#include "driver/imager_driver/registers/imx335_registers.hpp"
 
 #include <cstdint>
 #include <cstring>
 
 extern "C" {
-#include "imx335.h"
 #include "stm32n6570_discovery_camera.h"
 #include "stm32n6xx_hal.h"
 #include <tm/tmonitor.h>
 
 extern DCMIPP_HandleTypeDef hcamera_dcmipp;
 extern ISP_HandleTypeDef hcamera_isp;
-extern void *Camera_CompObj;
 ISP_StatusTypeDef AiSetImx335Exposure(uint32_t instance, int32_t exposure);
 ISP_StatusTypeDef AiGetImx335Exposure(uint32_t instance, int32_t *exposure);
 ISP_StatusTypeDef AiSetImx335Gain(uint32_t instance, int32_t gain_mdB);
 ISP_StatusTypeDef AiGetImx335Gain(uint32_t instance, int32_t *gain_mdB);
+void AiResetImx335ControlState(void);
 }
 
 namespace {
 
 using uai::ai::common::Error;
 using uai::ai::common::ErrorCode;
-using uai::ai::camera::registers::Imx335RegisterLayer;
+using uai::ai::imager::registers::Imx335RegisterLayer;
 
 constexpr std::uint32_t kSensorWidth = 2592U;
 constexpr std::uint32_t kSensorHeight = 1944U;
@@ -32,8 +33,6 @@ constexpr std::uint32_t kFrameTimeoutMs = 2000U;
 constexpr std::uint32_t kCsiFaultTimeoutMs = 100U;
 constexpr std::uint32_t kRecoveryRetryMs = 5000U;
 constexpr std::int32_t kFrameRateFps = 30;
-constexpr std::uint32_t kVmaxAt30Fps = 4500U;
-constexpr std::uint32_t kMinimumShutterLines = 9U;
 
 #ifndef AI_IMX335_TEST_PATTERN_MODE
 #define AI_IMX335_TEST_PATTERN_MODE -1
@@ -78,16 +77,9 @@ Error Hardware(const char *operation, std::uint32_t detail = 0U)
     return {ErrorCode::kHardware, detail, operation};
 }
 
-Error ConfigureSensor()
+Error ConfigureSensor(Imx335RegisterLayer &registers)
 {
-    auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
-    if (sensor == nullptr ||
-        IMX335_SetTestPattern(sensor, AI_IMX335_TEST_PATTERN_MODE) != IMX335_OK ||
-        IMX335_SetFramerate(sensor, kFrameRateFps) != IMX335_OK) {
-        return Hardware("camera.sensor.configure");
-    }
-    /* Keep the sensor's stock IMX335 timing profile. */
-    return {ErrorCode::kOk, 0U, "camera.sensor.configure"};
+    return registers.Configure(AI_IMX335_TEST_PATTERN_MODE, kFrameRateFps);
 }
 
 Error ConfigurePipe()
@@ -258,15 +250,35 @@ volatile unsigned int g_camera_csi_sot_sync_dl0_count = 0U;
 volatile unsigned int g_camera_csi_sot_sync_dl1_count = 0U;
 volatile unsigned int g_camera_csi_sot_dl0_count = 0U;
 volatile unsigned int g_camera_csi_sot_dl1_count = 0U;
-volatile unsigned int g_ai_last_exposure_request_us = 0U;
-volatile unsigned int g_ai_last_exposure_lines = 0U;
-volatile unsigned int g_ai_last_sensor_gain_mdB = 0U;
 }
 
-namespace uai::ai::camera::usecase {
+namespace uai::ai::imager::usecase {
 
 using common::Error;
 using common::ErrorCode;
+
+namespace {
+
+void LogCameraLinkState(const registers::Imx335RegisterLayer &sensor_registers)
+{
+    std::uint8_t mode = 0xFFU;
+    const bool sensor_read_ok = sensor_registers.Read(
+        registers::Imx335Register::kModeSelect, &mode, sizeof(mode)).Ok();
+    const std::uint32_t dcmipp_status1 = hcamera_dcmipp.Instance->CMSR1;
+    const std::uint32_t dcmipp_status2 = hcamera_dcmipp.Instance->CMSR2;
+    const std::uint32_t pipe_status = hcamera_dcmipp.Instance->P1SR;
+
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: diag t=%u f=%u v=%u imx=%x/%u "
+                  "csi=%x/%x dcmipp=%x/%x p1=%x\n"),
+              static_cast<unsigned int>(HAL_GetTick()),
+              g_camera_frame_event_count, g_camera_vsync_event_count,
+              static_cast<unsigned int>(mode),
+              static_cast<unsigned int>(sensor_read_ok), CSI->SR0, CSI->SR1,
+              dcmipp_status1, dcmipp_status2, pipe_status);
+}
+
+} // namespace
 
 void InstallExposureWorkaround()
 {
@@ -274,19 +286,18 @@ void InstallExposureWorkaround()
     hcamera_isp.appliHelpers.GetSensorExposure = AiGetImx335Exposure;
     hcamera_isp.appliHelpers.SetSensorGain = AiSetImx335Gain;
     hcamera_isp.appliHelpers.GetSensorGain = AiGetImx335Gain;
-    g_ai_last_exposure_request_us = 0U;
-    g_ai_last_exposure_lines = 0U;
-    g_ai_last_sensor_gain_mdB = IMX335_GAIN_MIN;
+    AiResetImx335ControlState();
 }
 
-Error CameraUseCase::Initialize(memory_manager::MemoryManager &memory,
+Error ImagerUseCase::Initialize(memory_manager::MemoryManager &memory,
                                 memory_manager::MemoryHardware &memory_hardware)
 {
     if (initialized_) return {ErrorCode::kAlreadyInitialized, 0U, "camera.initialize"};
     std::uintptr_t first = 0U, second = 0U;
     if (!memory.CaptureBuffers(&first, &second).Ok()) return {ErrorCode::kNotInitialized, 0U, "camera.initialize"};
     if (BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) != BSP_ERROR_NONE) return Hardware("camera.initialize");
-    if (!ConfigureSensor().Ok()) return Hardware("camera.sensor.configure");
+    Imx335RegisterLayer registers;
+    if (!ConfigureSensor(registers).Ok()) return Hardware("camera.sensor.configure");
     InstallExposureWorkaround();
     if (!ConfigurePipe().Ok() || !ConfigureRawDumpPipe().Ok()) {
         return Hardware("camera.configure");
@@ -297,7 +308,7 @@ Error CameraUseCase::Initialize(memory_manager::MemoryManager &memory,
     return {ErrorCode::kOk, 0U, "camera.initialize"};
 }
 
-Error CameraUseCase::Start()
+Error ImagerUseCase::Start()
 {
     if (!initialized_ || memory_ == nullptr || memory_hardware_ == nullptr) return {ErrorCode::kNotInitialized, 0U, "camera.start"};
     if (started_) return {ErrorCode::kAlreadyInitialized, 0U, "camera.start"};
@@ -315,26 +326,29 @@ Error CameraUseCase::Start()
     if (BSP_CAMERA_Start(0U, reinterpret_cast<uint8_t *>(g_active_frame), CAMERA_MODE_CONTINUOUS) != BSP_ERROR_NONE) return Hardware("camera.start");
     status = ApplyDemosaicDiagnostic();
     if (!status.Ok()) return status;
-    status = StartStream(registers_);
+    Imx335RegisterLayer registers;
+    status = StartStream(registers);
     if (!status.Ok()) return status;
     StartRawDump();
     g_last_frame_tick = HAL_GetTick();
     g_last_vsync_count = g_camera_vsync_event_count;
     started_ = true;
+    LogCameraLinkState(registers);
     return {ErrorCode::kOk, 0U, "camera.start"};
 }
 
-Error CameraUseCase::Stop()
+Error ImagerUseCase::Stop()
 {
     if (!initialized_ || !started_) return {ErrorCode::kNotInitialized, 0U, "camera.stop"};
-    const auto standby = registers_.SetStreaming(false);
+    Imx335RegisterLayer registers;
+    const auto standby = registers.SetStreaming(false);
     if (!standby.Ok()) return standby;
     if (BSP_CAMERA_Stop(0U) != BSP_ERROR_NONE) return Hardware("camera.stop");
     started_ = false;
     return {ErrorCode::kOk, 0U, "camera.stop"};
 }
 
-Error CameraUseCase::Process()
+Error ImagerUseCase::Process()
 {
     if (!initialized_ || !started_) return {ErrorCode::kNotInitialized, 0U, "camera.process"};
     ProcessRawDump();
@@ -353,25 +367,31 @@ Error CameraUseCase::Process()
                   static_cast<unsigned int>(now - g_last_frame_tick),
                   static_cast<unsigned int>(csi_stalled),
                   g_camera_recovery_count + 1U);
+        Imx335RegisterLayer registers;
+        LogCameraLinkState(registers);
         g_last_recovery_tick = now;
         g_camera_recovery_attempted = true;
         ++g_camera_recovery_count;
         g_completed_frame = 0U;
         g_active_frame = g_frame_buffer0;
         g_next_frame = g_frame_buffer1;
-        (void)BSP_CAMERA_Stop(0U);
-        (void)HAL_DCMIPP_DeInit(&hcamera_dcmipp);
-        bool recovery_ok =
+        (void)registers.SetStreaming(false);
+        HAL_Delay(20U);
+        const HAL_StatusTypeDef pipe_stop_status = HAL_DCMIPP_CSI_PIPE_Stop(
+            &hcamera_dcmipp, DCMIPP_PIPE1, DCMIPP_VIRTUAL_CHANNEL0);
+        bool recovery_ok = pipe_stop_status == HAL_OK &&
+            HAL_DCMIPP_DeInit(&hcamera_dcmipp) == HAL_OK &&
             BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) == BSP_ERROR_NONE &&
-            ConfigureSensor().Ok();
+            ConfigureSensor(registers).Ok();
         if (recovery_ok) {
             InstallExposureWorkaround();
             recovery_ok = ConfigurePipe().Ok() && ConfigureRawDumpPipe().Ok();
         }
         if (!recovery_ok ||
             BSP_CAMERA_Start(0U, reinterpret_cast<uint8_t *>(g_active_frame), CAMERA_MODE_CONTINUOUS) != BSP_ERROR_NONE ||
-            !ApplyDemosaicDiagnostic().Ok() || !StartStream(registers_).Ok()) {
+            !ApplyDemosaicDiagnostic().Ok() || !StartStream(registers).Ok()) {
             ++g_camera_recovery_error_count;
+            LogCameraLinkState(registers);
             tm_printf(reinterpret_cast<const UB *>(
                           "camera: recovery failed attempts=%u failed=%u\n"),
                       g_camera_recovery_count, g_camera_recovery_error_count);
@@ -382,6 +402,7 @@ Error CameraUseCase::Process()
             g_csi_fault_pending = false;
             g_last_frame_tick = now;
             g_last_vsync_count = g_camera_vsync_event_count;
+            LogCameraLinkState(registers);
             tm_printf(reinterpret_cast<const UB *>(
                           "camera: recovery done attempts=%u frames=%u\n"),
                       g_camera_recovery_count, g_camera_frame_event_count);
@@ -390,7 +411,7 @@ Error CameraUseCase::Process()
     return {ErrorCode::kOk, 0U, "camera.process"};
 }
 
-Error CameraUseCase::TakeCompletedCapture(memory_manager::CaptureFrame *frame)
+Error ImagerUseCase::TakeCompletedCapture(memory_manager::CaptureFrame *frame)
 {
     if (!initialized_ || memory_ == nullptr) return {ErrorCode::kNotInitialized, 0U, "camera.take_capture"};
     if (frame == nullptr) return {ErrorCode::kInvalidArgument, 0U, "camera.take_capture"};
@@ -400,13 +421,7 @@ Error CameraUseCase::TakeCompletedCapture(memory_manager::CaptureFrame *frame)
     return memory_->ImportCompletedCapture(address, frame);
 }
 
-Error CameraUseCase::ReadSensorRegisters(registers::SensorRegisterSnapshot *snapshot) const
-{
-    if (!initialized_) return {ErrorCode::kNotInitialized, 0U, "camera.read_sensor_registers"};
-    return registers_.ReadSnapshot(snapshot);
-}
-
-} // namespace uai::ai::camera::usecase
+} // namespace uai::ai::imager::usecase
 
 extern "C" void BSP_CAMERA_FrameEventCallback(uint32_t Instance)
 {
@@ -482,54 +497,4 @@ extern "C" HAL_StatusTypeDef MX_DCMIPP_ClockConfig(DCMIPP_HandleTypeDef *hdcmipp
     clock.ICSelection[RCC_IC18].ClockSelection = RCC_ICCLKSOURCE_PLL1;
     clock.ICSelection[RCC_IC18].ClockDivider = 40U;
     return HAL_RCCEx_PeriphCLKConfig(&clock);
-}
-
-extern "C" ISP_StatusTypeDef AiSetImx335Exposure(uint32_t instance, int32_t exposure)
-{
-    (void)instance;
-    auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
-    if (sensor == nullptr || exposure < 0) return ISP_ERR_EINVAL;
-    g_ai_last_exposure_request_us = static_cast<unsigned int>(exposure);
-    uint32_t lines = static_cast<uint32_t>(static_cast<float>(exposure) / (1000000.0F / (4500U * 30U)));
-    if (lines > kVmaxAt30Fps - kMinimumShutterLines) lines = kVmaxAt30Fps - kMinimumShutterLines;
-    g_ai_last_exposure_lines = lines;
-    return IMX335_SetExposure(sensor, static_cast<int32_t>(lines * 7U)) == IMX335_OK ? ISP_OK : ISP_ERR_EINVAL;
-}
-extern "C" ISP_StatusTypeDef AiGetImx335Exposure(uint32_t instance, int32_t *exposure)
-{
-    (void)instance;
-    if (exposure == nullptr || Camera_CompObj == nullptr) return ISP_ERR_EINVAL;
-    *exposure = static_cast<int32_t>(g_ai_last_exposure_request_us);
-    return ISP_OK;
-}
-extern "C" ISP_StatusTypeDef AiSetImx335Gain(uint32_t instance, int32_t gain_mdB)
-{
-    (void)instance;
-    auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
-    if (sensor == nullptr || gain_mdB < IMX335_GAIN_MIN) return ISP_ERR_EINVAL;
-    if (gain_mdB > 30000) gain_mdB = 30000;
-    g_ai_last_sensor_gain_mdB = static_cast<unsigned int>(gain_mdB);
-    return IMX335_SetGain(sensor, gain_mdB) == IMX335_OK ? ISP_OK : ISP_ERR_EINVAL;
-}
-extern "C" ISP_StatusTypeDef AiGetImx335Gain(uint32_t instance, int32_t *gain_mdB)
-{
-    (void)instance;
-    if (gain_mdB == nullptr || Camera_CompObj == nullptr) return ISP_ERR_EINVAL;
-    *gain_mdB = static_cast<int32_t>(g_ai_last_sensor_gain_mdB);
-    return ISP_OK;
-}
-extern "C" int32_t AiGetSensorGainMdB() { return static_cast<int32_t>(g_ai_last_sensor_gain_mdB); }
-
-extern "C" int32_t AiReadSensorRegisters(uint32_t *vmax, uint32_t *shutter, uint32_t *gain)
-{
-    if (Camera_CompObj == nullptr || vmax == nullptr || shutter == nullptr || gain == nullptr) return -1;
-    auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
-    uint8_t raw_vmax[3] = {}, raw_shutter[3] = {}, raw_gain[2] = {};
-    if (sensor->IO.ReadReg(sensor->IO.Address, IMX335_REG_VMAX, raw_vmax, 3U) != IMX335_OK ||
-        sensor->IO.ReadReg(sensor->IO.Address, IMX335_REG_SHUTTER, raw_shutter, 3U) != IMX335_OK ||
-        sensor->IO.ReadReg(sensor->IO.Address, IMX335_REG_GAIN, raw_gain, 2U) != IMX335_OK) return -1;
-    *vmax = raw_vmax[0] | (static_cast<uint32_t>(raw_vmax[1]) << 8U) | (static_cast<uint32_t>(raw_vmax[2]) << 16U);
-    *shutter = raw_shutter[0] | (static_cast<uint32_t>(raw_shutter[1]) << 8U) | (static_cast<uint32_t>(raw_shutter[2]) << 16U);
-    *gain = raw_gain[0] | (static_cast<uint32_t>(raw_gain[1]) << 8U);
-    return 0;
 }

@@ -1,5 +1,5 @@
-#ifndef UAI_AI_MODEL_PERSON_C_API_H
-#define UAI_AI_MODEL_PERSON_C_API_H
+#ifndef UAI_AI_MODEL_C_API_H
+#define UAI_AI_MODEL_C_API_H
 
 #include <stdint.h>
 
@@ -21,15 +21,5 @@ typedef struct ai_model_c_api {
     stai_return_code (*get_run_status)(void);
     stai_return_code (*new_inference)(void);
 } ai_model_c_api;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-extern const ai_model_c_api person_model_c_api;
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif
