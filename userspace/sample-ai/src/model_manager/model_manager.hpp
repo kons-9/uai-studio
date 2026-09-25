@@ -41,7 +41,6 @@ private:
     model_manager::PersonModelAdapter model_{};
 #endif
     stai_network_info info_{};
-    stai_ptr input_ = nullptr;
     stai_ptr outputs_[3]{};
     npu_driver::Status last_npu_status_{};
     bool initialized_ = false;

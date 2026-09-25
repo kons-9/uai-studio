@@ -1,10 +1,10 @@
 /*
  * sample-ai development image.
  *
- * The generated Neural-ART command blob is part of .rodata and can be much
- * larger than the small sample-hello-world image.  Keep code, read-only data and the
- * application state in all of AXISRAM1 (1 MiB), leaving AXISRAM2-6 to the
- * generated NPU memory pools.
+ * Keep executable code and application state in AXISRAM1, leaving AXISRAM2-6
+ * to the generated NPU memory pools.  The generated Neural-ART command blob
+ * is placed in the memory-mapped NOR region and emitted as a separate flash
+ * image by the sample-ai build.
  */
 /* A RAM image can inherit stale CPU cache lines from the previous image.
  * Start through the cache-sanitizing trampoline before entering CubeMX's
@@ -14,6 +14,9 @@ ENTRY(uai_ram_entry)
 MEMORY
 {
   APP (rwx) : ORIGIN = 0x34000400, LENGTH = 1023K
+  /* xSPI2 model weights start at 0x70380000. Keep command blobs in a
+   * separate, aligned area after the largest generated model image. */
+  MODEL_FLASH (rx) : ORIGIN = 0x70500000, LENGTH = 0x00E00000
 }
 
 _estack = ORIGIN(APP) + LENGTH(APP);
@@ -96,12 +99,12 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  .network_blobs 0x34085000 :
+  .network_blobs :
   {
     . = ALIGN(64);
     KEEP(*(.network_blobs))
     . = ALIGN(64);
-  } >APP
+  } >MODEL_FLASH
 
   .ARM :
   {

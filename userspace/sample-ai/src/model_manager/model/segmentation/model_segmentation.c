@@ -73,6 +73,14 @@ static stai_return_code segmentation_get_inputs(stai_ptr *inputs,
                                                 count);
 }
 
+static stai_return_code segmentation_set_input(stai_ptr input, stai_size size)
+{
+    return segmentation_LL_ATON_Set_User_Input_Buffer_network(
+               0U, input, size) == LL_ATON_User_IO_NOERROR
+               ? STAI_SUCCESS
+               : STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS;
+}
+
 static stai_return_code segmentation_get_outputs(stai_ptr *outputs,
                                                  stai_size *count)
 {
@@ -115,6 +123,7 @@ const ai_model_c_api segmentation_model_c_api = {
     segmentation_deinit,
     segmentation_get_info,
     segmentation_get_inputs,
+    segmentation_set_input,
     segmentation_get_outputs,
     segmentation_run,
     segmentation_run_continue,

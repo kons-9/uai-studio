@@ -29,6 +29,13 @@ constexpr std::uint32_t kSensorWidth = 2592U;
 constexpr std::uint32_t kSensorHeight = 1944U;
 constexpr std::uint32_t kOutputWidth = 800U;
 constexpr std::uint32_t kOutputHeight = 480U;
+#if defined(AI_MODEL_SEGMENTATION)
+constexpr std::uint32_t kInferenceWidth = 320U;
+constexpr std::uint32_t kInferenceHeight = 320U;
+#else
+constexpr std::uint32_t kInferenceWidth = 480U;
+constexpr std::uint32_t kInferenceHeight = 480U;
+#endif
 constexpr std::uint32_t kFrameTimeoutMs = 2000U;
 constexpr std::uint32_t kCsiFaultTimeoutMs = 100U;
 constexpr std::uint32_t kRecoveryRetryMs = 5000U;
@@ -65,6 +72,13 @@ std::uintptr_t g_active_frame = 0U;
 std::uintptr_t g_next_frame = 0U;
 std::uintptr_t g_frame_buffer0 = 0U;
 std::uintptr_t g_frame_buffer1 = 0U;
+volatile std::uintptr_t g_completed_inference = 0U;
+std::uintptr_t g_active_inference = 0U;
+std::uintptr_t g_next_inference = 0U;
+std::uintptr_t g_inference_buffer0 = 0U;
+std::uintptr_t g_inference_buffer1 = 0U;
+volatile std::uint32_t g_inference_sequence = 0U;
+uai::ai::memory_manager::MemoryManager *g_pipe2_memory = nullptr;
 volatile std::uint32_t g_last_frame_tick = 0U;
 volatile std::uint32_t g_last_csi_error_tick = 0U;
 volatile bool g_csi_fault_pending = false;
@@ -126,6 +140,70 @@ Error ConfigurePipe()
     const HAL_StatusTypeDef status = HAL_DCMIPP_PIPE_SetConfig(&hcamera_dcmipp, DCMIPP_PIPE1, &pipe);
     return status == HAL_OK ? Error{ErrorCode::kOk, 0U, "camera.pipe.configure"}
                             : Hardware("camera.pipe.configure", status);
+}
+
+Error ConfigureInferencePipe()
+{
+    /* Pipe2 is the ancillary NN output. It consumes the same RAW10 CSI
+     * stream as Pipe1, then performs the crop/scale and RGB888 packing in
+     * hardware. This is the same topology used by ref/. */
+    DCMIPP_CSI_PIPE_ConfTypeDef csi_pipe{};
+    csi_pipe.DataTypeMode = DCMIPP_DTMODE_DTIDA;
+    csi_pipe.DataTypeIDA = DCMIPP_DT_RAW10;
+    csi_pipe.DataTypeIDB = DCMIPP_DT_RAW10;
+    if (HAL_DCMIPP_CSI_PIPE_SetConfig(&hcamera_dcmipp, DCMIPP_PIPE2,
+                                      &csi_pipe) != HAL_OK ||
+        HAL_DCMIPP_PIPE_CSI_EnableShare(&hcamera_dcmipp, DCMIPP_PIPE2) !=
+            HAL_OK) {
+        return Hardware("camera.pipe2.csi");
+    }
+
+    const float ratio_width = static_cast<float>(kSensorWidth) / kOutputWidth;
+    const float ratio_height = static_cast<float>(kSensorHeight) / kOutputHeight;
+    const float ratio = ratio_width < ratio_height ? ratio_width : ratio_height;
+    DCMIPP_CropConfTypeDef crop{};
+    crop.HSize = static_cast<std::uint32_t>(kOutputWidth * ratio);
+    crop.VSize = static_cast<std::uint32_t>(kOutputHeight * ratio);
+    crop.HStart = ((kSensorWidth - crop.HSize) / 2U) & ~1U;
+    crop.VStart = ((kSensorHeight - crop.VSize) / 2U) & ~1U;
+    crop.PipeArea = DCMIPP_POSITIVE_AREA;
+    if (HAL_DCMIPP_PIPE_SetCropConfig(&hcamera_dcmipp, DCMIPP_PIPE2, &crop) !=
+            HAL_OK ||
+        HAL_DCMIPP_PIPE_EnableCrop(&hcamera_dcmipp, DCMIPP_PIPE2) != HAL_OK ||
+        HAL_DCMIPP_PIPE_DisableDecimation(&hcamera_dcmipp, DCMIPP_PIPE2) !=
+            HAL_OK) {
+        return Hardware("camera.pipe2.crop");
+    }
+
+    DCMIPP_DownsizeTypeDef downsize{};
+    downsize.HRatio = static_cast<std::uint32_t>(
+        8192.0F * crop.HSize / kInferenceWidth);
+    downsize.VRatio = static_cast<std::uint32_t>(
+        8192.0F * crop.VSize / kInferenceHeight);
+    downsize.HDivFactor = (1024U * 8192U - 1U) / downsize.HRatio;
+    downsize.VDivFactor = (1024U * 8192U - 1U) / downsize.VRatio;
+    downsize.HSize = kInferenceWidth;
+    downsize.VSize = kInferenceHeight;
+    if (HAL_DCMIPP_PIPE_SetDownsizeConfig(&hcamera_dcmipp, DCMIPP_PIPE2,
+                                          &downsize) != HAL_OK ||
+        HAL_DCMIPP_PIPE_EnableDownsize(&hcamera_dcmipp, DCMIPP_PIPE2) !=
+            HAL_OK) {
+        return Hardware("camera.pipe2.downsize");
+    }
+
+    DCMIPP_PipeConfTypeDef pipe{};
+    pipe.FrameRate = DCMIPP_FRAME_RATE_ALL;
+    pipe.PixelPipePitch = kInferenceWidth * 3U;
+    pipe.PixelPackerFormat = DCMIPP_PIXEL_PACKER_FORMAT_RGB888_YUV444_1;
+    if (HAL_DCMIPP_PIPE_SetConfig(&hcamera_dcmipp, DCMIPP_PIPE2, &pipe) !=
+            HAL_OK ||
+        HAL_DCMIPP_PIPE_EnableRedBlueSwap(&hcamera_dcmipp, DCMIPP_PIPE2) !=
+            HAL_OK ||
+        HAL_DCMIPP_PIPE_DisableGammaConversion(&hcamera_dcmipp, DCMIPP_PIPE2) !=
+            HAL_OK) {
+        return Hardware("camera.pipe2.configure");
+    }
+    return {ErrorCode::kOk, 0U, "camera.pipe2.configure"};
 }
 
 Error ConfigureRawDumpPipe()
@@ -240,6 +318,8 @@ volatile unsigned int g_camera_isp_error_count = 0U;
 volatile unsigned int g_camera_dcmipp_last_status = 0U;
 volatile unsigned int g_camera_dcmipp_error_count = 0U;
 volatile unsigned int g_camera_camera_error_count = 0U;
+volatile unsigned int g_camera_pipe2_frame_event_count = 0U;
+volatile unsigned int g_camera_pipe2_drop_count = 0U;
 volatile unsigned int g_camera_csi_last_status = 0U;
 volatile unsigned int g_camera_csi_last_status1 = 0U;
 volatile unsigned int g_camera_csi_last_pending_status = 0U;
@@ -299,11 +379,13 @@ Error ImagerUseCase::Initialize(memory_manager::MemoryManager &memory,
     Imx335RegisterLayer registers;
     if (!ConfigureSensor(registers).Ok()) return Hardware("camera.sensor.configure");
     InstallExposureWorkaround();
-    if (!ConfigurePipe().Ok() || !ConfigureRawDumpPipe().Ok()) {
+    if (!ConfigurePipe().Ok() || !ConfigureInferencePipe().Ok() ||
+        !ConfigureRawDumpPipe().Ok()) {
         return Hardware("camera.configure");
     }
     memory_ = &memory;
     memory_hardware_ = &memory_hardware;
+    g_pipe2_memory = &memory;
     initialized_ = true;
     return {ErrorCode::kOk, 0U, "camera.initialize"};
 }
@@ -321,9 +403,37 @@ Error ImagerUseCase::Start()
     if (!status.Ok()) return status;
     status = memory_hardware_->PrepareForDmaWrite(second_buffer);
     if (!status.Ok()) return status;
-    g_frame_buffer0 = first; g_frame_buffer1 = second; g_active_frame = first; g_next_frame = second; g_completed_frame = 0U; g_csi_fault_pending = false; g_camera_recovery_attempted = false;
+    std::uintptr_t inference_first = 0U, inference_second = 0U;
+    status = memory_->InferenceBuffers(&inference_first, &inference_second);
+    if (!status.Ok()) return status;
+    const memory_manager::Buffer inference_first_buffer{
+        inference_first, memory_manager::kInferenceBufferBytes, 0U,
+        memory_manager::Region::kInference};
+    const memory_manager::Buffer inference_second_buffer{
+        inference_second, memory_manager::kInferenceBufferBytes, 1U,
+        memory_manager::Region::kInference};
+    status = memory_hardware_->PrepareForDmaWrite(inference_first_buffer);
+    if (!status.Ok()) return status;
+    status = memory_hardware_->PrepareForDmaWrite(inference_second_buffer);
+    if (!status.Ok()) return status;
+    g_frame_buffer0 = first; g_frame_buffer1 = second;
+    g_active_frame = first; g_next_frame = second; g_completed_frame = 0U;
+    g_inference_buffer0 = inference_first;
+    g_inference_buffer1 = inference_second;
+    g_active_inference = inference_first;
+    g_next_inference = inference_second;
+    g_completed_inference = 0U;
+    g_inference_sequence = 0U;
+    g_csi_fault_pending = false;
+    g_camera_recovery_attempted = false;
     PrepareRawDump();
     if (BSP_CAMERA_Start(0U, reinterpret_cast<uint8_t *>(g_active_frame), CAMERA_MODE_CONTINUOUS) != BSP_ERROR_NONE) return Hardware("camera.start");
+    if (HAL_DCMIPP_CSI_PIPE_Start(&hcamera_dcmipp, DCMIPP_PIPE2,
+                                  DCMIPP_VIRTUAL_CHANNEL0,
+                                  static_cast<std::uint32_t>(g_active_inference),
+                                  DCMIPP_MODE_CONTINUOUS) != HAL_OK) {
+        return Hardware("camera.pipe2.start");
+    }
     status = ApplyDemosaicDiagnostic();
     if (!status.Ok()) return status;
     Imx335RegisterLayer registers;
@@ -343,6 +453,10 @@ Error ImagerUseCase::Stop()
     Imx335RegisterLayer registers;
     const auto standby = registers.SetStreaming(false);
     if (!standby.Ok()) return standby;
+    if (HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE2,
+                                 DCMIPP_VIRTUAL_CHANNEL0) != HAL_OK) {
+        return Hardware("camera.pipe2.stop");
+    }
     if (BSP_CAMERA_Stop(0U) != BSP_ERROR_NONE) return Hardware("camera.stop");
     started_ = false;
     return {ErrorCode::kOk, 0U, "camera.stop"};
@@ -375,20 +489,33 @@ Error ImagerUseCase::Process()
         g_completed_frame = 0U;
         g_active_frame = g_frame_buffer0;
         g_next_frame = g_frame_buffer1;
+        g_completed_inference = 0U;
+        g_active_inference = g_inference_buffer0;
+        g_next_inference = g_inference_buffer1;
         (void)registers.SetStreaming(false);
         HAL_Delay(20U);
-        const HAL_StatusTypeDef pipe_stop_status = HAL_DCMIPP_CSI_PIPE_Stop(
-            &hcamera_dcmipp, DCMIPP_PIPE1, DCMIPP_VIRTUAL_CHANNEL0);
+        const HAL_StatusTypeDef pipe_stop_status =
+            HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE1,
+                                     DCMIPP_VIRTUAL_CHANNEL0);
+        const HAL_StatusTypeDef pipe2_stop_status =
+            HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE2,
+                                     DCMIPP_VIRTUAL_CHANNEL0);
         bool recovery_ok = pipe_stop_status == HAL_OK &&
+            pipe2_stop_status == HAL_OK &&
             HAL_DCMIPP_DeInit(&hcamera_dcmipp) == HAL_OK &&
             BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) == BSP_ERROR_NONE &&
             ConfigureSensor(registers).Ok();
         if (recovery_ok) {
             InstallExposureWorkaround();
-            recovery_ok = ConfigurePipe().Ok() && ConfigureRawDumpPipe().Ok();
+            recovery_ok = ConfigurePipe().Ok() && ConfigureInferencePipe().Ok() &&
+                          ConfigureRawDumpPipe().Ok();
         }
         if (!recovery_ok ||
             BSP_CAMERA_Start(0U, reinterpret_cast<uint8_t *>(g_active_frame), CAMERA_MODE_CONTINUOUS) != BSP_ERROR_NONE ||
+            HAL_DCMIPP_CSI_PIPE_Start(
+                &hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0,
+                static_cast<std::uint32_t>(g_active_inference),
+                DCMIPP_MODE_CONTINUOUS) != HAL_OK ||
             !ApplyDemosaicDiagnostic().Ok() || !StartStream(registers).Ok()) {
             ++g_camera_recovery_error_count;
             LogCameraLinkState(registers);
@@ -421,6 +548,24 @@ Error ImagerUseCase::TakeCompletedCapture(memory_manager::CaptureFrame *frame)
     return memory_->ImportCompletedCapture(address, frame);
 }
 
+Error ImagerUseCase::TakeCompletedInference(
+    memory_manager::InferenceFrame *frame)
+{
+    if (!initialized_ || memory_ == nullptr) {
+        return {ErrorCode::kNotInitialized, 0U, "camera.take_inference"};
+    }
+    if (frame == nullptr) {
+        return {ErrorCode::kInvalidArgument, 0U, "camera.take_inference"};
+    }
+    const std::uintptr_t address = g_completed_inference;
+    const std::uint32_t sequence = g_inference_sequence;
+    g_completed_inference = 0U;
+    if (address == 0U) {
+        return {ErrorCode::kNoFrame, 0U, "camera.take_inference"};
+    }
+    return memory_->ImportCompletedInference(address, sequence, frame);
+}
+
 } // namespace uai::ai::imager::usecase
 
 extern "C" void BSP_CAMERA_FrameEventCallback(uint32_t Instance)
@@ -442,6 +587,39 @@ extern "C" void BSP_CAMERA_FrameEventCallback(uint32_t Instance)
 extern "C" void BSP_CAMERA_VsyncEventCallback(uint32_t Instance) { (void)Instance; ++g_camera_vsync_event_count; }
 extern "C" void BSP_CAMERA_PipeErrorCallback(uint32_t Instance) { (void)Instance; ++g_camera_dcmipp_error_count; }
 extern "C" void BSP_CAMERA_ErrorCallback(uint32_t Instance) { (void)Instance; ++g_camera_camera_error_count; }
+
+extern "C" void AiCameraPipe2FrameEventCallback(void)
+{
+    ++g_camera_pipe2_frame_event_count;
+    const std::uintptr_t completed = g_active_inference;
+    g_completed_inference = completed;
+    const std::uint32_t sequence = ++g_inference_sequence;
+    const std::uintptr_t other = g_next_inference;
+    std::uintptr_t selected = 0U;
+    if (g_pipe2_memory != nullptr &&
+        g_pipe2_memory->IsInferenceBufferFree(other)) {
+        selected = other;
+    } else if (g_pipe2_memory != nullptr &&
+               g_pipe2_memory->IsInferenceBufferFree(completed)) {
+        /* If NPU owns the other slot, keep the just-completed slot as a
+         * drop/reuse slot. Pipe1 remains independent and continues to render. */
+        selected = completed;
+        ++g_camera_pipe2_drop_count;
+    } else {
+        ++g_camera_pipe2_drop_count;
+        return;
+    }
+    if (HAL_DCMIPP_PIPE_SetMemoryAddress(
+            &hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_MEMORY_ADDRESS_0,
+            static_cast<std::uint32_t>(selected)) != HAL_OK) {
+        ++g_camera_dcmipp_error_count;
+        return;
+    }
+    (void)sequence;
+    g_active_inference = selected;
+    g_next_inference = selected == g_inference_buffer0 ? g_inference_buffer1
+                                                       : g_inference_buffer0;
+}
 
 extern "C" void DCMIPP_IRQHandler(void)
 {
@@ -479,8 +657,10 @@ extern "C" void CSI_IRQHandler(void)
         ++g_camera_csi_error_count;
         g_last_csi_error_tick = HAL_GetTick();
         g_csi_fault_pending = true;
-        CSI->IER0 |= pending0;
-        CSI->IER1 |= pending1;
+        // HAL_DCMIPP_CSI_IRQHandler() disables and clears the faulty CSI
+        // interrupt source.  Do not re-arm it here: repeated D-PHY errors
+        // must not turn into an interrupt storm.  The normal frame watchdog
+        // and recovery path remain enabled as the fail-safe.
     }
 }
 

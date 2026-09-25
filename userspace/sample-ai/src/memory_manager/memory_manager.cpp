@@ -35,8 +35,10 @@ Error MemoryManager::Initialize()
 
     display_[0].buffer = {kDisplay0, kFrameBytes, 0U, Region::kDisplay};
     display_[1].buffer = {kDisplay1, kFrameBytes, 1U, Region::kDisplay};
-    inference_[0].buffer = {kInference0, kFrameBytes, 0U, Region::kInference};
-    inference_[1].buffer = {kInference1, kFrameBytes, 1U, Region::kInference};
+    inference_[0].buffer = {kInference0, kInferenceBufferBytes, 0U,
+                             Region::kInference};
+    inference_[1].buffer = {kInference1, kInferenceBufferBytes, 1U,
+                             Region::kInference};
     current_display_ = -1;
     pending_display_ = -1;
     capture_sequence_ = 0U;
@@ -62,6 +64,22 @@ Error MemoryManager::CaptureBuffers(std::uintptr_t *first,
     *first = kCapture0;
     *second = kCapture1;
     return Make(ErrorCode::kOk, 0U, "memory.capture_buffers");
+}
+
+Error MemoryManager::InferenceBuffers(std::uintptr_t *first,
+                                      std::uintptr_t *second) const
+{
+    if (!initialized_) {
+        return Make(ErrorCode::kNotInitialized, 0U,
+                    "memory.inference_buffers.not_initialized");
+    }
+    if (first == nullptr || second == nullptr) {
+        return Make(ErrorCode::kInvalidArgument, 0U,
+                    "memory.inference_buffers.null_output");
+    }
+    *first = kInference0;
+    *second = kInference1;
+    return Make(ErrorCode::kOk, 0U, "memory.inference_buffers");
 }
 
 Error MemoryManager::ImportCompletedCapture(std::uintptr_t address,
@@ -258,11 +276,60 @@ Error MemoryManager::AcquireInferenceBuffer(const CaptureFrame &capture,
             inference_capture_sequence_[i] = capture.sequence;
             frame->buffer = inference_[i].buffer;
             frame->capture_sequence = capture.sequence;
+            frame->from_pipe2 = false;
             return Make(ErrorCode::kOk, i, "memory.inference.acquire");
         }
     }
     return Make(ErrorCode::kNoBuffer, 0U,
                 "memory.inference.acquire.no_free_slot");
+}
+
+Error MemoryManager::ImportCompletedInference(std::uintptr_t address,
+                                               std::uint32_t sequence,
+                                               InferenceFrame *frame)
+{
+    if (!initialized_) {
+        return Make(ErrorCode::kNotInitialized, 0U,
+                    "memory.inference.import.not_initialized");
+    }
+    if (frame == nullptr || sequence == 0U) {
+        return Make(ErrorCode::kInvalidArgument, sequence,
+                    "memory.inference.import.invalid_argument");
+    }
+
+    std::uint8_t index = 0U;
+    if (address == kInference1) {
+        index = 1U;
+    } else if (address != kInference0) {
+        return Make(ErrorCode::kInvalidArgument,
+                    static_cast<std::uint32_t>(address),
+                    "memory.inference.import.unknown_address");
+    }
+
+    Slot &slot = inference_[index];
+    if (slot.state != BufferState::kFree) {
+        return Make(ErrorCode::kNoBuffer,
+                    static_cast<std::uint32_t>(slot.state),
+                    "memory.inference.import.buffer_busy");
+    }
+    slot.state = BufferState::kReadyForAi;
+    inference_capture_sequence_[index] = sequence;
+    frame->buffer = slot.buffer;
+    frame->capture_sequence = sequence;
+    frame->from_pipe2 = true;
+    return Make(ErrorCode::kOk, index, "memory.inference.import");
+}
+
+bool MemoryManager::IsInferenceBufferFree(std::uintptr_t address) const
+{
+    if (!initialized_) {
+        return false;
+    }
+    const std::uint8_t index = address == kInference1 ? 1U : 0U;
+    if (address != kInference0 && address != kInference1) {
+        return false;
+    }
+    return inference_[index].state == BufferState::kFree;
 }
 
 Error MemoryManager::ClaimInferenceBuffer(const InferenceFrame &frame)

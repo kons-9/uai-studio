@@ -14,6 +14,7 @@ typedef struct ai_model_c_api {
     stai_return_code (*deinit)(void);
     stai_return_code (*get_info)(stai_network_info *info);
     stai_return_code (*get_inputs)(stai_ptr *inputs, stai_size *count);
+    stai_return_code (*set_input)(stai_ptr input, stai_size size);
     stai_return_code (*get_outputs)(stai_ptr *outputs, stai_size *count);
     stai_return_code (*run)(stai_run_mode mode);
     stai_return_code (*run_continue)(void);

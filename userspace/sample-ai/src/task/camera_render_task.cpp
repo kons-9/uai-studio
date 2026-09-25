@@ -286,12 +286,47 @@ void camera_render_task(void)
             reported_recoveries = g_camera_recovery_count;
             reported_recovery_errors = g_camera_recovery_error_count;
             tm_printf(reinterpret_cast<const UB *>(
-                          "camera: recovery attempts=%u failed=%u frames=%u vsync=%u\n"),
+                          "camera: recovery attempts=%u failed=%u frames=%u vsync=%u pipe2=%u drops=%u\n"),
                       reported_recoveries, reported_recovery_errors,
-                      g_camera_frame_event_count, g_camera_vsync_event_count);
+                      g_camera_frame_event_count, g_camera_vsync_event_count,
+                      g_camera_pipe2_frame_event_count,
+                      g_camera_pipe2_drop_count);
         }
 
         const std::uint32_t now = Now();
+        const bool inference_due = kCopyInferenceFrames &&
+                                    (kInferenceMode == InferenceMode::kCopyOnly ||
+                                     g_external_nor_ready) &&
+                                    static_cast<std::int32_t>(now -
+                                                              next_inference) >=
+                                        0;
+
+        /* Pipe2 is a separate RGB888 producer. Drain it on every camera-task
+         * iteration so the two DMA buffers are returned quickly even when the
+         * inference period is intentionally slow. */
+        InferenceFrame pipe2_frame{};
+        const Error pipe2_status = imager.TakeCompletedInference(&pipe2_frame);
+        if (pipe2_status.Ok()) {
+            if (inference_due && kInferenceMode == InferenceMode::kNpu) {
+                tm_printf(reinterpret_cast<const UB *>(
+                              "ai: pipe2 frame queued sequence=%u buffer=%x events=%u drops=%u\n"),
+                          static_cast<unsigned int>(pipe2_frame.capture_sequence),
+                          static_cast<unsigned int>(pipe2_frame.buffer.address),
+                          g_camera_pipe2_frame_event_count,
+                          g_camera_pipe2_drop_count);
+                SendInferenceFrame(pipe2_frame);
+                next_inference = now + kInferencePeriod;
+            } else {
+                const Error release_status =
+                    g_memory.ReleaseInferenceBuffer(pipe2_frame);
+                if (!release_status.Ok()) {
+                    LogStatus("memory", release_status);
+                }
+            }
+        } else if (pipe2_status.code != ErrorCode::kNoFrame &&
+                   pipe2_status.code != ErrorCode::kNoBuffer) {
+            LogStatus("camera", pipe2_status);
+        }
         if (DrainLatestBoxes(&active_boxes)) {
             last_box_update = now;
         } else if (active_boxes.count > 0U &&
@@ -323,12 +358,6 @@ void camera_render_task(void)
         LogFrameBrightness(capture);
 
         const bool display_due = true;
-        const bool inference_due = kCopyInferenceFrames &&
-                                    (kInferenceMode == InferenceMode::kCopyOnly ||
-                                     g_external_nor_ready) &&
-                                    static_cast<std::int32_t>(now -
-                                                              next_inference) >=
-                                        0;
         if (display_due) {
             if (capture.sequence <= 3U ||
                 (capture.sequence % 10U) == 0U) {
@@ -358,76 +387,13 @@ void camera_render_task(void)
             }
         }
 
-        if (inference_due) {
-            tm_printf(reinterpret_cast<const UB *>(
-                          "ai: snapshot begin sequence=%u\n"),
-                      static_cast<unsigned int>(capture.sequence));
-            InferenceFrame inference{};
-            status = g_memory.AcquireInferenceBuffer(capture, &inference);
-            if (status.Ok()) {
-                status = g_memory_hardware.PrepareForCpuRead(capture.buffer);
-            }
-            if (status.Ok()) {
-                const std::uint32_t copy_start = Now();
-                std::memcpy(
-                    reinterpret_cast<void *>(inference.buffer.address),
-                    reinterpret_cast<const void *>(capture.buffer.address),
-                    uai::ai::memory_manager::kFrameBytes);
-                const std::uint32_t copy_elapsed = Now() - copy_start;
-                const Error generation_after_copy =
-                    g_memory.ValidateCaptureFrame(capture);
-                if constexpr (kInferenceMode == InferenceMode::kCopyOnly) {
-                    tm_printf(reinterpret_cast<const UB *>(
-                                  "ai: copy-only sequence_before=%u bytes=%u elapsed_ms=%u generation_valid_after=%u code=%u\n"),
-                              static_cast<unsigned int>(capture.sequence),
-                              static_cast<unsigned int>(
-                                  uai::ai::memory_manager::kFrameBytes),
-                              static_cast<unsigned int>(copy_elapsed),
-                              static_cast<unsigned int>(
-                                  generation_after_copy.Ok() ? 1U : 0U),
-                              static_cast<unsigned int>(generation_after_copy.code));
-                }
-                status = {ErrorCode::kOk, capture.sequence,
-                          "memory.snapshot_inference"};
-            } else if (inference) {
-                const Error release_status =
-                    g_memory.ReleaseInferenceBuffer(inference);
-                LogStatus("memory", release_status);
-            }
-            tm_printf(reinterpret_cast<const UB *>(
-                          "ai: snapshot end sequence=%u code=%u detail=%x buffer=%x\n"),
-                      static_cast<unsigned int>(capture.sequence),
-                      static_cast<unsigned int>(status.code),
-                      static_cast<unsigned int>(status.detail),
-                      static_cast<unsigned int>(inference.buffer.address));
-            if (status.Ok()) {
-                if constexpr (kInferenceMode == InferenceMode::kNpu) {
-                    SendInferenceFrame(inference);
-                    tm_printf(reinterpret_cast<const UB *>(
-                                  "ai: frame copied sequence=%u buffer=%x irq=%u last=%x\n"),
-                              static_cast<unsigned int>(capture.sequence),
-                              static_cast<unsigned int>(inference.buffer.address),
-                              g_aton_irq_count, g_aton_last_irqs);
-                } else {
-                    status = g_memory.ReleaseInferenceBuffer(inference);
-                    if (status.Ok()) {
-                        tm_printf(reinterpret_cast<const UB *>(
-                                      "ai: copy-only snapshot released sequence=%u\n"),
-                                  static_cast<unsigned int>(capture.sequence));
-                    } else {
-                        LogStatus("memory", status);
-                    }
-                }
-            } else if (!IsBestEffort(status.code)) {
-                LogStatus("memory", status);
-            }
-            next_inference = now + kInferencePeriod;
-        }
         if ((loop_count % 1000U) == 0U) {
             tm_printf(reinterpret_cast<const UB *>(
-                          "camera: heartbeat loop=%u sequence=%u aton_irq=%u last=%x\n"),
+                          "camera: heartbeat loop=%u sequence=%u pipe2=%u drops=%u aton_irq=%u last=%x\n"),
                       static_cast<unsigned int>(loop_count),
                       static_cast<unsigned int>(capture.sequence),
+                      g_camera_pipe2_frame_event_count,
+                      g_camera_pipe2_drop_count,
                       g_aton_irq_count, g_aton_last_irqs);
         }
         tk_dly_tsk(1);

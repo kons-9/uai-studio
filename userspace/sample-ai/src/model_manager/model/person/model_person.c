@@ -63,6 +63,14 @@ static stai_return_code person_get_inputs(stai_ptr *inputs, stai_size *count)
     return person_stai_network_get_inputs(person_context, inputs, count);
 }
 
+static stai_return_code person_set_input(stai_ptr input, stai_size size)
+{
+    return person_LL_ATON_Set_User_Input_Buffer_network(
+               0U, input, size) == LL_ATON_User_IO_NOERROR
+               ? STAI_SUCCESS
+               : STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS;
+}
+
 static stai_return_code person_get_outputs(stai_ptr *outputs, stai_size *count)
 {
     return person_stai_network_get_outputs(person_context, outputs, count);
@@ -102,6 +110,7 @@ const ai_model_c_api person_model_c_api = {
     person_deinit,
     person_get_info,
     person_get_inputs,
+    person_set_input,
     person_get_outputs,
     person_run,
     person_run_continue,

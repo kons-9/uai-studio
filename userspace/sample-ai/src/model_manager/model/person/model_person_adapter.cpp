@@ -26,6 +26,11 @@ stai_return_code PersonModelAdapter::GetInputs(stai_ptr *inputs, stai_size *coun
     return person_model_c_api.get_inputs(inputs, count);
 }
 
+stai_return_code PersonModelAdapter::SetInput(stai_ptr input, stai_size size)
+{
+    return person_model_c_api.set_input(input, size);
+}
+
 stai_return_code PersonModelAdapter::GetOutputs(stai_ptr *outputs, stai_size *count)
 {
     return person_model_c_api.get_outputs(outputs, count);

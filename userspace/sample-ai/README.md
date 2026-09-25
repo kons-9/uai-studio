@@ -6,6 +6,32 @@
 `sample-camera-lcd` のカメラ実装と独立しています。推論結果の先頭バイトと、出力が
 `float32` の場合は argmax を UART に表示します。
 
+## カメラ推論経路
+
+カメラ表示は `DCMIPP_PIPE1` の RGB565 800x480、推論入力は `DCMIPP_PIPE2` の
+RGB888（person: 480x480、segmentation: 320x320）を使用します。Pipe2の出力は
+PSRAM上の推論バッファへDMAし、生成モデル側が外部入力バッファを受け付けないため、
+推論タスクでモデル入力へ必要サイズだけコピーしてからNPUを実行します。
+
+UARTには `pipe2 frame queued`、`pipe2` イベント数、ドロップ数を出力します。CSI
+エラーが発生してもPipe1のフレームsequenceが継続するか、`recovery` が増えないかを
+合わせて確認してください。
+
+### CSIエラー／カメラ再起動の切り分け結果（2026-09-25）
+
+実機UARTで、Pipe2のみ動作させてNPUを止めた場合はCSIエラーが再現せず、Pipe2と
+NPUを同時動作させた場合に `ESOTSYNCDL*`、`SYNCERR`、`CCFIFO` が再現した。
+したがって、カメラ配線だけでなく、sample-ai固有のNPU実行経路とCSI/AXI帯域の
+同時使用が再起動の誘因である。FPSを20に下げてもエラーは残ったため、FPSだけでは
+根本対策にならない。
+
+ref/はモデル生成時に `--no-inputs-allocation --no-outputs-allocation` を指定し、
+Pipe2のPSRAMバッファをNPUのユーザー入力へ直接渡す。現在のsample-ai生成物は入力を
+固定AXISRAM (`0x34100000`) に割り当てており、Pipe2からCPU側の入力準備を経由する
+点がref/との差分である。最終対策は、同じ生成オプションでモデルを再生成して
+Pipe2→NPUの直接入力にすること。CSIエラー割込みの再アームは行わず、フレーム停止を
+監視するフェイルセーフ復旧は残す。
+
 ## 2つのモデル
 
 モデルは同時にリンクするのではなく、`AI_MODEL` で1つを選択します。
@@ -51,16 +77,15 @@ sh userspace/sample-ai/models/generate_model.sh model2 \
 STEdgeAI と `stedgeai-lib` のバージョンは必ず一致させてください。生成 C
 ファイル自身にもランタイムバージョンのチェックがあります。
 
-sample-ai専用リンカスクリプトは、生成された大きな command blob を収めるため
-AXISRAM1全体をアプリケーションに割り当て、AXISRAM2-6をNPU用に残します。
-モデルがXSPI1を使う場合にも対応できるよう、実行時にDKのPSRAMとNORの
-memory-mappedモードを初期化します。
+sample-ai専用リンカスクリプトは、生成されたcommand blobをXSPI2 NORの
+`0x70500000`へ配置し、アプリケーション本体だけをAXISRAM1へ置きます。
+AXISRAM2-6はNPU用に残します。モデルがXSPI1を使う場合にも対応できるよう、
+実行時にDKのPSRAMとNORのmemory-mappedモードを初期化します。
 これは `sample-hello-world` のリンカスクリプトを変更するものではありません。
 
 ## 後で行う configure/build
 
-現在の作業中に副作用が出ないよう、この手順は実行していません。`sample-camera-lcd`
-の確認が終わってから、既存の sample-hello-world 用 CubeMX 出力を使う場合は次のように
+既存の sample-hello-world 用 CubeMX 出力を使う場合は、次のように
 別のビルドディレクトリを使えます。
 
 ```sh
@@ -76,8 +101,7 @@ cmake --build build-sample-ai --target sample-ai
 
 model2 に切り替えるときは configure に
 `-DAI_MODEL=model2` を追加します。`CUBEMX_OUTPUT_DIR` は、実際に動作
-確認済みの CubeMX 出力を指定してください。CubeMX生成・ビルド・書き込みは
-この実装作業では実行していません。
+確認済みの CubeMX 出力を指定してください。
 
 後で `ram-run` を使う場合は、sample-aiのスタック上限に合わせて
 `STM32_RAM_STACK=0x34100000` も指定してください。
@@ -89,6 +113,19 @@ model2 に切り替えるときは configure に
 `network_data.hex` を STM32CubeProgrammer と DK 用 external loader で書き込む
 必要があります。書き込みコマンドはボード接続を変更するため、上記 build と
 同じく `sample-camera-lcd` の作業が終わってから実行してください。
+
+## command blobの書き込み
+
+ビルド後、command blobはアプリケーションRAMイメージとは別に生成されます。
+`build/userspace/sample-ai/network_blobs.bin`をDK用external loaderで
+`0x70500000`へ書き込んでください。ビルド成果物は次の3つに分かれます。
+
+- `sample-ai.bin`: AXISRAM1へロードするアプリケーション本体
+- `network_blobs.bin`: XSPI2へ書き込むcommand blobのバイナリ
+- `network_blobs.hex`: 同じblobの絶対アドレス付きIntel HEX
+
+command blobの書き込み後に`ram-run`を実行します。モデル初期化はNORの
+memory-mapped化後に行われるため、外部Flash上のblobを参照できます。
 
 ## sample-aiだけで完結している範囲
 

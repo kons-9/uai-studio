@@ -22,9 +22,15 @@ stai_return_code SegmentationModelAdapter::GetInfo(stai_network_info *info)
 }
 
 stai_return_code SegmentationModelAdapter::GetInputs(stai_ptr *inputs,
-                                                     stai_size *count)
+                                                      stai_size *count)
 {
     return segmentation_model_c_api.get_inputs(inputs, count);
+}
+
+stai_return_code SegmentationModelAdapter::SetInput(stai_ptr input,
+                                                     stai_size size)
+{
+    return segmentation_model_c_api.set_input(input, size);
 }
 
 stai_return_code SegmentationModelAdapter::GetOutputs(stai_ptr *outputs,

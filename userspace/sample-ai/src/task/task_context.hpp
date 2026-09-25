@@ -26,6 +26,8 @@ extern volatile unsigned int g_camera_isp_error_count;
 extern volatile unsigned int g_camera_dcmipp_last_status;
 extern volatile unsigned int g_camera_dcmipp_error_count;
 extern volatile unsigned int g_camera_camera_error_count;
+extern volatile unsigned int g_camera_pipe2_frame_event_count;
+extern volatile unsigned int g_camera_pipe2_drop_count;
 extern volatile unsigned int g_camera_csi_last_status;
 extern volatile unsigned int g_camera_csi_last_status1;
 extern volatile unsigned int g_camera_csi_last_pending_status;

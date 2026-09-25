@@ -12,6 +12,19 @@ constexpr std::uint32_t kFrameWidth = 800U;
 constexpr std::uint32_t kFrameHeight = 480U;
 constexpr std::size_t kFrameBytes =
     static_cast<std::size_t>(kFrameWidth) * kFrameHeight * 2U;
+#if defined(AI_MODEL_SEGMENTATION)
+constexpr std::uint32_t kInferenceWidth = 320U;
+constexpr std::uint32_t kInferenceHeight = 320U;
+#else
+constexpr std::uint32_t kInferenceWidth = 480U;
+constexpr std::uint32_t kInferenceHeight = 480U;
+#endif
+constexpr std::size_t kInferenceFrameBytes =
+    static_cast<std::size_t>(kInferenceWidth) * kInferenceHeight * 3U;
+/* Keep the legacy copy-only path safe while Pipe2 uses the smaller RGB888
+ * model buffer. The hardware only writes kInferenceFrameBytes bytes. */
+constexpr std::size_t kInferenceBufferBytes =
+    kFrameBytes > kInferenceFrameBytes ? kFrameBytes : kInferenceFrameBytes;
 constexpr std::size_t kMaxBoxes = 16U;
 
 enum class Region : std::uint8_t {
@@ -54,6 +67,7 @@ struct DisplayBuffer {
 struct InferenceFrame {
     Buffer buffer{};
     std::uint32_t capture_sequence = 0U;
+    bool from_pipe2 = false;
 
     explicit operator bool() const { return static_cast<bool>(buffer); }
 };
@@ -82,8 +96,14 @@ public:
 
     common::Error CaptureBuffers(std::uintptr_t *first,
                                  std::uintptr_t *second) const;
+    common::Error InferenceBuffers(std::uintptr_t *first,
+                                   std::uintptr_t *second) const;
     common::Error ImportCompletedCapture(std::uintptr_t address,
                                          CaptureFrame *frame);
+    common::Error ImportCompletedInference(std::uintptr_t address,
+                                           std::uint32_t sequence,
+                                           InferenceFrame *frame);
+    bool IsInferenceBufferFree(std::uintptr_t address) const;
     common::Error ValidateCaptureFrame(const CaptureFrame &frame) const;
 
     common::Error AcquireDisplayBuffer(DisplayBuffer *buffer);

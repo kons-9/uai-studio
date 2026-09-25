@@ -73,6 +73,12 @@ if(AI_MODEL STREQUAL "segmentation" AND AI_SEGMENTATION_DIAGNOSTICS)
         "${AI_MODEL_IMPL_DIR}/model_segmentation_diagnostics.c")
 endif()
 
+set(AI_CAMERA_BSP_SOURCE
+    "${AI_SRC_DIR}/driver/camera/board/stm32n6570_discovery_camera.c")
+set_source_files_properties(${AI_CAMERA_BSP_SOURCE} PROPERTIES
+    COMPILE_DEFINITIONS
+    "HAL_DCMIPP_PIPE_VsyncEventCallback=sample_ai_HAL_DCMIPP_PIPE_VsyncEventCallback;HAL_DCMIPP_PIPE_FrameEventCallback=sample_ai_HAL_DCMIPP_PIPE_FrameEventCallback")
+
 add_executable(sample-ai.elf
     src/main.cpp
     src/task/application_initialize_task.cpp
@@ -101,7 +107,8 @@ add_executable(sample-ai.elf
     # OPI-DTR by the external loader.
     "${AI_SRC_DIR}/driver/c_bsp/stm32n6570_discovery_xspi.c"
     "${AI_BSP_ROOT}/stm32n6570_discovery_bus.c"
-    src/driver/camera/board/stm32n6570_discovery_camera.c
+    ${AI_CAMERA_BSP_SOURCE}
+    src/driver/camera/board/dcmipp_callbacks.c
     src/driver/camera/sensor/imx335.c
     "${AI_CUBE_ROOT}/Drivers/BSP/Components/imx335/imx335_reg.c"
     "${AI_BSP_ROOT}/stm32n6570_discovery_lcd.c"
@@ -174,6 +181,10 @@ target_link_libraries(sample-ai.elf PRIVATE
 
 set(AI_LINKER_SCRIPT
     "${CMAKE_CURRENT_SOURCE_DIR}/stm32n6570-dk-npu-ram.ld")
+set(AI_NETWORK_BLOBS_BIN
+    "${CMAKE_CURRENT_BINARY_DIR}/network_blobs.bin")
+set(AI_NETWORK_BLOBS_HEX
+    "${CMAKE_CURRENT_BINARY_DIR}/network_blobs.hex")
 target_link_options(sample-ai.elf PRIVATE
     "-T${AI_LINKER_SCRIPT}"
     "-Wl,--undefined=NPU0_IRQHandler"
@@ -184,8 +195,17 @@ set_target_properties(sample-ai.elf PROPERTIES
 
 add_custom_command(TARGET sample-ai.elf POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary
+            --remove-section=.network_blobs
             "$<TARGET_FILE:sample-ai.elf>"
             "${CMAKE_CURRENT_BINARY_DIR}/sample-ai.bin"
+    COMMAND ${CMAKE_OBJCOPY} -O binary
+            --only-section=.network_blobs
+            "$<TARGET_FILE:sample-ai.elf>"
+            "${AI_NETWORK_BLOBS_BIN}"
+    COMMAND ${CMAKE_OBJCOPY} -O ihex
+            --only-section=.network_blobs
+            "$<TARGET_FILE:sample-ai.elf>"
+            "${AI_NETWORK_BLOBS_HEX}"
     COMMAND ${CMAKE_SIZE} "$<TARGET_FILE:sample-ai.elf>"
     VERBATIM)
 

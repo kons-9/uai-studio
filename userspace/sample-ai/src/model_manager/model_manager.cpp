@@ -149,29 +149,6 @@ std::int16_t ClampCoordinate(Float value, std::int32_t limit)
     return static_cast<std::int16_t>(value);
 }
 
-void ConvertInput(std::uintptr_t source_address, stai_ptr destination)
-{
-    const auto *source =
-        reinterpret_cast<const std::uint16_t *>(source_address);
-    auto *output = reinterpret_cast<std::uint8_t *>(destination);
-    for (std::size_t y = 0U; y < kInputSize; ++y) {
-        for (std::size_t x = 0U; x < kInputSize; ++x) {
-            const std::uint16_t pixel =
-                source[y * memory_manager::kFrameWidth + kInputCropX + x];
-            const std::uint8_t red = static_cast<std::uint8_t>(
-                ((pixel >> 11U) & 0x1FU) * 255U / 31U);
-            const std::uint8_t green = static_cast<std::uint8_t>(
-                ((pixel >> 5U) & 0x3FU) * 255U / 63U);
-            const std::uint8_t blue =
-                static_cast<std::uint8_t>((pixel & 0x1FU) * 255U / 31U);
-            const std::size_t offset = (y * kInputSize + x) * 3U;
-            output[offset] = red;
-            output[offset + 1U] = green;
-            output[offset + 2U] = blue;
-        }
-    }
-}
-
 bool ConvertDetections(stai_ptr *outputs, BoxSet *result)
 {
     OdInput input{};
@@ -245,8 +222,6 @@ void LogBoxes(const char *stage, const BoxSet &boxes)
 #else
 constexpr std::size_t kSegmentationInputWidth = 320U;
 constexpr std::size_t kSegmentationInputHeight = 320U;
-constexpr std::size_t kSegmentationInputCropX = 160U;
-constexpr std::size_t kSegmentationCropWidth = 480U;
 constexpr std::size_t kSegmentationMaskWidth = 320U;
 constexpr std::size_t kSegmentationMaskHeight = 320U;
 constexpr std::size_t kSegmentationMaskBytes =
@@ -255,35 +230,6 @@ constexpr std::uintptr_t kSegmentationMaskBuffers[2] = {
     0x91700000UL,
     0x91720000UL,
 };
-
-void ConvertInput(std::uintptr_t source_address, stai_ptr destination)
-{
-    const auto *source =
-        reinterpret_cast<const std::uint16_t *>(source_address);
-    auto *output = reinterpret_cast<std::uint8_t *>(destination);
-    for (std::size_t y = 0U; y < kSegmentationInputHeight; ++y) {
-        const std::size_t source_y =
-            y * memory_manager::kFrameHeight / kSegmentationInputHeight;
-        for (std::size_t x = 0U; x < kSegmentationInputWidth; ++x) {
-            const std::size_t source_x =
-                kSegmentationInputCropX +
-                x * kSegmentationCropWidth / kSegmentationInputWidth;
-            const std::uint16_t pixel =
-                source[source_y * memory_manager::kFrameWidth + source_x];
-            const std::uint8_t red = static_cast<std::uint8_t>(
-                ((pixel >> 11U) & 0x1FU) * 255U / 31U);
-            const std::uint8_t green = static_cast<std::uint8_t>(
-                ((pixel >> 5U) & 0x3FU) * 255U / 63U);
-            const std::uint8_t blue =
-                static_cast<std::uint8_t>((pixel & 0x1FU) * 255U / 31U);
-            const std::size_t offset =
-                (y * kSegmentationInputWidth + x) * 3U;
-            output[offset] = red;
-            output[offset + 1U] = green;
-            output[offset + 2U] = blue;
-        }
-    }
-}
 
 bool ConvertSegmentationMask(stai_ptr output, std::uint8_t mask_index,
                              BoxSet *result)
@@ -336,14 +282,7 @@ Error ModelManager::Initialize(memory_manager::MemoryManager &memory,
         return {ErrorCode::kModel, last_error_, "ai.model_info"};
     }
 
-    stai_size input_count = 0U;
     stai_size output_count = 0U;
-    npu_status = npu_.GetInputs(&input_, &input_count);
-    last_npu_status_ = npu_status;
-    if (!npu_status.Ok() || input_count != 1U || input_ == nullptr) {
-        last_error_ = npu_status.error.detail;
-        return {ErrorCode::kModel, last_error_, "ai.model_inputs"};
-    }
     npu_status = npu_.GetOutputs(outputs_, &output_count);
     last_npu_status_ = npu_status;
     if (!npu_status.Ok() || output_count != expected_outputs) {
@@ -394,29 +333,46 @@ Error ModelManager::TryInfer(
     result->mask_width = 0U;
     result->mask_height = 0U;
     tm_printf(reinterpret_cast<const UB *>(
-                  "ai: convert input begin sequence=%u source=%x destination=%x\n"),
+                  "ai: input direct begin sequence=%u source=%x size=%u pipe2=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence),
               static_cast<unsigned int>(frame.buffer.address),
-              static_cast<unsigned int>(reinterpret_cast<std::uintptr_t>(input_)));
-    ConvertInput(frame.buffer.address, input_);
-    tm_printf(reinterpret_cast<const UB *>(
-                  "ai: convert input end sequence=%u\n"),
-              static_cast<unsigned int>(frame.capture_sequence));
-    Error status;
+              static_cast<unsigned int>(info_.inputs[0].size_bytes),
+              static_cast<unsigned int>(frame.from_pipe2));
+    if (!frame.from_pipe2 ||
+        frame.buffer.size < info_.inputs[0].size_bytes) {
+        return {ErrorCode::kInvalidArgument,
+                static_cast<std::uint32_t>(frame.buffer.size),
+                "ai.direct_input"};
+    }
     const memory_manager::Buffer input_buffer{
-        reinterpret_cast<std::uintptr_t>(input_), info_.inputs[0].size_bytes,
-        0U, memory_manager::Region::kInference};
+        frame.buffer.address, info_.inputs[0].size_bytes, frame.buffer.index,
+        memory_manager::Region::kInference};
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: input cache begin sequence=%u size=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence),
               static_cast<unsigned int>(input_buffer.size));
-    status = memory_hardware_->PrepareForPeripheralRead(input_buffer);
+    /* Pipe2 wrote this buffer. Invalidate the CPU cache so NPU sees the
+     * completed DMA contents; cleaning here could write stale CPU lines back
+     * over the camera image. */
+    Error status = memory_hardware_->PrepareForCpuRead(input_buffer);
     if (!status.Ok()) {
         return status;
     }
     tm_printf(reinterpret_cast<const UB *>(
-                  "ai: input cache end sequence=%u\n"),
+              "ai: input cache end sequence=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence));
+
+    const stai_return_code set_input = model_.SetInput(
+        reinterpret_cast<stai_ptr>(frame.buffer.address),
+        info_.inputs[0].size_bytes);
+    if (set_input != STAI_SUCCESS) {
+        return {ErrorCode::kModel, static_cast<std::uint32_t>(set_input),
+                "ai.set_user_input"};
+    }
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: input direct end sequence=%u source=%x\n"),
+              static_cast<unsigned int>(frame.capture_sequence),
+              static_cast<unsigned int>(frame.buffer.address));
 
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu run call sequence=%u\n"),

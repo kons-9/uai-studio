@@ -19,6 +19,7 @@ public:
     common::Error Stop();
     common::Error Process();
     common::Error TakeCompletedCapture(memory_manager::CaptureFrame *frame);
+    common::Error TakeCompletedInference(memory_manager::InferenceFrame *frame);
 
 private:
     memory_manager::MemoryManager *memory_ = nullptr;

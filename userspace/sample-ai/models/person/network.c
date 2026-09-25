@@ -103,24 +103,26 @@ const LL_Streng_EncryptionTypedef *LL_ATON_BlobEncryption_Info_network()
   return &LL_Streng_EncryptionStruct;
 }
 
+/* Pipe2 supplies the RGB888 tensor directly.  This is normally emitted by
+ * STEdgeAI with --no-inputs-allocation. */
+static unsigned char *_mem_pool__user_io_input_network = NULL;
+
 LL_ATON_User_IO_Result_t LL_ATON_Set_User_Input_Buffer_network(uint32_t num, void* buffer, uint32_t size)
 {
-  LL_ATON_LIB_UNUSED(num);
-  LL_ATON_LIB_UNUSED(buffer);
-  LL_ATON_LIB_UNUSED(size);
-
-  { 
-    return LL_ATON_User_IO_WRONG_INDEX;
+  if (num == 0U) {
+    if (((uintptr_t)buffer % 32U) != 0U)
+      return LL_ATON_User_IO_WRONG_ALIGN;
+    if (size < 691200U)
+      return LL_ATON_User_IO_WRONG_SIZE;
+    _mem_pool__user_io_input_network = (unsigned char *)buffer;
+    return LL_ATON_User_IO_NOERROR;
   }
+  return LL_ATON_User_IO_WRONG_INDEX;
 }
 
 void *LL_ATON_Get_User_Input_Buffer_network(uint32_t num)
 {
-  LL_ATON_LIB_UNUSED(num);
-
-  { 
-    return NULL;
-  }
+  return num == 0U ? _mem_pool__user_io_input_network : NULL;
 }
 
 LL_ATON_User_IO_Result_t LL_ATON_Set_User_Output_Buffer_network(uint32_t num, void* buffer, uint32_t size)
@@ -915,11 +917,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
   static const LL_Buffer_InfoTypeDef buff_info[] = {
     {
       .name = "Input_0_out_0",
-      .addr_base = {(unsigned char *)(0x34100000UL) /* Equivalent hex address = 0x34100000UL */},
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_input_network)},
       .offset_start = 0,
       .offset_end = 691200,
       .offset_limit = 691264,
-      .is_user_allocated = 0,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 0,
       .batch = 1,
@@ -13245,4 +13247,3 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
 
   return buff_info;
 }
-
