@@ -18,6 +18,7 @@ public:
 
 private:
     bool initialized_ = false;
+    bool reload_pending_ = false;
 };
 
 } // namespace uai::driver

@@ -37,9 +37,11 @@ constexpr std::uint32_t kInferenceWidth = 480U;
 constexpr std::uint32_t kInferenceHeight = 480U;
 #endif
 constexpr std::uint32_t kFrameTimeoutMs = 2000U;
-constexpr std::uint32_t kCsiFaultTimeoutMs = 100U;
 constexpr std::uint32_t kRecoveryRetryMs = 5000U;
-constexpr std::int32_t kFrameRateFps = 30;
+/* Match ref/ on the STM32N6570-DK.  Keep the CSI PHY configuration
+ * unchanged; this only reduces the sensor frame rate to give the CSI link
+ * the same timing margin as the reference application. */
+constexpr std::int32_t kFrameRateFps = 20;
 
 #ifndef AI_IMX335_TEST_PATTERN_MODE
 #define AI_IMX335_TEST_PATTERN_MODE -1
@@ -192,7 +194,10 @@ Error ConfigureInferencePipe()
     }
 
     DCMIPP_PipeConfTypeDef pipe{};
-    pipe.FrameRate = DCMIPP_FRAME_RATE_ALL;
+    /* Pipe2 is consumed by the NPU once every few seconds.  Capturing every
+     * CSI frame needlessly adds a 480x480 RGB888 write to external PSRAM at
+     * 20 fps and can starve Pipe1 while the NPU reads the same memory bus. */
+    pipe.FrameRate = DCMIPP_FRAME_RATE_1_OVER_4;
     pipe.PixelPipePitch = kInferenceWidth * 3U;
     pipe.PixelPackerFormat = DCMIPP_PIXEL_PACKER_FORMAT_RGB888_YUV444_1;
     if (HAL_DCMIPP_PIPE_SetConfig(&hcamera_dcmipp, DCMIPP_PIPE2, &pipe) !=
@@ -472,14 +477,16 @@ Error ImagerUseCase::Process()
     }
     const std::uint32_t now = HAL_GetTick();
     const bool timed_out = now - g_last_frame_tick >= kFrameTimeoutMs;
-    const bool csi_stalled = g_csi_fault_pending && now - g_last_csi_error_tick >= kCsiFaultTimeoutMs;
-    if ((timed_out || csi_stalled) &&
+    /* A CSI error is diagnostic information, not by itself a reason to
+     * restart the sensor.  The reference application waits for an actual
+     * frame timeout; doing the same avoids restarting on a transient SOT or
+     * D-PHY status bit while frames are still arriving. */
+    if (timed_out &&
         (!g_camera_recovery_attempted ||
          now - g_last_recovery_tick >= kRecoveryRetryMs)) {
         tm_printf(reinterpret_cast<const UB *>(
-                      "camera: no frame for %u ms csi_fault=%u; starting recovery #%u\n"),
+                      "camera: no frame for %u ms; starting recovery #%u\n"),
                   static_cast<unsigned int>(now - g_last_frame_tick),
-                  static_cast<unsigned int>(csi_stalled),
                   g_camera_recovery_count + 1U);
         Imx335RegisterLayer registers;
         LogCameraLinkState(registers);
@@ -670,11 +677,11 @@ extern "C" HAL_StatusTypeDef MX_DCMIPP_ClockConfig(DCMIPP_HandleTypeDef *hdcmipp
     RCC_PeriphCLKInitTypeDef clock = {};
     clock.PeriphClockSelection = RCC_PERIPHCLK_DCMIPP;
     clock.DcmippClockSelection = RCC_DCMIPPCLKSOURCE_IC17;
-    clock.ICSelection[RCC_IC17].ClockSelection = RCC_ICCLKSOURCE_PLL2;
-    clock.ICSelection[RCC_IC17].ClockDivider = 3U;
+    clock.ICSelection[RCC_IC17].ClockSelection = RCC_ICCLKSOURCE_PLL1;
+    clock.ICSelection[RCC_IC17].ClockDivider = 4U;
     if (HAL_RCCEx_PeriphCLKConfig(&clock) != HAL_OK) return HAL_ERROR;
     clock.PeriphClockSelection = RCC_PERIPHCLK_CSI;
     clock.ICSelection[RCC_IC18].ClockSelection = RCC_ICCLKSOURCE_PLL1;
-    clock.ICSelection[RCC_IC18].ClockDivider = 40U;
+    clock.ICSelection[RCC_IC18].ClockDivider = 60U;
     return HAL_RCCEx_PeriphCLKConfig(&clock);
 }

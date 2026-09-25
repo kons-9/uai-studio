@@ -51,7 +51,21 @@ DriverStatus LcdHardware::Initialize()
 
 DriverStatus LcdHardware::Synchronize()
 {
-    return initialized_ ? DriverStatus::kOk : DriverStatus::kNotInitialized;
+    if (!initialized_) {
+        return DriverStatus::kNotInitialized;
+    }
+    if (!reload_pending_) {
+        return DriverStatus::kOk;
+    }
+    if ((LTDC->ISR & LTDC_ISR_RRIF) == 0U) {
+        return DriverStatus::kBusy;
+    }
+
+    /* No LTDC IRQ handler is installed in this RAM application. Consume the
+     * reload flag here so the next frame can safely reuse the old surface. */
+    LTDC->ICR = LTDC_ICR_CRRIF;
+    reload_pending_ = false;
+    return DriverStatus::kOk;
 }
 
 DriverStatus LcdHardware::Process()
@@ -74,6 +88,7 @@ DriverStatus LcdHardware::Process(std::uintptr_t buffer)
                        BSP_LCD_RELOAD_VERTICAL_BLANKING) != BSP_ERROR_NONE) {
         return DriverStatus::kHardwareError;
     }
+    reload_pending_ = true;
     return DriverStatus::kOk;
 }
 
