@@ -79,7 +79,7 @@
   */
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32n6570_discovery_xspi.h"
+#include "xspi_bsp.h"
 
 /** @addtogroup BSP
   * @{
@@ -98,6 +98,7 @@
 /** @addtogroup STM32N6570_DK_XSPI_NOR_Exported_Variables
   * @{
   */
+/* この翻訳単位の下で実体を初期化する前の外部宣言。 */
 extern XSPI_NOR_Ctx_t XSPI_Nor_Ctx[XSPI_NOR_INSTANCES_NUMBER];
 
 XSPI_HandleTypeDef hxspi_nor[XSPI_NOR_INSTANCES_NUMBER] = {0};
@@ -126,6 +127,7 @@ XSPI_NOR_Ctx_t XSPI_Nor_Ctx[XSPI_NOR_INSTANCES_NUMBER]  = {{
 /** @addtogroup STM32N6570_DK_XSPI_RAM_Exported_Variables
   * @{
   */
+/* この翻訳単位の下で実体を初期化する前の外部宣言。 */
 extern XSPI_RAM_Ctx_t XSPI_Ram_Ctx[XSPI_RAM_INSTANCES_NUMBER];
 
 XSPI_HandleTypeDef hxspi_ram[XSPI_RAM_INSTANCES_NUMBER] = {0};

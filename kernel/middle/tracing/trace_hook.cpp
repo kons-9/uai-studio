@@ -58,7 +58,8 @@ uint16_t trace_current_task()
 #elif defined(UAI_PLATFORM_STM32)
 
 /* STM32: use DWT->CYCCNT for sub-μs precision + SysTick for coarse */
-extern "C" volatile uint32_t uwTick; /* HAL tick (ms) */
+/* HALが保持するミリ秒tickを参照する（実体はSTM32 HAL側）。 */
+extern "C" volatile uint32_t uwTick;
 
 /* ARM CoreSight DWT registers */
 static constexpr volatile uint32_t *DWT_CTRL  = reinterpret_cast<volatile uint32_t*>(0xE0001000);
@@ -86,7 +87,8 @@ uint32_t trace_timestamp_us()
 }
 
 /* μT-Kernel 3.0 task ID retrieval */
-extern "C" int tk_get_tid(void); /* defined by μT-Kernel kernel */
+/* 現在タスクのIDをμT-Kernelカーネル実装から取得する。 */
+extern "C" int tk_get_tid(void);
 
 uint16_t trace_current_task()
 {

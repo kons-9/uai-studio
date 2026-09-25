@@ -6,73 +6,7 @@
 #include "main.c"
 #undef main
 
-#include "stm32n6570_discovery_xspi.h"
-#include <stdio.h>
-#include <string.h>
-
 void knl_start_mtkernel(void);
-extern XSPI_HandleTypeDef hxspi2;
-extern volatile int32_t uai_nor_bsp_stage;
-extern volatile int32_t uai_nor_reset_stage;
-extern volatile int32_t uai_nor_reset_result;
-extern volatile uint32_t uai_nor_reset_hal_error;
-extern volatile uint32_t uai_nor_reset_sr;
-extern volatile uint32_t uai_nor_reset_cr;
-extern volatile uint32_t uai_nor_sr_after_init;
-extern volatile uint32_t uai_nor_cr_after_init;
-
-static void cubemx_debug_puts(const char *message)
-{
-    (void)HAL_UART_Transmit(&huart1, (uint8_t *)message,
-                            (uint16_t)strlen(message), 1000U);
-}
-
-int cubemx_initialize_external_memory(void)
-{
-    /* BSP_XSPI_RAM_Init() resets XSPIM. The reference app initializes NOR
-     * through the board BSP after RAM, which restores Port 2 routing, resets
-     * the flash from its current mode, and enters OPI-DTR in a known sequence. */
-    BSP_XSPI_NOR_Init_t nor_init = {0};
-    nor_init.InterfaceMode = BSP_XSPI_NOR_OPI_MODE;
-    nor_init.TransferRate = BSP_XSPI_NOR_DTR_TRANSFER;
-
-    const int32_t init_status = BSP_XSPI_NOR_Init(0U, &nor_init);
-    char message[160];
-    (void)snprintf(message, sizeof(message),
-                   "boot: nor bsp init=%ld stage=%ld reset=%ld/%ld err=%lx sr=%lx cr=%lx iom=%lx\r\n",
-                   (long)init_status, (long)uai_nor_bsp_stage,
-                   (long)uai_nor_reset_stage, (long)uai_nor_reset_result,
-                   (unsigned long)uai_nor_reset_hal_error,
-                   (unsigned long)uai_nor_reset_sr,
-                   (unsigned long)uai_nor_reset_cr,
-                   (unsigned long)XSPIM->CR);
-    cubemx_debug_puts(message);
-    if (init_status != BSP_ERROR_NONE) {
-        return -1;
-    }
-
-    uint8_t model_probe[16] = {0U};
-    const int32_t read_status = BSP_XSPI_NOR_Read(
-        0U, model_probe, 0x00380000U, sizeof(model_probe));
-    const uint32_t *probe_words = (const uint32_t *)model_probe;
-    (void)snprintf(message, sizeof(message),
-                   "boot: nor indirect read=%ld data=%lx,%lx,%lx,%lx sr=%lx\r\n",
-                   (long)read_status, (unsigned long)probe_words[0],
-                   (unsigned long)probe_words[1], (unsigned long)probe_words[2],
-                   (unsigned long)probe_words[3], (unsigned long)XSPI2->SR);
-    cubemx_debug_puts(message);
-    if (read_status != BSP_ERROR_NONE) {
-        return -1;
-    }
-
-    const int32_t map_status = BSP_XSPI_NOR_EnableMemoryMappedMode(0U);
-    (void)snprintf(message, sizeof(message),
-                   "boot: nor bsp map=%ld stage=%ld sr=%lx cr=%lx\r\n",
-                   (long)map_status, (long)uai_nor_bsp_stage,
-                   (unsigned long)XSPI2->SR, (unsigned long)XSPI2->CR);
-    cubemx_debug_puts(message);
-    return map_status == BSP_ERROR_NONE ? 0 : -1;
-}
 
 static void sample2_system_clock_config(void)
 {

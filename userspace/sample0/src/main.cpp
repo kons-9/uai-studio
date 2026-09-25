@@ -1,5 +1,6 @@
 #include <tk/tkernel.h>
 
+/* CライブラリのT-Monitor宣言を、C++からC ABIで呼び出す。 */
 extern "C" {
 #include <tm/tmonitor.h>
 }
@@ -9,6 +10,7 @@ extern "C" {
  * intentionally small: it proves the kernel, scheduler, SysTick and
  * T-Monitor UART are linked together before adding middleware.
  */
+/* µT-Kernelが名前 usermain をC ABIで検索して呼ぶエントリーポイント。 */
 extern "C" INT usermain(void)
 {
     tm_putstring((UB*)"Hello from uai-studio / STM32N6570-DK\n");

@@ -1,14 +1,14 @@
-#include "npu_driver/npu_driver.hpp"
+#include "driver/npu_driver/npu_driver.hpp"
+#include "driver/npu_driver/debug.h"
 
 #include <tk/tkernel.h>
 
+/* C ABI のST AIランタイム/HAL関数とリンクする宣言。 */
 extern "C" {
 #include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
 
 stai_return_code stai_runtime_init(void);
-extern volatile unsigned int g_aton_irq_count;
-extern volatile unsigned int g_aton_last_irqs;
 }
 
 namespace uai::sample2::npu_driver {
@@ -30,7 +30,7 @@ Status NpuDriver::InvalidState(const char *operation) const
             last_execution_};
 }
 
-Status NpuDriver::Initialize(const sample2_model_api &model)
+Status NpuDriver::Initialize(model_manager::Model &model)
 {
     if (initialized_) {
         return {common::Error{common::ErrorCode::kAlreadyInitialized, 0U,
@@ -48,7 +48,7 @@ Status NpuDriver::Initialize(const sample2_model_api &model)
     HAL_NVIC_EnableIRQ(NPU0_IRQn);
 
     const stai_return_code runtime_code = stai_runtime_init();
-    const HardwareSnapshot runtime_hardware = hardware_.ReadSnapshot();
+    const NpuHardwareSnapshot runtime_hardware = npu_hardware_.ReadSnapshot();
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu runtime init code=%x irq_en=%u pending=%u epoch=%x int=%x bus=%x\n"),
               static_cast<unsigned int>(runtime_code),
@@ -61,14 +61,14 @@ Status NpuDriver::Initialize(const sample2_model_api &model)
     if (IsError(runtime_code)) {
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        last_execution_.hardware = hardware_.ReadSnapshot();
+        last_execution_.npu_hardware = npu_hardware_.ReadSnapshot();
         return {common::Error{common::ErrorCode::kNpu, last_error_,
                               "npu.runtime_initialize"},
                 last_execution_};
     }
 
-    const stai_return_code model_code = model_->init();
-    const HardwareSnapshot model_hardware = hardware_.ReadSnapshot();
+    const stai_return_code model_code = model_->Initialize();
+    const NpuHardwareSnapshot model_hardware = npu_hardware_.ReadSnapshot();
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu model init code=%x irq_en=%u pending=%u epoch=%x int=%x bus=%x\n"),
               static_cast<unsigned int>(model_code),
@@ -81,7 +81,7 @@ Status NpuDriver::Initialize(const sample2_model_api &model)
     if (IsError(model_code)) {
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        last_execution_.hardware = hardware_.ReadSnapshot();
+        last_execution_.npu_hardware = npu_hardware_.ReadSnapshot();
         return {common::Error{common::ErrorCode::kModel, last_error_,
                               "npu.model_initialize"},
                 last_execution_};
@@ -91,7 +91,7 @@ Status NpuDriver::Initialize(const sample2_model_api &model)
     last_error_ = 0U;
     last_execution_ = {};
     last_execution_.state = ExecutionState::kReady;
-    last_execution_.hardware = hardware_.ReadSnapshot();
+    last_execution_.npu_hardware = npu_hardware_.ReadSnapshot();
     return {common::Error{common::ErrorCode::kOk, 0U, "npu.initialize"},
             last_execution_};
 }
@@ -101,7 +101,7 @@ Status NpuDriver::GetInfo(stai_network_info *info) const
     if (!initialized_ || model_ == nullptr || info == nullptr) {
         return InvalidState("npu.get_info");
     }
-    const stai_return_code code = model_->get_info(info);
+    const stai_return_code code = model_->GetInfo(info);
     return IsError(code)
                ? Status{common::Error{common::ErrorCode::kModel,
                                       static_cast<std::uint32_t>(code),
@@ -118,7 +118,7 @@ Status NpuDriver::GetInputs(stai_ptr *inputs, stai_size *count) const
         count == nullptr) {
         return InvalidState("npu.get_inputs");
     }
-    const stai_return_code code = model_->get_inputs(inputs, count);
+    const stai_return_code code = model_->GetInputs(inputs, count);
     return IsError(code)
                ? Status{common::Error{common::ErrorCode::kModel,
                                       static_cast<std::uint32_t>(code),
@@ -135,7 +135,7 @@ Status NpuDriver::GetOutputs(stai_ptr *outputs, stai_size *count) const
         count == nullptr) {
         return InvalidState("npu.get_outputs");
     }
-    const stai_return_code code = model_->get_outputs(outputs, count);
+    const stai_return_code code = model_->GetOutputs(outputs, count);
     return IsError(code)
                ? Status{common::Error{common::ErrorCode::kModel,
                                       static_cast<std::uint32_t>(code),
@@ -157,7 +157,7 @@ Status NpuDriver::Run()
      * waiting instead of blocking forever in the bare-metal WFE macro.  The
      * NPU IRQ still advances the Neural-ART event state; run_continue() then
      * consumes that state and starts the next epoch. */
-    const HardwareSnapshot before_run = hardware_.ReadSnapshot();
+    const NpuHardwareSnapshot before_run = npu_hardware_.ReadSnapshot();
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu run begin irq_en=%u pending=%u epoch=%x int=%x bus=%x\n"),
               static_cast<unsigned int>(NVIC_GetEnableIRQ(NPU0_IRQn)),
@@ -165,13 +165,13 @@ Status NpuDriver::Run()
               static_cast<unsigned int>(before_run.epoch_control),
               static_cast<unsigned int>(before_run.interrupt_status),
               static_cast<unsigned int>(before_run.busif0_error));
-    stai_return_code code = model_->run(STAI_MODE_ASYNC);
+    stai_return_code code = model_->Run(STAI_MODE_ASYNC);
     last_error_ = static_cast<std::uint32_t>(code);
     last_execution_.state = ExecutionState::kSubmitted;
     last_execution_.stai_status = last_error_;
     if (IsError(code)) {
         last_execution_.state = ExecutionState::kFaulted;
-        last_execution_.hardware = hardware_.ReadSnapshot();
+        last_execution_.npu_hardware = npu_hardware_.ReadSnapshot();
         return {common::Error{common::ErrorCode::kNpu, last_error_,
                               "npu.run"},
                 last_execution_};
@@ -179,7 +179,7 @@ Status NpuDriver::Run()
 
     bool completed = false;
     for (std::uint32_t tick = 0U; tick < kTimeoutTicks; ++tick) {
-        code = model_->get_run_status();
+        code = model_->GetRunStatus();
         last_error_ = static_cast<std::uint32_t>(code);
         if (code == STAI_DONE) {
             completed = true;
@@ -188,7 +188,7 @@ Status NpuDriver::Run()
         if (IsError(code)) {
             last_execution_.state = ExecutionState::kFaulted;
             last_execution_.stai_status = last_error_;
-            last_execution_.hardware = hardware_.ReadSnapshot();
+            last_execution_.npu_hardware = npu_hardware_.ReadSnapshot();
             tm_printf(reinterpret_cast<const UB *>(
                           "ai: npu done error=%x irq=%u last=%x\n"),
                       static_cast<unsigned int>(code), g_aton_irq_count,
@@ -199,7 +199,7 @@ Status NpuDriver::Run()
         }
 
         if ((tick % 100U) == 0U) {
-            const HardwareSnapshot waiting = hardware_.ReadSnapshot();
+            const NpuHardwareSnapshot waiting = npu_hardware_.ReadSnapshot();
             tm_printf(reinterpret_cast<const UB *>(
                           "ai: npu wait tick=%u status=%x irq=%u last=%x epoch=%x int=%x bus=%x\n"),
                       static_cast<unsigned int>(tick),
@@ -216,16 +216,16 @@ Status NpuDriver::Run()
          * delaying the task alone leaves the runtime's triggered-event state
          * untouched and can spin forever in STAI_RUNNING_WFE. */
         if (code == STAI_RUNNING_WFE) {
-            model_->wfe();
+            model_->WaitForEvent();
         } else {
             tk_dly_tsk(1);
         }
-        code = model_->run_continue();
+        code = model_->ContinueRun();
         last_error_ = static_cast<std::uint32_t>(code);
         if (IsError(code)) {
             last_execution_.state = ExecutionState::kFaulted;
             last_execution_.stai_status = last_error_;
-            last_execution_.hardware = hardware_.ReadSnapshot();
+            last_execution_.npu_hardware = npu_hardware_.ReadSnapshot();
             return {common::Error{common::ErrorCode::kNpu, last_error_,
                                   "npu.run_continue"},
                     last_execution_};
@@ -235,7 +235,7 @@ Status NpuDriver::Run()
     if (!completed) {
         last_execution_.state = ExecutionState::kTimedOut;
         last_execution_.stai_status = last_error_;
-        last_execution_.hardware = hardware_.ReadSnapshot();
+        last_execution_.npu_hardware = npu_hardware_.ReadSnapshot();
         tm_printf(reinterpret_cast<const UB *>(
                       "ai: npu done timeout status=%x irq=%u last=%x\n"),
                   static_cast<unsigned int>(last_error_), g_aton_irq_count,
@@ -251,7 +251,7 @@ Status NpuDriver::Run()
               g_aton_last_irqs);
     last_execution_.state = ExecutionState::kCompleted;
     last_execution_.stai_status = STAI_DONE;
-    last_execution_.hardware = hardware_.ReadSnapshot();
+    last_execution_.npu_hardware = npu_hardware_.ReadSnapshot();
     return {common::Error{common::ErrorCode::kOk, 0U, "npu.run"},
             last_execution_};
 }
@@ -261,12 +261,12 @@ Status NpuDriver::NewInference()
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.new_inference");
     }
-    const stai_return_code code = model_->new_inference();
+    const stai_return_code code = model_->NewInference();
     last_error_ = static_cast<std::uint32_t>(code);
     if (IsError(code)) {
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        last_execution_.hardware = hardware_.ReadSnapshot();
+        last_execution_.npu_hardware = npu_hardware_.ReadSnapshot();
         return {common::Error{common::ErrorCode::kNpu, last_error_,
                               "npu.new_inference"},
                 last_execution_};
@@ -284,12 +284,12 @@ Status NpuDriver::Shutdown()
         return InvalidState("npu.shutdown");
     }
 
-    const stai_return_code code = model_->deinit();
+    const stai_return_code code = model_->Shutdown();
     last_error_ = static_cast<std::uint32_t>(code);
     initialized_ = false;
     last_execution_.state = ExecutionState::kUninitialized;
     last_execution_.stai_status = last_error_;
-    last_execution_.hardware = hardware_.ReadSnapshot();
+    last_execution_.npu_hardware = npu_hardware_.ReadSnapshot();
     return IsError(code)
                ? Status{common::Error{common::ErrorCode::kModel, last_error_,
                                       "npu.shutdown"},

@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+/* CubeMX/BSPが生成・定義するカメラハンドルとコンポーネント情報を共有する。
+ * フレーム数の実体はuserspace/sample2/src/main.cppにある。 */
 extern "C" {
 #include "stm32n6570_discovery_camera.h"
 #include "imx335.h"
@@ -31,6 +33,7 @@ volatile unsigned int g_sample2_last_exposure_request_us = 0U;
 volatile unsigned int g_sample2_last_exposure_lines = 0U;
 volatile unsigned int g_sample2_last_sensor_gain_mdB = 0U;
 }
+/* 以下のセンサー操作関数はこのファイル内で後述の通り定義する。 */
 extern "C" ISP_StatusTypeDef Sample2SetImx335Exposure(uint32_t instance,
                                                        int32_t exposure);
 extern "C" ISP_StatusTypeDef Sample2GetImx335Exposure(uint32_t instance,

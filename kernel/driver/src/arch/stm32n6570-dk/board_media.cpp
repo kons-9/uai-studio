@@ -73,6 +73,8 @@ DriverStatus InitializeMedia()
 
 } // namespace uai::driver::arch
 
+/* HAL時刻の診断カウンターはuserspace/sample2/src/main.cppが実体を定義する。
+ * カーネルの時刻取得関数はµT-Kernel側が定義。 */
 extern "C" volatile std::uint32_t uai_hal_tick_calls;
 extern "C" volatile std::uint32_t uai_hal_tick_first;
 extern "C" volatile std::uint32_t uai_hal_tick_last;

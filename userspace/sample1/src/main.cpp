@@ -3,6 +3,7 @@
 #include "driver/camera_driver.hpp"
 #include "driver/display_driver.hpp"
 
+/* T-MonitorヘッダーはC APIなので、C++でもC ABIとして宣言する。 */
 extern "C" {
 #include <tm/tmonitor.h>
 }
@@ -19,6 +20,7 @@ void halt_with_message(const char *message)
 
 } // namespace
 
+/* µT-Kernelから呼び出されるユーザータスクのエントリーポイント。 */
 extern "C" INT usermain(void)
 {
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(

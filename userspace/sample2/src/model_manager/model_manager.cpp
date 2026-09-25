@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+/* C実装のT-Monitor APIをC++から呼び出すためのCリンケージ。 */
 extern "C" {
 #include <tm/tmonitor.h>
 }
@@ -67,6 +68,8 @@ struct OdParams {
     std::int8_t raw_s_zero_point = 0;
 };
 
+/* C実装のYOLOX後処理ライブラリの関数宣言。定義はSTの
+ * lib_vision_models_pp (od_pp_st_yolox.c) 側にある。 */
 extern "C" {
 std::int32_t od_st_yolox_pp_reset(OdParams *params);
 std::int32_t od_st_yolox_pp_process_int8(OdInput *input, OdOutput *output,
@@ -241,13 +244,15 @@ void LogBoxes(const char *stage, const BoxSet &boxes)
 
 } // namespace
 
-Error ModelManager::Initialize(memory_manager::MemoryManager &memory)
+Error ModelManager::Initialize(memory_manager::MemoryManager &memory,
+                               memory_manager::MemoryHardware &memory_hardware)
 {
     if (initialized_) {
         return {ErrorCode::kAlreadyInitialized, 0U, "ai.initialize"};
     }
     memory_ = &memory;
-    npu_driver::Status npu_status = npu_.Initialize(*model_);
+    memory_hardware_ = &memory_hardware;
+    npu_driver::Status npu_status = npu_.Initialize(model_);
     last_npu_status_ = npu_status;
     if (!npu_status.Ok()) {
         last_error_ = npu_status.error.detail;
@@ -324,7 +329,7 @@ Error ModelManager::TryInfer(
                   "ai: input cache begin sequence=%u size=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence),
               static_cast<unsigned int>(input_buffer.size));
-    status = memory_->PrepareForPeripheralRead(input_buffer);
+    status = memory_hardware_->PrepareForPeripheralRead(input_buffer);
     if (!status.Ok()) {
         return status;
     }
@@ -349,7 +354,7 @@ Error ModelManager::TryInfer(
             reinterpret_cast<std::uintptr_t>(outputs_[i]),
             info_.outputs[i].size_bytes, 0U,
             memory_manager::Region::kInference};
-        status = memory_->PrepareForCpuRead(output_buffer);
+        status = memory_hardware_->PrepareForCpuRead(output_buffer);
         if (!status.Ok()) {
             return status;
         }
@@ -370,7 +375,7 @@ Error ModelManager::TryInfer(
 
 Error ModelManager::Shutdown()
 {
-    if (!initialized_ || model_ == nullptr) {
+    if (!initialized_) {
         return {ErrorCode::kNotInitialized, 0U, "ai.shutdown"};
     }
     const npu_driver::Status status = npu_.Shutdown();

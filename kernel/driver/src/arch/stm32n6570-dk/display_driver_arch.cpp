@@ -3,9 +3,46 @@
 extern "C" {
 #include "stm32n6570_discovery_lcd.h"
 #include "stm32n6xx_hal.h"
+#include <tm/tmonitor.h>
 }
 
 namespace uai::driver::arch {
+namespace {
+
+std::uintptr_t pending_frame_address = 0U;
+uint32_t verified_frame_count = 0U;
+
+bool VerifyDisplayedFrame()
+{
+    if (pending_frame_address == 0U) {
+        return true;
+    }
+
+    const uint32_t control = LTDC_Layer1->CR;
+    const uint32_t address = LTDC_Layer1->CFBAR;
+    if ((LTDC->GCR & LTDC_GCR_LTDCEN) == 0U ||
+        (control & LTDC_LxCR_LEN) == 0U ||
+        address != static_cast<uint32_t>(pending_frame_address)) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "lcd: layer verify failed gcr=%x cr=%x fb=%x expected=%x\n"),
+                  static_cast<unsigned int>(LTDC->GCR),
+                  static_cast<unsigned int>(control),
+                  static_cast<unsigned int>(address),
+                  static_cast<unsigned int>(pending_frame_address));
+        return false;
+    }
+
+    if (verified_frame_count++ == 0U) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "lcd: layer verified fb=%x cr=%x\n"),
+                  static_cast<unsigned int>(address),
+                  static_cast<unsigned int>(control));
+    }
+    pending_frame_address = 0U;
+    return true;
+}
+
+} // namespace
 
 DriverStatus InitializeDisplay()
 {
@@ -17,7 +54,34 @@ DriverStatus InitializeDisplay()
         return DriverStatus::kHardwareError;
     }
 
-    BSP_LCD_DisplayOn(0);
+    if (BSP_LCD_DisplayOn(0) != BSP_ERROR_NONE) {
+        return DriverStatus::kHardwareError;
+    }
+
+    uint32_t width = 0U;
+    uint32_t height = 0U;
+    uint32_t pixel_format = 0U;
+    if (BSP_LCD_GetXSize(0U, &width) != BSP_ERROR_NONE ||
+        BSP_LCD_GetYSize(0U, &height) != BSP_ERROR_NONE ||
+        BSP_LCD_GetPixelFormat(0U, &pixel_format) != BSP_ERROR_NONE ||
+        width != LCD_DEFAULT_WIDTH || height != LCD_DEFAULT_HEIGHT ||
+        pixel_format != LCD_PIXEL_FORMAT_RGB565 ||
+        (LTDC->GCR & LTDC_GCR_LTDCEN) == 0U) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "lcd: init verify failed x=%u y=%u format=%u gcr=%x\n"),
+                  static_cast<unsigned int>(width),
+                  static_cast<unsigned int>(height),
+                  static_cast<unsigned int>(pixel_format),
+                  static_cast<unsigned int>(LTDC->GCR));
+        return DriverStatus::kHardwareError;
+    }
+
+    tm_printf(reinterpret_cast<const UB *>(
+                  "lcd: init verified x=%u y=%u format=%u gcr=%x\n"),
+              static_cast<unsigned int>(width),
+              static_cast<unsigned int>(height),
+              static_cast<unsigned int>(pixel_format),
+              static_cast<unsigned int>(LTDC->GCR));
 
     /* Do not expose the capture buffer until the camera has completed a
      * frame. The LTDC background color is black while the layer is hidden. */
@@ -54,14 +118,25 @@ DriverStatus ProcessDisplay(std::uintptr_t frame)
         return DriverStatus::kHardwareError;
     }
 
+    /* A vertical-blanking reload is asynchronous. Verify the preceding
+     * update on the next call, after LTDC has had time to latch its shadow
+     * registers, instead of mistaking the old active registers for failure. */
+    if (!VerifyDisplayedFrame()) {
+        return DriverStatus::kHardwareError;
+    }
+
     if (BSP_LCD_Reload(0, BSP_LCD_RELOAD_NONE) != BSP_ERROR_NONE ||
         BSP_LCD_SetLayerAddress(0, 0, static_cast<uint32_t>(frame)) !=
             BSP_ERROR_NONE ||
-        BSP_LCD_SetLayerVisible(0, 0, ENABLE) != BSP_ERROR_NONE ||
-        BSP_LCD_Reload(0, BSP_LCD_RELOAD_VERTICAL_BLANKING) !=
-            BSP_ERROR_NONE) {
+        BSP_LCD_SetLayerVisible(0, 0, ENABLE) != BSP_ERROR_NONE) {
         return DriverStatus::kHardwareError;
     }
+
+    if (BSP_LCD_Reload(0, BSP_LCD_RELOAD_VERTICAL_BLANKING) !=
+        BSP_ERROR_NONE) {
+        return DriverStatus::kHardwareError;
+    }
+    pending_frame_address = frame;
     return DriverStatus::kOk;
 }
 

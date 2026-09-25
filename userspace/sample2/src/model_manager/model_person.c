@@ -1,4 +1,4 @@
-#include "model_api.h"
+#include "model_person_c_api.h"
 
 #define stai_network_init person_stai_network_init
 #define stai_network_deinit person_stai_network_deinit
@@ -37,6 +37,8 @@
 #include "../../models/person/network.c"
 #include "../../models/person/stai_network.c"
 
+/* ST AIランタイムが提供する待機関数。ここでは宣言し、実装はリンク対象の
+ * ST AIランタイム側から解決する。 */
 extern stai_return_code stai_ext_wfe(void);
 
 STAI_NETWORK_CONTEXT_DECLARE(person_context, STAI_NETWORK_CONTEXT_SIZE)
@@ -91,7 +93,7 @@ static stai_return_code person_new_inference(void)
     return person_stai_ext_network_new_inference(person_context);
 }
 
-const sample2_model_api person_model = {
+const sample2_model_c_api person_model_c_api = {
     "PERSON",
     480U,
     480U,

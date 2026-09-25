@@ -10,7 +10,7 @@ namespace uai::sample2::npu_driver {
  * values are intentionally kept here: a timeout must remain diagnosable even
  * when a future NPU revision changes the meaning of one of the fields.
  */
-struct HardwareSnapshot {
+struct NpuHardwareSnapshot {
     std::uint32_t epoch_control = 0U;
     std::uint32_t epoch_version = 0U;
     std::uint32_t epoch_address = 0U;
@@ -50,7 +50,7 @@ struct HardwareSnapshot {
 
 class NpuHardware final {
 public:
-    HardwareSnapshot ReadSnapshot() const;
+    NpuHardwareSnapshot ReadSnapshot() const;
 };
 
 } // namespace uai::sample2::npu_driver

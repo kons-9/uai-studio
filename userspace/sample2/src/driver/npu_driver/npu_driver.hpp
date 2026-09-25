@@ -4,8 +4,8 @@
 #include <cstdint>
 
 #include "common/error.hpp"
-#include "model_manager/model_api.h"
-#include "npu_driver/npu_hardware.hpp"
+#include "model_manager/model_api.hpp"
+#include "driver/npu_driver/npu_hardware.hpp"
 
 namespace uai::sample2::npu_driver {
 
@@ -22,7 +22,7 @@ enum class ExecutionState : std::uint8_t {
 struct ExecutionSnapshot {
     ExecutionState state = ExecutionState::kUninitialized;
     std::uint32_t stai_status = 0U;
-    HardwareSnapshot hardware{};
+    NpuHardwareSnapshot npu_hardware{};
 };
 
 struct Status {
@@ -39,7 +39,7 @@ struct Status {
  */
 class NpuDriver final {
 public:
-    Status Initialize(const sample2_model_api &model);
+    Status Initialize(model_manager::Model &model);
 
     Status GetInfo(stai_network_info *info) const;
     Status GetInputs(stai_ptr *inputs, stai_size *count) const;
@@ -51,14 +51,17 @@ public:
 
     bool Initialized() const { return initialized_; }
     const ExecutionSnapshot &LastExecution() const { return last_execution_; }
-    HardwareSnapshot ReadHardware() const { return hardware_.ReadSnapshot(); }
+    NpuHardwareSnapshot ReadNpuHardware() const
+    {
+        return npu_hardware_.ReadSnapshot();
+    }
 
 private:
     static bool IsError(stai_return_code code);
     Status InvalidState(const char *operation) const;
 
-    const sample2_model_api *model_ = nullptr;
-    NpuHardware hardware_{};
+    model_manager::Model *model_ = nullptr;
+    NpuHardware npu_hardware_{};
     ExecutionSnapshot last_execution_{};
     std::uint32_t last_error_ = 0U;
     bool initialized_ = false;

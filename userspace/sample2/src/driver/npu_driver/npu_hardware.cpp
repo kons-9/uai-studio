@@ -1,4 +1,4 @@
-#include "npu_driver/npu_hardware.hpp"
+#include "driver/npu_driver/npu_hardware.hpp"
 
 #include "ll_aton_platform.h"
 
@@ -18,9 +18,9 @@ constexpr std::uint32_t kEpochInterruptMask =
 
 } // namespace
 
-HardwareSnapshot NpuHardware::ReadSnapshot() const
+NpuHardwareSnapshot NpuHardware::ReadSnapshot() const
 {
-    HardwareSnapshot snapshot{};
+    NpuHardwareSnapshot snapshot{};
 
     snapshot.epoch_control = ATON_EPOCHCTRL_CTRL_GET(kEpochController);
     snapshot.epoch_version = ATON_EPOCHCTRL_VERSION_GET(kEpochController);

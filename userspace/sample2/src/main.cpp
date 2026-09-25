@@ -1,29 +1,27 @@
 #include <cstdint>
+#include <cstring>
 
 #include <tk/tkernel.h>
 
-#include "camera_driver/camera_driver.hpp"
+#include "driver/imager_driver/imager_driver.hpp"
 #include "common/error.hpp"
-#include "lcd_driver/lcd_driver.hpp"
+#include "driver/lcd_driver/lcd_driver.hpp"
+#include "memory_manager/memory_hardware.hpp"
 #include "memory_manager/memory_manager.hpp"
 #include "model_manager/model_manager.hpp"
-#include "npu_driver/npu_hardware.hpp"
+#include "driver/npu_driver/debug.h"
+#include "driver/npu_driver/npu_hardware.hpp"
 
+/* C/C++境界: monitor/HAL とカーネル・ドライバーの C ABI 関数を
+ * C++名修飾なしで呼び出すための宣言。実装は各SDK/カーネル側にある。 */
 extern "C" {
 #include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
 
-int cubemx_initialize_external_memory(void);
 void NPU0_IRQHandler(void);
 void IAC_IRQHandler(void);
-extern volatile unsigned int g_aton_irq_count;
-extern volatile unsigned int g_aton_last_irqs;
-extern volatile unsigned int g_npu_cache_init_status;
-extern volatile unsigned int g_npu_cache_enable_status;
-extern volatile unsigned int g_npu_cache_invalidate_status;
-extern volatile unsigned int g_npu_cache_cr1;
-extern volatile unsigned int g_npu_cache_sr;
-extern volatile unsigned int g_camera_frame_event_count;
+/* カメラ診断値はkernel/driver/src/arch/stm32n6570-dk/camera_driver_arch.cpp
+ * が定義。フレームイベント数だけはこのファイル下部で定義している。 */
 extern volatile unsigned int g_camera_vsync_event_count;
 extern volatile unsigned int g_camera_recovery_count;
 extern volatile unsigned int g_camera_recovery_error_count;
@@ -43,18 +41,23 @@ int32_t Sample2ReadSensorRegisters(std::uint32_t *vmax,
                                    std::uint32_t *gain);
 }
 
-extern "C" volatile std::uint32_t uai_hal_tick_calls = 0U;
-extern "C" volatile std::uint32_t uai_hal_tick_first = 0U;
-extern "C" volatile std::uint32_t uai_hal_tick_last = 0U;
-extern "C" volatile std::uint32_t uai_hal_tick_probe[4] = {};
-extern "C" volatile std::uint32_t uai_systick_count = 0U;
-extern "C" volatile unsigned int g_camera_frame_event_count = 0U;
+/* このファイルで実体を定義し、C側のHAL/割り込みコードから参照できる名前にする。 */
+extern "C" {
+volatile std::uint32_t uai_hal_tick_calls = 0U;
+volatile std::uint32_t uai_hal_tick_first = 0U;
+volatile std::uint32_t uai_hal_tick_last = 0U;
+volatile std::uint32_t uai_hal_tick_probe[4] = {};
+volatile std::uint32_t uai_systick_count = 0U;
+/* カーネル側 camera_driver_arch.cpp が参照するフレームイベント数の実体。 */
+volatile unsigned int g_camera_frame_event_count = 0U;
+}
 
 namespace {
 
 using uai::sample2::memory_manager::BoxSet;
 using uai::sample2::memory_manager::InferenceFrame;
 using uai::sample2::memory_manager::MemoryManager;
+using uai::sample2::memory_manager::MemoryHardware;
 using uai::sample2::common::Error;
 using uai::sample2::common::ErrorCode;
 using NpuStatus = uai::sample2::npu_driver::Status;
@@ -78,6 +81,7 @@ struct BoxMessage {
 };
 
 static MemoryManager g_memory;
+static MemoryHardware g_memory_hardware;
 static volatile std::uint32_t g_app_stage = 0U;
 static volatile bool g_external_nor_ready = false;
 static ID g_external_memory_ready = 0;
@@ -108,8 +112,9 @@ void LogStatus(const char *component, const Error &error)
 {
     if (!error.Ok()) {
         tm_printf(reinterpret_cast<const UB *>(
-                      "error: component=%s operation=%s code=%u detail=%x\n"),
+                      "error: component=%s operation=%s code=%s(%u) detail=%x\n"),
                   component, error.operation,
+                  uai::sample2::common::ErrorCodeName(error.code),
                   static_cast<unsigned int>(error.code),
                   static_cast<unsigned int>(error.detail));
     }
@@ -122,7 +127,13 @@ void LogFrameBrightness(
         return;
     }
 
-    const Error cache_status = g_memory.PrepareForCpuRead(capture.buffer);
+    const Error ownership_status = g_memory.ValidateCaptureFrame(capture);
+    if (!ownership_status.Ok()) {
+        LogStatus("camera-luminance", ownership_status);
+        return;
+    }
+    const Error cache_status =
+        g_memory_hardware.PrepareForCpuRead(capture.buffer);
     if (!cache_status.Ok()) {
         LogStatus("camera-luminance", cache_status);
         return;
@@ -172,38 +183,38 @@ void LogFrameBrightness(
 void LogNpuStatus(const NpuStatus &status)
 {
     const auto &execution = status.execution;
-    const auto &hardware = execution.hardware;
+    const auto &npu_hardware = execution.npu_hardware;
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu state=%u stai=%x epoch=%x addr=%x irq=%x label=%x bc=%x int=%x\n"),
               static_cast<unsigned int>(execution.state),
               static_cast<unsigned int>(execution.stai_status),
-              static_cast<unsigned int>(hardware.epoch_control),
-              static_cast<unsigned int>(hardware.epoch_address),
-              static_cast<unsigned int>(hardware.epoch_irq),
-              static_cast<unsigned int>(hardware.epoch_label),
-              static_cast<unsigned int>(hardware.epoch_byte_counter),
-              static_cast<unsigned int>(hardware.interrupt_status));
+              static_cast<unsigned int>(npu_hardware.epoch_control),
+              static_cast<unsigned int>(npu_hardware.epoch_address),
+              static_cast<unsigned int>(npu_hardware.epoch_irq),
+              static_cast<unsigned int>(npu_hardware.epoch_label),
+              static_cast<unsigned int>(npu_hardware.epoch_byte_counter),
+              static_cast<unsigned int>(npu_hardware.interrupt_status));
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu intctrl=%x or=%x and=%x bus=%x/%x stream=%x/%x/%x\n"),
-              static_cast<unsigned int>(hardware.interrupt_control),
-              static_cast<unsigned int>(hardware.interrupt_or_mask),
-              static_cast<unsigned int>(hardware.interrupt_and_mask),
-              static_cast<unsigned int>(hardware.busif0_control),
-              static_cast<unsigned int>(hardware.busif0_error),
-              static_cast<unsigned int>(hardware.stream0_control),
-              static_cast<unsigned int>(hardware.stream0_address),
-              static_cast<unsigned int>(hardware.stream0_irq));
+              static_cast<unsigned int>(npu_hardware.interrupt_control),
+              static_cast<unsigned int>(npu_hardware.interrupt_or_mask),
+              static_cast<unsigned int>(npu_hardware.interrupt_and_mask),
+              static_cast<unsigned int>(npu_hardware.busif0_control),
+              static_cast<unsigned int>(npu_hardware.busif0_error),
+              static_cast<unsigned int>(npu_hardware.stream0_control),
+              static_cast<unsigned int>(npu_hardware.stream0_address),
+              static_cast<unsigned int>(npu_hardware.stream0_irq));
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu stream_cfg fsize=%x depth=%x limiten=%x limit=%x limitaddr=%x cnt=%x/%x/%x/%x\n"),
-              static_cast<unsigned int>(hardware.stream0_frame_size),
-              static_cast<unsigned int>(hardware.stream0_depth),
-              static_cast<unsigned int>(hardware.stream0_limit_enable),
-              static_cast<unsigned int>(hardware.stream0_limit),
-              static_cast<unsigned int>(hardware.stream0_limit_address),
-              static_cast<unsigned int>(hardware.stream0_depth_count),
-              static_cast<unsigned int>(hardware.stream0_pixel_count),
-              static_cast<unsigned int>(hardware.stream0_line_count),
-              static_cast<unsigned int>(hardware.stream0_frame_count));
+              static_cast<unsigned int>(npu_hardware.stream0_frame_size),
+              static_cast<unsigned int>(npu_hardware.stream0_depth),
+              static_cast<unsigned int>(npu_hardware.stream0_limit_enable),
+              static_cast<unsigned int>(npu_hardware.stream0_limit),
+              static_cast<unsigned int>(npu_hardware.stream0_limit_address),
+              static_cast<unsigned int>(npu_hardware.stream0_depth_count),
+              static_cast<unsigned int>(npu_hardware.stream0_pixel_count),
+              static_cast<unsigned int>(npu_hardware.stream0_line_count),
+              static_cast<unsigned int>(npu_hardware.stream0_frame_count));
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu isr count=%u last=%x\n"),
               g_aton_irq_count, g_aton_last_irqs);
@@ -328,34 +339,34 @@ void DumpPeripheralRegisters(const char *stage)
               static_cast<unsigned int>(RISAF12->REG[0].ENDR),
               static_cast<unsigned int>(RISAF12->REG[0].CIDCFGR));
 
-    const auto hardware = NpuHardware{}.ReadSnapshot();
+    const auto npu_hardware = NpuHardware{}.ReadSnapshot();
     tm_printf(reinterpret_cast<const UB *>(
                   "debug: npu epoch=%x/%x/%x irq=%x label=%x bc=%x int=%x/%x/%x bus=%x/%x\n"),
-              static_cast<unsigned int>(hardware.epoch_control),
-              static_cast<unsigned int>(hardware.epoch_version),
-              static_cast<unsigned int>(hardware.epoch_address),
-              static_cast<unsigned int>(hardware.epoch_irq),
-              static_cast<unsigned int>(hardware.epoch_label),
-              static_cast<unsigned int>(hardware.epoch_byte_counter),
-              static_cast<unsigned int>(hardware.interrupt_control),
-              static_cast<unsigned int>(hardware.interrupt_status),
-              static_cast<unsigned int>(hardware.interrupt_or_mask),
-              static_cast<unsigned int>(hardware.busif0_control),
-              static_cast<unsigned int>(hardware.busif0_error));
+              static_cast<unsigned int>(npu_hardware.epoch_control),
+              static_cast<unsigned int>(npu_hardware.epoch_version),
+              static_cast<unsigned int>(npu_hardware.epoch_address),
+              static_cast<unsigned int>(npu_hardware.epoch_irq),
+              static_cast<unsigned int>(npu_hardware.epoch_label),
+              static_cast<unsigned int>(npu_hardware.epoch_byte_counter),
+              static_cast<unsigned int>(npu_hardware.interrupt_control),
+              static_cast<unsigned int>(npu_hardware.interrupt_status),
+              static_cast<unsigned int>(npu_hardware.interrupt_or_mask),
+              static_cast<unsigned int>(npu_hardware.busif0_control),
+              static_cast<unsigned int>(npu_hardware.busif0_error));
     tm_printf(reinterpret_cast<const UB *>(
                   "debug: npu stream ctrl=%x addr=%x fsize=%x depth=%x lim=%x/%x addr=%x cnt=%x/%x/%x/%x irq=%x\n"),
-              static_cast<unsigned int>(hardware.stream0_control),
-              static_cast<unsigned int>(hardware.stream0_address),
-              static_cast<unsigned int>(hardware.stream0_frame_size),
-              static_cast<unsigned int>(hardware.stream0_depth),
-              static_cast<unsigned int>(hardware.stream0_limit_enable),
-              static_cast<unsigned int>(hardware.stream0_limit),
-              static_cast<unsigned int>(hardware.stream0_limit_address),
-              static_cast<unsigned int>(hardware.stream0_depth_count),
-              static_cast<unsigned int>(hardware.stream0_pixel_count),
-              static_cast<unsigned int>(hardware.stream0_line_count),
-              static_cast<unsigned int>(hardware.stream0_frame_count),
-              static_cast<unsigned int>(hardware.stream0_irq));
+              static_cast<unsigned int>(npu_hardware.stream0_control),
+              static_cast<unsigned int>(npu_hardware.stream0_address),
+              static_cast<unsigned int>(npu_hardware.stream0_frame_size),
+              static_cast<unsigned int>(npu_hardware.stream0_depth),
+              static_cast<unsigned int>(npu_hardware.stream0_limit_enable),
+              static_cast<unsigned int>(npu_hardware.stream0_limit),
+              static_cast<unsigned int>(npu_hardware.stream0_limit_address),
+              static_cast<unsigned int>(npu_hardware.stream0_depth_count),
+              static_cast<unsigned int>(npu_hardware.stream0_pixel_count),
+              static_cast<unsigned int>(npu_hardware.stream0_line_count),
+              static_cast<unsigned int>(npu_hardware.stream0_frame_count),
+              static_cast<unsigned int>(npu_hardware.stream0_irq));
     tm_printf(reinterpret_cast<const UB *>(
                   "debug: peripheral dump end stage=%s aton_irq=%u last=%x\n"),
               stage, g_aton_irq_count, g_aton_last_irqs);
@@ -489,17 +500,27 @@ void application_initialize_task(void)
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
         "boot: external memory init begin\n")));
 
+    const Error memory_hardware_status = g_memory_hardware.Initialize();
+    if (!memory_hardware_status.Ok()) {
+        LogStatus("memory-hardware", memory_hardware_status);
+        Halt("sample2: memory hardware initialization failed\n");
+    }
     const Error status = g_memory.Initialize();
     if (!status.Ok()) {
         LogStatus("memory", status);
         Halt("sample2: memory initialization failed\n");
     }
-    g_memory.KeepInferenceClocksOnSleep();
-    /* Match ref's device order: initialize PSRAM first, then XSPI2 NOR,
-     * before applying the final peripheral-access policy. */
-    const int nor_status = cubemx_initialize_external_memory();
+    g_memory_hardware.KeepInferenceClocksOnSleep();
+    /* Initialize external devices before applying the final RIF policy. */
+    int nor_status = -1;
+    const Error external_memory_status =
+        g_memory_hardware.InitializeExternalMemory(&nor_status);
+    if (!external_memory_status.Ok()) {
+        LogStatus("memory-hardware", external_memory_status);
+        Halt("sample2: external memory initialization failed\n");
+    }
     g_external_nor_ready = nor_status == 0;
-    /* The external-memory adapter emits a long register snapshot on failure.
+    /* The XSPI NOR driver emits a long register snapshot on failure.
      * Keep other tasks from writing to the same T-Monitor UART while that
      * snapshot is being transferred, otherwise the diagnostic lines become
      * interleaved and unreadable.  Interrupts remain enabled, so HAL tick
@@ -509,7 +530,8 @@ void application_initialize_task(void)
                       "ai: external NOR unavailable status=%d; inference disabled\n"),
                   nor_status);
     }
-    const Error access_status = g_memory.InitializePeripheralAccess();
+    const Error access_status =
+        g_memory_hardware.InitializePeripheralAccess();
     if (!access_status.Ok()) {
         LogStatus("memory", access_status);
         Halt("sample2: peripheral access initialization failed\n");
@@ -560,12 +582,12 @@ void camera_render_task(void)
     Error status{};
 
     uai::sample2::LcdDriver lcd;
-    uai::sample2::CameraDriver camera;
+    uai::sample2::ImagerDriver imager;
     const BoxSet initial = EmptyBoxes();
 
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
         "lcd: initialize begin\n")));
-    status = lcd.Initialize(g_memory);
+    status = lcd.Initialize(g_memory, g_memory_hardware);
     if (!status.Ok()) {
         LogStatus("lcd", status);
         Halt("sample2: lcd initialization failed\n");
@@ -584,14 +606,14 @@ void camera_render_task(void)
 
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
         "camera: initialize begin\n")));
-    status = camera.Initialize(g_memory);
+    status = imager.Initialize(g_memory, g_memory_hardware);
     if (!status.Ok()) {
         LogStatus("camera", status);
         Halt("sample2: camera initialization failed\n");
     }
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
         "camera: initialize result=ok\n")));
-    status = camera.Start();
+    status = imager.Start();
     if (!status.Ok()) {
         LogStatus("camera", status);
         Halt("sample2: camera start failed\n");
@@ -619,7 +641,7 @@ void camera_render_task(void)
     std::uint32_t last_box_update = Now();
     for (;;) {
         ++loop_count;
-        status = camera.Process();
+        status = imager.Process();
         if (!status.Ok()) {
             LogStatus("camera", status);
             Halt("sample2: camera process failed\n");
@@ -662,7 +684,7 @@ void camera_render_task(void)
                 "lcd: stale inference boxes cleared\n")));
         }
         uai::sample2::memory_manager::CaptureFrame capture{};
-        status = camera.TakeCompletedCapture(&capture);
+        status = imager.TakeCompletedCapture(&capture);
         if (!status.Ok()) {
             if (status.code != ErrorCode::kNoFrame) {
                 LogStatus("camera", status);
@@ -725,7 +747,22 @@ void camera_render_task(void)
                           "ai: snapshot begin sequence=%u\n"),
                       static_cast<unsigned int>(capture.sequence));
             InferenceFrame inference{};
-            status = g_memory.SnapshotForInference(capture, &inference);
+            status = g_memory.AcquireInferenceBuffer(capture, &inference);
+            if (status.Ok()) {
+                status = g_memory_hardware.PrepareForCpuRead(capture.buffer);
+            }
+            if (status.Ok()) {
+                std::memcpy(
+                    reinterpret_cast<void *>(inference.buffer.address),
+                    reinterpret_cast<const void *>(capture.buffer.address),
+                    uai::sample2::memory_manager::kFrameBytes);
+                status = {ErrorCode::kOk, capture.sequence,
+                          "memory.snapshot_inference"};
+            } else if (inference) {
+                const Error release_status =
+                    g_memory.ReleaseInferenceBuffer(inference);
+                LogStatus("memory", release_status);
+            }
             tm_printf(reinterpret_cast<const UB *>(
                           "ai: snapshot end sequence=%u code=%u detail=%x buffer=%x\n"),
                       static_cast<unsigned int>(capture.sequence),
@@ -771,7 +808,7 @@ void inference_task(void)
     uai::sample2::ModelManager model;
     const Error model_status =
         g_external_nor_ready
-            ? model.Initialize(g_memory)
+            ? model.Initialize(g_memory, g_memory_hardware)
             : Error{ErrorCode::kNotInitialized, 0U,
                     "ai.external_nor_unavailable"};
     if (model_status.Ok()) {
@@ -863,6 +900,7 @@ void StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
 
 } // namespace
 
+/* 割り込みベクタ/起動コードがこのC名で参照するハンドラー。 */
 extern "C" void IAC_IRQHandler(void)
 {
     const std::uint32_t flags0 = IAC->ISR[0];
@@ -887,6 +925,7 @@ extern "C" void IAC_IRQHandler(void)
     HAL_RIF_IRQHandler();
 }
 
+/* µT-Kernelから呼び出されるsample2のエントリーポイント。 */
 extern "C" INT usermain(void)
 {
     DumpCoreRegisters("usermain");

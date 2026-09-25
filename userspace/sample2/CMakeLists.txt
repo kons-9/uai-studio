@@ -10,15 +10,21 @@ set(SAMPLE2_COMPONENT_ROOT
 
 add_executable(sample2.elf
     src/main.cpp
-    src/camera_driver/camera_driver.cpp
-    src/lcd_driver/lcd_driver.cpp
+    src/driver/imager_driver/imager_driver.cpp
+    src/driver/cache_controller/cache_controller.cpp
+    src/driver/nor_driver/nor_driver.cpp
+    src/driver/psram_driver/psram_driver.cpp
+    src/driver/rif_controller/rif_controller.cpp
+    src/driver/lcd_driver/lcd_driver.cpp
     src/memory_manager/memory_manager.cpp
-    src/npu_driver/npu_hardware.cpp
-    src/npu_driver/npu_driver.cpp
+    src/memory_manager/memory_hardware.cpp
+    src/driver/npu_driver/npu_hardware.cpp
+    src/driver/npu_driver/npu_driver.cpp
     src/model_manager/model_manager.cpp
+    src/model_manager/model_person_adapter.cpp
     # Project-owned ref-compatible BSP with a reset fallback for NOR left in
     # OPI-DTR by the external loader.
-    "${SAMPLE2_SRC_DIR}/board/stm32n6570_discovery_xspi.c"
+    "${SAMPLE2_SRC_DIR}/driver/c_bsp/stm32n6570_discovery_xspi.c"
     "${SAMPLE2_COMPONENT_ROOT}/mx66uw1g45g/mx66uw1g45g.c"
     "${SAMPLE2_COMPONENT_ROOT}/aps256xx/aps256xx.c")
 

@@ -10,6 +10,8 @@ extern "C"
 #include "stm32n6xx_hal.h"
 #include <tm/tmonitor.h>
 
+    /* CubeMX生成のXSPI2ハンドルを別オブジェクトから参照する。
+     * 定義はリンク対象のCubeMX/ボード初期化コードが供給する。 */
     extern XSPI_HandleTypeDef hxspi2;
     void npu_cache_enable(void);
 }
@@ -225,6 +227,8 @@ namespace memory
             __HAL_RCC_IAC_RELEASE_RESET();
         }
 
+        /* 別のC++翻訳単位(memory_manager/memory_manager.cpp)にある関数定義を
+         * Cリンケージで参照し、リンカーの名前修飾不一致を防ぐ。 */
         extern "C" void npu_cache_enable_clocks_and_reset(void)
         {
             __HAL_RCC_CACHEAXI_CLK_ENABLE();

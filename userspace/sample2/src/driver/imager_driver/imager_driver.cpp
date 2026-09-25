@@ -1,4 +1,4 @@
-#include "camera_driver/camera_driver.hpp"
+#include "driver/imager_driver/imager_driver.hpp"
 
 namespace uai::sample2 {
 
@@ -18,7 +18,8 @@ Error FromBackend(uai::driver::DriverStatus status, const char *operation)
 
 } // namespace
 
-Error CameraDriver::Initialize(memory_manager::MemoryManager &memory)
+Error ImagerDriver::Initialize(memory_manager::MemoryManager &memory,
+                              memory_manager::MemoryHardware &memory_hardware)
 {
     if (initialized_) {
         return {ErrorCode::kAlreadyInitialized, 0U, "camera.initialize"};
@@ -35,11 +36,12 @@ Error CameraDriver::Initialize(memory_manager::MemoryManager &memory)
         return FromBackend(status, "camera.initialize");
     }
     memory_ = &memory;
+    memory_hardware_ = &memory_hardware;
     initialized_ = true;
     return {ErrorCode::kOk, 0U, "camera.initialize"};
 }
 
-Error CameraDriver::Start()
+Error ImagerDriver::Start()
 {
     if (!initialized_ || memory_ == nullptr) {
         return {ErrorCode::kNotInitialized, 0U, "camera.start"};
@@ -65,11 +67,11 @@ Error CameraDriver::Start()
     const memory_manager::Buffer second_buffer{
         second, memory_manager::kFrameBytes, 1U,
         memory_manager::Region::kCapture};
-    memory_status = memory_->PrepareForDmaWrite(first_buffer);
+    memory_status = memory_hardware_->PrepareForDmaWrite(first_buffer);
     if (!memory_status.Ok()) {
         return memory_status;
     }
-    memory_status = memory_->PrepareForDmaWrite(second_buffer);
+    memory_status = memory_hardware_->PrepareForDmaWrite(second_buffer);
     if (!memory_status.Ok()) {
         return memory_status;
     }
@@ -82,7 +84,7 @@ Error CameraDriver::Start()
     return {ErrorCode::kOk, 0U, "camera.start"};
 }
 
-Error CameraDriver::Process()
+Error ImagerDriver::Process()
 {
     if (!initialized_ || !started_) {
         return {ErrorCode::kNotInitialized, 0U, "camera.process"};
@@ -90,7 +92,7 @@ Error CameraDriver::Process()
     return FromBackend(backend_.Process(), "camera.process");
 }
 
-Error CameraDriver::TakeCompletedCapture(
+Error ImagerDriver::TakeCompletedCapture(
     memory_manager::CaptureFrame *frame)
 {
     if (!initialized_ || !started_ || memory_ == nullptr) {

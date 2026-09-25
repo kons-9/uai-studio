@@ -1,4 +1,4 @@
-#include "lcd_driver/lcd_driver.hpp"
+#include "driver/lcd_driver/lcd_driver.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -11,9 +11,12 @@ using common::ErrorCode;
 
 namespace {
 
-constexpr std::uint16_t kBlack = 0x0000U;
 constexpr std::uint16_t kRed = 0xF800U;
 constexpr std::int32_t kLineWidth = 4;
+constexpr std::uint16_t kInitialPattern[] = {
+    0xFFFFU, 0xFFE0U, 0x07FFU, 0x07E0U,
+    0xF81FU, 0xF800U, 0x001FU, 0x0000U,
+};
 
 bool InRange(std::int32_t value, std::int32_t limit)
 {
@@ -32,12 +35,14 @@ Error LcdDriver::FromBackend(uai::driver::DriverStatus status,
             operation};
 }
 
-Error LcdDriver::Initialize(memory_manager::MemoryManager &memory)
+Error LcdDriver::Initialize(memory_manager::MemoryManager &memory,
+                            memory_manager::MemoryHardware &memory_hardware)
 {
     if (initialized_) {
         return {ErrorCode::kAlreadyInitialized, 0U, "lcd.initialize"};
     }
     memory_ = &memory;
+    memory_hardware_ = &memory_hardware;
     const uai::driver::DriverStatus status = backend_.Initialize();
     if (!uai::driver::IsOk(status)) {
         memory_ = nullptr;
@@ -51,9 +56,14 @@ void LcdDriver::FillInitialFrame(const memory_manager::DisplayBuffer &buffer,
                                  const memory_manager::BoxSet &boxes)
 {
     auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
-    for (std::size_t i = 0U; i < memory_manager::kFrameBytes / sizeof(*pixels);
-         ++i) {
-        pixels[i] = kBlack;
+    for (std::size_t y = 0U; y < memory_manager::kFrameHeight; ++y) {
+        for (std::size_t x = 0U; x < memory_manager::kFrameWidth; ++x) {
+            const std::size_t color =
+                x * (sizeof(kInitialPattern) / sizeof(kInitialPattern[0])) /
+                memory_manager::kFrameWidth;
+            pixels[y * memory_manager::kFrameWidth + x] =
+                kInitialPattern[color];
+        }
     }
     DrawBoxes(buffer, boxes);
 }
@@ -116,7 +126,7 @@ Error LcdDriver::ShowInitialFrame(
         return status;
     }
     FillInitialFrame(first, boxes);
-    status = memory_->PrepareForPeripheralRead(first.buffer);
+    status = memory_hardware_->PrepareForPeripheralRead(first.buffer);
     if (!status.Ok()) {
         (void)memory_->ReleaseDisplayBuffer(first);
         return status;
@@ -139,7 +149,7 @@ Error LcdDriver::ShowInitialFrame(
     status = memory_->AcquireDisplayBuffer(&spare);
     if (status.Ok()) {
         FillInitialFrame(spare, boxes);
-        status = memory_->PrepareForPeripheralRead(spare.buffer);
+    status = memory_hardware_->PrepareForPeripheralRead(spare.buffer);
         if (status.Ok()) {
             status = memory_->ReleaseDisplayBuffer(spare);
         } else {
@@ -161,7 +171,11 @@ Error LcdDriver::ComposeAndPresent(
         return {ErrorCode::kInvalidArgument, 0U, "lcd.compose"};
     }
 
-    Error status = memory_->PrepareForCpuRead(capture.buffer);
+    Error status = memory_->ValidateCaptureFrame(capture);
+    if (!status.Ok()) {
+        return status;
+    }
+    status = memory_hardware_->PrepareForCpuRead(capture.buffer);
     if (!status.Ok()) {
         return status;
     }
@@ -176,7 +190,7 @@ Error LcdDriver::ComposeAndPresent(
                 memory_manager::kFrameBytes);
     DrawBoxes(display, boxes);
 
-    status = memory_->PrepareForPeripheralRead(display.buffer);
+    status = memory_hardware_->PrepareForPeripheralRead(display.buffer);
     if (!status.Ok()) {
         (void)memory_->ReleaseDisplayBuffer(display);
         return status;

@@ -1,15 +1,11 @@
-#ifndef UAI_SAMPLE2_MODEL_API_H
-#define UAI_SAMPLE2_MODEL_API_H
+#ifndef UAI_SAMPLE2_MODEL_PERSON_C_API_H
+#define UAI_SAMPLE2_MODEL_PERSON_C_API_H
 
 #include <stdint.h>
 
 #include "stai.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-typedef struct sample2_model_api {
+typedef struct sample2_model_c_api {
     const char *name;
     uint32_t input_width;
     uint32_t input_height;
@@ -24,9 +20,13 @@ typedef struct sample2_model_api {
     stai_return_code (*wfe)(void);
     stai_return_code (*get_run_status)(void);
     stai_return_code (*new_inference)(void);
-} sample2_model_api;
+} sample2_model_c_api;
 
-extern const sample2_model_api person_model;
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+extern const sample2_model_c_api person_model_c_api;
 
 #ifdef __cplusplus
 }

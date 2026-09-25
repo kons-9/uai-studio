@@ -76,12 +76,12 @@ struct BoxSet {
 class MemoryManager final {
 public:
     common::Error Initialize();
-    common::Error InitializePeripheralAccess();
 
     common::Error CaptureBuffers(std::uintptr_t *first,
                                  std::uintptr_t *second) const;
     common::Error ImportCompletedCapture(std::uintptr_t address,
                                          CaptureFrame *frame);
+    common::Error ValidateCaptureFrame(const CaptureFrame &frame) const;
 
     common::Error AcquireDisplayBuffer(DisplayBuffer *buffer);
     common::Error CommitDisplayBuffer(const DisplayBuffer &buffer);
@@ -89,16 +89,8 @@ public:
 
     common::Error AcquireInferenceBuffer(const CaptureFrame &capture,
                                          InferenceFrame *frame);
-    common::Error SnapshotForInference(const CaptureFrame &capture,
-                                       InferenceFrame *frame);
     common::Error ClaimInferenceBuffer(const InferenceFrame &frame);
     common::Error ReleaseInferenceBuffer(const InferenceFrame &frame);
-
-    common::Error PrepareForDmaWrite(const Buffer &buffer) const;
-    common::Error PrepareForCpuRead(const Buffer &buffer) const;
-    common::Error PrepareForPeripheralRead(const Buffer &buffer) const;
-
-    void KeepInferenceClocksOnSleep() const;
 
 private:
     struct Slot {
@@ -114,6 +106,8 @@ private:
     Slot inference_[2]{};
     std::int8_t current_display_ = -1;
     std::uint32_t capture_sequence_ = 0U;
+    std::uint32_t capture_generation_[2]{};
+    std::uint32_t inference_capture_sequence_[2]{};
     bool initialized_ = false;
 };
 
