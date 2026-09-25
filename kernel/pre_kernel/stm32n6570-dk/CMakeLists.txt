@@ -61,14 +61,18 @@ target_include_directories(stm32n6570_dk
         "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/nor_sfdp"
         "${STM32CUBE_N6_DIR}/Drivers/BSP/Components/mx66uw1g45g"
         "${STM32CUBE_N6_DIR}/Drivers/BSP/STM32N6570-DK"
-        "${CMAKE_SOURCE_DIR}/userspace/sample2/src/board"
-        "${CMAKE_SOURCE_DIR}/userspace/sample2/config"
     PRIVATE
         "${CMAKE_SOURCE_DIR}/kernel/utkernel/mtk3_bsp2"
         "${CMAKE_SOURCE_DIR}/kernel/utkernel/mtk3_bsp2/config"
         "${CMAKE_SOURCE_DIR}/kernel/utkernel/mtk3_bsp2/include"
         "${CMAKE_SOURCE_DIR}/kernel/utkernel/mtk3_bsp2/mtkernel/include"
 )
+
+if(NOT APP_TARGET STREQUAL "sample1")
+    target_include_directories(stm32n6570_dk PUBLIC
+        "${CMAKE_SOURCE_DIR}/userspace/sample2/src/board"
+        "${CMAKE_SOURCE_DIR}/userspace/sample2/config")
+endif()
 
 target_compile_definitions(stm32n6570_dk PRIVATE
     STM32N6570_DK
@@ -77,6 +81,8 @@ target_compile_definitions(stm32n6570_dk PRIVATE
     STM32N657xx
     USE_FULL_LL_DRIVER
     USER_TZ_SAU_SETUP
+    $<$<STREQUAL:${APP_TARGET},sample1>:CPU_IN_SECURE_STATE>
+    $<$<STREQUAL:${APP_TARGET},sample1>:UAI_SAMPLE1_CAMERA_CLOCKS>
     # GCC 10.3's freestanding newlib math.h omits the C99 float_t typedef,
     # while CubeMX's STM32N6 clock update code uses it.
     float_t=float

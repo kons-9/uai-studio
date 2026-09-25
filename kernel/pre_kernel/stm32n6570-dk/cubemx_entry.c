@@ -8,7 +8,7 @@
 
 void knl_start_mtkernel(void);
 
-static void sample2_system_clock_config(void)
+static void board_system_clock_config(void)
 {
     RCC_OscInitTypeDef oscillator = {0};
     RCC_ClkInitTypeDef clocks = {0};
@@ -19,14 +19,27 @@ static void sample2_system_clock_config(void)
         Error_Handler();
     }
 
-    /* Match the ref application's PLL outputs.  In particular, PLL2 feeds
-     * DCMIPP (IC17), while PLL1 feeds the CSI receiver (IC18).  The generated
-     * FSBL clock setup left PLL2 disabled and used a different PLL1 rate. */
+    /* The camera BSP selects PLL1 for DCMIPP (IC17) and CSI (IC18). */
     oscillator.OscillatorType = RCC_OSCILLATORTYPE_HSI;
     oscillator.HSIState = RCC_HSI_ON;
     oscillator.HSIDiv = RCC_HSI_DIV1;
     oscillator.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
 
+#if defined(UAI_SAMPLE1_CAMERA_CLOCKS)
+    /* STM32Cube's STM32N6570-DK camera configuration uses PLL1=1200 MHz,
+     * then IC17/4 for DCMIPP (300 MHz) and IC18/60 for CSI (20 MHz). */
+    oscillator.PLL1.PLLState = RCC_PLL_ON;
+    oscillator.PLL1.PLLSource = RCC_PLLSOURCE_HSI;
+    oscillator.PLL1.PLLM = 4U;
+    oscillator.PLL1.PLLN = 75U;
+    oscillator.PLL1.PLLFractional = 0U;
+    oscillator.PLL1.PLLP1 = 1U;
+    oscillator.PLL1.PLLP2 = 1U;
+
+    oscillator.PLL2.PLLState = RCC_PLL_NONE;
+    oscillator.PLL3.PLLState = RCC_PLL_NONE;
+    oscillator.PLL4.PLLState = RCC_PLL_NONE;
+#else
     oscillator.PLL1.PLLState = RCC_PLL_ON;
     oscillator.PLL1.PLLSource = RCC_PLLSOURCE_HSI;
     oscillator.PLL1.PLLM = 2U;
@@ -58,6 +71,7 @@ static void sample2_system_clock_config(void)
     oscillator.PLL4.PLLFractional = 0U;
     oscillator.PLL4.PLLP1 = 6U;
     oscillator.PLL4.PLLP2 = 6U;
+#endif
 
     if (HAL_RCC_OscConfig(&oscillator) != HAL_OK) {
         Error_Handler();
@@ -74,6 +88,16 @@ static void sample2_system_clock_config(void)
     clocks.APB2CLKDivider = RCC_APB2_DIV1;
     clocks.APB4CLKDivider = RCC_APB4_DIV1;
     clocks.APB5CLKDivider = RCC_APB5_DIV1;
+#if defined(UAI_SAMPLE1_CAMERA_CLOCKS)
+    clocks.IC1Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
+    clocks.IC1Selection.ClockDivider = 2U;
+    clocks.IC2Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
+    clocks.IC2Selection.ClockDivider = 3U;
+    clocks.IC6Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
+    clocks.IC6Selection.ClockDivider = 4U;
+    clocks.IC11Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
+    clocks.IC11Selection.ClockDivider = 3U;
+#else
     clocks.IC1Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
     clocks.IC1Selection.ClockDivider = 1U;
     clocks.IC2Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
@@ -82,11 +106,45 @@ static void sample2_system_clock_config(void)
     clocks.IC6Selection.ClockDivider = 1U;
     clocks.IC11Selection.ClockSelection = RCC_ICCLKSOURCE_PLL3;
     clocks.IC11Selection.ClockDivider = 1U;
+#endif
 
     if (HAL_RCC_ClockConfig(&clocks) != HAL_OK) {
         Error_Handler();
     }
 }
+
+#if defined(UAI_SAMPLE1_CAMERA_CLOCKS)
+static void board_camera_display_rif_config(void)
+{
+    RIMC_MasterConfig_t master = {0};
+
+    /* DCMIPP/CSI and the display engines are bus masters.  Give them the
+     * same secure, privileged CID as the camera application, as done by the
+     * STM32N6570-DK camera configuration. */
+    __HAL_RCC_RIFSC_CLK_ENABLE();
+    master.MasterCID = RIF_CID_1;
+    master.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV;
+
+    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DCMIPP, &master);
+    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DMA2D, &master);
+    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC1, &master);
+    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC2, &master);
+    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_VENC, &master);
+
+    HAL_RIF_RISC_SetSlaveSecureAttributes(
+        RIF_RISC_PERIPH_INDEX_DMA2D, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+    HAL_RIF_RISC_SetSlaveSecureAttributes(
+        RIF_RISC_PERIPH_INDEX_DCMIPP, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+    HAL_RIF_RISC_SetSlaveSecureAttributes(
+        RIF_RISC_PERIPH_INDEX_CSI, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+    HAL_RIF_RISC_SetSlaveSecureAttributes(
+        RIF_RISC_PERIPH_INDEX_LTDC, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+    HAL_RIF_RISC_SetSlaveSecureAttributes(
+        RIF_RISC_PERIPH_INDEX_LTDCL1, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+    HAL_RIF_RISC_SetSlaveSecureAttributes(
+        RIF_RISC_PERIPH_INDEX_LTDCL2, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+}
+#endif
 
 int main(void)
 {
@@ -96,7 +154,7 @@ int main(void)
     HAL_Init();
     HAL_SuspendTick();
 
-    sample2_system_clock_config();
+    board_system_clock_config();
     HAL_SuspendTick();
     PeriphCommonClock_Config();
     MX_GPIO_Init();
@@ -106,6 +164,9 @@ int main(void)
     MX_XSPI1_Init();
     MX_XSPI2_Init();
     SystemIsolation_Config();
+#if defined(UAI_SAMPLE1_CAMERA_CLOCKS)
+    board_camera_display_rif_config();
+#endif
 
     __enable_irq();
     knl_start_mtkernel();
