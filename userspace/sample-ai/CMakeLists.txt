@@ -39,6 +39,7 @@ add_executable(sample-ai.elf
     src/task/task_diagnostics.cpp
     src/driver/camera/registers/imx335_registers.cpp
     src/driver/camera/usecase/camera_use_case.cpp
+    src/driver/board/hal_time.c
     src/driver/display_driver.cpp
     src/driver/imager_driver/imager_driver.cpp
     src/driver/cache_controller/cache_controller.cpp

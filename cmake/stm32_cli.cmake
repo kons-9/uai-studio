@@ -32,7 +32,8 @@ if(NOT CUBEMX_IOC)
     # CubeMX peripheral/startup setup;
     # its dual-pipe configuration is applied by the application at runtime.
     if(NOT EXISTS "${_uai_default_ioc}" AND
-       APP_TARGET STREQUAL "sample-camera-pipe2")
+       (APP_TARGET STREQUAL "sample-camera-pipe2" OR
+        APP_TARGET STREQUAL "sample-camera-pipe2-lab"))
         set(_uai_default_ioc
             "${CMAKE_SOURCE_DIR}/userspace/sample-camera-lcd/config/stm32n6570-dk-fullsecure.ioc")
     endif()

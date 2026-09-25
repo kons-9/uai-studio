@@ -4,9 +4,8 @@ namespace uai::ai::task {
 
 void application_initialize_task(void)
 {
-    /* HAL tick is suspended while the pre-kernel clock tree is installed.
-     * Resume it once µT-Kernel is running so Cube HAL timeout loops used by
-     * the external-memory BSP can make progress. */
+    /* Resume the nominal HAL tick after pre-kernel setup. The sample-ai HAL
+     * time bridge uses µT-Kernel time for HAL_GetTick/HAL_Delay. */
     HAL_ResumeTick();
     ConfigureReferenceInterruptPriorities();
     /* The RAM-launch trampoline disables D-cache to prevent stale lines from
@@ -34,9 +33,15 @@ void application_initialize_task(void)
     }
     g_memory_hardware.KeepInferenceClocksOnSleep();
     /* Initialize external devices before applying the final RIF policy. */
+    constexpr bool initialize_nor = kInferenceMode == InferenceMode::kNpu;
     int nor_status = -1;
+    if constexpr (!initialize_nor) {
+        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+            "boot: NOR skipped: inference disabled\n")));
+    }
     const Error external_memory_status =
-        g_memory_hardware.InitializeExternalMemory(&nor_status);
+        g_memory_hardware.InitializeExternalMemory(&nor_status,
+                                                  initialize_nor);
     if (!external_memory_status.Ok()) {
         LogStatus("memory-hardware", external_memory_status);
         Halt("ai: external memory initialization failed\n");
@@ -47,10 +52,12 @@ void application_initialize_task(void)
      * snapshot is being transferred, otherwise the diagnostic lines become
      * interleaved and unreadable.  Interrupts remain enabled, so HAL tick
      * timeouts used by the BSP continue to work. */
-    if (!g_external_nor_ready) {
-        tm_printf(reinterpret_cast<const UB *>(
-                      "ai: external NOR unavailable status=%d; inference disabled\n"),
-                  nor_status);
+    if constexpr (kInferenceMode == InferenceMode::kNpu) {
+        if (!g_external_nor_ready) {
+            tm_printf(reinterpret_cast<const UB *>(
+                          "ai: external NOR unavailable status=%d; inference disabled\n"),
+                      nor_status);
+        }
     }
     const Error access_status =
         g_memory_hardware.InitializePeripheralAccess();

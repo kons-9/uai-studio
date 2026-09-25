@@ -21,6 +21,7 @@ Thumbs.db
 
 # CMake build tree
 /build/
+/build-*/
 
 # Locally installed vendor tools
 /.tools/

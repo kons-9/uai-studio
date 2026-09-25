@@ -15,9 +15,10 @@ namespace uai::ai::memory_manager {
 class MemoryHardware final {
 public:
     common::Error Initialize();
-    /* Initialize PSRAM before NOR. A NOR failure is reported through
-     * nor_status so preview can continue without model inference. */
-    common::Error InitializeExternalMemory(int *nor_status);
+    /* PSRAM is always needed for camera buffers. Initialize NOR only when
+     * model weights are needed; report its result through nor_status. */
+    common::Error InitializeExternalMemory(int *nor_status,
+                                          bool initialize_nor = true);
     common::Error InitializePeripheralAccess();
 
     common::Error PrepareForDmaWrite(const Buffer &buffer) const;

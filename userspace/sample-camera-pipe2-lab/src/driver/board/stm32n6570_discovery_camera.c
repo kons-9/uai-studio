@@ -121,15 +121,15 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32n6570_discovery_camera.h"
-
-/* Temporary CSI electrical diagnostic. 0=normal two lane, 1=physical lane 0,
- * 2=physical lane 1. Keep this explicit because IMX335 continues to transmit
- * on both lanes during the one-lane receiver tests. */
-#ifndef AI_CSI_DIAGNOSTIC_LANE
-#define AI_CSI_DIAGNOSTIC_LANE 0
-#endif
 #include "stm32n6570_discovery_bus.h"
 #include "isp_param_conf.h"
+#include <stdint.h>
+#include <tm/tmonitor.h>
+
+#define CAMERA_LAB_TRACE(message) tm_putstring((UB *) (message))
+#define CAMERA_LAB_TRACE_PTRS(message, a, b, c) \
+  tm_printf((const UB *) (message), (uint32_t) (uintptr_t) (a), \
+            (uint32_t) (uintptr_t) (b), (uint32_t) (uintptr_t) (c))
 /** @addtogroup BSP
   * @{
   */
@@ -205,6 +205,7 @@ static int32_t IMX335_Probe(uint32_t Resolution, uint32_t PixelFormat);
   */
 int32_t BSP_CAMERA_Init(uint32_t Instance, uint32_t Resolution, uint32_t PixelFormat)
 {
+  CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: enter\n");
   int32_t ret = BSP_ERROR_NONE;
   ISP_AppliHelpersTypeDef appliHelpers = {0};
   static const ISP_IQParamTypeDef* ISP_IQParamCacheInit[] = {
@@ -244,6 +245,7 @@ int32_t BSP_CAMERA_Init(uint32_t Instance, uint32_t Resolution, uint32_t PixelFo
       /* DCMIPP Initialization */
       DCMIPP_MspInit(&hcamera_dcmipp);
 #endif /* USE_HAL_DCMIPP_REGISTER_CALLBACKS */
+      CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: MSP initialized\n");
       if(MX_DCMIPP_ClockConfig(&hcamera_dcmipp) != HAL_OK)
       {
         ret = BSP_ERROR_PERIPH_FAILURE;
@@ -256,21 +258,26 @@ int32_t BSP_CAMERA_Init(uint32_t Instance, uint32_t Resolution, uint32_t PixelFo
       {
         /* No action */
       }
+      CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: clock/reset complete\n");
 
       if(ret == BSP_ERROR_NONE)
       {
+        CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: before MX_DCMIPP_Init\n");
         if (MX_DCMIPP_Init(&hcamera_dcmipp) != HAL_OK)
         {
           ret = BSP_ERROR_PERIPH_FAILURE;
         }
         else
         {
+          CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: MX_DCMIPP_Init complete\n");
+          CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: before IMX335_Probe\n");
           if (IMX335_Probe(Resolution, PixelFormat) != BSP_ERROR_NONE)
           {
             ret = BSP_ERROR_UNKNOWN_COMPONENT;
           }
           else
           {
+            CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: IMX335_Probe complete\n");
 #if (USE_HAL_DCMIPP_REGISTER_CALLBACKS > 0)
             /* Register DCMIPP LineEvent, FrameEvent and Error callbacks */
             if (HAL_DCMIPP_PIPE_RegisterCallback(&hcamera_dcmipp, HAL_DCMIPP_PIPE_LINE_EVENT_CB_ID, DCMIPP_PIPE_LineEventCallback) != HAL_OK)
@@ -304,12 +311,14 @@ int32_t BSP_CAMERA_Init(uint32_t Instance, uint32_t Resolution, uint32_t PixelFo
               appliHelpers.GetSensorExposure = BSP_GetSensorExposureHelper;
 
               /* Initialize the Image Signal Processing middleware */
+              CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: before ISP_Init\n");
               if(ISP_Init(&hcamera_isp, &hcamera_dcmipp, 0, &appliHelpers, ISP_IQParamCacheInit[0]) != ISP_OK)
               {
                 ret = BSP_ERROR_PERIPH_FAILURE;
               }
               else
               {
+                CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: ISP_Init complete\n");
                 ret = BSP_ERROR_NONE;
               }
 #if (USE_HAL_DCMIPP_REGISTER_CALLBACKS > 0)
@@ -405,17 +414,8 @@ __weak HAL_StatusTypeDef MX_DCMIPP_Init(DCMIPP_HandleTypeDef *hdcmipp)
   }
 
   /* Configure the CSI */
-#if AI_CSI_DIAGNOSTIC_LANE == 1
-  csiconf.DataLaneMapping = DCMIPP_CSI_PHYSICAL_DATA_LANES;
-  csiconf.NumberOfLanes   = DCMIPP_CSI_ONE_DATA_LANE;
-#elif AI_CSI_DIAGNOSTIC_LANE == 2
-  csiconf.DataLaneMapping = DCMIPP_CSI_INVERTED_DATA_LANES;
-  csiconf.NumberOfLanes   = DCMIPP_CSI_ONE_DATA_LANE;
-#else
   csiconf.DataLaneMapping = DCMIPP_CSI_PHYSICAL_DATA_LANES;
   csiconf.NumberOfLanes   = DCMIPP_CSI_TWO_DATA_LANES;
-#endif
-  /* Keep the CSI receiver aligned with the stock IMX335 BT_1600 profile. */
   csiconf.PHYBitrate      = DCMIPP_CSI_PHY_BT_1600;
   if(HAL_DCMIPP_CSI_SetConfig(hdcmipp, &csiconf) != HAL_OK)
   {
@@ -1548,8 +1548,8 @@ int32_t BSP_CAMERA_HwReset(uint32_t Instance)
   GPIO_InitTypeDef gpio_init_structure = {0};
 
   /* Enable GPIO clocks */
-  __HAL_RCC_GPIOC_CLK_ENABLE(); /* NRST_CAM */
-  __HAL_RCC_GPIOD_CLK_ENABLE(); /* EN_CAM */
+  __HAL_RCC_GPIOO_CLK_ENABLE(); // EN Cam
+  __HAL_RCC_GPIOD_CLK_ENABLE(); // NRST Cam
 
   if (Instance >= CAMERA_INSTANCES_NBR)
   {
@@ -1561,11 +1561,6 @@ int32_t BSP_CAMERA_HwReset(uint32_t Instance)
     gpio_init_structure.Pull      = GPIO_NOPULL;
     gpio_init_structure.Mode      = GPIO_MODE_OUTPUT_PP;
     gpio_init_structure.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
-    /* Preload both output latches low before switching the pins to output,
-       so reset stays asserted while camera power is cycled. */
-    HAL_GPIO_WritePin(EN_CAM_PORT, EN_CAM_PIN, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(NRST_CAM_PORT, NRST_CAM_PIN, GPIO_PIN_RESET);
-
     HAL_GPIO_Init(EN_CAM_PORT, &gpio_init_structure);
 
     gpio_init_structure.Pin       = NRST_CAM_PIN;
@@ -1574,16 +1569,13 @@ int32_t BSP_CAMERA_HwReset(uint32_t Instance)
     gpio_init_structure.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
     HAL_GPIO_Init(NRST_CAM_PORT, &gpio_init_structure);
 
-    /* Assert reset before removing power, then keep reset asserted until the
-       camera module's enable rail has stabilized.  NRST_CAM is PC8 (active
-       low); EN_CAM is PD2 (active high). */
-    HAL_GPIO_WritePin(NRST_CAM_PORT, NRST_CAM_PIN, GPIO_PIN_RESET);
-    HAL_Delay(10);
-    HAL_GPIO_WritePin(EN_CAM_PORT, EN_CAM_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET); // Disable MB1723 2V8 signal
     HAL_Delay(100);
-    HAL_GPIO_WritePin(EN_CAM_PORT, EN_CAM_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, GPIO_PIN_RESET); /* RESET low (reset active low) */
     HAL_Delay(100);
-    HAL_GPIO_WritePin(NRST_CAM_PORT, NRST_CAM_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_SET); // ENABLE MB1723 2V8 signal
+    HAL_Delay(100);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, GPIO_PIN_SET); /* RESET high (release reset) */
     HAL_Delay(100);
   }
   return ret;
@@ -2005,9 +1997,9 @@ static ISP_StatusTypeDef BSP_GetSensorExposureHelper(uint32_t Instance, int32_t 
   */
 static int32_t IMX335_Probe(uint32_t Resolution, uint32_t PixelFormat)
 {
-  int32_t ret;
+  int32_t ret = BSP_ERROR_NONE;
   IMX335_IO_t              IOCtx;
-  uint32_t                 id;
+  uint32_t                 id = 0U;
   static IMX335_Object_t   IMX335Obj;
 
   /* Configure the camera driver */
@@ -2018,43 +2010,63 @@ static int32_t IMX335_Probe(uint32_t Resolution, uint32_t PixelFormat)
   IOCtx.WriteReg    = BSP_I2C1_WriteReg16;
   IOCtx.GetTick     = BSP_GetTick;
 
+  CAMERA_LAB_TRACE_PTRS(
+      "lab IMX335_Probe: bus Init=%08x Read=%08x Write=%08x\n",
+      IOCtx.Init, IOCtx.ReadReg, IOCtx.WriteReg);
+  CAMERA_LAB_TRACE("lab IMX335_Probe: before RegisterBusIO\n");
   if (IMX335_RegisterBusIO(&IMX335Obj, &IOCtx) != IMX335_OK)
   {
-    ret = BSP_ERROR_COMPONENT_FAILURE;
+    CAMERA_LAB_TRACE("lab IMX335_Probe: RegisterBusIO failed\n");
+    return BSP_ERROR_COMPONENT_FAILURE;
   }
-  else if (IMX335_ReadID(&IMX335Obj, &id) != IMX335_OK)
+  CAMERA_LAB_TRACE("lab IMX335_Probe: RegisterBusIO complete\n");
+  CAMERA_LAB_TRACE_PTRS(
+      "lab IMX335_Probe: object IO.Read=%08x IO.Write=%08x Ctx.Write=%08x\n",
+      IMX335Obj.IO.ReadReg, IMX335Obj.IO.WriteReg, IMX335Obj.Ctx.WriteReg);
+
+  CAMERA_LAB_TRACE("lab IMX335_Probe: before ReadID\n");
+  if (IMX335_ReadID(&IMX335Obj, &id) != IMX335_OK)
   {
-    ret = BSP_ERROR_COMPONENT_FAILURE;
+    CAMERA_LAB_TRACE("lab IMX335_Probe: ReadID failed\n");
+    return BSP_ERROR_COMPONENT_FAILURE;
   }
-  else
+  tm_printf((const UB *) "lab IMX335_Probe: ReadID complete id=%08x\n", id);
+
+  if (id != (uint32_t) IMX335_CHIP_ID)
   {
-    if (id != (uint32_t) IMX335_CHIP_ID)
-    {
-      ret = BSP_ERROR_UNKNOWN_COMPONENT;
-    }
-    else
-    {
-      Camera_Drv = (CAMERA_Drv_t *) &IMX335_CAMERA_Driver;
-      Camera_CompObj = &IMX335Obj;
-      if (Camera_Drv->Init(Camera_CompObj, Resolution, PixelFormat) != IMX335_OK)
-      {
-        ret = BSP_ERROR_COMPONENT_FAILURE;
-      }
-      else if(Camera_Drv->SetFrequency(Camera_CompObj, IMX335_INCK_24MHZ)!= IMX335_OK)
-      {
-        ret = BSP_ERROR_COMPONENT_FAILURE;
-      }
-      else if (Camera_Drv->GetCapabilities(Camera_CompObj, &Camera_Cap) != IMX335_OK)
-      {
-        ret = BSP_ERROR_COMPONENT_FAILURE;
-      }
-      else
-      {
-        ret = BSP_ERROR_NONE;
-      }
-    }
+    return BSP_ERROR_UNKNOWN_COMPONENT;
   }
 
+  Camera_Drv = (CAMERA_Drv_t *) &IMX335_CAMERA_Driver;
+  Camera_CompObj = &IMX335Obj;
+  CAMERA_LAB_TRACE_PTRS(
+      "lab IMX335_Probe: driver Init=%08x Freq=%08x Caps=%08x\n",
+      Camera_Drv->Init, Camera_Drv->SetFrequency,
+      Camera_Drv->GetCapabilities);
+
+  CAMERA_LAB_TRACE("lab IMX335_Probe: before sensor Init\n");
+  if (Camera_Drv->Init(Camera_CompObj, Resolution, PixelFormat) != IMX335_OK)
+  {
+    CAMERA_LAB_TRACE("lab IMX335_Probe: sensor Init failed\n");
+    return BSP_ERROR_COMPONENT_FAILURE;
+  }
+  CAMERA_LAB_TRACE("lab IMX335_Probe: sensor Init complete\n");
+
+  CAMERA_LAB_TRACE("lab IMX335_Probe: before SetFrequency\n");
+  if (Camera_Drv->SetFrequency(Camera_CompObj, IMX335_INCK_24MHZ) != IMX335_OK)
+  {
+    CAMERA_LAB_TRACE("lab IMX335_Probe: SetFrequency failed\n");
+    return BSP_ERROR_COMPONENT_FAILURE;
+  }
+  CAMERA_LAB_TRACE("lab IMX335_Probe: SetFrequency complete\n");
+
+  CAMERA_LAB_TRACE("lab IMX335_Probe: before GetCapabilities\n");
+  if (Camera_Drv->GetCapabilities(Camera_CompObj, &Camera_Cap) != IMX335_OK)
+  {
+    CAMERA_LAB_TRACE("lab IMX335_Probe: GetCapabilities failed\n");
+    return BSP_ERROR_COMPONENT_FAILURE;
+  }
+  CAMERA_LAB_TRACE("lab IMX335_Probe: GetCapabilities complete\n");
   return ret;
 }
 

@@ -78,7 +78,7 @@ Error Hardware(const char *operation, std::uint32_t detail = 0U)
     return {ErrorCode::kHardware, detail, operation};
 }
 
-Error ConfigureSensor(const Imx335RegisterLayer &registers)
+Error ConfigureSensor()
 {
     auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
     if (sensor == nullptr ||
@@ -86,7 +86,8 @@ Error ConfigureSensor(const Imx335RegisterLayer &registers)
         IMX335_SetFramerate(sensor, kFrameRateFps) != IMX335_OK) {
         return Hardware("camera.sensor.configure");
     }
-    return registers.ConfigureMipi891Mbps();
+    /* Keep the sensor's stock IMX335 timing profile. */
+    return {ErrorCode::kOk, 0U, "camera.sensor.configure"};
 }
 
 Error ConfigurePipe()
@@ -285,7 +286,7 @@ Error CameraUseCase::Initialize(memory_manager::MemoryManager &memory,
     std::uintptr_t first = 0U, second = 0U;
     if (!memory.CaptureBuffers(&first, &second).Ok()) return {ErrorCode::kNotInitialized, 0U, "camera.initialize"};
     if (BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) != BSP_ERROR_NONE) return Hardware("camera.initialize");
-    if (!ConfigureSensor(registers_).Ok()) return Hardware("camera.sensor.configure");
+    if (!ConfigureSensor().Ok()) return Hardware("camera.sensor.configure");
     InstallExposureWorkaround();
     if (!ConfigurePipe().Ok() || !ConfigureRawDumpPipe().Ok()) {
         return Hardware("camera.configure");
@@ -362,7 +363,7 @@ Error CameraUseCase::Process()
         (void)HAL_DCMIPP_DeInit(&hcamera_dcmipp);
         bool recovery_ok =
             BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) == BSP_ERROR_NONE &&
-            ConfigureSensor(registers_).Ok();
+            ConfigureSensor().Ok();
         if (recovery_ok) {
             InstallExposureWorkaround();
             recovery_ok = ConfigurePipe().Ok() && ConfigureRawDumpPipe().Ok();

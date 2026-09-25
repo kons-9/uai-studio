@@ -57,7 +57,8 @@ common::Error MemoryHardware::Initialize()
     return {ErrorCode::kOk, 0U, "memory_hardware.initialize"};
 }
 
-common::Error MemoryHardware::InitializeExternalMemory(int *nor_status)
+common::Error MemoryHardware::InitializeExternalMemory(int *nor_status,
+                                                       bool initialize_nor)
 {
     using common::ErrorCode;
     if (!initialized_) {
@@ -73,6 +74,11 @@ common::Error MemoryHardware::InitializeExternalMemory(int *nor_status)
     if (!psram_.Initialize()) {
         return {ErrorCode::kHardware, 0U,
                 "memory_hardware.psram_initialize"};
+    }
+
+    if (!initialize_nor) {
+        return {ErrorCode::kOk, 0U,
+                "memory_hardware.psram_only_initialize"};
     }
 
     /* NOR failure is non-fatal: live camera preview can run without model

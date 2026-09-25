@@ -5,7 +5,8 @@ cmake_minimum_required(VERSION 3.16)
 # changing the kernel project.
 set(APP_TARGET "sample-hello-world" CACHE STRING "Userspace application to build")
 set_property(CACHE APP_TARGET PROPERTY STRINGS
-    sample-hello-world sample-camera-lcd sample-ai sample-camera-pipe2)
+    sample-hello-world sample-camera-lcd sample-ai sample-camera-pipe2
+    sample-camera-pipe2-lab)
 
 option(CMAKE_EXPORT_COMPILE_COMMANDS
        "Generate compile_commands.json for IDEs"
@@ -33,7 +34,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(kernel/utkernel)
 if(APP_TARGET STREQUAL "sample-camera-lcd" OR
-   APP_TARGET STREQUAL "sample-camera-pipe2")
+   APP_TARGET STREQUAL "sample-camera-pipe2" OR
+   APP_TARGET STREQUAL "sample-camera-pipe2-lab")
     target_include_directories(utkernel PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/userspace/${APP_TARGET}/src/driver/board/include"
         "${STM32CUBE_N6_DIR}/Drivers/CMSIS/Device/ST/STM32N6xx/Include"

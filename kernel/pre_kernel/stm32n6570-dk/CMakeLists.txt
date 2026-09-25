@@ -69,7 +69,8 @@ target_include_directories(stm32n6570_dk
 )
 
 if(NOT APP_TARGET STREQUAL "sample-camera-lcd" AND
-   NOT APP_TARGET STREQUAL "sample-camera-pipe2")
+   NOT APP_TARGET STREQUAL "sample-camera-pipe2" AND
+   NOT APP_TARGET STREQUAL "sample-camera-pipe2-lab")
     target_include_directories(stm32n6570_dk PUBLIC
         "${CMAKE_SOURCE_DIR}/userspace/sample-ai/src/board"
         "${CMAKE_SOURCE_DIR}/userspace/sample-ai/config")
@@ -88,7 +89,8 @@ target_compile_definitions(stm32n6570_dk PRIVATE
 )
 
 if(APP_TARGET STREQUAL "sample-camera-lcd" OR
-   APP_TARGET STREQUAL "sample-camera-pipe2")
+   APP_TARGET STREQUAL "sample-camera-pipe2" OR
+   APP_TARGET STREQUAL "sample-camera-pipe2-lab")
     target_compile_definitions(stm32n6570_dk PRIVATE
         UAI_CAMERA_LCD_CLOCKS)
 endif()

@@ -15,7 +15,7 @@ CONFIG_FILE ?= config/local.mk
 CUBEMX_IOC ?= userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc
 # sample-camera-pipe2 uses the sample-camera-lcd CubeMX peripheral/startup project and configures
 # the second DCMIPP pipe in the application.
-ifeq ($(APP_TARGET),sample-camera-pipe2)
+ifneq (,$(filter sample-camera-pipe2 sample-camera-pipe2-lab,$(APP_TARGET)))
 ifneq ($(filter userspace/sample-ai/config/stm32n6570-dk-sample-ai.ioc,$(CUBEMX_IOC)),)
 CUBEMX_IOC := userspace/sample-camera-lcd/config/stm32n6570-dk-fullsecure.ioc
 endif
