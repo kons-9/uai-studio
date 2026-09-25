@@ -25,6 +25,14 @@ DriverStatus DisplayDriver::Process()
     return arch::ProcessDisplay();
 }
 
+DriverStatus DisplayDriver::Synchronize()
+{
+    if (!initialized_) {
+        return DriverStatus::kNotInitialized;
+    }
+    return arch::SynchronizeDisplay();
+}
+
 DriverStatus DisplayDriver::Process(std::uintptr_t buffer)
 {
     if (!initialized_) {

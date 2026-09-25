@@ -4,6 +4,10 @@
 #include <cstdint>
 #include <cstring>
 
+extern "C" {
+#include <tm/tmonitor.h>
+}
+
 namespace uai::sample2 {
 
 using common::Error;
@@ -23,6 +27,46 @@ bool InRange(std::int32_t value, std::int32_t limit)
     return value >= 0 && value < limit;
 }
 
+std::uint16_t CoordinatePatternPixel(std::size_t x, std::size_t y)
+{
+    std::uint16_t color = (y / 10U) % 2U == 0U ? 0x0841U : 0x2104U;
+    if ((x % 40U) < 2U) {
+        color = 0x07FFU;
+    }
+    if ((y % 10U) == 0U) {
+        color = 0xFFFFU;
+    }
+    if ((y % 20U) == 0U) {
+        color = 0xFFE0U;
+    }
+    if ((y % 40U) == 0U) {
+        color = 0xF800U;
+    }
+    if (x >= 4U && x < 40U && (y % 10U) >= 3U && (y % 10U) < 8U) {
+        const std::size_t bit = (x - 4U) / 6U;
+        const std::size_t in_bit = (x - 4U) % 6U;
+        if (bit < 6U && in_bit < 4U && (((y / 10U) >> bit) & 1U) != 0U) {
+            color = 0x07E0U;
+        }
+    }
+    if (y < 20U && (x % 20U) == 0U) {
+        color = 0xF81FU;
+    }
+    return color;
+}
+
+std::uint32_t Crc32(const std::uint8_t *bytes, std::size_t size)
+{
+    std::uint32_t crc = 0xFFFFFFFFU;
+    for (std::size_t i = 0U; i < size; ++i) {
+        crc ^= bytes[i];
+        for (std::uint32_t bit = 0U; bit < 8U; ++bit) {
+            crc = (crc >> 1U) ^ ((crc & 1U) != 0U ? 0xEDB88320U : 0U);
+        }
+    }
+    return ~crc;
+}
+
 } // namespace
 
 Error LcdDriver::FromBackend(uai::driver::DriverStatus status,
@@ -30,6 +74,9 @@ Error LcdDriver::FromBackend(uai::driver::DriverStatus status,
 {
     if (uai::driver::IsOk(status)) {
         return {ErrorCode::kOk, 0U, operation};
+    }
+    if (status == uai::driver::DriverStatus::kBusy) {
+        return {ErrorCode::kNoBuffer, 0U, operation};
     }
     return {ErrorCode::kHardware, static_cast<std::uint32_t>(status),
             operation};
@@ -53,11 +100,17 @@ Error LcdDriver::Initialize(memory_manager::MemoryManager &memory,
 }
 
 void LcdDriver::FillInitialFrame(const memory_manager::DisplayBuffer &buffer,
-                                 const memory_manager::BoxSet &boxes)
+                                 const memory_manager::BoxSet &boxes,
+                                 bool coordinate_pattern)
 {
     auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
     for (std::size_t y = 0U; y < memory_manager::kFrameHeight; ++y) {
         for (std::size_t x = 0U; x < memory_manager::kFrameWidth; ++x) {
+            if (coordinate_pattern) {
+                pixels[y * memory_manager::kFrameWidth + x] =
+                    CoordinatePatternPixel(x, y);
+                continue;
+            }
             const std::size_t color =
                 x * (sizeof(kInitialPattern) / sizeof(kInitialPattern[0])) /
                 memory_manager::kFrameWidth;
@@ -66,6 +119,25 @@ void LcdDriver::FillInitialFrame(const memory_manager::DisplayBuffer &buffer,
         }
     }
     DrawBoxes(buffer, boxes);
+}
+
+Error LcdDriver::GenerateCoordinatePattern(
+    const memory_manager::Buffer &destination) const
+{
+    if (!initialized_ || destination.region != memory_manager::Region::kCapture ||
+        destination.size != memory_manager::kFrameBytes ||
+        destination.address == 0U) {
+        return {ErrorCode::kInvalidArgument, 0U,
+                "lcd.generate_coordinate_pattern"};
+    }
+    auto *pixels = reinterpret_cast<std::uint16_t *>(destination.address);
+    for (std::size_t y = 0U; y < memory_manager::kFrameHeight; ++y) {
+        for (std::size_t x = 0U; x < memory_manager::kFrameWidth; ++x) {
+            pixels[y * memory_manager::kFrameWidth + x] =
+                CoordinatePatternPixel(x, y);
+        }
+    }
+    return {ErrorCode::kOk, 0U, "lcd.generate_coordinate_pattern"};
 }
 
 void LcdDriver::DrawBoxes(const memory_manager::DisplayBuffer &buffer,
@@ -114,7 +186,8 @@ void LcdDriver::DrawBoxes(const memory_manager::DisplayBuffer &buffer,
 }
 
 Error LcdDriver::ShowInitialFrame(
-    const memory_manager::BoxSet &boxes)
+    const memory_manager::BoxSet &boxes,
+    bool coordinate_pattern)
 {
     if (!initialized_ || memory_ == nullptr) {
         return {ErrorCode::kNotInitialized, 0U, "lcd.show_initial"};
@@ -125,7 +198,7 @@ Error LcdDriver::ShowInitialFrame(
     if (!status.Ok()) {
         return status;
     }
-    FillInitialFrame(first, boxes);
+    FillInitialFrame(first, boxes, coordinate_pattern);
     status = memory_hardware_->PrepareForPeripheralRead(first.buffer);
     if (!status.Ok()) {
         (void)memory_->ReleaseDisplayBuffer(first);
@@ -148,7 +221,7 @@ Error LcdDriver::ShowInitialFrame(
     memory_manager::DisplayBuffer spare{};
     status = memory_->AcquireDisplayBuffer(&spare);
     if (status.Ok()) {
-        FillInitialFrame(spare, boxes);
+        FillInitialFrame(spare, boxes, coordinate_pattern);
     status = memory_hardware_->PrepareForPeripheralRead(spare.buffer);
         if (status.Ok()) {
             status = memory_->ReleaseDisplayBuffer(spare);
@@ -160,9 +233,23 @@ Error LcdDriver::ShowInitialFrame(
                        : status;
 }
 
+Error LcdDriver::SynchronizeCurrentFrame()
+{
+    if (!initialized_ || memory_ == nullptr) {
+        return {ErrorCode::kNotInitialized, 0U,
+                "lcd.synchronize_current_frame"};
+    }
+    const uai::driver::DriverStatus status = backend_.Synchronize();
+    if (!uai::driver::IsOk(status)) {
+        return FromBackend(status, "lcd.synchronize_current_frame");
+    }
+    return memory_->CompleteDisplayHandoff();
+}
+
 Error LcdDriver::ComposeAndPresent(
     const memory_manager::CaptureFrame &capture,
-    const memory_manager::BoxSet &boxes)
+    const memory_manager::BoxSet &boxes,
+    bool log_copy_crc)
 {
     if (!initialized_ || memory_ == nullptr) {
         return {ErrorCode::kNotInitialized, 0U, "lcd.compose"};
@@ -170,8 +257,23 @@ Error LcdDriver::ComposeAndPresent(
     if (!capture) {
         return {ErrorCode::kInvalidArgument, 0U, "lcd.compose"};
     }
+    Error status{};
 
-    Error status = memory_->ValidateCaptureFrame(capture);
+    /* Do not reacquire the previous active surface until LTDC confirms that
+     * the queued VBlank reload has latched the new CFBAR. */
+    const uai::driver::DriverStatus sync_status = backend_.Synchronize();
+    if (sync_status == uai::driver::DriverStatus::kBusy) {
+        return {ErrorCode::kNoBuffer, 0U, "lcd.reload.pending"};
+    }
+    if (!uai::driver::IsOk(sync_status)) {
+        return FromBackend(sync_status, "lcd.reload.wait");
+    }
+    status = memory_->CompleteDisplayHandoff();
+    if (!status.Ok()) {
+        return status;
+    }
+
+    status = memory_->ValidateCaptureFrame(capture);
     if (!status.Ok()) {
         return status;
     }
@@ -179,6 +281,10 @@ Error LcdDriver::ComposeAndPresent(
     if (!status.Ok()) {
         return status;
     }
+    const auto *source_bytes = reinterpret_cast<const std::uint8_t *>(
+        capture.buffer.address);
+    const std::uint32_t source_crc =
+        log_copy_crc ? Crc32(source_bytes, memory_manager::kFrameBytes) : 0U;
 
     memory_manager::DisplayBuffer display{};
     status = memory_->AcquireDisplayBuffer(&display);
@@ -188,12 +294,39 @@ Error LcdDriver::ComposeAndPresent(
     std::memcpy(reinterpret_cast<void *>(display.buffer.address),
                 reinterpret_cast<const void *>(capture.buffer.address),
                 memory_manager::kFrameBytes);
+    const std::uint32_t copied_crc =
+        log_copy_crc
+            ? Crc32(reinterpret_cast<const std::uint8_t *>(
+                        display.buffer.address),
+                    memory_manager::kFrameBytes)
+            : 0U;
     DrawBoxes(display, boxes);
 
     status = memory_hardware_->PrepareForPeripheralRead(display.buffer);
     if (!status.Ok()) {
         (void)memory_->ReleaseDisplayBuffer(display);
         return status;
+    }
+    if (log_copy_crc) {
+        status = memory_hardware_->PrepareForCpuRead(display.buffer);
+        if (!status.Ok()) {
+            (void)memory_->ReleaseDisplayBuffer(display);
+            return status;
+        }
+        const std::uint32_t memory_crc = Crc32(
+            reinterpret_cast<const std::uint8_t *>(display.buffer.address),
+            memory_manager::kFrameBytes);
+        status = memory_hardware_->PrepareForPeripheralRead(display.buffer);
+        if (!status.Ok()) {
+            (void)memory_->ReleaseDisplayBuffer(display);
+            return status;
+        }
+        tm_printf(reinterpret_cast<const UB *>(
+                      "lcd: copy crc bytes=%u source=%x copied=%x psram=%x\n"),
+                  static_cast<unsigned int>(memory_manager::kFrameBytes),
+                  static_cast<unsigned int>(source_crc),
+                  static_cast<unsigned int>(copied_crc),
+                  static_cast<unsigned int>(memory_crc));
     }
     const uai::driver::DriverStatus backend_status =
         backend_.Process(display.buffer.address);

@@ -13,6 +13,7 @@ public:
     DriverStatus Start();
     DriverStatus Start(std::uintptr_t first_buffer,
                        std::uintptr_t second_buffer);
+    DriverStatus Stop();
     DriverStatus Process();
     std::uintptr_t TakeCompletedFrame();
 

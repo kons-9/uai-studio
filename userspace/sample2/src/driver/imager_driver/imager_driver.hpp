@@ -14,6 +14,7 @@ public:
     common::Error Initialize(memory_manager::MemoryManager &memory,
                              memory_manager::MemoryHardware &memory_hardware);
     common::Error Start();
+    common::Error Stop();
     common::Error Process();
     common::Error TakeCompletedCapture(
         memory_manager::CaptureFrame *frame);

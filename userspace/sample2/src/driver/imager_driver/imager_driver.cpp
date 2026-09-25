@@ -92,10 +92,22 @@ Error ImagerDriver::Process()
     return FromBackend(backend_.Process(), "camera.process");
 }
 
+Error ImagerDriver::Stop()
+{
+    if (!initialized_ || !started_) {
+        return {ErrorCode::kNotInitialized, 0U, "camera.stop"};
+    }
+    const uai::driver::DriverStatus status = backend_.Stop();
+    if (uai::driver::IsOk(status)) {
+        started_ = false;
+    }
+    return FromBackend(status, "camera.stop");
+}
+
 Error ImagerDriver::TakeCompletedCapture(
     memory_manager::CaptureFrame *frame)
 {
-    if (!initialized_ || !started_ || memory_ == nullptr) {
+    if (!initialized_ || memory_ == nullptr) {
         return {ErrorCode::kNotInitialized, 0U, "camera.take_capture"};
     }
     if (frame == nullptr) {

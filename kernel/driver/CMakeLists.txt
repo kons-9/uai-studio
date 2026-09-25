@@ -18,17 +18,24 @@ set(DRIVER_HAL_ROOT
     "${DRIVER_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver")
 set(DRIVER_ARCH_ROOT
     "${CMAKE_CURRENT_LIST_DIR}/src/arch/stm32n6570-dk")
+# CubeN6 v1.3.0's camera BSP drives NRST_CAM before EN_CAM and enables GPIOO
+# instead of GPIOC. Keep a project-owned copy with the corrected reset sequence.
+set(DRIVER_CAMERA_BSP_SOURCE
+    "${DRIVER_ARCH_ROOT}/bsp/stm32n6570_discovery_camera.c")
+# Keep the IMX335 frequency and stream-start handling in the project-owned
+# component so streaming begins only after the CSI receiver is ready.
+set(DRIVER_IMX335_SOURCE "${DRIVER_ARCH_ROOT}/bsp/imx335.c")
 set(DRIVER_ARCH_INCLUDE_ROOT
     "${DRIVER_ARCH_ROOT}/include")
 
 set(DRIVER_REQUIRED_FILES
     "${DRIVER_BSP_ROOT}/stm32n6570_discovery_bus.c"
-    "${DRIVER_BSP_ROOT}/stm32n6570_discovery_camera.c"
+    "${DRIVER_CAMERA_BSP_SOURCE}"
     "${DRIVER_BSP_ROOT}/stm32n6570_discovery_lcd.c"
     "${DRIVER_BSP_ROOT}/isp_param_conf.h"
     "${DRIVER_COMPONENT_ROOT}/Common/camera.h"
     "${DRIVER_COMPONENT_ROOT}/Common/lcd.h"
-    "${DRIVER_COMPONENT_ROOT}/imx335/imx335.c"
+    "${DRIVER_IMX335_SOURCE}"
     "${DRIVER_COMPONENT_ROOT}/imx335/imx335_reg.c"
     "${DRIVER_ISP_ROOT}/isp/Src/isp_core.c"
     "${DRIVER_ISP_ROOT}/isp/Src/isp_algo.c"
@@ -71,9 +78,9 @@ add_library(uai_driver STATIC
     src/arch/stm32n6570-dk/camera_driver_arch.cpp
     src/arch/stm32n6570-dk/display_driver_arch.cpp
     "${DRIVER_BSP_ROOT}/stm32n6570_discovery_bus.c"
-    "${DRIVER_BSP_ROOT}/stm32n6570_discovery_camera.c"
+    "${DRIVER_CAMERA_BSP_SOURCE}"
     "${DRIVER_BSP_ROOT}/stm32n6570_discovery_lcd.c"
-    "${DRIVER_COMPONENT_ROOT}/imx335/imx335.c"
+    "${DRIVER_IMX335_SOURCE}"
     "${DRIVER_COMPONENT_ROOT}/imx335/imx335_reg.c"
     "${DRIVER_ISP_ROOT}/isp/Src/isp_core.c"
     "${DRIVER_ISP_ROOT}/isp/Src/isp_algo.c"

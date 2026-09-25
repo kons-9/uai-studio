@@ -31,3 +31,5 @@ Thumbs.db
 # CubeMX-generated projects live below the ignored build tree. Keep the
 # application IOC and local.mk.example under version control; regenerate board
 # sources with `make generate` when needed.
+
+ref/

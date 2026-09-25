@@ -12,6 +12,15 @@ namespace {
 std::uintptr_t pending_frame_address = 0U;
 uint32_t verified_frame_count = 0U;
 
+void ClearReloadFlag()
+{
+    /* The BSP's LTDC handle is private to its C file. The clear-flag macro
+     * only uses Instance, so this local handle safely targets the same block. */
+    LTDC_HandleTypeDef ltdc = {};
+    ltdc.Instance = LTDC;
+    __HAL_LTDC_CLEAR_FLAG(&ltdc, LTDC_FLAG_RR);
+}
+
 bool VerifyDisplayedFrame()
 {
     if (pending_frame_address == 0U) {
@@ -40,6 +49,39 @@ bool VerifyDisplayedFrame()
     }
     pending_frame_address = 0U;
     return true;
+}
+
+DriverStatus WaitForPendingDisplayFrame()
+{
+    if (pending_frame_address == 0U) {
+        return DriverStatus::kOk;
+    }
+
+    constexpr uint32_t kReloadTimeoutMs = 40U;
+    const uint32_t wait_start = HAL_GetTick();
+    for (;;) {
+        const uint32_t control = LTDC_Layer1->CR;
+        const uint32_t address = LTDC_Layer1->CFBAR;
+        if ((LTDC->GCR & LTDC_GCR_LTDCEN) == 0U ||
+            (control & LTDC_LxCR_LEN) == 0U) {
+            return DriverStatus::kHardwareError;
+        }
+        /* CFBAR is the shadow configuration register and can match before the
+         * VBlank reload. RRIF is set by LTDC only after the reload completes. */
+        if ((LTDC->ISR & LTDC_ISR_RRIF) != 0U) {
+            ClearReloadFlag();
+            return VerifyDisplayedFrame() ? DriverStatus::kOk
+                                          : DriverStatus::kHardwareError;
+        }
+        if ((HAL_GetTick() - wait_start) >= kReloadTimeoutMs) {
+            tm_printf(reinterpret_cast<const UB *>(
+                          "lcd: reload wait timeout fb=%x expected=%x isr=%x\n"),
+                      static_cast<unsigned int>(address),
+                      static_cast<unsigned int>(pending_frame_address),
+                      static_cast<unsigned int>(LTDC->ISR));
+            return DriverStatus::kBusy;
+        }
+    }
 }
 
 } // namespace
@@ -82,6 +124,19 @@ DriverStatus InitializeDisplay()
               static_cast<unsigned int>(height),
               static_cast<unsigned int>(pixel_format),
               static_cast<unsigned int>(LTDC->GCR));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "lcd: layer cfg sscr=%x bpcr=%x awcr=%x twcr=%x cr=%x pfcr=%x cfblr=%x cfblnr=%x cfbar=%x whpcr=%x wvpcr=%x\n"),
+              static_cast<unsigned int>(LTDC->SSCR),
+              static_cast<unsigned int>(LTDC->BPCR),
+              static_cast<unsigned int>(LTDC->AWCR),
+              static_cast<unsigned int>(LTDC->TWCR),
+              static_cast<unsigned int>(LTDC_Layer1->CR),
+              static_cast<unsigned int>(LTDC_Layer1->PFCR),
+              static_cast<unsigned int>(LTDC_Layer1->CFBLR),
+              static_cast<unsigned int>(LTDC_Layer1->CFBLNR),
+              static_cast<unsigned int>(LTDC_Layer1->CFBAR),
+              static_cast<unsigned int>(LTDC_Layer1->WHPCR),
+              static_cast<unsigned int>(LTDC_Layer1->WVPCR));
 
     /* Do not expose the capture buffer until the camera has completed a
      * frame. The LTDC background color is black while the layer is hidden. */
@@ -91,8 +146,18 @@ DriverStatus InitializeDisplay()
     return DriverStatus::kOk;
 }
 
+DriverStatus SynchronizeDisplay()
+{
+    return WaitForPendingDisplayFrame();
+}
+
 DriverStatus ProcessDisplay()
 {
+    const DriverStatus wait_status = WaitForPendingDisplayFrame();
+    if (!IsOk(wait_status)) {
+        return wait_status;
+    }
+
     const std::uintptr_t frame = TakeCompletedCameraFrame();
     if (frame == 0) {
         return DriverStatus::kOk;
@@ -103,11 +168,15 @@ DriverStatus ProcessDisplay()
     if (BSP_LCD_Reload(0, BSP_LCD_RELOAD_NONE) != BSP_ERROR_NONE ||
         BSP_LCD_SetLayerAddress(0, 0, static_cast<uint32_t>(frame)) !=
             BSP_ERROR_NONE ||
-        BSP_LCD_SetLayerVisible(0, 0, ENABLE) != BSP_ERROR_NONE ||
-        BSP_LCD_Reload(0, BSP_LCD_RELOAD_VERTICAL_BLANKING) !=
-            BSP_ERROR_NONE) {
+        BSP_LCD_SetLayerVisible(0, 0, ENABLE) != BSP_ERROR_NONE) {
         return DriverStatus::kHardwareError;
     }
+    ClearReloadFlag();
+    if (BSP_LCD_Reload(0, BSP_LCD_RELOAD_VERTICAL_BLANKING) !=
+        BSP_ERROR_NONE) {
+        return DriverStatus::kHardwareError;
+    }
+    pending_frame_address = frame;
 
     return DriverStatus::kOk;
 }
@@ -118,11 +187,9 @@ DriverStatus ProcessDisplay(std::uintptr_t frame)
         return DriverStatus::kHardwareError;
     }
 
-    /* A vertical-blanking reload is asynchronous. Verify the preceding
-     * update on the next call, after LTDC has had time to latch its shadow
-     * registers, instead of mistaking the old active registers for failure. */
-    if (!VerifyDisplayedFrame()) {
-        return DriverStatus::kHardwareError;
+    const DriverStatus wait_status = WaitForPendingDisplayFrame();
+    if (!IsOk(wait_status)) {
+        return wait_status;
     }
 
     if (BSP_LCD_Reload(0, BSP_LCD_RELOAD_NONE) != BSP_ERROR_NONE ||
@@ -132,6 +199,7 @@ DriverStatus ProcessDisplay(std::uintptr_t frame)
         return DriverStatus::kHardwareError;
     }
 
+    ClearReloadFlag();
     if (BSP_LCD_Reload(0, BSP_LCD_RELOAD_VERTICAL_BLANKING) !=
         BSP_ERROR_NONE) {
         return DriverStatus::kHardwareError;

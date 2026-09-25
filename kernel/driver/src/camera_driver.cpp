@@ -51,6 +51,22 @@ DriverStatus CameraDriver::Start(std::uintptr_t first_buffer,
     return status;
 }
 
+DriverStatus CameraDriver::Stop()
+{
+    if (!initialized_) {
+        return DriverStatus::kNotInitialized;
+    }
+    if (!started_) {
+        return DriverStatus::kNotStarted;
+    }
+
+    const DriverStatus status = arch::StopCamera();
+    if (IsOk(status)) {
+        started_ = false;
+    }
+    return status;
+}
+
 DriverStatus CameraDriver::Process()
 {
     if (!initialized_) {

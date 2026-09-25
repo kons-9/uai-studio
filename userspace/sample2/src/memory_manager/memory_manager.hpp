@@ -85,6 +85,7 @@ public:
 
     common::Error AcquireDisplayBuffer(DisplayBuffer *buffer);
     common::Error CommitDisplayBuffer(const DisplayBuffer &buffer);
+    common::Error CompleteDisplayHandoff();
     common::Error ReleaseDisplayBuffer(const DisplayBuffer &buffer);
 
     common::Error AcquireInferenceBuffer(const CaptureFrame &capture,
@@ -105,6 +106,7 @@ private:
     Slot display_[2]{};
     Slot inference_[2]{};
     std::int8_t current_display_ = -1;
+    std::int8_t pending_display_ = -1;
     std::uint32_t capture_sequence_ = 0U;
     std::uint32_t capture_generation_[2]{};
     std::uint32_t inference_capture_sequence_[2]{};

@@ -8,6 +8,7 @@ extern "C" {
 #include "stm32n6570_discovery_camera.h"
 #include "imx335.h"
 #include "stm32n6xx_hal.h"
+#include <tm/tmonitor.h>
 
 extern DCMIPP_HandleTypeDef hcamera_dcmipp;
 extern ISP_HandleTypeDef hcamera_isp;
@@ -27,8 +28,14 @@ volatile unsigned int g_camera_dcmipp_error_count = 0U;
 volatile unsigned int g_camera_camera_error_count = 0U;
 volatile unsigned int g_camera_csi_last_status = 0U;
 volatile unsigned int g_camera_csi_last_status1 = 0U;
+volatile unsigned int g_camera_csi_last_pending_status = 0U;
+volatile unsigned int g_camera_csi_last_pending_status1 = 0U;
 volatile unsigned int g_camera_csi_error_count = 0U;
 volatile unsigned int g_camera_csi_last_error_code = 0U;
+volatile unsigned int g_camera_csi_sot_sync_dl0_count = 0U;
+volatile unsigned int g_camera_csi_sot_sync_dl1_count = 0U;
+volatile unsigned int g_camera_csi_sot_dl0_count = 0U;
+volatile unsigned int g_camera_csi_sot_dl1_count = 0U;
 volatile unsigned int g_sample2_last_exposure_request_us = 0U;
 volatile unsigned int g_sample2_last_exposure_lines = 0U;
 volatile unsigned int g_sample2_last_sensor_gain_mdB = 0U;
@@ -55,17 +62,67 @@ std::uintptr_t camera_frame_buffer1 = 0;
 volatile std::uintptr_t active_camera_frame = 0;
 std::uintptr_t next_camera_frame = 0;
 volatile uint32_t last_camera_frame_tick = 0U;
+volatile uint32_t last_camera_csi_error_tick = 0U;
+volatile bool camera_csi_fault_pending = false;
 uint32_t last_processed_vsync_count = 0U;
 uint32_t last_camera_recovery_tick = 0U;
 volatile bool camera_recovery_attempted = false;
 
 constexpr uint32_t kCameraFrameTimeoutMs = 2000U;
+/* Give the 30 fps stream three frame periods to resume after a CSI error. */
+constexpr uint32_t kCameraCsiFaultFrameTimeoutMs = 100U;
 constexpr uint32_t kCameraRecoveryRetryMs = 5000U;
 constexpr int32_t kCameraFrameRateFps = 30;
+constexpr bool kUseImx335Mipi891Mbps = true;
 constexpr uint32_t kImx335VmaxAt30Fps = 4500U;
 constexpr uint32_t kImx335MinimumShutterLines = 9U;
 /* Keep low-light AE from amplifying sensor noise to the IMX335's 72 dB limit. */
 constexpr int32_t kImx335MaximumGainMdB = 30000;
+/* Diagnostic only: IMX335 mode 11 is the driver's documented vertical color bars.
+ * Use -1 for normal sensor output. */
+#ifndef SAMPLE2_IMX335_TEST_PATTERN_MODE
+#define SAMPLE2_IMX335_TEST_PATTERN_MODE 8
+#endif
+#ifndef SAMPLE2_DCMIPP_BYPASS_DOWNSIZE
+#define SAMPLE2_DCMIPP_BYPASS_DOWNSIZE 0
+#endif
+
+uai::driver::DriverStatus ApplyImx335TestPattern()
+{
+    auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
+    if (sensor == nullptr ||
+        IMX335_SetTestPattern(sensor, SAMPLE2_IMX335_TEST_PATTERN_MODE) !=
+            IMX335_OK) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "camera: IMX335 test pattern setup failed mode=%d\n"),
+                  SAMPLE2_IMX335_TEST_PATTERN_MODE);
+        return uai::driver::DriverStatus::kHardwareError;
+    }
+    uint8_t pattern_mode = 0U;
+    uint8_t pattern_enable = 0U;
+    uint8_t pattern_mux = 0U;
+    uint8_t pattern_type = 0U;
+    if (sensor->IO.ReadReg(sensor->IO.Address, 0x329EU, &pattern_mode, 1U) !=
+            IMX335_OK ||
+        sensor->IO.ReadReg(sensor->IO.Address, 0x3148U, &pattern_enable, 1U) !=
+            IMX335_OK ||
+        sensor->IO.ReadReg(sensor->IO.Address, 0x329CU, &pattern_mux, 1U) !=
+            IMX335_OK ||
+        sensor->IO.ReadReg(sensor->IO.Address, 0x32A0U, &pattern_type, 1U) !=
+            IMX335_OK) {
+        return uai::driver::DriverStatus::kHardwareError;
+    }
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: IMX335 test pattern mode=%d\n"),
+              SAMPLE2_IMX335_TEST_PATTERN_MODE);
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: IMX335 TPG readback 329e=%x 3148=%x 329c=%x 32a0=%x\n"),
+              static_cast<unsigned int>(pattern_mode),
+              static_cast<unsigned int>(pattern_enable),
+              static_cast<unsigned int>(pattern_mux),
+              static_cast<unsigned int>(pattern_type));
+    return uai::driver::DriverStatus::kOk;
+}
 constexpr float kImx335LinePeriodUs =
     1000000.0F / (kImx335VmaxAt30Fps * kCameraFrameRateFps);
 constexpr uint32_t kCubeImx335LinePeriodUs =
@@ -103,6 +160,106 @@ uai::driver::DriverStatus ConfigureSensorFrameRate()
         IMX335_SetFramerate(sensor, kCameraFrameRateFps) != IMX335_OK) {
         return uai::driver::DriverStatus::kHardwareError;
     }
+
+    /* The Cube IMX335 component selects 1188 Mbps for 24 MHz INCK.  Select the
+     * lower 891 Mbps mode and program its matching upstream transition values. */
+    uint8_t incksel1_profile[] = {
+        kUseImx335Mipi891Mbps ? 0x29U : 0xC6U,
+        kUseImx335Mipi891Mbps ? 0x01U : 0x00U,
+    };
+    uint8_t incksel2_profile = kUseImx335Mipi891Mbps ? 0x06U : 0x02U;
+    uint8_t sysmode_profile = kUseImx335Mipi891Mbps ? 0x02U : 0x01U;
+    if (sensor->IO.WriteReg(sensor->IO.Address, 0x314CU, incksel1_profile,
+                            sizeof(incksel1_profile)) != IMX335_OK ||
+        sensor->IO.WriteReg(sensor->IO.Address, 0x315AU, &incksel2_profile, 1U) !=
+            IMX335_OK ||
+        sensor->IO.WriteReg(sensor->IO.Address, 0x319EU, &sysmode_profile, 1U) !=
+            IMX335_OK) {
+        return uai::driver::DriverStatus::kHardwareError;
+    }
+
+    struct MipiTimingRegister {
+        uint16_t address;
+        uint8_t low;
+        uint8_t high;
+    };
+    constexpr MipiTimingRegister kMipiTiming1188Mbps[] = {
+        {0x3A18U, 0x8FU, 0x00U}, /* TCLKPOST */
+        {0x3A1AU, 0x4FU, 0x00U}, /* TCLKPREPARE */
+        {0x3A1CU, 0x47U, 0x00U}, /* TCLKTRAIL */
+        {0x3A1EU, 0x37U, 0x01U}, /* TCLKZERO */
+        {0x3A20U, 0x4FU, 0x00U}, /* THSPREPARE */
+        {0x3A22U, 0x87U, 0x00U}, /* THSZERO */
+        {0x3A24U, 0x4FU, 0x00U}, /* THSTRAIL */
+        {0x3A26U, 0x7FU, 0x00U}, /* THSEXIT */
+        {0x3A28U, 0x3FU, 0x00U}, /* TPLX */
+    };
+    constexpr MipiTimingRegister kMipiTiming891Mbps[] = {
+        {0x3A18U, 0x7FU, 0x00U}, /* TCLKPOST */
+        {0x3A1AU, 0x37U, 0x00U}, /* TCLKPREPARE */
+        {0x3A1CU, 0x37U, 0x00U}, /* TCLKTRAIL */
+        {0x3A1EU, 0xF7U, 0x00U}, /* TCLKZERO */
+        {0x3A20U, 0x3FU, 0x00U}, /* THSPREPARE */
+        {0x3A22U, 0x6FU, 0x00U}, /* THSZERO */
+        {0x3A24U, 0x3FU, 0x00U}, /* THSTRAIL */
+        {0x3A26U, 0x5FU, 0x00U}, /* THSEXIT */
+        {0x3A28U, 0x2FU, 0x00U}, /* TPLX */
+    };
+    const MipiTimingRegister *const mipi_timing =
+        kUseImx335Mipi891Mbps ? kMipiTiming891Mbps : kMipiTiming1188Mbps;
+    for (uint32_t i = 0U; i < 9U; ++i) {
+        const MipiTimingRegister &timing = mipi_timing[i];
+        uint8_t value[] = {timing.low, timing.high};
+        if (sensor->IO.WriteReg(sensor->IO.Address, timing.address,
+                                value, sizeof(value)) != IMX335_OK) {
+            return uai::driver::DriverStatus::kHardwareError;
+        }
+    }
+
+    uint8_t incksel1 = 0U;
+    uint8_t incksel1_ext = 0U;
+    uint8_t incksel2 = 0U;
+    uint8_t sysmode = 0U;
+    uint8_t lane_mode = 0U;
+    uint8_t tclkpost = 0U;
+    uint8_t thsprepare = 0U;
+    uint8_t thstrail = 0U;
+    if (sensor->IO.ReadReg(sensor->IO.Address, 0x314CU, &incksel1, 1U) !=
+            IMX335_OK ||
+        sensor->IO.ReadReg(sensor->IO.Address, 0x314DU, &incksel1_ext, 1U) !=
+            IMX335_OK ||
+        sensor->IO.ReadReg(sensor->IO.Address, 0x315AU, &incksel2, 1U) !=
+            IMX335_OK ||
+        sensor->IO.ReadReg(sensor->IO.Address, 0x319EU, &sysmode, 1U) !=
+            IMX335_OK ||
+        sensor->IO.ReadReg(sensor->IO.Address, 0x3A01U, &lane_mode, 1U) !=
+            IMX335_OK ||
+        sensor->IO.ReadReg(sensor->IO.Address, 0x3A18U, &tclkpost, 1U) !=
+            IMX335_OK ||
+        sensor->IO.ReadReg(sensor->IO.Address, 0x3A20U, &thsprepare, 1U) !=
+            IMX335_OK ||
+        sensor->IO.ReadReg(sensor->IO.Address, 0x3A24U, &thstrail, 1U) !=
+            IMX335_OK) {
+        return uai::driver::DriverStatus::kHardwareError;
+    }
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: mipi rate=%u regs 314c=%x 314d=%x 315a=%x 319e=%x 3a01=%x "
+                  "tclkpost=%x thsprepare=%x thstrail=%x "
+                  "csi pfcr=%x hsfr=%x pcr=%x lanes=%x\n"),
+              static_cast<unsigned int>(kUseImx335Mipi891Mbps ? 891U : 1188U),
+              static_cast<unsigned int>(incksel1),
+              static_cast<unsigned int>(incksel1_ext),
+              static_cast<unsigned int>(incksel2),
+              static_cast<unsigned int>(sysmode),
+              static_cast<unsigned int>(lane_mode),
+              static_cast<unsigned int>(tclkpost),
+              static_cast<unsigned int>(thsprepare),
+              static_cast<unsigned int>(thstrail),
+              static_cast<unsigned int>(CSI->PFCR),
+              static_cast<unsigned int>((CSI->PFCR & CSI_PFCR_HSFR_Msk) >>
+                                        CSI_PFCR_HSFR_Pos),
+              static_cast<unsigned int>(CSI->PCR),
+              static_cast<unsigned int>(CSI->LMCFGR));
     return uai::driver::DriverStatus::kOk;
 }
 
@@ -127,6 +284,11 @@ uai::driver::DriverStatus RestartImx335Streaming()
 
 uai::driver::DriverStatus RecoverCameraCapture()
 {
+    const uint32_t recovery_start = HAL_GetTick();
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: recovery begin tick=%u\n"),
+              static_cast<unsigned int>(recovery_start));
+
     auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
     if (sensor == nullptr) {
         return uai::driver::DriverStatus::kHardwareError;
@@ -139,12 +301,48 @@ uai::driver::DriverStatus RecoverCameraCapture()
      * register table after the hardware sensor reset. */
     (void)IMX335_DeInit(sensor);
     (void)ISP_DeInit(&hcamera_isp);
-    if (HAL_DCMIPP_DeInit(&hcamera_dcmipp) != HAL_OK ||
-        BSP_CAMERA_Init(0, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) !=
-            BSP_ERROR_NONE ||
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: recovery dcmipp deinit begin elapsed=%u\n"),
+              static_cast<unsigned int>(HAL_GetTick() - recovery_start));
+    if (HAL_DCMIPP_DeInit(&hcamera_dcmipp) != HAL_OK) {
+        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+            "camera: recovery dcmipp deinit failed\n")));
+        return uai::driver::DriverStatus::kHardwareError;
+    }
+    camera_csi_fault_pending = false;
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: recovery dcmipp deinit done elapsed=%u\n"),
+              static_cast<unsigned int>(HAL_GetTick() - recovery_start));
+
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: recovery bsp init begin elapsed=%u\n"),
+              static_cast<unsigned int>(HAL_GetTick() - recovery_start));
+    if (BSP_CAMERA_Init(0, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) !=
+        BSP_ERROR_NONE) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "camera: recovery bsp init failed elapsed=%u\n"),
+                  static_cast<unsigned int>(HAL_GetTick() - recovery_start));
+        return uai::driver::DriverStatus::kHardwareError;
+    }
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: recovery bsp init done elapsed=%u\n"),
+              static_cast<unsigned int>(HAL_GetTick() - recovery_start));
+
+    if (!uai::driver::IsOk(ApplyImx335TestPattern()) ||
         !uai::driver::IsOk(ConfigureSensorFrameRate()) ||
-        !uai::driver::IsOk(InstallImx335ExposureWorkaround()) ||
-        !uai::driver::IsOk(ConfigureCapturePipe())) {
+        !uai::driver::IsOk(InstallImx335ExposureWorkaround())) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "camera: recovery sensor config failed elapsed=%u\n"),
+                  static_cast<unsigned int>(HAL_GetTick() - recovery_start));
+        return uai::driver::DriverStatus::kHardwareError;
+    }
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: recovery pipe config begin elapsed=%u\n"),
+              static_cast<unsigned int>(HAL_GetTick() - recovery_start));
+    if (!uai::driver::IsOk(ConfigureCapturePipe())) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "camera: recovery pipe config failed elapsed=%u\n"),
+                  static_cast<unsigned int>(HAL_GetTick() - recovery_start));
         return uai::driver::DriverStatus::kHardwareError;
     }
 
@@ -160,6 +358,9 @@ uai::driver::DriverStatus RecoverCameraCapture()
 
     last_processed_vsync_count = g_camera_vsync_event_count;
     last_camera_frame_tick = HAL_GetTick();
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: recovery done elapsed=%u\n"),
+              static_cast<unsigned int>(last_camera_frame_tick - recovery_start));
     return uai::driver::DriverStatus::kOk;
 }
 
@@ -182,10 +383,16 @@ uai::driver::DriverStatus ConfigureCapturePipe()
         static_cast<float>(kSensorHeight) / kOutputHeight;
     const float ratio = ratio_width < ratio_height ? ratio_width : ratio_height;
     DCMIPP_CropConfTypeDef crop{};
-    crop.HSize = static_cast<uint32_t>(kOutputWidth * ratio);
-    crop.VSize = static_cast<uint32_t>(kOutputHeight * ratio);
-    crop.HStart = (kSensorWidth - crop.HSize + 1U) / 2U;
-    crop.VStart = (kSensorHeight - crop.VSize + 1U) / 2U;
+    crop.HSize = SAMPLE2_DCMIPP_BYPASS_DOWNSIZE != 0
+                     ? kOutputWidth
+                     : static_cast<uint32_t>(kOutputWidth * ratio);
+    crop.VSize = SAMPLE2_DCMIPP_BYPASS_DOWNSIZE != 0
+                     ? kOutputHeight
+                     : static_cast<uint32_t>(kOutputHeight * ratio);
+    /* Keep the centered crop origin on an even pixel/line boundary so a
+     * Bayer-pattern input retains its RGGB phase if the crop precedes ISP. */
+    crop.HStart = ((kSensorWidth - crop.HSize) / 2U) & ~1U;
+    crop.VStart = ((kSensorHeight - crop.VSize) / 2U) & ~1U;
     crop.PipeArea = DCMIPP_POSITIVE_AREA;
 
     DCMIPP_DownsizeTypeDef downsize{};
@@ -201,16 +408,34 @@ uai::driver::DriverStatus ConfigureCapturePipe()
         HAL_DCMIPP_PIPE_EnableCrop(&hcamera_dcmipp, DCMIPP_PIPE1) != HAL_OK ||
         HAL_DCMIPP_PIPE_DisableDecimation(&hcamera_dcmipp, DCMIPP_PIPE1) !=
             HAL_OK ||
-        HAL_DCMIPP_PIPE_SetDownsizeConfig(&hcamera_dcmipp, DCMIPP_PIPE1,
-                                          &downsize) != HAL_OK ||
-        HAL_DCMIPP_PIPE_EnableDownsize(&hcamera_dcmipp, DCMIPP_PIPE1) !=
-            HAL_OK ||
         HAL_DCMIPP_PIPE_DisableRedBlueSwap(&hcamera_dcmipp, DCMIPP_PIPE1) !=
             HAL_OK ||
         HAL_DCMIPP_PIPE_DisableGammaConversion(&hcamera_dcmipp,
                                                DCMIPP_PIPE1) != HAL_OK) {
         return uai::driver::DriverStatus::kHardwareError;
     }
+    HAL_StatusTypeDef downsize_status = HAL_OK;
+    if constexpr (SAMPLE2_DCMIPP_BYPASS_DOWNSIZE != 0) {
+        downsize_status = HAL_DCMIPP_PIPE_DisableDownsize(
+            &hcamera_dcmipp, DCMIPP_PIPE1);
+    } else {
+        downsize_status = HAL_DCMIPP_PIPE_SetDownsizeConfig(
+            &hcamera_dcmipp, DCMIPP_PIPE1, &downsize);
+        if (downsize_status == HAL_OK) {
+            downsize_status = HAL_DCMIPP_PIPE_EnableDownsize(
+                &hcamera_dcmipp, DCMIPP_PIPE1);
+        }
+    }
+    if (downsize_status != HAL_OK) {
+        return uai::driver::DriverStatus::kHardwareError;
+    }
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: capture geometry ds_bypass=%u crop=%u,%u %ux%u\n"),
+              static_cast<unsigned int>(SAMPLE2_DCMIPP_BYPASS_DOWNSIZE),
+              static_cast<unsigned int>(crop.HStart),
+              static_cast<unsigned int>(crop.VStart),
+              static_cast<unsigned int>(crop.HSize),
+              static_cast<unsigned int>(crop.VSize));
 
     DCMIPP_PipeConfTypeDef pipe{};
     pipe.FrameRate = DCMIPP_FRAME_RATE_ALL;
@@ -247,6 +472,7 @@ DriverStatus InitializeCamera()
 
     if (BSP_CAMERA_Init(0, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) !=
             BSP_ERROR_NONE ||
+        !IsOk(ApplyImx335TestPattern()) ||
         !IsOk(ConfigureSensorFrameRate()) ||
         !IsOk(InstallImx335ExposureWorkaround())) {
         return DriverStatus::kHardwareError;
@@ -261,6 +487,7 @@ DriverStatus StartCamera()
     camera_frame_buffer1 = 0x342E0000UL;
     active_camera_frame = camera_frame_buffer0;
     next_camera_frame = camera_frame_buffer1;
+    camera_csi_fault_pending = false;
 
     if (BSP_CAMERA_Start(0, reinterpret_cast<uint8_t *>(active_camera_frame),
                          CAMERA_MODE_CONTINUOUS) != BSP_ERROR_NONE) {
@@ -283,6 +510,7 @@ DriverStatus StartCamera(std::uintptr_t first_buffer,
     camera_frame_buffer1 = second_buffer;
     active_camera_frame = camera_frame_buffer0;
     next_camera_frame = camera_frame_buffer1;
+    camera_csi_fault_pending = false;
 
     if (BSP_CAMERA_Start(0, reinterpret_cast<uint8_t *>(active_camera_frame),
                          CAMERA_MODE_CONTINUOUS) != BSP_ERROR_NONE) {
@@ -297,17 +525,39 @@ DriverStatus StartCamera(std::uintptr_t first_buffer,
     return status;
 }
 
+DriverStatus StopCamera()
+{
+    if (BSP_CAMERA_Stop(0U) != BSP_ERROR_NONE) {
+        return DriverStatus::kHardwareError;
+    }
+    camera_csi_fault_pending = false;
+    return DriverStatus::kOk;
+}
+
 DriverStatus ProcessCamera()
 {
     const uint32_t now = HAL_GetTick();
     const uint32_t frame_age = now - last_camera_frame_tick;
+    const uint32_t csi_error_age = now - last_camera_csi_error_tick;
+    const bool csi_fault_stalled_capture =
+        camera_csi_fault_pending &&
+        frame_age >= kCameraCsiFaultFrameTimeoutMs &&
+        csi_error_age >= kCameraCsiFaultFrameTimeoutMs;
+    const bool frame_timeout = frame_age >= kCameraFrameTimeoutMs;
     const bool retry_allowed =
         !camera_recovery_attempted ||
         (now - last_camera_recovery_tick) >= kCameraRecoveryRetryMs;
-    if (frame_age >= kCameraFrameTimeoutMs && retry_allowed) {
+    if ((frame_timeout || csi_fault_stalled_capture) && retry_allowed) {
         camera_recovery_attempted = true;
         last_camera_recovery_tick = now;
+        camera_csi_fault_pending = false;
         ++g_camera_recovery_count;
+        tm_printf(reinterpret_cast<const UB *>(
+                      "camera: no frame for %u ms csi_fault=%u; "
+                      "starting recovery #%u\n"),
+                  static_cast<unsigned int>(frame_age),
+                  static_cast<unsigned int>(csi_fault_stalled_capture),
+                  g_camera_recovery_count);
         if (!IsOk(RecoverCameraCapture())) {
             ++g_camera_recovery_error_count;
             /* Keep the render task alive so a later bounded retry can
@@ -467,6 +717,7 @@ extern "C" void BSP_CAMERA_FrameEventCallback(uint32_t Instance)
         return;
     }
     last_camera_frame_tick = HAL_GetTick();
+    camera_csi_fault_pending = false;
     camera_recovery_attempted = false;
     completed_camera_frame = active_camera_frame;
     active_camera_frame = next_camera_frame;
@@ -496,23 +747,54 @@ extern "C" void CSI_IRQHandler(void)
     const uint32_t status1 = CSI->SR1;
     const uint32_t interrupt_enable0 = CSI->IER0;
     const uint32_t interrupt_enable1 = CSI->IER1;
-    const uint32_t previous_error_code = hcamera_dcmipp.ErrorCode;
-    HAL_DCMIPP_CSI_IRQHandler(&hcamera_dcmipp);
 
-    /* HAL disables an error interrupt after servicing it, but the raw status
-     * bit may remain set while later frame interrupts continue.  Count only
-     * a newly latched HAL error (or a live lane-error flag), not that stale
-     * raw bit on every subsequent IRQ. */
-    const uint32_t new_error_code =
-        hcamera_dcmipp.ErrorCode & ~previous_error_code;
-    const bool newly_enabled_error =
-        (status0 & interrupt_enable0 & CSI_SR0_SYNCERRF) != 0U ||
-        (status1 & interrupt_enable1 & 0x00001F1FU) != 0U;
-    if (new_error_code != 0U || newly_enabled_error) {
+    constexpr uint32_t kErrorInterrupts0 =
+        DCMIPP_CSI_IT_SYNCERR | DCMIPP_CSI_IT_WDERR |
+        DCMIPP_CSI_IT_SPKTERR | DCMIPP_CSI_IT_IDERR |
+        DCMIPP_CSI_IT_CECCERR | DCMIPP_CSI_IT_ECCERR |
+        DCMIPP_CSI_IT_CRCERR | DCMIPP_CSI_IT_CCFIFO;
+    constexpr uint32_t kErrorInterrupts1 =
+        DCMIPP_CSI_IT_ECTRLDL1 | DCMIPP_CSI_IT_ESYNCESCDL1 |
+        DCMIPP_CSI_IT_EESCDL1 | DCMIPP_CSI_IT_ESOTSYNCDL1 |
+        DCMIPP_CSI_IT_ESOTDL1 | DCMIPP_CSI_IT_ECTRLDL0 |
+        DCMIPP_CSI_IT_ESYNCESCDL0 | DCMIPP_CSI_IT_EESCDL0 |
+        DCMIPP_CSI_IT_ESOTSYNCDL0 | DCMIPP_CSI_IT_ESOTDL0;
+    const uint32_t pending_error0 =
+        status0 & interrupt_enable0 & kErrorInterrupts0;
+    const uint32_t pending_error1 =
+        status1 & interrupt_enable1 & kErrorInterrupts1;
+    if ((pending_error1 & DCMIPP_CSI_IT_ESOTSYNCDL0) != 0U) {
+        ++g_camera_csi_sot_sync_dl0_count;
+    }
+    if ((pending_error1 & DCMIPP_CSI_IT_ESOTSYNCDL1) != 0U) {
+        ++g_camera_csi_sot_sync_dl1_count;
+    }
+    if ((pending_error1 & DCMIPP_CSI_IT_ESOTDL0) != 0U) {
+        ++g_camera_csi_sot_dl0_count;
+    }
+    if ((pending_error1 & DCMIPP_CSI_IT_ESOTDL1) != 0U) {
+        ++g_camera_csi_sot_dl1_count;
+    }
+
+    HAL_DCMIPP_CSI_IRQHandler(&hcamera_dcmipp);
+    const uint32_t current_error_code = hcamera_dcmipp.ErrorCode;
+
+    if (pending_error0 != 0U || pending_error1 != 0U) {
         g_camera_csi_last_status = status0;
         g_camera_csi_last_status1 = status1;
-        g_camera_csi_last_error_code = new_error_code;
+        g_camera_csi_last_pending_status = pending_error0;
+        g_camera_csi_last_pending_status1 = pending_error1;
+        /* HAL's ErrorCode is sticky. Count each serviced status flag and
+         * re-enable it after HAL clears it, so repeated SOT errors stay visible. */
+        g_camera_csi_last_error_code = current_error_code;
         ++g_camera_csi_error_count;
+        last_camera_csi_error_tick = HAL_GetTick();
+        camera_csi_fault_pending = true;
+
+        /* HAL disables CSI error interrupts after the first occurrence. Keep
+         * these sources enabled so repeated D-PHY faults are observable. */
+        CSI->IER0 |= pending_error0;
+        CSI->IER1 |= pending_error1;
     }
 }
 
@@ -548,6 +830,8 @@ extern "C" HAL_StatusTypeDef MX_DCMIPP_ClockConfig(
      * leaves the CSI side unable to produce completed frames. */
     clock.PeriphClockSelection = RCC_PERIPHCLK_CSI;
     clock.ICSelection[RCC_IC18].ClockSelection = RCC_ICCLKSOURCE_PLL1;
+    /* PLL1 is 800 MHz here (the BSP default is 1200 MHz).  Divide by 40
+     * to deliver the same 20 MHz CSI kernel clock as the BSP's 1200/60. */
     clock.ICSelection[RCC_IC18].ClockDivider = 40U;
     return HAL_RCCEx_PeriphCLKConfig(&clock);
 }

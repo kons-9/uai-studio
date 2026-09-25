@@ -38,6 +38,7 @@ Error MemoryManager::Initialize()
     inference_[0].buffer = {kInference0, kFrameBytes, 0U, Region::kInference};
     inference_[1].buffer = {kInference1, kFrameBytes, 1U, Region::kInference};
     current_display_ = -1;
+    pending_display_ = -1;
     capture_sequence_ = 0U;
     capture_generation_[0] = 0U;
     capture_generation_[1] = 0U;
@@ -134,7 +135,8 @@ Error MemoryManager::AcquireDisplayBuffer(DisplayBuffer *buffer)
     }
 
     for (std::uint8_t i = 0U; i < 2U; ++i) {
-        if (static_cast<std::int8_t>(i) == current_display_) {
+        if (static_cast<std::int8_t>(i) == current_display_ ||
+            static_cast<std::int8_t>(i) == pending_display_) {
             continue;
         }
         if (display_[i].state == BufferState::kFree) {
@@ -172,14 +174,40 @@ Error MemoryManager::CommitDisplayBuffer(const DisplayBuffer &buffer)
                     static_cast<std::uint32_t>(slot.state),
                     "memory.display.commit.expected_filling");
     }
+    if (pending_display_ >= 0) {
+        return Make(ErrorCode::kNoBuffer,
+                    static_cast<std::uint32_t>(pending_display_),
+                    "memory.display.commit.reload_pending");
+    }
+    slot.state = BufferState::kReady;
+    pending_display_ = static_cast<std::int8_t>(buffer.buffer.index);
+    return Make(ErrorCode::kOk, buffer.buffer.index, "memory.display.commit");
+}
 
-    if (current_display_ >= 0) {
+Error MemoryManager::CompleteDisplayHandoff()
+{
+    if (!initialized_) {
+        return Make(ErrorCode::kNotInitialized, 0U,
+                    "memory.display.handoff.not_initialized");
+    }
+    if (pending_display_ < 0) {
+        return Make(ErrorCode::kOk, 0U, "memory.display.handoff.none");
+    }
+
+    const auto pending = static_cast<std::uint8_t>(pending_display_);
+    if (display_[pending].state != BufferState::kReady) {
+        return Make(ErrorCode::kInvalidState,
+                    static_cast<std::uint32_t>(display_[pending].state),
+                    "memory.display.handoff.pending_not_ready");
+    }
+    if (current_display_ >= 0 && current_display_ != pending_display_) {
         display_[static_cast<std::uint8_t>(current_display_)].state =
             BufferState::kFree;
     }
-    slot.state = BufferState::kScanning;
-    current_display_ = static_cast<std::int8_t>(buffer.buffer.index);
-    return Make(ErrorCode::kOk, buffer.buffer.index, "memory.display.commit");
+    display_[pending].state = BufferState::kScanning;
+    current_display_ = pending_display_;
+    pending_display_ = -1;
+    return Make(ErrorCode::kOk, pending, "memory.display.handoff");
 }
 
 Error MemoryManager::ReleaseDisplayBuffer(const DisplayBuffer &buffer)

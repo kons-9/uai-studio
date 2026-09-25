@@ -10,6 +10,7 @@ enum class DriverStatus {
     kNotInitialized,
     kNotStarted,
     kHardwareError,
+    kBusy,
 };
 
 constexpr bool IsOk(DriverStatus status)

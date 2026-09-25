@@ -10,6 +10,7 @@ namespace uai::driver {
 class DisplayDriver final {
 public:
     DriverStatus Initialize();
+    DriverStatus Synchronize();
     DriverStatus Process();
     DriverStatus Process(std::uintptr_t buffer);
 
