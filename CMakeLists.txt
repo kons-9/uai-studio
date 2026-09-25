@@ -31,8 +31,22 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(kernel/utkernel)
+if(APP_TARGET STREQUAL "sample1")
+    target_include_directories(utkernel PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/userspace/sample1/src/driver/board/include"
+        "${STM32CUBE_N6_DIR}/Drivers/CMSIS/Device/ST/STM32N6xx/Include"
+        "${STM32CUBE_N6_DIR}/Drivers/CMSIS/Include")
+    target_compile_definitions(utkernel PRIVATE
+        STM32N6570_DK
+        STM32N6570_DK_DEVELOPMENT_MODE
+        USE_HAL_DRIVER
+        STM32N657xx
+        USE_FULL_LL_DRIVER
+        CPU_IN_SECURE_STATE)
+endif()
 add_subdirectory(kernel/pre_kernel/stm32n6570-dk)
-if(APP_TARGET STREQUAL "sample1" OR APP_TARGET STREQUAL "sample2")
+if(APP_TARGET STREQUAL "sample2" AND
+   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kernel/driver/CMakeLists.txt")
     add_subdirectory(kernel/driver)
 endif()
 add_subdirectory("userspace/${APP_TARGET}")

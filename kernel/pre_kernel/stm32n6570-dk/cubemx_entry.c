@@ -8,6 +8,39 @@
 
 void knl_start_mtkernel(void);
 
+#if defined(UAI_SAMPLE1_CAMERA_CLOCKS)
+static void board_camera_buffer_memory_config(void)
+{
+    RAMCFG_HandleTypeDef ramcfg = {0};
+
+    __HAL_RCC_AXISRAM3_MEM_CLK_ENABLE();
+    __HAL_RCC_AXISRAM4_MEM_CLK_ENABLE();
+
+    ramcfg.Instance = RAMCFG_SRAM3_AXI;
+    HAL_RAMCFG_EnableAXISRAM(&ramcfg);
+    ramcfg.Instance = RAMCFG_SRAM4_AXI;
+    HAL_RAMCFG_EnableAXISRAM(&ramcfg);
+}
+
+static void board_camera_display_master_config(void)
+{
+    RIMC_MasterConfig_t master = {0};
+
+    __HAL_RCC_RIFSC_CLK_ENABLE();
+    master.MasterCID = RIF_CID_1;
+    master.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV;
+
+    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DCMIPP, &master);
+    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC1, &master);
+    HAL_RIF_RISC_SetSlaveSecureAttributes(
+        RIF_RISC_PERIPH_INDEX_DCMIPP,
+        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+    HAL_RIF_RISC_SetSlaveSecureAttributes(
+        RIF_RISC_PERIPH_INDEX_LTDCL1,
+        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+}
+#endif
+
 static void board_system_clock_config(void)
 {
     RCC_OscInitTypeDef oscillator = {0};
@@ -113,39 +146,6 @@ static void board_system_clock_config(void)
     }
 }
 
-#if defined(UAI_SAMPLE1_CAMERA_CLOCKS)
-static void board_camera_display_rif_config(void)
-{
-    RIMC_MasterConfig_t master = {0};
-
-    /* DCMIPP/CSI and the display engines are bus masters.  Give them the
-     * same secure, privileged CID as the camera application, as done by the
-     * STM32N6570-DK camera configuration. */
-    __HAL_RCC_RIFSC_CLK_ENABLE();
-    master.MasterCID = RIF_CID_1;
-    master.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV;
-
-    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DCMIPP, &master);
-    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DMA2D, &master);
-    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC1, &master);
-    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC2, &master);
-    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_VENC, &master);
-
-    HAL_RIF_RISC_SetSlaveSecureAttributes(
-        RIF_RISC_PERIPH_INDEX_DMA2D, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-    HAL_RIF_RISC_SetSlaveSecureAttributes(
-        RIF_RISC_PERIPH_INDEX_DCMIPP, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-    HAL_RIF_RISC_SetSlaveSecureAttributes(
-        RIF_RISC_PERIPH_INDEX_CSI, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-    HAL_RIF_RISC_SetSlaveSecureAttributes(
-        RIF_RISC_PERIPH_INDEX_LTDC, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-    HAL_RIF_RISC_SetSlaveSecureAttributes(
-        RIF_RISC_PERIPH_INDEX_LTDCL1, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-    HAL_RIF_RISC_SetSlaveSecureAttributes(
-        RIF_RISC_PERIPH_INDEX_LTDCL2, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-}
-#endif
-
 int main(void)
 {
     /* Keep HAL's early SysTick from reaching CubeMX's Default_Handler before
@@ -165,7 +165,8 @@ int main(void)
     MX_XSPI2_Init();
     SystemIsolation_Config();
 #if defined(UAI_SAMPLE1_CAMERA_CLOCKS)
-    board_camera_display_rif_config();
+    board_camera_buffer_memory_config();
+    board_camera_display_master_config();
 #endif
 
     __enable_irq();
