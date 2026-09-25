@@ -10,6 +10,10 @@ set(SAMPLE2_COMPONENT_ROOT
 
 add_executable(sample2.elf
     src/main.cpp
+    src/task/application_initialize_task.cpp
+    src/task/camera_render_task.cpp
+    src/task/inference_task.cpp
+    src/task/task_diagnostics.cpp
     src/driver/imager_driver/imager_driver.cpp
     src/driver/cache_controller/cache_controller.cpp
     src/driver/nor_driver/nor_driver.cpp

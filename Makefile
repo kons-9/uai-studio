@@ -1,5 +1,8 @@
 .DEFAULT_GOAL := help
 
+ENV_FILE ?= env.mk
+-include $(ENV_FILE)
+
 APP_TARGET ?= sample0
 BUILD_DIR ?= build
 CMAKE ?= cmake
