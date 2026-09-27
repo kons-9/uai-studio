@@ -39,6 +39,8 @@ DriverStatus LcdHardware::Initialize()
     }
     if (BSP_LCD_SetLayerVisible(kDisplayInstance, kDisplayLayer, DISABLE) !=
             BSP_ERROR_NONE ||
+        BSP_LCD_SetLayerVisible(kDisplayInstance, 1U, DISABLE) !=
+            BSP_ERROR_NONE ||
         BSP_LCD_SetActiveLayer(kDisplayInstance, kDisplayLayer) !=
             BSP_ERROR_NONE ||
         BSP_LCD_DisplayOn(kDisplayInstance) != BSP_ERROR_NONE) {
@@ -57,13 +59,18 @@ DriverStatus LcdHardware::Synchronize()
     if (!reload_pending_) {
         return DriverStatus::kOk;
     }
-    if ((LTDC->ISR & LTDC_ISR_RRIF) == 0U) {
+    /* sample-ai runs in the Secure CM55 build (-mcmse).  On STM32N6 the HAL
+     * exposes the secure LTDC status through ISR2/ICR2 in that build, while
+     * the non-secure registers are ISR/ICR.  Use the HAL accessors here so
+     * the reload completion test follows the same security view as
+     * HAL_LTDC_Reload(). */
+    if (__HAL_LTDC_GET_FLAG(&hlcd_ltdc, LTDC_FLAG_RR) == 0U) {
         return DriverStatus::kBusy;
     }
 
     /* No LTDC IRQ handler is installed in this RAM application. Consume the
      * reload flag here so the next frame can safely reuse the old surface. */
-    LTDC->ICR = LTDC_ICR_CRRIF;
+    __HAL_LTDC_CLEAR_FLAG(&hlcd_ltdc, LTDC_FLAG_RR);
     reload_pending_ = false;
     return DriverStatus::kOk;
 }

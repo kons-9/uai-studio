@@ -88,7 +88,8 @@ target_compile_definitions(stm32n6570_dk PRIVATE
     float_t=float
 )
 
-if(APP_TARGET STREQUAL "sample-camera-lcd" OR
+if(APP_TARGET STREQUAL "sample-ai" OR
+   APP_TARGET STREQUAL "sample-camera-lcd" OR
    APP_TARGET STREQUAL "sample-camera-pipe2" OR
    APP_TARGET STREQUAL "sample-camera-pipe2-lab")
     target_compile_definitions(stm32n6570_dk PRIVATE

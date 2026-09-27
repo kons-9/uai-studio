@@ -35,6 +35,16 @@ common::Error RifHardware::Initialize()
     configure_region(RISAF6, 0xFFFFFFFFUL);
     configure_region(RISAF7, 0x00063FFFUL);
 
+    /* Camera and LCD frame buffers live in the XSPI1 PSRAM aperture
+     * (0x90000000, local RISAF11 address space).  RISAF12 is XSPI2/NOR;
+     * configuring only RISAF12 leaves DCMIPP's PSRAM writes filtered. */
+    RISAF11->REG[0].CFGR = 0U;
+    RISAF11->REG[0].STARTR = 0U;
+    RISAF11->REG[0].ENDR = RISAF11_LIMIT_ADDRESS_SPACE_SIZE;
+    RISAF11->REG[0].CIDCFGR = (RIF_CID_MASK << 16) | RIF_CID_MASK;
+    RISAF11->REG[0].CFGR = 0x00FF0101UL;
+
+    /* The model is stored in the XSPI2 NOR aperture. */
     RISAF12->REG[0].CFGR = 0U;
     RISAF12->REG[0].STARTR = 0U;
     RISAF12->REG[0].ENDR = RISAF12_LIMIT_ADDRESS_SPACE_SIZE;
@@ -82,6 +92,7 @@ common::Error RifHardware::Initialize()
     HAL_RIF_IAC_EnableIT(RIF_AWARE_PERIPH_INDEX_RISAF4);
     HAL_RIF_IAC_EnableIT(RIF_AWARE_PERIPH_INDEX_RISAF5);
     HAL_RIF_IAC_EnableIT(RIF_AWARE_PERIPH_INDEX_RISAF7);
+    HAL_RIF_IAC_EnableIT(RIF_AWARE_PERIPH_INDEX_RISAF11);
     HAL_RIF_IAC_EnableIT(RIF_AWARE_PERIPH_INDEX_RISAF12);
     HAL_NVIC_SetPriority(IAC_IRQn, 0U, 0U);
     HAL_NVIC_EnableIRQ(IAC_IRQn);
