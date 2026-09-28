@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 /* C実装のT-Monitor APIをC++から呼び出すためのCリンケージ。 */
 extern "C" {
@@ -17,8 +18,17 @@ namespace {
 
 using memory_allocator::BoxSet;
 
+#ifndef AI_MODEL_FORCE_FIXED_INPUT
+#define AI_MODEL_FORCE_FIXED_INPUT 0
+#endif
+
+/* The checked-in person/segmentation network sources were originally
+ * generated with a fixed input in CPU RAM. Keep the runtime fallback
+ * explicit until those generated sources are regenerated with
+ * --no-inputs-allocation. */
+constexpr std::uintptr_t kGeneratedModelInputAddress = 0x34100000UL;
+
 #if !defined(AI_MODEL_SEGMENTATION)
-constexpr std::size_t kInputCropX = 160U;
 constexpr std::size_t kInputSize = 480U;
 constexpr std::uint32_t kMaxDetections = 100U;
 
@@ -172,23 +182,74 @@ bool ConvertDetections(stai_ptr *outputs, BoxSet *result)
                         : memory_allocator::kMaxBoxes;
     for (std::uint32_t i = 0U; i < result->count; ++i) {
         const OdDetection &source = g_postprocess_buffer[i];
-        const Float left = static_cast<Float>(kInputCropX) +
-                           (source.x_center - source.width * 0.5F) *
-                               static_cast<Float>(kInputSize);
+        /* Pipe2 uses the same 800x480 aspect-ratio crop as Pipe1 and then
+         * stretches it to the 480x480 model input. Map detections back to the
+         * full 800-pixel Pipe1 surface. */
+        const Float display_x_scale =
+            static_cast<Float>(memory_allocator::kFrameWidth) /
+            static_cast<Float>(kInputSize);
+        const Float display_y_scale =
+            static_cast<Float>(memory_allocator::kFrameHeight) /
+            static_cast<Float>(kInputSize);
+        const Float left =
+            (source.x_center - source.width * 0.5F) * display_x_scale *
+            static_cast<Float>(kInputSize);
         const Float top =
-            (source.y_center - source.height * 0.5F) *
+            (source.y_center - source.height * 0.5F) * display_y_scale *
             static_cast<Float>(kInputSize);
         result->boxes[i].x = ClampCoordinate(left, memory_allocator::kFrameWidth);
         result->boxes[i].y = ClampCoordinate(top, memory_allocator::kFrameHeight);
         result->boxes[i].width = ClampCoordinate(
-            source.width * static_cast<Float>(kInputSize),
+            source.width * display_x_scale * static_cast<Float>(kInputSize),
             memory_allocator::kFrameWidth);
         result->boxes[i].height = ClampCoordinate(
-            source.height * static_cast<Float>(kInputSize),
+            source.height * display_y_scale * static_cast<Float>(kInputSize),
             memory_allocator::kFrameHeight);
         result->boxes[i].confidence = source.confidence;
     }
     return true;
+}
+
+void LogOutputObjectness(const stai_network_info &info, stai_ptr *outputs)
+{
+    constexpr std::size_t kOutputChannels = 18U;
+    constexpr float kConfidenceLogit = 0.4054651081F; // logit(0.6)
+    for (std::size_t level = 0U; level < 3U; ++level) {
+        const std::size_t slot = g_output_order[level];
+        const std::size_t bytes = info.outputs[slot].size_bytes;
+        const auto *values = reinterpret_cast<const std::int8_t *>(outputs[slot]);
+        std::int32_t minimum = 127;
+        std::int32_t maximum = -128;
+        std::int32_t maximum_objectness = -128;
+        std::size_t maximum_objectness_cell = 0U;
+        for (std::size_t i = 0U; i < bytes; ++i) {
+            const std::int32_t value = values[i];
+            minimum = value < minimum ? value : minimum;
+            maximum = value > maximum ? value : maximum;
+            if ((i % kOutputChannels) == 4U && value > maximum_objectness) {
+                maximum_objectness = value;
+                maximum_objectness_cell = i / kOutputChannels;
+            }
+        }
+
+        const float scale = info.outputs[slot].scale.data[0];
+        const std::int32_t zero_point = info.outputs[slot].zeropoint.data[0];
+        const float threshold_raw =
+            static_cast<float>(zero_point) + kConfidenceLogit / scale;
+        tm_printf(reinterpret_cast<const UB *>(
+                      "ai: output level=%c slot=%u bytes=%u min=%d max=%d "
+                      "obj_raw_max=%d obj_cell=%u threshold_raw_x1000=%u "
+                      "scale_x100000=%u zp=%d\n"),
+                  level == 0U ? 'S' : (level == 1U ? 'M' : 'L'),
+                  static_cast<unsigned int>(slot),
+                  static_cast<unsigned int>(bytes),
+                  static_cast<int>(minimum), static_cast<int>(maximum),
+                  static_cast<int>(maximum_objectness),
+                  static_cast<unsigned int>(maximum_objectness_cell),
+                  static_cast<unsigned int>(threshold_raw * 1000.0F),
+                  static_cast<unsigned int>(scale * 100000.0F),
+                  static_cast<int>(zero_point));
+    }
 }
 
 std::uint32_t ConfidenceMilli(float confidence)
@@ -362,8 +423,28 @@ Error ModelManager::TryInfer(
               "ai: input cache end sequence=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence));
 
+    std::uintptr_t model_input_address = frame.buffer.address;
+#if AI_MODEL_FORCE_FIXED_INPUT
+    const memory_allocator::Buffer model_input_buffer{
+        kGeneratedModelInputAddress, info_.inputs[0].size_bytes, 0U,
+        memory_allocator::Region::kInference};
+    std::memcpy(reinterpret_cast<void *>(model_input_buffer.address),
+                reinterpret_cast<const void *>(frame.buffer.address),
+                info_.inputs[0].size_bytes);
+    status = cache_->PrepareForPeripheralRead(model_input_buffer);
+    if (!status.Ok()) {
+        return status;
+    }
+    model_input_address = model_input_buffer.address;
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: input fixed copy sequence=%u source=%x destination=%x size=%u\n"),
+              static_cast<unsigned int>(frame.capture_sequence),
+              static_cast<unsigned int>(frame.buffer.address),
+              static_cast<unsigned int>(model_input_address),
+              static_cast<unsigned int>(info_.inputs[0].size_bytes));
+#endif
     const stai_return_code set_input = model_.SetInput(
-        reinterpret_cast<stai_ptr>(frame.buffer.address),
+        reinterpret_cast<stai_ptr>(model_input_address),
         info_.inputs[0].size_bytes);
     if (set_input != STAI_SUCCESS) {
         return {ErrorCode::kModel, static_cast<std::uint32_t>(set_input),
@@ -402,6 +483,7 @@ Error ModelManager::TryInfer(
     }
     mask_buffer_index_ ^= 1U;
 #else
+    LogOutputObjectness(info_, outputs_);
     if (!ConvertDetections(outputs_, result)) {
         return {ErrorCode::kModel, 0U, "ai.postprocess"};
     }

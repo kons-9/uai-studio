@@ -26,6 +26,8 @@ public:
         const memory_allocator::CaptureFrame &capture,
         const memory_allocator::BoxSet &boxes,
         bool log_copy_crc = false);
+    common::Error ComposeInferenceAndPresent(
+        const memory_allocator::InferenceFrame &frame);
 
 private:
     static void FillInitialFrame(const memory_allocator::DisplayBuffer &buffer,

@@ -49,6 +49,11 @@ void inference_task(void)
             tm_printf(reinterpret_cast<const UB *>(
                           "ai: inference begin sequence=%u\n"),
                       static_cast<unsigned int>(message.frame.capture_sequence));
+            /* Inspect the exact Pipe2 buffer immediately before handing it to
+             * the NPU. This confirms that the inference path consumes live
+             * camera data, rather than only proving that Pipe2 generated a
+             * frame event. */
+            LogInferenceInput(message.frame);
             tm_printf(reinterpret_cast<const UB *>(
                           "ai: inference run begin sequence=%u input=%x irq=%u last=%x\n"),
                       static_cast<unsigned int>(message.frame.capture_sequence),

@@ -162,10 +162,23 @@ Error ConfigureInferencePipe()
 
     const float ratio_width = static_cast<float>(kSensorWidth) / kOutputWidth;
     const float ratio_height = static_cast<float>(kSensorHeight) / kOutputHeight;
-    const float ratio = ratio_width < ratio_height ? ratio_width : ratio_height;
+    const float display_to_sensor = ratio_width < ratio_height
+                                        ? ratio_width
+                                        : ratio_height;
     DCMIPP_CropConfTypeDef crop{};
-    crop.HSize = static_cast<std::uint32_t>(kOutputWidth * ratio);
-    crop.VSize = static_cast<std::uint32_t>(kOutputHeight * ratio);
+    /* Keep Pipe2's source geometry identical to the reference person
+     * detector: the 800x480 display aspect-ratio crop is resized to the
+     * model's 480x480 tensor. The model was trained with this same horizontal
+     * stretch. */
+    if (AI_DCMIPP_BYPASS_DOWNSIZE != 0) {
+        crop.HSize = kInferenceWidth;
+        crop.VSize = kInferenceHeight;
+    } else {
+        crop.HSize = static_cast<std::uint32_t>(
+            static_cast<float>(kOutputWidth) * display_to_sensor);
+        crop.VSize = static_cast<std::uint32_t>(
+            static_cast<float>(kOutputHeight) * display_to_sensor);
+    }
     crop.HStart = ((kSensorWidth - crop.HSize) / 2U) & ~1U;
     crop.VStart = ((kSensorHeight - crop.VSize) / 2U) & ~1U;
     crop.PipeArea = DCMIPP_POSITIVE_AREA;
@@ -208,6 +221,14 @@ Error ConfigureInferencePipe()
             HAL_OK) {
         return Hardware("camera.pipe2.configure");
     }
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: pipe2 input crop x=%u y=%u w=%u h=%u output=%ux%u\n"),
+              static_cast<unsigned int>(crop.HStart),
+              static_cast<unsigned int>(crop.VStart),
+              static_cast<unsigned int>(crop.HSize),
+              static_cast<unsigned int>(crop.VSize),
+              static_cast<unsigned int>(kInferenceWidth),
+              static_cast<unsigned int>(kInferenceHeight));
     return {ErrorCode::kOk, 0U, "camera.pipe2.configure"};
 }
 

@@ -293,7 +293,51 @@ void camera_render_task(void)
         InferenceFrame pipe2_frame{};
         const Error pipe2_status = camera.TakeCompletedInference(&pipe2_frame);
         if (pipe2_status.Ok()) {
-            if (inference_due && kInferenceMode == InferenceMode::kNpu) {
+            bool inference_buffer_released = false;
+            if constexpr (kInferenceInputDisplayDiagnostic) {
+                /* Keep the live Pipe2 image on the LCD for this diagnostic.
+                 * A frame that is due for NPU inference is left untouched so
+                 * the inference task can claim the same buffer. */
+                if (!inference_due || kInferenceMode != InferenceMode::kNpu) {
+                    status = g_memory.ClaimInferenceBuffer(pipe2_frame);
+                    if (!status.Ok()) {
+                        LogStatus("memory", status);
+                        Halt("ai: inference input claim failed\n");
+                    }
+                    const bool log_input =
+                        pipe2_frame.capture_sequence <= 3U ||
+                        (pipe2_frame.capture_sequence % 30U) == 0U;
+                    if (log_input) {
+                        tm_printf(reinterpret_cast<const UB *>(
+                                      "ai: input display live sequence=%u buffer=%x\n"),
+                                  static_cast<unsigned int>(
+                                      pipe2_frame.capture_sequence),
+                                  static_cast<unsigned int>(
+                                      pipe2_frame.buffer.address));
+                        LogInferenceInput(pipe2_frame);
+                    }
+                    status = lcd.ComposeInferenceAndPresent(pipe2_frame);
+                    if (!status.Ok()) {
+                        if (!IsBestEffort(status.code) || log_input) {
+                            LogStatus("lcd", status);
+                        }
+                    } else if (log_input) {
+                        tm_printf(reinterpret_cast<const UB *>(
+                                      "lcd: inference frame presented sequence=%u\n"),
+                                  static_cast<unsigned int>(
+                                      pipe2_frame.capture_sequence));
+                    }
+                    const Error release_status =
+                        g_memory.ReleaseInferenceBuffer(pipe2_frame);
+                    if (!release_status.Ok()) {
+                        LogStatus("memory", release_status);
+                        Halt("ai: diagnostic inference release failed\n");
+                    }
+                    inference_buffer_released = true;
+                }
+            }
+            if (!inference_buffer_released && inference_due &&
+                kInferenceMode == InferenceMode::kNpu) {
                 tm_printf(reinterpret_cast<const UB *>(
                               "ai: pipe2 frame queued sequence=%u buffer=%x events=%u drops=%u\n"),
                           static_cast<unsigned int>(pipe2_frame.capture_sequence),
@@ -302,7 +346,7 @@ void camera_render_task(void)
                           g_camera_pipe2_drop_count);
                 SendInferenceFrame(pipe2_frame);
                 next_inference = now + kInferencePeriod;
-            } else {
+            } else if (!inference_buffer_released) {
                 const Error release_status =
                     g_memory.ReleaseInferenceBuffer(pipe2_frame);
                 if (!release_status.Ok()) {
@@ -343,7 +387,9 @@ void camera_render_task(void)
         }
         LogFrameBrightness(capture);
 
-        const bool display_due = true;
+        /* In the live Pipe2 diagnostic mode, the LCD is reserved for the
+         * actual inference input. Capture buffers are still drained below. */
+        const bool display_due = !kInferenceInputDisplayDiagnostic;
         if (display_due) {
             if (capture.sequence <= 3U ||
                 (capture.sequence % 10U) == 0U) {

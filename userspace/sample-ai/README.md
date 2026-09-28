@@ -2,16 +2,23 @@
 
 `sample-ai` は、STM32N6570-DK の Neural-ART NPU で量子化 AI モデルを推論する
 最小構成です。一般的な意味での GPU (NeoChrom) ではなく、AI 推論専用の NPU
-を使います。入力はカメラではなく再現可能なテストパターンにしてあり、
-`sample-camera-lcd` のカメラ実装と独立しています。推論結果の先頭バイトと、出力が
-`float32` の場合は argmax を UART に表示します。
+を使います。person推論はカメラのPipe2 RGB888を入力にし、`sample-camera-lcd` の
+表示と同じカメラ経路で動作します。推論結果のobjectnessと枠情報はUARTにも表示
+できます。
 
 ## カメラ推論経路
 
 カメラ表示は `DCMIPP_PIPE1` の RGB565 800x480、推論入力は `DCMIPP_PIPE2` の
 RGB888（person: 480x480、segmentation: 320x320）を使用します。Pipe2の出力は
-PSRAM上の推論バッファへDMAし、生成モデル側が外部入力バッファを受け付けないため、
-推論タスクでモデル入力へ必要サイズだけコピーしてからNPUを実行します。
+PSRAM上の推論バッファへDMAします。
+
+現在のchecked-in person生成物は、network.cの入力情報だけを手動でユーザー入力へ
+変更した過渡状態で、command blob内部には固定入力アドレス `0x34100000` が残って
+います。そのため `AI_MODEL_FORCE_FIXED_INPUT=ON`（デフォルト）でPipe2のRGB888を
+固定入力領域へコピーしてからNPUを実行します。実機でこのコピーを外すとobjectness
+が下がって枠が0件になることを確認しています。完全なPipe2直結にする場合は、同じ
+STEdgeAIバージョンで `--no-inputs-allocation --no-outputs-allocation` を付けて
+モデルとcommand blobを再生成してください。
 
 UARTには `pipe2 frame queued`、`pipe2` イベント数、ドロップ数を出力します。CSI
 エラーが発生してもPipe1のフレームsequenceが継続するか、`recovery` が増えないかを
@@ -31,6 +38,24 @@ Pipe2のPSRAMバッファをNPUのユーザー入力へ直接渡す。現在のs
 点がref/との差分である。最終対策は、同じ生成オプションでモデルを再生成して
 Pipe2→NPUの直接入力にすること。CSIエラー割込みの再アームは行わず、フレーム停止を
 監視するフェイルセーフ復旧は残す。
+
+### 推論入力画像の確認
+
+personモデルの推論入力は Pipe2 の 480x480 RGB888 です。実際に NPU へ渡す
+バッファを LCD に連続表示するには、configure 時に次を指定します。
+
+```sh
+cmake -S . -B build-sample-ai \
+  -DAPP_TARGET=sample-ai -DAI_MODEL=person \
+  -DAI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC=ON
+cmake --build build-sample-ai --target sample-ai.elf
+```
+
+UARTには30フレームごとに `ai: input inspect` としてアドレス、サイズ、CRC、RGBサンプル、
+輝度統計が出ます。LCD中央の480x480画像が動くカメラ映像になっていれば、Pipe2のDMA、
+キャッシュ無効化、RGB888入力の受け渡しが継続して成立しています。診断中もNPU推論は
+継続しますが、LCDはPipe1表示ではなく推論入力の確認表示になります。通常の枠表示に
+戻すときは `OFF`（デフォルト）に戻してください。
 
 ## 2つのモデル
 

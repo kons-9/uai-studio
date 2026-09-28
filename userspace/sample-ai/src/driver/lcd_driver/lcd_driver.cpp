@@ -17,6 +17,8 @@ namespace {
 
 constexpr std::uint16_t kRed = 0xF800U;
 constexpr std::int32_t kLineWidth = 4;
+constexpr std::size_t kInferenceDisplayX =
+    (memory_allocator::kFrameWidth - memory_allocator::kInferenceWidth) / 2U;
 constexpr std::uint16_t kInitialPattern[] = {
     0xFFFFU, 0xFFE0U, 0x07FFU, 0x07E0U,
     0xF81FU, 0xF800U, 0x001FU, 0x0000U,
@@ -379,6 +381,85 @@ Error LcdDriver::ComposeAndPresent(
     if (!uai::driver::IsOk(backend_status)) {
         (void)memory_->ReleaseDisplayBuffer(display);
         return FromBackend(backend_status, "lcd.present");
+    }
+    return memory_->CommitDisplayBuffer(display);
+}
+
+Error LcdDriver::ComposeInferenceAndPresent(
+    const memory_allocator::InferenceFrame &frame)
+{
+    if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
+        return {ErrorCode::kNotInitialized, 0U, "lcd.compose_inference"};
+    }
+    if (!frame || !frame.from_pipe2 ||
+        frame.buffer.size < memory_allocator::kInferenceFrameBytes) {
+        return {ErrorCode::kInvalidArgument, 0U, "lcd.compose_inference"};
+    }
+
+    /* Ensure the previous reload has latched before reusing the other LCD
+     * surface. This is the same handoff discipline as ComposeAndPresent(). */
+    const uai::driver::DriverStatus sync_status = registers_.Synchronize();
+    if (sync_status == uai::driver::DriverStatus::kBusy) {
+        return {ErrorCode::kNoBuffer, 0U, "lcd.inference_reload.pending"};
+    }
+    if (!uai::driver::IsOk(sync_status)) {
+        return FromBackend(sync_status, "lcd.inference_reload.wait");
+    }
+    Error status = memory_->CompleteDisplayHandoff();
+    if (!status.Ok()) {
+        return status;
+    }
+
+    const memory_allocator::Buffer input_buffer{
+        frame.buffer.address, memory_allocator::kInferenceFrameBytes,
+        frame.buffer.index, memory_allocator::Region::kInference};
+    status = cache_->PrepareForCpuRead(input_buffer);
+    if (!status.Ok()) {
+        return status;
+    }
+
+    memory_allocator::DisplayBuffer display{};
+    status = memory_->AcquireDisplayBuffer(&display);
+    if (!status.Ok()) {
+        return status;
+    }
+
+    const auto *source = reinterpret_cast<const std::uint8_t *>(
+        frame.buffer.address);
+    auto *destination = reinterpret_cast<std::uint16_t *>(
+        display.buffer.address);
+    for (std::size_t y = 0U; y < memory_allocator::kFrameHeight; ++y) {
+        for (std::size_t x = 0U; x < memory_allocator::kFrameWidth; ++x) {
+            destination[y * memory_allocator::kFrameWidth + x] = 0U;
+        }
+    }
+    for (std::size_t y = 0U; y < memory_allocator::kInferenceHeight; ++y) {
+        for (std::size_t x = 0U; x < memory_allocator::kInferenceWidth; ++x) {
+            const std::size_t source_index =
+                (y * memory_allocator::kInferenceWidth + x) * 3U;
+            const std::uint16_t red =
+                static_cast<std::uint16_t>(source[source_index] >> 3U);
+            const std::uint16_t green =
+                static_cast<std::uint16_t>(source[source_index + 1U] >> 2U);
+            const std::uint16_t blue =
+                static_cast<std::uint16_t>(source[source_index + 2U] >> 3U);
+            destination[y * memory_allocator::kFrameWidth +
+                        kInferenceDisplayX + x] =
+                static_cast<std::uint16_t>((red << 11U) | (green << 5U) |
+                                            blue);
+        }
+    }
+
+    status = cache_->PrepareForPeripheralRead(display.buffer);
+    if (!status.Ok()) {
+        (void)memory_->ReleaseDisplayBuffer(display);
+        return status;
+    }
+    const uai::driver::DriverStatus backend_status =
+        registers_.Present(display.buffer.address);
+    if (!uai::driver::IsOk(backend_status)) {
+        (void)memory_->ReleaseDisplayBuffer(display);
+        return FromBackend(backend_status, "lcd.present_inference");
     }
     return memory_->CommitDisplayBuffer(display);
 }

@@ -75,6 +75,81 @@ void LogFrameBrightness(
               static_cast<unsigned int>(sensor_gain));
 }
 
+void LogInferenceInput(
+    const uai::ai::memory_allocator::InferenceFrame &frame)
+{
+    if (!frame || !frame.from_pipe2 ||
+        frame.buffer.size < uai::ai::memory_allocator::kInferenceFrameBytes) {
+        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+            "ai: input inspect invalid frame\n")));
+        return;
+    }
+
+    const uai::ai::memory_allocator::Buffer input_buffer{
+        frame.buffer.address, uai::ai::memory_allocator::kInferenceFrameBytes,
+        frame.buffer.index, uai::ai::memory_allocator::Region::kInference};
+    const Error cache_status = g_cache.PrepareForCpuRead(input_buffer);
+    if (!cache_status.Ok()) {
+        LogStatus("ai-input", cache_status);
+        return;
+    }
+
+    const auto *bytes = reinterpret_cast<const std::uint8_t *>(
+        frame.buffer.address);
+    const std::size_t byte_count =
+        uai::ai::memory_allocator::kInferenceFrameBytes;
+    std::uint32_t crc = 0xFFFFFFFFU;
+    std::uint8_t minimum = 0xFFU;
+    std::uint8_t maximum = 0U;
+    for (std::size_t i = 0U; i < byte_count; ++i) {
+        crc ^= bytes[i];
+        for (std::uint32_t bit = 0U; bit < 8U; ++bit) {
+            crc = (crc >> 1U) ^
+                  ((crc & 1U) != 0U ? 0xEDB88320U : 0U);
+        }
+        minimum = bytes[i] < minimum ? bytes[i] : minimum;
+        maximum = bytes[i] > maximum ? bytes[i] : maximum;
+    }
+    crc = ~crc;
+
+    constexpr std::size_t kPixelCount =
+        uai::ai::memory_allocator::kInferenceWidth *
+        uai::ai::memory_allocator::kInferenceHeight;
+    constexpr std::size_t kSampleStep = 64U;
+    std::uint32_t luminance_sum = 0U;
+    std::uint32_t sample_count = 0U;
+    for (std::size_t pixel = 0U; pixel < kPixelCount;
+         pixel += kSampleStep) {
+        const std::size_t index = pixel * 3U;
+        const std::uint32_t red = bytes[index];
+        const std::uint32_t green = bytes[index + 1U];
+        const std::uint32_t blue = bytes[index + 2U];
+        luminance_sum += (77U * red + 150U * green + 29U * blue) >> 8U;
+        ++sample_count;
+    }
+
+    const std::size_t center =
+        ((uai::ai::memory_allocator::kInferenceHeight / 2U) *
+             uai::ai::memory_allocator::kInferenceWidth +
+         uai::ai::memory_allocator::kInferenceWidth / 2U) *
+        3U;
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: input inspect seq=%u address=%x bytes=%u crc=%x "
+                  "min=%u max=%u mean_luma=%u p00=%02x/%02x/%02x "
+                  "pcenter=%02x/%02x/%02x plast=%02x/%02x/%02x\n"),
+              static_cast<unsigned int>(frame.capture_sequence),
+              static_cast<unsigned int>(frame.buffer.address),
+              static_cast<unsigned int>(byte_count),
+              static_cast<unsigned int>(crc),
+              static_cast<unsigned int>(minimum),
+              static_cast<unsigned int>(maximum),
+              static_cast<unsigned int>(luminance_sum / sample_count),
+              bytes[0U], bytes[1U], bytes[2U], bytes[center],
+              bytes[center + 1U], bytes[center + 2U],
+              bytes[byte_count - 3U], bytes[byte_count - 2U],
+              bytes[byte_count - 1U]);
+}
+
 void LogNpuStatus(const NpuStatus &status)
 {
     const auto &execution = status.execution;

@@ -93,6 +93,12 @@ inline constexpr bool kSyntheticComposeDiagnostic =
     kDisplayDiagnosticMode == DisplayDiagnosticMode::kSyntheticCompose;
 inline constexpr bool kLiveCaptureFreezeDiagnostic =
     kDisplayDiagnosticMode == DisplayDiagnosticMode::kLiveCaptureFreeze;
+#if defined(AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC)
+inline constexpr bool kInferenceInputDisplayDiagnostic =
+    AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC != 0;
+#else
+inline constexpr bool kInferenceInputDisplayDiagnostic = false;
+#endif
 inline constexpr bool kCopyInferenceFrames =
     kInferenceMode != InferenceMode::kDisabled;
 inline constexpr std::size_t kFrameQueueDepth = 4U;
@@ -135,6 +141,7 @@ BoxSet EmptyBoxes();
 bool DrainLatestBoxes(BoxSet *active);
 void SendLatestBoxes(const BoxSet &boxes);
 void SendInferenceFrame(const InferenceFrame &frame);
+void LogInferenceInput(const InferenceFrame &frame);
 void ConfigureReferenceInterruptPriorities();
 Error InitializeDrivers();
 
