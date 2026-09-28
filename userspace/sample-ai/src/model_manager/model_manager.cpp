@@ -3,10 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#include <tk/tkernel.h>
-
-#include "driver/npu_driver/debug.h"
-
 /* C実装のT-Monitor APIをC++から呼び出すためのCリンケージ。 */
 extern "C" {
 #include <tm/tmonitor.h>

@@ -82,7 +82,7 @@ void InferenceTask::Entry()
 void InferenceTask::Run()
 {
     TaskContext &context = GetTaskContext();
-    auto camera_diag = context.camera.GetDiagnostics();
+    uai::ai::camera::Diagnostics camera_diag{};
     UINT pattern = 0U;
     const ER error = tk_wai_flg(context.external_memory_ready,
                                 kExternalMemoryReady,
@@ -116,11 +116,14 @@ void InferenceTask::Run()
         models::ModelKind::kFace};
     std::size_t next_model_index = 0U;
     BoxSet integrated_boxes{};
-    std::uint32_t fps_window_start = context.Now();
+    std::uint32_t fps_window_start = 0U;
     std::uint32_t fps_submitted = 0U;
     std::uint32_t fps_completed = 0U;
     std::uint32_t fps_inference_total_ms = 0U;
     std::uint32_t fps_inference_max_ms = 0U;
+    if (context.diagnostics.inference_fps) {
+        fps_window_start = context.Now();
+    }
     for (;;) {
         InferenceMessage message{};
         const INT size = tk_rcv_mbf(context.frame_queue, &message, TMO_FEVR);
