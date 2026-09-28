@@ -61,6 +61,7 @@ if(AI_MODEL STREQUAL "person")
         "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp.c")
     set(AI_MODEL_EXTRA_LIBRARIES)
     set(AI_MODEL_NOR_PROBE_OFFSET 0x00380000U)
+    set(AI_MODEL_BLOB_ADDRESS 0x70500000)
     set(AI_MODEL_POSTFIX person)
 elseif(AI_MODEL STREQUAL "segmentation")
     set(AI_MODEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation")
@@ -74,6 +75,7 @@ elseif(AI_MODEL STREQUAL "segmentation")
     set(AI_MODEL_EXTRA_LIBRARIES
         "${AI_THIRDPARTY_DIR}/Lib/GCC/ARMCortexM55/NetworkRuntime1200_CM55_GCC.a")
     set(AI_MODEL_NOR_PROBE_OFFSET 0x00600000U)
+    set(AI_MODEL_BLOB_ADDRESS 0x70560000)
     set(AI_MODEL_POSTFIX segmentation)
 elseif(AI_MODEL STREQUAL "face")
     set(AI_MODEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models/face")
@@ -89,6 +91,7 @@ elseif(AI_MODEL STREQUAL "face")
         "${AI_MODEL_IMPL_DIR}/model_face_postprocess.c")
     set(AI_MODEL_EXTRA_LIBRARIES)
     set(AI_MODEL_NOR_PROBE_OFFSET 0x00800000U)
+    set(AI_MODEL_BLOB_ADDRESS 0x70580000)
     set(AI_MODEL_POSTFIX face)
 else()
     message(FATAL_ERROR
@@ -224,6 +227,7 @@ target_link_options(sample-ai.elf PRIVATE
     "-T${AI_LINKER_SCRIPT}"
     "-Wl,--undefined=NPU0_IRQHandler"
     "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/sample-ai.map"
+    "-Wl,--section-start=.network_blobs=${AI_MODEL_BLOB_ADDRESS}"
     "-Wl,--print-memory-usage")
 set_target_properties(sample-ai.elf PROPERTIES
     LINK_DEPENDS "${AI_LINKER_SCRIPT}")

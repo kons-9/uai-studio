@@ -14,8 +14,10 @@ ENTRY(uai_ram_entry)
 MEMORY
 {
   APP (rwx) : ORIGIN = 0x34000400, LENGTH = 1023K
-  /* xSPI2 model weights start at 0x70380000. Keep command blobs in a
-   * separate, aligned area after the largest generated model image. */
+  /* xSPI2 model weights occupy model-specific slots from 0x70380000 onward.
+   * CMake relocates .network_blobs to a model-specific aligned address in
+   * the command-blob area, so the generated blob image is separate from the
+   * model weights. */
   MODEL_FLASH (rx) : ORIGIN = 0x70500000, LENGTH = 0x00E00000
 }
 

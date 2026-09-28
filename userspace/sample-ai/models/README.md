@@ -3,11 +3,11 @@
 `generate_model.sh` generates the Neural-ART files used by `sample-ai` for
 the three supported model families:
 
-| name | official application | source model | xSPI2 address |
-| --- | --- | --- | --- |
-| `person` | [STM32N6-GettingStarted-ObjectDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-ObjectDetection) | `st_yolo_x_nano_480_1.0_0.25_3_st_int8.tflite` | `0x70380000` |
-| `segmentation` | [STM32N6-GettingStarted-SemanticSegmentation](https://github.com/STMicroelectronics/STM32N6-GettingStarted-SemanticSegmentation) | `deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8.onnx` | `0x70600000` |
-| `face` | [STM32N6-GettingStarted-FaceDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-FaceDetection) | `blazeface_front_128_quant_pc_ff_od_wider_face.tflite` | `0x70800000` |
+| name | official application | source model | xSPI2 model address | xSPI2 command blob address |
+| --- | --- | --- | --- | --- |
+| `person` | [STM32N6-GettingStarted-ObjectDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-ObjectDetection) | `st_yolo_x_nano_480_1.0_0.25_3_st_int8.tflite` | `0x70380000` | `0x70500000` |
+| `segmentation` | [STM32N6-GettingStarted-SemanticSegmentation](https://github.com/STMicroelectronics/STM32N6-GettingStarted-SemanticSegmentation) | `deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8.onnx` | `0x70600000` | `0x70560000` |
+| `face` | [STM32N6-GettingStarted-FaceDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-FaceDetection) | `blazeface_front_128_quant_pc_ff_od_wider_face.tflite` | `0x70800000` | `0x70580000` |
 
 The official repositories are complete STM32N6 applications, not a runtime
 library that needs to be linked into this project. The generator uses their
@@ -56,3 +56,8 @@ experimental runtime activation/state allocation options.
 
 `model1` and `model2` are legacy directories and are no longer accepted by
 the generator.
+
+Each model's `network_blobs.hex` must be programmed at its corresponding
+command blob address above. The linker places `.network_blobs` at that address
+for the selected `AI_MODEL`, so the RAM application and the NOR contents must
+be built from the same model selection.
