@@ -79,11 +79,20 @@ struct Detection {
     std::int32_t class_index = 0;
 };
 
+struct SegmentationResult {
+    std::uintptr_t mask_address = 0U;
+    std::uint16_t mask_width = 0U;
+    std::uint16_t mask_height = 0U;
+    std::uint32_t mask_foreground_pixels = 0U;
+};
+
 struct ModelResult {
     ModelKind kind = ModelKind::kPerson;
     bool detections_valid = false;
     std::uint32_t detection_count = 0U;
     Detection detections[kMaxDecodedDetections]{};
+    bool segmentation_valid = false;
+    SegmentationResult segmentation{};
 };
 
 struct InferenceCompletionContext {
@@ -139,6 +148,15 @@ public:
 
 protected:
     virtual ~Model() = default;
+};
+
+/* A model registration owned by the scheduler's model facade. The generated
+ * runtime adapter remains private to the scheduler path, while the concrete
+ * model supplies its descriptor and decoder callbacks. */
+struct ModelBinding {
+    ModelKind kind{};
+    Model *model = nullptr;
+    ModelRuntime *runtime = nullptr;
 };
 
 } // namespace uai::ai::models

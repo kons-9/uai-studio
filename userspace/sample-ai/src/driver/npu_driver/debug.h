@@ -1,8 +1,8 @@
 #ifndef UAI_AI_NPU_DRIVER_DEBUG_H
 #define UAI_AI_NPU_DRIVER_DEBUG_H
 
-/* These diagnostics are implemented by the linked NPU/ATON platform code.
- * This header declares the shared counters for ai diagnostics. */
+/* Diagnostics are owned by sample-ai. Weak definitions keep compatibility
+ * with older local ATON/cache copies that already export these counters. */
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -1,12 +1,9 @@
 #include "driver/nor_driver/nor_driver.hpp"
+#include "sample_ai_config.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
 }
-
-#ifndef AI_MODEL_NOR_PROBE_OFFSET
-#define AI_MODEL_NOR_PROBE_OFFSET 0x00380000U
-#endif
 
 namespace uai::ai::nor {
 
@@ -24,7 +21,7 @@ int NorDriver::Initialize()
     /* Probe the model weights before switching the NOR to memory-mapped mode. */
     uint8_t model_probe[16] = {};
     const int read_status =
-        registers_.Read(model_probe, AI_MODEL_NOR_PROBE_OFFSET,
+        registers_.Read(model_probe, config::kModelNorProbeOffset,
                         sizeof(model_probe));
     if (read_status != 0) {
         return -1;

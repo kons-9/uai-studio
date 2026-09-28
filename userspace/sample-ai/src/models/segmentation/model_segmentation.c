@@ -34,8 +34,8 @@
 #define LL_ATON_EC_Network_Init_network segmentation_LL_ATON_EC_Network_Init_network
 #define LL_ATON_EC_Inference_Init_network segmentation_LL_ATON_EC_Inference_Init_network
 
-#include "../../../../models/segmentation/network.c"
-#include "../../../../models/segmentation/stai_network.c"
+#include "../../../models/segmentation/network.c"
+#include "../../../models/segmentation/stai_network.c"
 
 extern stai_return_code stai_ext_wfe(void);
 

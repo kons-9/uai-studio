@@ -1,4 +1,5 @@
 #include "models/segmentation/model.hpp"
+#include "models/segmentation/segmentation_decoder.hpp"
 
 extern "C" {
 stai_return_code segmentation_model_initialize(void);
@@ -20,6 +21,37 @@ stai_return_code segmentation_model_new_inference(void);
 
 namespace uai::ai::models::segmentation {
 
+namespace {
+
+Decoder &SegmentationDecoderInstance()
+{
+    static Decoder decoder;
+    return decoder;
+}
+
+common::Error ConfigureSegmentationDecoder(const ModelOutputSpec &spec,
+                                           void *user_data)
+{
+    if (user_data == nullptr) {
+        return {common::ErrorCode::kInvalidArgument, 0U,
+                "segmentation.decoder.context"};
+    }
+    return static_cast<Decoder *>(user_data)->Initialize(spec);
+}
+
+common::Error CompleteSegmentationInference(
+    const InferenceCompletionContext &context, ModelResult *result,
+    void *user_data)
+{
+    if (user_data == nullptr) {
+        return {common::ErrorCode::kInvalidArgument, 0U,
+                "segmentation.decoder.context"};
+    }
+    return static_cast<Decoder *>(user_data)->Decode(context, result);
+}
+
+} // namespace
+
 const ModelDescriptor &Model::Descriptor()
 {
     static constexpr ModelDescriptor kDescriptor{
@@ -30,6 +62,12 @@ const ModelDescriptor &Model::Descriptor()
 const ModelDescriptor &Model::GetDescriptor() const
 {
     return Descriptor();
+}
+
+ModelCallbacks Model::GetCallbacks() const
+{
+    return {ConfigureSegmentationDecoder, CompleteSegmentationInference,
+            &SegmentationDecoderInstance()};
 }
 
 ::uai::ai::models::ModelRuntime &Runtime(Model &model)

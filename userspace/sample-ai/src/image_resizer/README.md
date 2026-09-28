@@ -68,10 +68,11 @@ CSI camera
 
 Pipe1の表示用フレームをCPUで縮小して推論入力にする経路とは異なり、Pipe2の画像が
 そのまま推論入力になります。そのため、枠の位置を変更する場合は、Pipe2のcropと
-`model_manager`のPipe2からPipe1への座標変換を同時に確認してください。
+`InferenceDispatcher`のPipe2からPipe1への座標変換を同時に確認してください。
 
-性能を測るときは、`AI_DCMIPP_PIPE2_FRAME_RATE` と TaskContext の
-`diagnostics.inference_fps` を記録してください。前者が
+性能を測るときは、`config/sample_ai_config.hpp` の
+`kCamera.pipe2_frame_rate` と TaskContext の `diagnostics.inference_fps` を
+記録してください。前者が
 `DCMIPP_FRAME_RATE_1_OVER_2` なら、20 fpsのカメラに対してPipe2の入力上限は約10 fps
 です。推論の詳細を一時的に確認する場合は `TaskContext::diagnostics` の
 `inference_trace`、`inference_input`、`camera_brightness` など必要な項目だけを

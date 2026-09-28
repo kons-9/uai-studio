@@ -13,6 +13,7 @@ void IAC_IRQHandler(void);
 #include "task/application_initialize_task.hpp"
 #include "task/task_context.hpp"
 #include "task/task_diagnostics.hpp"
+#include "common/log.hpp"
 
 /* HAL time-bridge state is a C ABI surface used by the board support code. */
 extern "C" {
@@ -31,19 +32,21 @@ extern "C" void IAC_IRQHandler(void)
     const std::uint32_t flags2 = IAC->ISR[2];
     const std::uint32_t flags3 = IAC->ISR[3];
     const std::uint32_t flags4 = IAC->ISR[4];
-    tm_printf(reinterpret_cast<const UB *>(
-                  "ai: IAC flags=%x,%x,%x,%x,%x\n"),
-              static_cast<unsigned int>(flags0),
-              static_cast<unsigned int>(flags1),
-              static_cast<unsigned int>(flags2),
-              static_cast<unsigned int>(flags3),
-              static_cast<unsigned int>(flags4));
+    if ((flags0 | flags1 | flags2 | flags3 | flags4) != 0U) {
+        UAI_LOG_WARN(reinterpret_cast<const UB *>(
+                         "ai: IAC flags=%x,%x,%x,%x,%x\n"),
+                     static_cast<unsigned int>(flags0),
+                     static_cast<unsigned int>(flags1),
+                     static_cast<unsigned int>(flags2),
+                     static_cast<unsigned int>(flags3),
+                     static_cast<unsigned int>(flags4));
+    }
     if ((flags4 & 0x00400000U) != 0U) {
-        tm_printf(reinterpret_cast<const UB *>(
-                      "ai: RISAF12 iasr=%x iaesr=%x iaddr=%x\n"),
-                  static_cast<unsigned int>(RISAF12->IASR),
-                  static_cast<unsigned int>(RISAF12->IAR->IAESR),
-                  static_cast<unsigned int>(RISAF12->IAR->IADDR));
+        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
+                          "ai: RISAF12 iasr=%x iaesr=%x iaddr=%x\n"),
+                      static_cast<unsigned int>(RISAF12->IASR),
+                      static_cast<unsigned int>(RISAF12->IAR->IAESR),
+                      static_cast<unsigned int>(RISAF12->IAR->IADDR));
     }
     HAL_RIF_IRQHandler();
 }
@@ -51,11 +54,9 @@ extern "C" void IAC_IRQHandler(void)
 /* µT-Kernelから呼び出されるaiのエントリーポイント。 */
 extern "C" INT usermain(void)
 {
-    using namespace uai::ai::task;
-
-    TaskContext &context = GetTaskContext();
+    uai::ai::task::TaskContext &context = uai::ai::task::GetTaskContext();
     if (context.diagnostics.register_dump) {
-        DumpCoreRegisters("usermain");
+        uai::ai::task::DumpCoreRegisters("usermain");
     }
 
     /* µT-Kernel replaces the startup vector table with its RAM table. Use its
@@ -72,20 +73,20 @@ extern "C" INT usermain(void)
     iac_interrupt.inthdr = reinterpret_cast<FP>(IAC_IRQHandler);
     const ER iac_interrupt_status =
         tk_def_int(static_cast<UINT>(IAC_IRQn), &iac_interrupt);
-    tm_printf(reinterpret_cast<const UB *>(
-                  "ai: kernel interrupts npu=%x iac=%x\n"),
-              static_cast<unsigned int>(npu_interrupt_status),
-              static_cast<unsigned int>(iac_interrupt_status));
+    UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                     "ai: kernel interrupts npu=%x iac=%x\n"),
+                 static_cast<unsigned int>(npu_interrupt_status),
+                 static_cast<unsigned int>(iac_interrupt_status));
     if (npu_interrupt_status != E_OK || iac_interrupt_status != E_OK) {
         context.Halt("ai: interrupt registration failed\n");
     }
     if (context.diagnostics.register_dump) {
-        DumpCoreRegisters("after_interrupts");
+        uai::ai::task::DumpCoreRegisters("after_interrupts");
     }
 
     context.CreateKernelObjects();
     context.StartApplicationTask(
-        reinterpret_cast<FP>(ApplicationInitializeTask::Entry));
+        reinterpret_cast<FP>(uai::ai::task::ApplicationInitializeTask::Entry));
 
     for (;;) {
         tk_slp_tsk(TMO_FEVR);

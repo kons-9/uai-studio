@@ -53,12 +53,12 @@ allocatorはPipe2の入力とモデル出力を1つの推論スロットとし�
 ### 推論入力画像の確認
 
 personモデルの推論入力は Pipe2 の 480x480 RGB888 です。実際に NPU へ渡す
-バッファを LCD に連続表示するには、configure 時に次を指定します。
+バッファを LCD に連続表示する場合は、タスク起動前に
+`TaskContext::diagnostics.inference_input_display = true` を設定します。
+入力内容のUART確認も行う場合は `inference_input = true` を追加します。
 
 ```sh
-cmake -S . -B build-sample-ai \
-  -DAPP_TARGET=sample-ai \
-  -DAI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC=ON
+cmake -S . -B build-sample-ai -DAPP_TARGET=sample-ai
 cmake --build build-sample-ai --target sample-ai.elf
 ```
 
@@ -66,7 +66,7 @@ UARTには30フレームごとに `ai: input inspect` としてアドレス、�
 輝度統計が出ます。LCD中央の480x480画像が動くカメラ映像になっていれば、Pipe2のDMA、
 キャッシュ無効化、RGB888入力の受け渡しが継続して成立しています。診断中もNPU推論は
 継続しますが、LCDはPipe1表示ではなく推論入力の確認表示になります。通常の枠表示に
-戻すときは `OFF`（デフォルト）に戻してください。
+戻すときは `inference_input_display = false`（デフォルト）に戻してください。
 
 ## モデル
 
@@ -98,29 +98,29 @@ ST公式のモデル取得元、モデルファイル名、ライセンスと利
 
 ### 推論ソフトウェアの構成
 
-推論実行は、生成モデルのC APIとアプリケーションの責務を分離した3層構成です。
+推論実行は、生成モデルのC API、NPUスケジューリング、推論実行を分離した構成です。
 
 - `src/models/`：共通の `Model` インターフェースと、`person/`・`segmentation/`・
-  `face/`ごとのモデル実装を配置します。STEdgeAIが生成した `*_model_*` C関数名は
-  各モデルnamespaceに閉じ込めます。具体的な型は
-  `uai::ai::models::<model>::Model` です。Faceのanchor/dequant/NMSと座標変換も
-  `face/face_decoder.cpp`に閉じています。
-- `src/npu_scheduler/`：`NpuDriver`の初期化、command blobのpreload、モデル選択、
-  入出力バインド、NPU実行と完了待ちを管理します。動的切り替え時もここで
-  `SelectModel()`を呼ぶだけで、`ModelManager::Initialize()`をやり直しません。
-- `src/model_manager/`：モデルの入力変換、出力所有権、person/segmentationの出力処理と
-  共通`BoxSet`への変換を担当します。Face固有のC後処理APIは直接参照せず、decoder結果
-  だけを共通結果へ詰め替えます。
+  `face/`ごとのモデル実装・Decoderを配置します。STEdgeAIが生成した `*_model_*`
+  C関数名と、anchor/dequant/NMS・mask変換・座標変換などのモデル固有処理は各モデル
+  namespaceに閉じ込めます。具体的な型は `uai::ai::models::<model>::Model` です。
+- `src/model_facade/`：Schedulerが所有する`ModelFacade`です。Taskから登録されたモデルの
+  bindingを保持し、選択中モデルのDecoder設定・呼び出しを仲介します。NPU実行や
+  スケジューリングポリシーは持ちません。
+- `src/npu_scheduler/`：Taskからモデルを登録し、command blobのpreloadとNPU runtimeの
+  ライフサイクルを管理します。`SelectNext()`で登録済みモデルから次のモデルを選び、
+  入出力バインドとNPU実行を提供します。
+- `src/inference_dispatcher/`：選択済みモデルの入力cache処理、動的出力、NPU実行、Decoder
+  呼び出し、共通`BoxSet`への変換を担当します。
 
-`ModelManager`に残す責務は、アプリケーションから見た推論のライフサイクル、現在の
-モデル状態、allocator/cacheとの入出力バインド、モデル固有出力の共通`BoxSet`への
-変換です。`ModelKind`と入力形状だけを持つ`ModelDescriptor`の共通型は
+Taskは起動時に`NpuScheduler::RegisterModel()`でperson、segmentation、faceを登録するだけで、
+フレームごとのモデル順序を決定しません。Schedulerは現在ラウンドロビンで
+`SelectNext()`を実行します。`ModelKind`と入力形状だけを持つ`ModelDescriptor`の共通型は
 `models/model.hpp`に置き、具体的なdescriptor値は各モデルの`model.cpp`が所有します。
 出力数・出力サイズ・量子化値は生成STAIの`stai_network_info`から実行時に取得し、公開
-モデルI/Fには持ち込みません。descriptorは生成モデルの実体を所有する
-`ModelManager`から現在のモデルに対して取得します。
+モデルI/Fには持ち込みません。現在のdescriptorはSchedulerからDispatcherへ提供します。
 
-そのため、モデル切り替えやNPUの実行順序に関する条件分岐はschedulerのbinding表へ
+そのため、モデル切り替えやNPUの実行順序に関する条件分岐はSchedulerのbinding表へ
 集約しています。モデル選択用のCMakeオプションや`AI_MODEL_*`のビルド分岐はなく、
 生成C API・後処理・3モデルのcommand blobを常に同じ構成でリンクします。生成C
 ラッパーとモデル固有後処理も各`src/models/<model>/`にまとめています。
@@ -133,10 +133,27 @@ faceの生成済みファイルをリポジトリに保持しています。再�
 準備してください。
 
 1. STM32CubeN6 パッケージ。`STM32CUBE_N6_DIR` に設定します。
-2. `stedgeai-lib`。STEdgeAI の配布物、または上記公式リポジトリの
-   `Middlewares/stedgeai-lib` を `STEDGEAI_LIB_DIR` に設定します。
+2. 生成モデルと同じ版の STEdgeAI の `Middlewares/ST/AI` を用意し、
+   `STEDGEAI_LIB_DIR` に設定します。現在の生成物は `atonn-v1.1.3-275` と
+   `NetworkRuntime1201_CM55_GCC.a` に対応しています。
 3. `stedgeai` CLI と `arm-none-eabi-objcopy` が PATH にあること。
 4. [`models/README.md`](models/README.md) に記載した公式モデルを取得すること。
+
+STEdgeAIランタイムはSTの配布物であり、サイズ・ライセンス・生成物との版依存が
+あるため、リポジトリの `third_party/` にはコピーしていません。一方、ビルドに
+必要なvision-models post-processingの小さなソース一式は同ディレクトリに保持して
+います。クリーンなcheckout直後は、次のコマンドで依存関係とll_atonの版を確認
+できます。
+
+```sh
+sh userspace/sample-ai/scripts/setup_third_party.sh \
+  /opt/ST/STEdgeAI/4.0/Middlewares/ST/AI
+```
+
+引数を省略すると、`STEDGEAI_LIB_DIR`または `/opt/ST/STEdgeAI/*` から自動検出します。
+依存関係が不足している場合は、CMake configureの時点で具体的な不足パスを表示して
+停止します。これにより、無視された開発者固有の `third_party` コピーに依存した
+ままビルドが通ることはありません。
 
 生成された4ファイル (`network.c`, `network_ecblobs.h`, `stai_network.c`,
 `stai_network.h`) と `network_data.xSPI2.bin`/`.hex` は選択したモデルの
@@ -209,7 +226,7 @@ LCD合成します。表示色はperson=赤、face=青、segmentation=緑です�
 cmake -S . -B build-sample-ai \
   -DAPP_TARGET=sample-ai \
   -DSTM32CUBE_N6_DIR=/path/to/STM32Cube_FW_N6_V1.3.0 \
-  -DSTEDGEAI_LIB_DIR=/path/to/stedgeai-lib \
+  -DSTEDGEAI_LIB_DIR=/path/to/STEdgeAI/4.0/Middlewares/ST/AI \
   -DCUBEMX_OUTPUT_DIR="$PWD/build/cubemx" \
   -DCUBEMX_IOC="$PWD/userspace/sample-hello-world/config/stm32n6570-dk-fullsecure.ioc"
 

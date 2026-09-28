@@ -31,16 +31,15 @@ common::Error CacheOperation(const memory_allocator::Buffer &buffer,
                              bool invalidate, bool clean,
                              const char *operation)
 {
-    using common::ErrorCode;
-    using memory_allocator::Region;
-    const bool valid_region = buffer.region == Region::kCapture ||
-                              buffer.region == Region::kDisplay ||
-                              buffer.region == Region::kInference;
+    const bool valid_region =
+        buffer.region == memory_allocator::Region::kCapture ||
+        buffer.region == memory_allocator::Region::kDisplay ||
+        buffer.region == memory_allocator::Region::kInference;
     if (!buffer || !valid_region || buffer.size > static_cast<std::size_t>(
                                      std::numeric_limits<std::int32_t>::max()) ||
         buffer.address > std::numeric_limits<std::uintptr_t>::max() -
                              buffer.size) {
-        return {ErrorCode::kInvalidArgument, 0U, operation};
+        return {common::ErrorCode::kInvalidArgument, 0U, operation};
     }
 
     const std::uintptr_t start =
@@ -48,12 +47,12 @@ common::Error CacheOperation(const memory_allocator::Buffer &buffer,
     const std::uintptr_t unaligned_end = buffer.address + buffer.size;
     if (unaligned_end > std::numeric_limits<std::uintptr_t>::max() -
                             (kCacheLineSize - 1U)) {
-        return {ErrorCode::kInvalidArgument, 0U, operation};
+        return {common::ErrorCode::kInvalidArgument, 0U, operation};
     }
     const std::uintptr_t end = AlignUp(unaligned_end, kCacheLineSize);
     if (end - start > static_cast<std::uintptr_t>(
                           std::numeric_limits<std::int32_t>::max())) {
-        return {ErrorCode::kInvalidArgument, 0U, operation};
+        return {common::ErrorCode::kInvalidArgument, 0U, operation};
     }
     const int32_t length = static_cast<int32_t>(end - start);
     auto *address = reinterpret_cast<std::uint32_t *>(start);
@@ -64,22 +63,21 @@ common::Error CacheOperation(const memory_allocator::Buffer &buffer,
     if (invalidate) {
         SCB_InvalidateDCache_by_Addr(address, length);
     }
-    return {ErrorCode::kOk, 0U, operation};
+    return {common::ErrorCode::kOk, 0U, operation};
 }
 
 } // namespace
 
 common::Error CacheDriver::Initialize()
 {
-    using common::ErrorCode;
     if (initialized_) {
-        return {ErrorCode::kAlreadyInitialized, 0U, "cache.initialize"};
+        return {common::ErrorCode::kAlreadyInitialized, 0U, "cache.initialize"};
     }
     SCB_EnableDCache();
     npu_cache_enable_clocks_and_reset();
     npu_cache_enable();
     initialized_ = true;
-    return {ErrorCode::kOk, 0U, "cache.initialize"};
+    return {common::ErrorCode::kOk, 0U, "cache.initialize"};
 }
 
 void CacheDriver::KeepClocksOnSleep() const

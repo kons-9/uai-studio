@@ -16,12 +16,6 @@
 
 namespace uai::ai::task {
 
-using uai::ai::common::Error;
-using uai::ai::common::ErrorCode;
-using BoxSet = uai::ai::memory_allocator::BoxSet;
-using InferenceFrame = uai::ai::memory_allocator::InferenceFrame;
-using MemoryAllocator = uai::ai::memory_allocator::MemoryAllocator;
-
 inline constexpr UINT kExternalMemoryReady = 0x01U;
 /* The NPU is asynchronous, so inference is scheduled independently from
  * Pipe1 rendering. Pipe2's frame-rate divider remains the upper bound in
@@ -50,12 +44,6 @@ inline constexpr bool kSyntheticComposeDiagnostic =
     kDisplayDiagnosticMode == DisplayDiagnosticMode::kSyntheticCompose;
 inline constexpr bool kLiveCaptureFreezeDiagnostic =
     kDisplayDiagnosticMode == DisplayDiagnosticMode::kLiveCaptureFreeze;
-#if defined(AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC)
-inline constexpr bool kInferenceInputDisplayDiagnostic =
-    AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC != 0;
-#else
-inline constexpr bool kInferenceInputDisplayDiagnostic = false;
-#endif
 inline constexpr bool kCopyInferenceFrames =
     kInferenceMode != InferenceMode::kDisabled;
 
@@ -67,9 +55,11 @@ struct DiagnosticsConfig {
     bool camera_frame_trace;
     bool camera_brightness;
     bool inference_input;
+    bool inference_input_display;
     bool inference_trace;
     bool inference_fps;
     bool display_trace;
+    bool display_timing;
 };
 
 inline constexpr std::size_t kFrameQueueDepth = 4U;
@@ -79,11 +69,11 @@ inline constexpr SZ kCameraTaskStackSize = 32U * 1024U;
 inline constexpr SZ kInferenceTaskStackSize = 16U * 1024U;
 
 struct InferenceMessage {
-    InferenceFrame frame{};
+    memory_allocator::InferenceFrame frame{};
 };
 
 struct BoxMessage {
-    BoxSet boxes{};
+    memory_allocator::BoxSet boxes{};
 };
 
 /* Owns all application-wide resources shared by the task objects. The
@@ -92,21 +82,21 @@ struct BoxMessage {
 class TaskContext final {
 public:
     [[noreturn]] void Halt(const char *message);
-    bool IsBestEffort(ErrorCode code) const;
+    bool IsBestEffort(common::ErrorCode code) const;
     std::uint32_t Now() const;
 
-    Error InitializeDrivers();
+    common::Error InitializeDrivers();
     void ConfigureReferenceInterruptPriorities();
     void CreateKernelObjects();
     void StartApplicationTask(FP entry);
     void StartCameraTask(FP entry);
     void StartInferenceTask(FP entry);
 
-    bool DrainLatestBoxes(BoxSet *active);
-    void SendLatestBoxes(const BoxSet &boxes);
-    void SendInferenceFrame(const InferenceFrame &frame);
+    bool DrainLatestBoxes(memory_allocator::BoxSet *active);
+    void SendLatestBoxes(const memory_allocator::BoxSet &boxes);
+    void SendInferenceFrame(const memory_allocator::InferenceFrame &frame);
 
-    MemoryAllocator memory;
+    memory_allocator::MemoryAllocator memory;
     uai::ai::cache::CacheDriver cache;
     uai::ai::psram::PsramDriver psram;
     uai::ai::nor::NorDriver nor;

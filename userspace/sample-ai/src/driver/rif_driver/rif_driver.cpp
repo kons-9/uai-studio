@@ -10,27 +10,26 @@ extern "C" {
 namespace uai::ai::rif {
 namespace {
 
-using registers::RisafRegister;
 
 constexpr std::uint32_t kRegionConfiguration = 0x00FF0101UL;
 constexpr std::uint32_t kGenericCidConfiguration = 0x000F000FUL;
 constexpr std::uint32_t kExternalMemoryCidConfiguration =
     (RIF_CID_MASK << 16U) | RIF_CID_MASK;
 
-void WriteRegister(RISAF_Region_TypeDef *region, RisafRegister address,
+void WriteRegister(RISAF_Region_TypeDef *region, uai::ai::rif::registers::RisafRegister address,
                    std::uint32_t value)
 {
     switch (address) {
-    case RisafRegister::kConfiguration:
+    case uai::ai::rif::registers::RisafRegister::kConfiguration:
         region->CFGR = value;
         break;
-    case RisafRegister::kStartAddress:
+    case uai::ai::rif::registers::RisafRegister::kStartAddress:
         region->STARTR = value;
         break;
-    case RisafRegister::kEndAddress:
+    case uai::ai::rif::registers::RisafRegister::kEndAddress:
         region->ENDR = value;
         break;
-    case RisafRegister::kCidConfiguration:
+    case uai::ai::rif::registers::RisafRegister::kCidConfiguration:
         region->CIDCFGR = value;
         break;
     default:
@@ -42,12 +41,12 @@ void ConfigureRegion(RISAF_TypeDef *risaf, std::uint32_t end_address,
                      std::uint32_t cid_configuration)
 {
     RISAF_Region_TypeDef *region = &risaf->REG[0];
-    WriteRegister(region, RisafRegister::kConfiguration, 0U);
-    WriteRegister(region, RisafRegister::kStartAddress, 0U);
-    WriteRegister(region, RisafRegister::kEndAddress, end_address);
-    WriteRegister(region, RisafRegister::kCidConfiguration,
+    WriteRegister(region, uai::ai::rif::registers::RisafRegister::kConfiguration, 0U);
+    WriteRegister(region, uai::ai::rif::registers::RisafRegister::kStartAddress, 0U);
+    WriteRegister(region, uai::ai::rif::registers::RisafRegister::kEndAddress, end_address);
+    WriteRegister(region, uai::ai::rif::registers::RisafRegister::kCidConfiguration,
                   cid_configuration);
-    WriteRegister(region, RisafRegister::kConfiguration,
+    WriteRegister(region, uai::ai::rif::registers::RisafRegister::kConfiguration,
                   kRegionConfiguration);
 }
 
@@ -55,9 +54,8 @@ void ConfigureRegion(RISAF_TypeDef *risaf, std::uint32_t end_address,
 
 common::Error RifDriver::Initialize()
 {
-    using common::ErrorCode;
     if (initialized_) {
-        return {ErrorCode::kAlreadyInitialized, 0U, "rif.initialize"};
+        return {common::ErrorCode::kAlreadyInitialized, 0U, "rif.initialize"};
     }
 
     __HAL_RCC_RIFSC_CLK_ENABLE();
@@ -135,7 +133,7 @@ common::Error RifDriver::Initialize()
     HAL_NVIC_EnableIRQ(IAC_IRQn);
 
     initialized_ = true;
-    return {ErrorCode::kOk, 0U, "rif.initialize"};
+    return {common::ErrorCode::kOk, 0U, "rif.initialize"};
 }
 
 } // namespace uai::ai::rif

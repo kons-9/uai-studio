@@ -1,4 +1,5 @@
 #include "driver/nor_driver/registers/nor_registers.hpp"
+#include "common/log.hpp"
 
 #include <cstdio>
 
@@ -13,7 +14,7 @@ namespace {
 
 void DebugPrint(const char *message)
 {
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(message)));
+    UAI_LOG_TEXT(uai::ai::common::LogLevel::kDebug, reinterpret_cast<UB *>(const_cast<char *>(message)));
 }
 
 } // namespace

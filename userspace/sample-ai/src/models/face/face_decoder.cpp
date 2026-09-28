@@ -13,8 +13,6 @@ namespace uai::ai::models::face {
 
 namespace {
 
-using common::Error;
-using common::ErrorCode;
 
 constexpr std::size_t kBoxes0 = 512U;
 constexpr std::size_t kBoxes1 = 384U;
@@ -44,9 +42,9 @@ float ClampCoordinate(float value, std::uint32_t limit)
     return value;
 }
 
-Error Invalid(const char *operation)
+common::Error Invalid(const char *operation)
 {
-    return {ErrorCode::kModel, 0U, operation};
+    return {common::ErrorCode::kModel, 0U, operation};
 }
 
 bool InitializeFacePostprocess(const ModelOutputSpec &spec,
@@ -129,7 +127,7 @@ bool RunFacePostprocess(const void *raw_detections_0,
 
 } // namespace
 
-Error Decoder::Initialize(const ModelOutputSpec &spec)
+common::Error Decoder::Initialize(const ModelOutputSpec &spec)
 {
     initialized_ = false;
     if (spec.count != 4U) {
@@ -171,19 +169,19 @@ Error Decoder::Initialize(const ModelOutputSpec &spec)
     }
 
     initialized_ = true;
-    return {ErrorCode::kOk, 0U, "face.decoder.initialize"};
+    return {common::ErrorCode::kOk, 0U, "face.decoder.initialize"};
 }
 
-Error Decoder::Decode(const InferenceCompletionContext &context,
+common::Error Decoder::Decode(const InferenceCompletionContext &context,
                       ModelResult *result) const
 {
     if (!initialized_) {
-        return {ErrorCode::kNotInitialized, 0U, "face.decoder.decode"};
+        return {common::ErrorCode::kNotInitialized, 0U, "face.decoder.decode"};
     }
     if (result == nullptr || context.outputs.count < 4U ||
         context.geometry.frame_width == 0U ||
         context.geometry.frame_height == 0U) {
-        return {ErrorCode::kInvalidArgument, 0U, "face.decoder.decode"};
+        return {common::ErrorCode::kInvalidArgument, 0U, "face.decoder.decode"};
     }
 
     const TensorView &box0 = context.outputs.tensors[output_order_[0]];
@@ -192,7 +190,7 @@ Error Decoder::Decode(const InferenceCompletionContext &context,
     const TensorView &box1 = context.outputs.tensors[output_order_[3]];
     if (box0.data == nullptr || score0.data == nullptr ||
         score1.data == nullptr || box1.data == nullptr) {
-        return {ErrorCode::kInvalidArgument, 0U, "face.decoder.outputs"};
+        return {common::ErrorCode::kInvalidArgument, 0U, "face.decoder.outputs"};
     }
 
     RawDetection raw[kMaxDecodedDetections]{};
@@ -250,7 +248,7 @@ Error Decoder::Decode(const InferenceCompletionContext &context,
             ClampCoordinate(height, geometry.frame_height);
         result->detections[i].confidence = source.confidence;
     }
-    return {ErrorCode::kOk, 0U, "face.decoder.decode"};
+    return {common::ErrorCode::kOk, 0U, "face.decoder.decode"};
 }
 
 } // namespace uai::ai::models::face

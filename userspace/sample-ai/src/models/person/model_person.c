@@ -34,8 +34,8 @@
 #define LL_ATON_EC_Network_Init_network person_LL_ATON_EC_Network_Init_network
 #define LL_ATON_EC_Inference_Init_network person_LL_ATON_EC_Inference_Init_network
 
-#include "../../../../models/person/network.c"
-#include "../../../../models/person/stai_network.c"
+#include "../../../models/person/network.c"
+#include "../../../models/person/stai_network.c"
 
 /* ST AIランタイムが提供する待機関数。ここでは宣言し、実装はリンク対象の
  * ST AIランタイム側から解決する。 */

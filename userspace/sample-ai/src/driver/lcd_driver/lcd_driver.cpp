@@ -1,4 +1,5 @@
 #include "driver/lcd_driver/lcd_driver.hpp"
+#include "common/log.hpp"
 
 #include <cstddef>
 #include <cstring>
@@ -10,8 +11,6 @@ extern "C" {
 
 namespace uai::ai::lcd {
 
-using common::Error;
-using common::ErrorCode;
 
 namespace {
 
@@ -75,24 +74,24 @@ std::uint32_t Crc32(const std::uint8_t *bytes, std::size_t size)
 
 } // namespace
 
-Error LcdDriver::FromBackend(uai::driver::DriverStatus status,
+common::Error LcdDriver::FromBackend(uai::driver::DriverStatus status,
                               const char *operation)
 {
     if (uai::driver::IsOk(status)) {
-        return {ErrorCode::kOk, 0U, operation};
+        return {common::ErrorCode::kOk, 0U, operation};
     }
     if (status == uai::driver::DriverStatus::kBusy) {
-        return {ErrorCode::kNoBuffer, 0U, operation};
+        return {common::ErrorCode::kNoBuffer, 0U, operation};
     }
-    return {ErrorCode::kHardware, static_cast<std::uint32_t>(status),
+    return {common::ErrorCode::kHardware, static_cast<std::uint32_t>(status),
             operation};
 }
 
-Error LcdDriver::Initialize(memory_allocator::MemoryAllocator &memory,
+common::Error LcdDriver::Initialize(memory_allocator::MemoryAllocator &memory,
                              cache::CacheDriver &cache)
 {
     if (initialized_) {
-        return {ErrorCode::kAlreadyInitialized, 0U, "lcd.initialize"};
+        return {common::ErrorCode::kAlreadyInitialized, 0U, "lcd.initialize"};
     }
     memory_ = &memory;
     cache_ = &cache;
@@ -102,7 +101,7 @@ Error LcdDriver::Initialize(memory_allocator::MemoryAllocator &memory,
         return FromBackend(status, "lcd.initialize");
     }
     initialized_ = true;
-    return {ErrorCode::kOk, 0U, "lcd.initialize"};
+    return {common::ErrorCode::kOk, 0U, "lcd.initialize"};
 }
 
 void LcdDriver::KeepClocksOnSleep() const
@@ -133,13 +132,13 @@ void LcdDriver::FillInitialFrame(
     DrawBoxes(buffer, boxes);
 }
 
-Error LcdDriver::GenerateCoordinatePattern(
+common::Error LcdDriver::GenerateCoordinatePattern(
     const memory_allocator::Buffer &destination) const
 {
     if (!initialized_ || destination.region != memory_allocator::Region::kCapture ||
         destination.size != memory_allocator::kFrameBytes ||
         destination.address == 0U) {
-        return {ErrorCode::kInvalidArgument, 0U,
+        return {common::ErrorCode::kInvalidArgument, 0U,
                 "lcd.generate_coordinate_pattern"};
     }
     auto *pixels = reinterpret_cast<std::uint16_t *>(destination.address);
@@ -149,7 +148,7 @@ Error LcdDriver::GenerateCoordinatePattern(
                 CoordinatePatternPixel(x, y);
         }
     }
-    return {ErrorCode::kOk, 0U, "lcd.generate_coordinate_pattern"};
+    return {common::ErrorCode::kOk, 0U, "lcd.generate_coordinate_pattern"};
 }
 
 void LcdDriver::DrawBoxes(const memory_allocator::DisplayBuffer &buffer,
@@ -256,16 +255,16 @@ void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
     }
 }
 
-Error LcdDriver::ShowInitialFrame(
+common::Error LcdDriver::ShowInitialFrame(
     const memory_allocator::BoxSet &boxes,
     bool coordinate_pattern)
 {
     if (!initialized_ || memory_ == nullptr) {
-        return {ErrorCode::kNotInitialized, 0U, "lcd.show_initial"};
+        return {common::ErrorCode::kNotInitialized, 0U, "lcd.show_initial"};
     }
 
     memory_allocator::DisplayBuffer first{};
-    Error status = memory_->AcquireDisplayBuffer(&first);
+    common::Error status = memory_->AcquireDisplayBuffer(&first);
     if (!status.Ok()) {
         return status;
     }
@@ -300,14 +299,14 @@ Error LcdDriver::ShowInitialFrame(
             (void)memory_->ReleaseDisplayBuffer(spare);
         }
     }
-    return status.Ok() ? Error{ErrorCode::kOk, 0U, "lcd.show_initial"}
+    return status.Ok() ? common::Error{common::ErrorCode::kOk, 0U, "lcd.show_initial"}
                        : status;
 }
 
-Error LcdDriver::SynchronizeCurrentFrame()
+common::Error LcdDriver::SynchronizeCurrentFrame()
 {
     if (!initialized_ || memory_ == nullptr) {
-        return {ErrorCode::kNotInitialized, 0U,
+        return {common::ErrorCode::kNotInitialized, 0U,
                 "lcd.synchronize_current_frame"};
     }
     const uai::driver::DriverStatus status = registers_.Synchronize();
@@ -317,24 +316,24 @@ Error LcdDriver::SynchronizeCurrentFrame()
     return memory_->CompleteDisplayHandoff();
 }
 
-Error LcdDriver::ComposeAndPresent(
+common::Error LcdDriver::ComposeAndPresent(
     const memory_allocator::CaptureFrame &capture,
     const memory_allocator::BoxSet &boxes,
     bool log_copy_crc)
 {
     if (!initialized_ || memory_ == nullptr) {
-        return {ErrorCode::kNotInitialized, 0U, "lcd.compose"};
+        return {common::ErrorCode::kNotInitialized, 0U, "lcd.compose"};
     }
     if (!capture) {
-        return {ErrorCode::kInvalidArgument, 0U, "lcd.compose"};
+        return {common::ErrorCode::kInvalidArgument, 0U, "lcd.compose"};
     }
-    Error status{};
+    common::Error status{};
 
     /* Do not reacquire the previous active surface until LTDC confirms that
      * the queued VBlank reload has latched the new CFBAR. */
     const uai::driver::DriverStatus sync_status = registers_.Synchronize();
     if (sync_status == uai::driver::DriverStatus::kBusy) {
-        return {ErrorCode::kNoBuffer, 0U, "lcd.reload.pending"};
+        return {common::ErrorCode::kNoBuffer, 0U, "lcd.reload.pending"};
     }
     if (!uai::driver::IsOk(sync_status)) {
         return FromBackend(sync_status, "lcd.reload.wait");
@@ -362,45 +361,46 @@ Error LcdDriver::ComposeAndPresent(
     if (!status.Ok()) {
         return status;
     }
-#if AI_DISPLAY_TIMING_DIAGNOSTICS
-    const std::uint32_t copy_start_tick = HAL_GetTick();
-#endif
+    std::uint32_t copy_start_tick = 0U;
+    if (timing_diagnostics_) {
+        copy_start_tick = HAL_GetTick();
+    }
     std::memcpy(reinterpret_cast<void *>(display.buffer.address),
                 reinterpret_cast<const void *>(capture.buffer.address),
                 memory_allocator::kFrameBytes);
-#if AI_DISPLAY_TIMING_DIAGNOSTICS
-    const std::uint32_t copy_elapsed_ms = HAL_GetTick() - copy_start_tick;
-    static std::uint32_t copy_window_start = 0U;
-    static std::uint32_t copy_count = 0U;
-    static std::uint32_t copy_total_ms = 0U;
-    static std::uint32_t copy_max_ms = 0U;
-    const std::uint32_t copy_now = HAL_GetTick();
-    if (copy_window_start == 0U) {
-        copy_window_start = copy_now;
+    if (timing_diagnostics_) {
+        const std::uint32_t copy_elapsed_ms = HAL_GetTick() - copy_start_tick;
+        static std::uint32_t copy_window_start = 0U;
+        static std::uint32_t copy_count = 0U;
+        static std::uint32_t copy_total_ms = 0U;
+        static std::uint32_t copy_max_ms = 0U;
+        const std::uint32_t copy_now = HAL_GetTick();
+        if (copy_window_start == 0U) {
+            copy_window_start = copy_now;
+        }
+        ++copy_count;
+        copy_total_ms += copy_elapsed_ms;
+        if (copy_elapsed_ms > copy_max_ms) {
+            copy_max_ms = copy_elapsed_ms;
+        }
+        if (copy_now - copy_window_start >= 1000U) {
+            UB line[128] = {};
+            (void)tm_sprintf(
+                line,
+                reinterpret_cast<const UB *>(
+                    "lcd: cpu_copy count=%u total_ms=%u max_ms=%u "
+                    "window_ms=%u\n"),
+                static_cast<unsigned int>(copy_count),
+                static_cast<unsigned int>(copy_total_ms),
+                static_cast<unsigned int>(copy_max_ms),
+                static_cast<unsigned int>(copy_now - copy_window_start));
+            UAI_LOG_TEXT(uai::ai::common::LogLevel::kDebug, line);
+            copy_window_start = copy_now;
+            copy_count = 0U;
+            copy_total_ms = 0U;
+            copy_max_ms = 0U;
+        }
     }
-    ++copy_count;
-    copy_total_ms += copy_elapsed_ms;
-    if (copy_elapsed_ms > copy_max_ms) {
-        copy_max_ms = copy_elapsed_ms;
-    }
-    if (copy_now - copy_window_start >= 1000U) {
-        UB line[128] = {};
-        (void)tm_sprintf(
-            line,
-            reinterpret_cast<const UB *>(
-                "lcd: cpu_copy count=%u total_ms=%u max_ms=%u "
-                "window_ms=%u\n"),
-            static_cast<unsigned int>(copy_count),
-            static_cast<unsigned int>(copy_total_ms),
-            static_cast<unsigned int>(copy_max_ms),
-            static_cast<unsigned int>(copy_now - copy_window_start));
-        tm_putstring(line);
-        copy_window_start = copy_now;
-        copy_count = 0U;
-        copy_total_ms = 0U;
-        copy_max_ms = 0U;
-    }
-#endif
     const std::uint32_t copied_crc =
         log_copy_crc
             ? Crc32(reinterpret_cast<const std::uint8_t *>(
@@ -430,7 +430,7 @@ Error LcdDriver::ComposeAndPresent(
             (void)memory_->ReleaseDisplayBuffer(display);
             return status;
         }
-        tm_printf(reinterpret_cast<const UB *>(
+        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
                       "lcd: copy crc bytes=%u source=%x copied=%x psram=%x\n"),
                   static_cast<unsigned int>(memory_allocator::kFrameBytes),
                   static_cast<unsigned int>(source_crc),
@@ -446,27 +446,27 @@ Error LcdDriver::ComposeAndPresent(
     return memory_->CommitDisplayBuffer(display);
 }
 
-Error LcdDriver::ComposeInferenceAndPresent(
+common::Error LcdDriver::ComposeInferenceAndPresent(
     const memory_allocator::InferenceFrame &frame)
 {
     if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
-        return {ErrorCode::kNotInitialized, 0U, "lcd.compose_inference"};
+        return {common::ErrorCode::kNotInitialized, 0U, "lcd.compose_inference"};
     }
     if (!frame || !frame.from_pipe2 ||
         frame.buffer.size < memory_allocator::kInferenceFrameBytes) {
-        return {ErrorCode::kInvalidArgument, 0U, "lcd.compose_inference"};
+        return {common::ErrorCode::kInvalidArgument, 0U, "lcd.compose_inference"};
     }
 
     /* Ensure the previous reload has latched before reusing the other LCD
      * surface. This is the same handoff discipline as ComposeAndPresent(). */
     const uai::driver::DriverStatus sync_status = registers_.Synchronize();
     if (sync_status == uai::driver::DriverStatus::kBusy) {
-        return {ErrorCode::kNoBuffer, 0U, "lcd.inference_reload.pending"};
+        return {common::ErrorCode::kNoBuffer, 0U, "lcd.inference_reload.pending"};
     }
     if (!uai::driver::IsOk(sync_status)) {
         return FromBackend(sync_status, "lcd.inference_reload.wait");
     }
-    Error status = memory_->CompleteDisplayHandoff();
+    common::Error status = memory_->CompleteDisplayHandoff();
     if (!status.Ok()) {
         return status;
     }

@@ -3,9 +3,14 @@
 #include <cstring>
 
 #include "driver/npu_driver/debug.h"
+#include "common/log.hpp"
 #include "image_resizer/image_resizer.hpp"
 
-#include "model_manager/model_manager.hpp"
+#include "inference_dispatcher/inference_dispatcher.hpp"
+#include "models/face/model.hpp"
+#include "models/person/model.hpp"
+#include "models/segmentation/model.hpp"
+#include "npu_scheduler/npu_scheduler.hpp"
 #include "task/inference_task.hpp"
 #include "task/task_diagnostics.hpp"
 
@@ -17,27 +22,27 @@ namespace uai::ai::task {
 
 namespace {
 
-Error PrepareDynamicModelInput(
-    InferenceFrame *frame, const models::ModelDescriptor &descriptor,
+common::Error PrepareDynamicModelInput(
+    memory_allocator::InferenceFrame *frame, const models::ModelDescriptor &descriptor,
     TaskContext &context)
 {
     if (frame == nullptr || !frame->from_pipe2) {
-        return {ErrorCode::kInvalidArgument, 0U,
+        return {common::ErrorCode::kInvalidArgument, 0U,
                 "ai.dynamic_input.invalid_frame"};
     }
     if (descriptor.kind == models::ModelKind::kPerson) {
         frame->input_prepared_by_cpu = false;
-        return {ErrorCode::kOk, 0U, "ai.dynamic_input.direct"};
+        return {common::ErrorCode::kOk, 0U, "ai.dynamic_input.direct"};
     }
     if (!frame->scratch ||
         frame->scratch.size < memory_allocator::kInferenceScratchBytes) {
-        return {ErrorCode::kNoBuffer, 0U, "ai.dynamic_input.no_scratch"};
+        return {common::ErrorCode::kNoBuffer, 0U, "ai.dynamic_input.no_scratch"};
     }
 
     /* Pipe2 stays in the person-sized 480x480 layout. Its live image is the
      * 480x288 region at y=96; copy that region before overwriting the input
      * prefix with the selected smaller tensor. */
-    Error status = context.cache.PrepareForCpuRead(frame->buffer);
+    common::Error status = context.cache.PrepareForCpuRead(frame->buffer);
     if (!status.Ok()) {
         return status;
     }
@@ -69,7 +74,7 @@ Error PrepareDynamicModelInput(
         return status;
     }
     frame->input_prepared_by_cpu = true;
-    return {ErrorCode::kOk, 0U, "ai.dynamic_input.letterbox"};
+    return {common::ErrorCode::kOk, 0U, "ai.dynamic_input.letterbox"};
 }
 
 } // namespace
@@ -88,34 +93,56 @@ void InferenceTask::Run()
                                 kExternalMemoryReady,
                                 TWF_ANDW, &pattern, TMO_FEVR);
     if (error != E_OK) {
-        tm_printf(reinterpret_cast<const UB *>(
-                      "error: component=ai operation=wait_memory code=%x detail=0\n"),
-                  static_cast<unsigned int>(error));
+        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
+                          "error: component=ai operation=wait_memory code=%x detail=0\n"),
+                      static_cast<unsigned int>(error));
         return;
     }
 
-    uai::ai::ModelManager model;
-    const Error model_status =
-        context.external_nor_ready
-            ? model.Initialize(context.memory, context.cache)
-            : Error{ErrorCode::kNotInitialized, 0U,
-                    "ai.external_nor_unavailable"};
+    models::person::Model person_model{};
+    models::segmentation::Model segmentation_model{};
+    models::face::Model face_model{};
+    npu_scheduler::NpuScheduler scheduler{};
+    InferenceDispatcher dispatcher{};
+    common::Error model_status{common::ErrorCode::kNotInitialized, 0U,
+                               "ai.external_nor_unavailable"};
+    if (context.external_nor_ready) {
+        model_status = scheduler.RegisterModel(
+            {models::ModelKind::kPerson, &person_model,
+             &models::person::Runtime(person_model)});
+        if (model_status.Ok()) {
+            model_status = scheduler.RegisterModel(
+                {models::ModelKind::kSegmentation, &segmentation_model,
+                 &models::segmentation::Runtime(segmentation_model)});
+        }
+        if (model_status.Ok()) {
+            model_status = scheduler.RegisterModel(
+                {models::ModelKind::kFace, &face_model,
+                 &models::face::Runtime(face_model)});
+        }
+        if (model_status.Ok()) {
+            model_status = scheduler.Initialize();
+        }
+        if (model_status.Ok()) {
+            model_status = dispatcher.Initialize(scheduler, context.memory,
+                                                 context.cache);
+        }
+        if (!model_status.Ok() && scheduler.Initialized()) {
+            (void)scheduler.Shutdown();
+        }
+    }
     if (model_status.Ok()) {
-        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-            "ai: model loaded; inference execution enabled\n")));
+        UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                         "ai: model loaded; inference execution enabled\n"));
     } else {
         LogStatus("ai", model_status);
-        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-            "ai: model load failed; inference disabled\n")));
+        UAI_LOG_WARN(reinterpret_cast<const UB *>(
+                         "ai: model load failed; inference disabled\n"));
     }
 
     bool inference_enabled = model_status.Ok();
-    constexpr models::ModelKind kModelSequence[] = {
-        models::ModelKind::kPerson,
-        models::ModelKind::kSegmentation,
-        models::ModelKind::kFace};
-    std::size_t next_model_index = 0U;
-    BoxSet integrated_boxes{};
+    bool first_model = true;
+    memory_allocator::BoxSet integrated_boxes{};
     std::uint32_t fps_window_start = 0U;
     std::uint32_t fps_submitted = 0U;
     std::uint32_t fps_completed = 0U;
@@ -130,41 +157,37 @@ void InferenceTask::Run()
         if (size != static_cast<INT>(sizeof(message))) {
             continue;
         }
-        const models::ModelKind selected_model =
-            kModelSequence[next_model_index];
-        next_model_index =
-            (next_model_index + 1U) %
-            (sizeof(kModelSequence) / sizeof(kModelSequence[0]));
-        if (inference_enabled && model.CurrentModel() != selected_model) {
-            const Error switch_status = model.SwitchModel(selected_model);
+        if (inference_enabled && !first_model) {
+            const common::Error switch_status = dispatcher.SelectNextModel();
             if (!switch_status.Ok()) {
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: per-frame model switch failed model=%u code=%d detail=%x\n"),
-                          static_cast<unsigned int>(selected_model),
-                          static_cast<int>(switch_status.code),
-                          static_cast<unsigned int>(switch_status.detail));
+                UAI_LOG_ERROR(reinterpret_cast<const UB *>(
+                                  "ai: per-frame model switch failed code=%d detail=%x\n"),
+                              static_cast<int>(switch_status.code),
+                              static_cast<unsigned int>(switch_status.detail));
                 (void)context.memory.ReleaseInferenceBuffer(message.frame);
                 continue;
             }
+        } else if (inference_enabled) {
+            first_model = false;
         }
         if (context.diagnostics.inference_fps) {
             ++fps_submitted;
         }
 
-        Error status = context.memory.ClaimInferenceBuffer(message.frame);
+        common::Error status = context.memory.ClaimInferenceBuffer(message.frame);
         if (!status.Ok()) {
             LogStatus("memory", status);
             continue;
         }
 
-        BoxSet boxes{};
+        memory_allocator::BoxSet boxes{};
         if (inference_enabled) {
             const models::ModelDescriptor *descriptor =
-                model.CurrentDescriptor();
+                dispatcher.CurrentDescriptor();
             if (descriptor == nullptr) {
                 (void)context.memory.ReleaseInferenceBuffer(message.frame);
                 LogStatus("ai.descriptor",
-                          {ErrorCode::kModel, 0U, "ai.current_descriptor"});
+                          {common::ErrorCode::kModel, 0U, "ai.current_descriptor"});
                 continue;
             }
             status = PrepareDynamicModelInput(&message.frame, *descriptor,
@@ -175,9 +198,9 @@ void InferenceTask::Run()
                 continue;
             }
             if (context.diagnostics.inference_trace) {
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: inference begin sequence=%u\n"),
-                          static_cast<unsigned int>(message.frame.capture_sequence));
+                UAI_LOG_TRACE(reinterpret_cast<const UB *>(
+                                  "ai: inference begin sequence=%u\n"),
+                              static_cast<unsigned int>(message.frame.capture_sequence));
             }
             /* Inspect the exact Pipe2 buffer immediately before handing it to
              * the NPU. This confirms that the inference path consumes live
@@ -187,17 +210,17 @@ void InferenceTask::Run()
                 LogInferenceInput(message.frame);
             }
             if (context.diagnostics.inference_trace) {
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: inference run begin sequence=%u input=%x irq=%u last=%x\n"),
-                          static_cast<unsigned int>(message.frame.capture_sequence),
-                          static_cast<unsigned int>(message.frame.buffer.address),
-                          g_aton_irq_count, g_aton_last_irqs);
+                UAI_LOG_TRACE(reinterpret_cast<const UB *>(
+                                  "ai: inference run begin sequence=%u input=%x irq=%u last=%x\n"),
+                              static_cast<unsigned int>(message.frame.capture_sequence),
+                              static_cast<unsigned int>(message.frame.buffer.address),
+                              g_aton_irq_count, g_aton_last_irqs);
             }
             const bool measure_inference = context.diagnostics.inference_fps ||
                                            context.diagnostics.inference_trace;
             const std::uint32_t inference_start =
                 measure_inference ? context.Now() : 0U;
-            status = model.TryInfer(message.frame, &boxes);
+            status = dispatcher.TryInfer(message.frame, &boxes);
             const std::uint32_t inference_elapsed = measure_inference
                                                         ? context.Now() -
                                                               inference_start
@@ -210,31 +233,31 @@ void InferenceTask::Run()
             }
             if (context.diagnostics.inference_trace &&
                 (message.frame.capture_sequence % 10U) == 0U) {
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: inference elapsed_ms=%u sequence=%u\n"),
-                          static_cast<unsigned int>(inference_elapsed),
-                          static_cast<unsigned int>(
-                              message.frame.capture_sequence));
+                UAI_LOG_TRACE(reinterpret_cast<const UB *>(
+                                  "ai: inference elapsed_ms=%u sequence=%u\n"),
+                              static_cast<unsigned int>(inference_elapsed),
+                              static_cast<unsigned int>(
+                                  message.frame.capture_sequence));
             }
             if (context.diagnostics.inference_trace) {
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: inference run end sequence=%u code=%u detail=%x irq=%u last=%x\n"),
-                          static_cast<unsigned int>(message.frame.capture_sequence),
-                          static_cast<unsigned int>(status.code),
-                          static_cast<unsigned int>(status.detail),
-                          g_aton_irq_count, g_aton_last_irqs);
+                UAI_LOG_TRACE(reinterpret_cast<const UB *>(
+                                  "ai: inference run end sequence=%u code=%u detail=%x irq=%u last=%x\n"),
+                              static_cast<unsigned int>(message.frame.capture_sequence),
+                              static_cast<unsigned int>(status.code),
+                              static_cast<unsigned int>(status.detail),
+                              g_aton_irq_count, g_aton_last_irqs);
             }
         } else {
-            status = {ErrorCode::kNotInitialized, 0U, "ai.infer_disabled"};
+            status = {common::ErrorCode::kNotInitialized, 0U, "ai.infer_disabled"};
         }
-        const Error release_status =
+        const common::Error release_status =
             context.memory.ReleaseInferenceBuffer(message.frame);
         LogStatus("memory", release_status);
         if (status.Ok()) {
             if (context.diagnostics.inference_fps) {
                 ++fps_completed;
             }
-            switch (model.CurrentModel()) {
+            switch (dispatcher.CurrentModel()) {
             case models::ModelKind::kPerson:
                 if (boxes.person_valid) {
                     integrated_boxes.person = boxes.person;
@@ -259,22 +282,22 @@ void InferenceTask::Run()
             context.SendLatestBoxes(integrated_boxes);
             if (context.diagnostics.inference_trace &&
                 (boxes.model_sequence % 10U) == 0U) {
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: inference sequence=%u capture=%u count=%u\n"),
-                          static_cast<unsigned int>(boxes.model_sequence),
-                          static_cast<unsigned int>(boxes.capture_sequence),
-                          static_cast<unsigned int>(
-                              boxes.person.count + boxes.face.count));
+                UAI_LOG_TRACE(reinterpret_cast<const UB *>(
+                                  "ai: inference sequence=%u capture=%u count=%u\n"),
+                              static_cast<unsigned int>(boxes.model_sequence),
+                              static_cast<unsigned int>(boxes.capture_sequence),
+                              static_cast<unsigned int>(
+                                  boxes.person.count + boxes.face.count));
             }
         } else if (model_status.Ok() && inference_enabled) {
             LogStatus("ai", status);
-            LogNpuStatus(model.LastNpuStatus());
+            LogNpuStatus(dispatcher.LastNpuStatus());
             /* A failed/timed-out NPU execution must not make the camera task
              * wait for a buffer forever. Keep Pipe1 live and leave inference
              * disabled until the next firmware restart. */
             inference_enabled = false;
-            tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-                "ai: inference disabled after NPU error; camera remains live\n")));
+            UAI_LOG_WARN(reinterpret_cast<const UB *>(
+                             "ai: inference disabled after NPU error; camera remains live\n"));
         }
         if (context.diagnostics.inference_fps) {
             camera_diag = context.camera.GetDiagnostics();
@@ -296,7 +319,7 @@ void InferenceTask::Run()
                     camera_diag.pipe2_frame_event_count,
                     camera_diag.pipe2_drop_count,
                     static_cast<unsigned int>(message.frame.capture_sequence));
-                tm_putstring(line);
+                UAI_LOG_TEXT(uai::ai::common::LogLevel::kDebug, line);
                 fps_window_start = fps_now;
                 fps_submitted = 0U;
                 fps_completed = 0U;

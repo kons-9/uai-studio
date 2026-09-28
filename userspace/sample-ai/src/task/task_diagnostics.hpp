@@ -8,15 +8,12 @@
 
 namespace uai::ai::task {
 
-using uai::ai::common::Error;
-using NpuStatus = uai::ai::npu::Status;
-
-void LogStatus(const char *component, const Error &error);
+void LogStatus(const char *component, const common::Error &error);
 void LogFrameBrightness(
     const uai::ai::memory_allocator::CaptureFrame &capture);
 void LogInferenceInput(
     const uai::ai::memory_allocator::InferenceFrame &frame);
-void LogNpuStatus(const NpuStatus &status);
+void LogNpuStatus(const uai::ai::npu::Status &status);
 void DumpCoreRegisters(const char *stage);
 void DumpPeripheralRegisters(const char *stage);
 void DumpFrozenCapture(

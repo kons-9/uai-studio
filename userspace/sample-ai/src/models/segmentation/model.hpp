@@ -10,6 +10,7 @@ class Model final : public ::uai::ai::models::Model,
 public:
     static const ModelDescriptor &Descriptor();
     const ModelDescriptor &GetDescriptor() const override;
+    ModelCallbacks GetCallbacks() const override;
 
 private:
     stai_return_code Initialize() override;

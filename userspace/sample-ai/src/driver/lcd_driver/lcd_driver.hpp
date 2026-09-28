@@ -28,6 +28,7 @@ public:
         bool log_copy_crc = false);
     common::Error ComposeInferenceAndPresent(
         const memory_allocator::InferenceFrame &frame);
+    void SetTimingDiagnostics(bool enabled) { timing_diagnostics_ = enabled; }
 
 private:
     static void FillInitialFrame(const memory_allocator::DisplayBuffer &buffer,
@@ -45,6 +46,7 @@ private:
     cache::CacheDriver *cache_ = nullptr;
     registers::LcdRegisterLayer registers_{};
     bool initialized_ = false;
+    bool timing_diagnostics_ = false;
 };
 
 } // namespace uai::ai::lcd

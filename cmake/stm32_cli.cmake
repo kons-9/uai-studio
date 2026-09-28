@@ -23,8 +23,12 @@ if(NOT CUBEMX_EXECUTABLE)
     endif()
 endif()
 
-set(CUBEMX_IOC "$ENV{CUBEMX_IOC}" CACHE FILEPATH
-    "CubeMX IOC input file" FORCE)
+if(DEFINED ENV{CUBEMX_IOC} AND NOT "$ENV{CUBEMX_IOC}" STREQUAL "")
+    set(CUBEMX_IOC "$ENV{CUBEMX_IOC}" CACHE FILEPATH
+        "CubeMX IOC input file" FORCE)
+elseif(NOT DEFINED CUBEMX_IOC)
+    set(CUBEMX_IOC "" CACHE FILEPATH "CubeMX IOC input file")
+endif()
 if(NOT CUBEMX_IOC)
     set(_uai_default_ioc
         "${CMAKE_SOURCE_DIR}/userspace/${APP_TARGET}/config/stm32n6570-dk-fullsecure.ioc")
@@ -41,8 +45,13 @@ if(NOT CUBEMX_IOC)
         CACHE FILEPATH "CubeMX IOC input file" FORCE)
 endif()
 
-set(CUBEMX_OUTPUT_DIR "$ENV{CUBEMX_OUTPUT_DIR}" CACHE PATH
-    "Directory for CubeMX-generated sources" FORCE)
+if(DEFINED ENV{CUBEMX_OUTPUT_DIR} AND NOT "$ENV{CUBEMX_OUTPUT_DIR}" STREQUAL "")
+    set(CUBEMX_OUTPUT_DIR "$ENV{CUBEMX_OUTPUT_DIR}" CACHE PATH
+        "Directory for CubeMX-generated sources" FORCE)
+elseif(NOT DEFINED CUBEMX_OUTPUT_DIR)
+    set(CUBEMX_OUTPUT_DIR "" CACHE PATH
+        "Directory for CubeMX-generated sources")
+endif()
 if(NOT CUBEMX_OUTPUT_DIR)
     set(CUBEMX_OUTPUT_DIR "${CMAKE_BINARY_DIR}/cubemx" CACHE PATH
         "Directory for CubeMX-generated sources" FORCE)

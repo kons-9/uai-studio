@@ -1,44 +1,136 @@
 cmake_minimum_required(VERSION 3.16)
 
 set(AI_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
-set(AI_THIRDPARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
+
+# STEdgeAI's Neural-ART runtime is distributed separately from this sample.
+# Do not silently depend on the old, ignored copy under third_party: that made
+# a clean checkout appear buildable only on the developer machine that had
+# populated it.  Prefer the explicitly supplied path, then discover the
+# standard installation used by the ST tools.
+set(STEDGEAI_LIB_DIR "" CACHE PATH
+    "STEdgeAI runtime root containing Inc/, Npu/, and Lib/")
+if(NOT STEDGEAI_LIB_DIR AND DEFINED ENV{STEDGEAI_LIB_DIR})
+    set(STEDGEAI_LIB_DIR "$ENV{STEDGEAI_LIB_DIR}" CACHE PATH
+        "STEdgeAI runtime root containing Inc/, Npu/, and Lib/" FORCE)
+endif()
+
+if(NOT STEDGEAI_LIB_DIR)
+    set(_ai_stedgeai_candidates
+        "/opt/ST/STEdgeAI/4.0/Middlewares/ST/AI")
+    file(GLOB _ai_installed_stedgeai_candidates LIST_DIRECTORIES true
+        "/opt/ST/STEdgeAI/*/Middlewares/ST/AI")
+    list(APPEND _ai_stedgeai_candidates ${_ai_installed_stedgeai_candidates})
+    foreach(_ai_candidate IN LISTS _ai_stedgeai_candidates)
+        if(EXISTS "${_ai_candidate}/Npu/ll_aton/ll_aton_version.h")
+            set(STEDGEAI_LIB_DIR "${_ai_candidate}" CACHE PATH
+                "STEdgeAI runtime root containing Inc/, Npu/, and Lib/" FORCE)
+            break()
+        endif()
+    endforeach()
+endif()
+
+if(NOT STEDGEAI_LIB_DIR OR
+   NOT EXISTS "${STEDGEAI_LIB_DIR}/Npu/ll_aton/ll_aton_version.h")
+    message(FATAL_ERROR
+        "STEDGEAI_LIB_DIR is not configured. Install STEdgeAI and configure "
+        "with -DSTEDGEAI_LIB_DIR=/path/to/Middlewares/ST/AI. The runtime is "
+        "not vendored in this repository.")
+endif()
+
+set(AI_STEDGEAI_DIR "${STEDGEAI_LIB_DIR}")
+set(AI_VISION_MODELS_PP_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/vision_models_pp" CACHE PATH
+    "ST vision-model post-processing sources used by sample-ai")
+
+set(AI_STEDGEAI_RUNTIME_LIBRARY "" CACHE FILEPATH
+    "STEdgeAI CM55 GCC runtime archive (optional; auto-detected when empty)")
+if(NOT AI_STEDGEAI_RUNTIME_LIBRARY)
+    foreach(_ai_runtime_name
+            NetworkRuntime1201_CM55_GCC.a
+            NetworkRuntime1200_CM55_GCC.a)
+        if(EXISTS "${AI_STEDGEAI_DIR}/Lib/GCC/ARMCortexM55/${_ai_runtime_name}")
+            set(AI_STEDGEAI_RUNTIME_LIBRARY
+                "${AI_STEDGEAI_DIR}/Lib/GCC/ARMCortexM55/${_ai_runtime_name}"
+                CACHE FILEPATH
+                "STEdgeAI CM55 GCC runtime archive (optional; auto-detected when empty)"
+                FORCE)
+            break()
+        endif()
+    endforeach()
+endif()
+
+if(NOT EXISTS "${AI_STEDGEAI_RUNTIME_LIBRARY}")
+    message(FATAL_ERROR
+        "No CM55 GCC STEdgeAI runtime archive was found below "
+        "${AI_STEDGEAI_DIR}/Lib/GCC/ARMCortexM55. Expected "
+        "NetworkRuntime1201_CM55_GCC.a or NetworkRuntime1200_CM55_GCC.a.")
+endif()
+
+set(_ai_required_runtime_paths
+    "${AI_STEDGEAI_DIR}/Inc"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton"
+    "${AI_STEDGEAI_DIR}/Npu/Devices/STM32N6xx")
+foreach(_ai_runtime_path IN LISTS _ai_required_runtime_paths)
+    if(NOT EXISTS "${_ai_runtime_path}")
+        message(FATAL_ERROR "STEdgeAI runtime path is missing: ${_ai_runtime_path}")
+    endif()
+endforeach()
+
+set(_ai_required_postprocess_paths
+    "${AI_VISION_MODELS_PP_DIR}/Inc/od_st_yolox_pp_if.h"
+    "${AI_VISION_MODELS_PP_DIR}/Inc/fd_blazeface_pp_if.h"
+    "${AI_VISION_MODELS_PP_DIR}/Src/od_pp_st_yolox.c"
+    "${AI_VISION_MODELS_PP_DIR}/Src/fd_pp_blazeface.c"
+    "${AI_VISION_MODELS_PP_DIR}/Src/vision_models_pp.c"
+    "${AI_VISION_MODELS_PP_DIR}/Src/vision_models_pp_maxi_is8.c")
+foreach(_ai_postprocess_path IN LISTS _ai_required_postprocess_paths)
+    if(NOT EXISTS "${_ai_postprocess_path}")
+        message(FATAL_ERROR
+            "sample-ai post-processing dependency is missing: "
+            "${_ai_postprocess_path}. Run the dependency setup described in "
+            "userspace/sample-ai/README.md.")
+    endif()
+endforeach()
+
+# Generated network.c files contain the exact ll_aton development version they
+# were produced with.  Fail at configure time instead of allowing a seemingly
+# successful build with a mismatched runtime to fail on the board.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/models/person/network.c" _ai_model_c)
+file(READ "${AI_STEDGEAI_DIR}/Npu/ll_aton/ll_aton_version.h" _ai_runtime_version_h)
+string(REGEX MATCH
+    "LL_ATON_VERSION_DEV[ \t]*!=[ \t]*\\(([0-9]+)\\)"
+    _ai_model_version_match "${_ai_model_c}")
+string(REGEX MATCH
+    "#define LL_ATON_VERSION_DEV[ \t]*\\(([0-9]+)\\)"
+    _ai_runtime_version_match "${_ai_runtime_version_h}")
+if(_ai_model_version_match AND _ai_runtime_version_match AND
+   NOT "${CMAKE_MATCH_1}" STREQUAL "")
+    set(_ai_runtime_dev "${CMAKE_MATCH_1}")
+    string(REGEX REPLACE
+        ".*LL_ATON_VERSION_DEV[ \t]*!=[ \t]*\\(([0-9]+)\\).*"
+        "\\1" _ai_model_dev "${_ai_model_version_match}")
+    if(NOT "${_ai_model_dev}" STREQUAL "${_ai_runtime_dev}")
+        message(FATAL_ERROR
+            "STEdgeAI runtime version mismatch: model expects ll_aton dev "
+            "${_ai_model_dev}, but ${AI_STEDGEAI_DIR} provides dev "
+            "${_ai_runtime_dev}. Use the same STEdgeAI release used to "
+            "generate models.")
+    endif()
+endif()
+
 set(AI_CUBE_ROOT "${STM32CUBE_N6_DIR}")
 set(AI_BSP_ROOT
     "${AI_CUBE_ROOT}/Drivers/BSP/STM32N6570-DK")
 set(AI_COMPONENT_ROOT
     "${AI_CUBE_ROOT}/Drivers/BSP/Components")
 
-# Camera diagnostics are owned by this application. Keep defaults here so
-# sample-ai remains configurable even when the kernel driver target is omitted.
-if(NOT DEFINED AI_IMX335_TEST_PATTERN_MODE)
-    set(AI_IMX335_TEST_PATTERN_MODE "-1" CACHE STRING
-        "IMX335 test pattern mode (-1 disables the sensor test pattern)")
-endif()
-if(NOT DEFINED AI_DCMIPP_BYPASS_DOWNSIZE)
-    option(AI_DCMIPP_BYPASS_DOWNSIZE
-        "Capture the centered 800x480 sensor window without DCMIPP downsize" OFF)
-endif()
-if(NOT DEFINED AI_DCMIPP_RAW_DUMP)
-    option(AI_DCMIPP_RAW_DUMP
-        "Capture one cropped RAW10 frame through DCMIPP Pipe0" OFF)
-endif()
-if(NOT DEFINED AI_DCMIPP_DISABLE_DEMOSAIC)
-    option(AI_DCMIPP_DISABLE_DEMOSAIC
-        "Disable Pipe1 Bayer demosaicing for a diagnostic capture" OFF)
-endif()
-if(NOT DEFINED AI_DCMIPP_DEMOSAIC_LINEAR)
-    option(AI_DCMIPP_DEMOSAIC_LINEAR
-        "Use linear Pipe1 Bayer demosaicing for a diagnostic capture" OFF)
-endif()
-option(AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC
-    "Display live Pipe2 inference input on the LCD while inference continues" OFF)
-option(AI_DISPLAY_TIMING_DIAGNOSTICS
-    "Emit one lightweight LCD copy timing summary per second" OFF)
-set(AI_DCMIPP_PIPE2_FRAME_RATE "DCMIPP_FRAME_RATE_1_OVER_2" CACHE STRING
-    "Pipe2 frame-rate selector (DCMIPP_FRAME_RATE_1_OVER_4, DCMIPP_FRAME_RATE_1_OVER_2, or DCMIPP_FRAME_RATE_ALL)")
-set_property(CACHE AI_DCMIPP_PIPE2_FRAME_RATE PROPERTY STRINGS
-    DCMIPP_FRAME_RATE_1_OVER_4 DCMIPP_FRAME_RATE_1_OVER_2
-    DCMIPP_FRAME_RATE_ALL)
+# Keep the sample application explicitly optimized even though the common
+# Cortex-M55 toolchain also defaults to -O3. Do not use -Ofast here: its
+# relaxed floating-point rules can change post-processing results and
+# detection thresholds.
+set(AI_PERFORMANCE_COMPILE_OPTIONS
+    -O3)
+
 set(AI_MODEL_TARGET sample-ai_models)
 set(AI_MODEL_INCLUDE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/models/person"
@@ -50,18 +142,26 @@ set(AI_MODEL_C_API_SOURCES
     "${AI_SRC_DIR}/models/face/model_face.c")
 set(AI_MODEL_SOURCES
     "${AI_SRC_DIR}/models/person/model.cpp"
+    "${AI_SRC_DIR}/models/person/person_decoder.cpp"
     "${AI_SRC_DIR}/models/segmentation/model.cpp"
+    "${AI_SRC_DIR}/models/segmentation/segmentation_decoder.cpp"
     "${AI_SRC_DIR}/models/face/model.cpp"
     "${AI_SRC_DIR}/models/face/face_decoder.cpp")
 set(AI_MODEL_EXTRA_SOURCES
-    "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/od_pp_st_yolox.c"
-    "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/fd_pp_blazeface.c"
-    "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp_maxi_is8.c"
-    "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp.c")
+    "${AI_VISION_MODELS_PP_DIR}/Src/od_pp_st_yolox.c"
+    "${AI_VISION_MODELS_PP_DIR}/Src/fd_pp_blazeface.c"
+    "${AI_VISION_MODELS_PP_DIR}/Src/vision_models_pp_maxi_is8.c"
+    "${AI_VISION_MODELS_PP_DIR}/Src/vision_models_pp.c")
 set(AI_MODEL_EXTRA_LIBRARIES
-    "${AI_THIRDPARTY_DIR}/Lib/GCC/ARMCortexM55/NetworkRuntime1200_CM55_GCC.a")
-set(AI_MODEL_NOR_PROBE_OFFSET 0x00380000U)
-
+    "${AI_STEDGEAI_RUNTIME_LIBRARY}")
+set(AI_NPU_CACHE_SOURCE
+    "${AI_STEDGEAI_DIR}/Npu/Devices/STM32N6xx/npu_cache.c")
+# CubeMX already supplies the strong HAL cache MSP hooks. Some STEdgeAI
+# packages also contain fallback hooks in npu_cache.c, so rename only those
+# two functions in the package source and let CubeMX's hooks remain active.
+set_source_files_properties(${AI_NPU_CACHE_SOURCE} PROPERTIES
+    COMPILE_DEFINITIONS
+    "HAL_CACHEAXI_MspInit=sample_ai_STEDGEAI_HAL_CACHEAXI_MspInit;HAL_CACHEAXI_MspDeInit=sample_ai_STEDGEAI_HAL_CACHEAXI_MspDeInit")
 set(AI_CAMERA_BSP_SOURCE
     "${AI_SRC_DIR}/driver/camera_driver/board_driver/stm32n6570_discovery_camera.c")
 set_source_files_properties(${AI_CAMERA_BSP_SOURCE} PROPERTIES
@@ -90,8 +190,10 @@ add_executable(sample-ai.elf
     src/memory_allocator/memory_allocator.cpp
     src/driver/npu_driver/registers/npu_registers.cpp
     src/driver/npu_driver/npu_driver.cpp
+    src/driver/npu_driver/debug.cpp
     src/npu_scheduler/npu_scheduler.cpp
-    src/model_manager/model_manager.cpp
+    src/model_facade/model_facade.cpp
+    src/inference_dispatcher/inference_dispatcher.cpp
     ${AI_MODEL_SOURCES}
     # Project-owned ref-compatible BSP with a reset fallback for NOR left in
     # OPI-DTR by the external loader.
@@ -118,10 +220,10 @@ target_include_directories(sample-ai.elf PRIVATE
     "${AI_SRC_DIR}/driver/board/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/config"
     ${AI_MODEL_INCLUDE_DIRS}
-    "${AI_THIRDPARTY_DIR}/Inc"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton"
-    "${AI_THIRDPARTY_DIR}/Npu/Devices/STM32N6xx"
-    "${AI_THIRDPARTY_DIR}/vision_models_pp/Inc"
+    "${AI_STEDGEAI_DIR}/Inc"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton"
+    "${AI_STEDGEAI_DIR}/Npu/Devices/STM32N6xx"
+    "${AI_VISION_MODELS_PP_DIR}/Inc"
     "${AI_BSP_ROOT}"
     "${AI_COMPONENT_ROOT}/Common"
     "${AI_COMPONENT_ROOT}/imx335"
@@ -146,17 +248,8 @@ target_compile_definitions(sample-ai.elf PRIVATE
     LL_ATON_SW_FALLBACK
     LL_ATON_DBG_BUFFER_INFO_EXCLUDED=1
     NPU_CACHE_EXTERNAL_HAL_MSP)
-target_compile_definitions(sample-ai.elf PRIVATE
-    AI_IMX335_TEST_PATTERN_MODE=${AI_IMX335_TEST_PATTERN_MODE}
-    AI_MODEL_NOR_PROBE_OFFSET=${AI_MODEL_NOR_PROBE_OFFSET}
-    AI_DCMIPP_BYPASS_DOWNSIZE=$<BOOL:${AI_DCMIPP_BYPASS_DOWNSIZE}>
-    AI_DCMIPP_RAW_DUMP=$<BOOL:${AI_DCMIPP_RAW_DUMP}>
-    AI_DCMIPP_DISABLE_DEMOSAIC=$<BOOL:${AI_DCMIPP_DISABLE_DEMOSAIC}>
-    AI_DCMIPP_DEMOSAIC_LINEAR=$<BOOL:${AI_DCMIPP_DEMOSAIC_LINEAR}>
-    AI_DCMIPP_PIPE2_FRAME_RATE=${AI_DCMIPP_PIPE2_FRAME_RATE}
-    AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC=$<BOOL:${AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC}>
-    AI_DISPLAY_TIMING_DIAGNOSTICS=$<BOOL:${AI_DISPLAY_TIMING_DIAGNOSTICS}>)
 target_compile_options(sample-ai.elf PRIVATE
+    ${AI_PERFORMANCE_COMPILE_OPTIONS}
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
 target_link_libraries(sample-ai.elf PRIVATE
     uai::utkernel
@@ -217,29 +310,29 @@ add_custom_target(sample-ai DEPENDS sample-ai.elf)
 
 add_library(${AI_MODEL_TARGET} STATIC
     ${AI_MODEL_C_API_SOURCES}
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton/ecloader.c"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton/ll_aton.c"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton/ll_aton_cipher.c"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton/ll_aton_dbgtrc.c"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton/ll_aton_lib.c"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton/ll_aton_lib_sw_operators.c"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton/ll_aton_runtime.c"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton/ll_aton_stai_internal.c"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton/ll_aton_util.c"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton/ll_sw_float.c"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton/ll_sw_integer.c"
-    "${AI_THIRDPARTY_DIR}/Npu/Devices/STM32N6xx/mcu_cache.c"
-    "${AI_THIRDPARTY_DIR}/Npu/Devices/STM32N6xx/npu_cache.c"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton/ecloader.c"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton/ll_aton.c"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton/ll_aton_cipher.c"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton/ll_aton_dbgtrc.c"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton/ll_aton_lib.c"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton/ll_aton_lib_sw_operators.c"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton/ll_aton_runtime.c"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton/ll_aton_stai_internal.c"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton/ll_aton_util.c"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton/ll_sw_float.c"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton/ll_sw_integer.c"
+    "${AI_STEDGEAI_DIR}/Npu/Devices/STM32N6xx/mcu_cache.c"
+    ${AI_NPU_CACHE_SOURCE}
     ${AI_MODEL_EXTRA_SOURCES})
 
 target_include_directories(${AI_MODEL_TARGET} PRIVATE
     "${AI_SRC_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/config"
     ${AI_MODEL_INCLUDE_DIRS}
-    "${AI_THIRDPARTY_DIR}/Inc"
-    "${AI_THIRDPARTY_DIR}/Npu/ll_aton"
-    "${AI_THIRDPARTY_DIR}/Npu/Devices/STM32N6xx"
-    "${AI_THIRDPARTY_DIR}/vision_models_pp/Inc"
+    "${AI_STEDGEAI_DIR}/Inc"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton"
+    "${AI_STEDGEAI_DIR}/Npu/Devices/STM32N6xx"
+    "${AI_VISION_MODELS_PP_DIR}/Inc"
     "${AI_BSP_ROOT}"
     "${AI_COMPONENT_ROOT}/Common"
     "${AI_COMPONENT_ROOT}/mx66uw1g45g"
@@ -265,6 +358,7 @@ target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
 target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
     NPU0_IRQHandler=LL_ATON_NPU0_IRQHandler)
 target_compile_options(${AI_MODEL_TARGET} PRIVATE
+    ${AI_PERFORMANCE_COMPILE_OPTIONS}
     $<$<COMPILE_LANGUAGE:C>:-include;inttypes.h>
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
 target_link_libraries(${AI_MODEL_TARGET} PRIVATE

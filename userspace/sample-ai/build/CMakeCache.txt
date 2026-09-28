@@ -56,6 +56,13 @@ AI_MODEL:STRING=person
 //Enable one-shot NPU epoch diagnostics for the segmentation model
 AI_SEGMENTATION_DIAGNOSTICS:BOOL=OFF
 
+//STEdgeAI CM55 GCC runtime archive (optional; auto-detected when
+// empty)
+AI_STEDGEAI_RUNTIME_LIBRARY:FILEPATH=/opt/ST/STEdgeAI/4.0/Middlewares/ST/AI/Lib/GCC/ARMCortexM55/NetworkRuntime1201_CM55_GCC.a
+
+//ST vision-model post-processing sources used by sample-ai
+AI_VISION_MODELS_PP_DIR:PATH=/home/toshiki/Documents/uai-studio/userspace/sample-ai/third_party/vision_models_pp
+
 //Path to a program.
 CMAKE_ADDR2LINE:FILEPATH=/home/toshiki/.nix-profile/bin/addr2line
 
@@ -265,6 +272,9 @@ Project_IS_TOP_LEVEL:STATIC=ON
 
 //Value Computed by CMake
 Project_SOURCE_DIR:STATIC=/home/toshiki/Documents/uai-studio/userspace/sample-ai
+
+//STEdgeAI runtime root containing Inc/, Npu/, and Lib/
+STEDGEAI_LIB_DIR:PATH=/opt/ST/STEdgeAI/4.0/Middlewares/ST/AI
 
 
 ########################

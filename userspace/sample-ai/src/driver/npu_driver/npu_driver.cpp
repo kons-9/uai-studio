@@ -1,5 +1,6 @@
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/debug.h"
+#include "common/log.hpp"
 
 #include <tk/tkernel.h>
 
@@ -21,6 +22,7 @@ ID g_npu_irq_event_flag = 0;
 } // namespace
 extern "C" void NPU0_IRQHandler(UINT intno)
 {
+    ++g_aton_irq_count;
     LL_ATON_NPU0_IRQHandler();
     if (g_npu_irq_event_flag > 0) {
         (void)tk_set_flg(g_npu_irq_event_flag, kNpuIrqEvent);
@@ -340,10 +342,10 @@ Status NpuDriver::Run()
         if (IsError(code)) {
             last_execution_.state = ExecutionState::kFaulted;
             last_execution_.stai_status = last_error_;
-            tm_printf(reinterpret_cast<const UB *>(
-                          "ai: npu done error=%x irq=%u last=%x\n"),
-                      static_cast<unsigned int>(code), g_aton_irq_count,
-                      g_aton_last_irqs);
+            UAI_LOG_ERROR(reinterpret_cast<const UB *>(
+                              "ai: npu done error=%x irq=%u last=%x\n"),
+                          static_cast<unsigned int>(code), g_aton_irq_count,
+                          g_aton_last_irqs);
             return {common::Error{common::ErrorCode::kNpu, last_error_,
                                   "npu.run"},
                     last_execution_};
@@ -389,25 +391,25 @@ Status NpuDriver::Run()
         last_execution_.stai_status = last_error_;
         const registers::NpuRegisterSnapshot timeout_hardware =
             registers_.ReadSnapshot();
-        tm_printf(reinterpret_cast<const UB *>(
-                      "ai: npu done timeout status=%x irq=%u last=%x epoch=%x/%x bc=%x int=%x bus=%x/%x,%x/%x stream=%x/%x size=%x count=%x/%x/%x/%x\n"),
-                  static_cast<unsigned int>(last_error_), g_aton_irq_count,
-                  g_aton_last_irqs,
-                  static_cast<unsigned int>(timeout_hardware.epoch_control),
-                  static_cast<unsigned int>(timeout_hardware.epoch_address),
-                  static_cast<unsigned int>(timeout_hardware.epoch_byte_counter),
-                  static_cast<unsigned int>(timeout_hardware.interrupt_status),
-                  static_cast<unsigned int>(timeout_hardware.busif0_control),
-                  static_cast<unsigned int>(timeout_hardware.busif0_error),
-                  static_cast<unsigned int>(timeout_hardware.busif1_control),
-                  static_cast<unsigned int>(timeout_hardware.busif1_error),
-                  static_cast<unsigned int>(timeout_hardware.stream0_control),
-                  static_cast<unsigned int>(timeout_hardware.stream0_address),
-                  static_cast<unsigned int>(timeout_hardware.stream0_frame_size),
-                  static_cast<unsigned int>(timeout_hardware.stream0_depth_count),
-                  static_cast<unsigned int>(timeout_hardware.stream0_pixel_count),
-                  static_cast<unsigned int>(timeout_hardware.stream0_line_count),
-                  static_cast<unsigned int>(timeout_hardware.stream0_frame_count));
+        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
+                          "ai: npu done timeout status=%x irq=%u last=%x epoch=%x/%x bc=%x int=%x bus=%x/%x,%x/%x stream=%x/%x size=%x count=%x/%x/%x/%x\n"),
+                      static_cast<unsigned int>(last_error_), g_aton_irq_count,
+                      g_aton_last_irqs,
+                      static_cast<unsigned int>(timeout_hardware.epoch_control),
+                      static_cast<unsigned int>(timeout_hardware.epoch_address),
+                      static_cast<unsigned int>(timeout_hardware.epoch_byte_counter),
+                      static_cast<unsigned int>(timeout_hardware.interrupt_status),
+                      static_cast<unsigned int>(timeout_hardware.busif0_control),
+                      static_cast<unsigned int>(timeout_hardware.busif0_error),
+                      static_cast<unsigned int>(timeout_hardware.busif1_control),
+                      static_cast<unsigned int>(timeout_hardware.busif1_error),
+                      static_cast<unsigned int>(timeout_hardware.stream0_control),
+                      static_cast<unsigned int>(timeout_hardware.stream0_address),
+                      static_cast<unsigned int>(timeout_hardware.stream0_frame_size),
+                      static_cast<unsigned int>(timeout_hardware.stream0_depth_count),
+                      static_cast<unsigned int>(timeout_hardware.stream0_pixel_count),
+                      static_cast<unsigned int>(timeout_hardware.stream0_line_count),
+                      static_cast<unsigned int>(timeout_hardware.stream0_frame_count));
         return {common::Error{common::ErrorCode::kTimeout, last_error_,
                               "npu.run"},
                 last_execution_};

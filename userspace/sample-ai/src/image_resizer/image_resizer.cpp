@@ -3,12 +3,10 @@
 namespace uai::ai::image_resizer {
 namespace {
 
-using common::Error;
-using common::ErrorCode;
 
-Error Invalid(const char *operation, std::uint32_t detail = 0U)
+common::Error Invalid(const char *operation, std::uint32_t detail = 0U)
 {
-    return {ErrorCode::kInvalidArgument, detail, operation};
+    return {common::ErrorCode::kInvalidArgument, detail, operation};
 }
 
 std::uint32_t CeilDivide(std::uint32_t value, std::uint32_t divisor)
@@ -23,7 +21,7 @@ bool IsValidDimension(std::uint32_t width, std::uint32_t height)
 
 } // namespace
 
-Error Select(const Request &request, Selection *selection)
+common::Error Select(const Request &request, Selection *selection)
 {
     if (selection == nullptr ||
         !IsValidDimension(request.input_width, request.input_height) ||
@@ -38,7 +36,7 @@ Error Select(const Request &request, Selection *selection)
         selection->hardware = Hardware::kCpu;
         selection->dcmipp_input_width = request.input_width;
         selection->dcmipp_input_height = request.input_height;
-        return {ErrorCode::kOk, 0U, "image_resizer.select.cpu"};
+        return {common::ErrorCode::kOk, 0U, "image_resizer.select.cpu"};
     }
 
     /* DCMIPP's downsize ratio is limited to 8:1.  Select the smallest common
@@ -72,7 +70,7 @@ Error Select(const Request &request, Selection *selection)
     selection->dcmipp_decimation = decimation;
     selection->dcmipp_input_width = decimated_width;
     selection->dcmipp_input_height = decimated_height;
-    return {ErrorCode::kOk, decimation, "image_resizer.select.dcmipp"};
+    return {common::ErrorCode::kOk, decimation, "image_resizer.select.dcmipp"};
 }
 
 const char *HardwareName(Hardware hardware)
@@ -86,7 +84,7 @@ const char *HardwareName(Hardware hardware)
     return "unknown";
 }
 
-Error ResizeRgb565ToRgb888(const Rgb565Source &source, std::uint32_t crop_x,
+common::Error ResizeRgb565ToRgb888(const Rgb565Source &source, std::uint32_t crop_x,
                            std::uint32_t crop_y, std::uint32_t crop_width,
                            std::uint32_t crop_height,
                            const Rgb888Destination &destination)
@@ -122,10 +120,10 @@ Error ResizeRgb565ToRgb888(const Rgb565Source &source, std::uint32_t crop_x,
                 (pixel & 0x1FU) * 255U / 31U);
         }
     }
-    return {ErrorCode::kOk, 0U, "image_resizer.cpu"};
+    return {common::ErrorCode::kOk, 0U, "image_resizer.cpu"};
 }
 
-Error ResizeRgb888Letterbox(const Rgb888Source &source,
+common::Error ResizeRgb888Letterbox(const Rgb888Source &source,
                             const Rgb888Destination &destination,
                             std::uint32_t content_width,
                             std::uint32_t content_height,
@@ -168,7 +166,7 @@ Error ResizeRgb888Letterbox(const Rgb888Source &source,
             destination_pixel[2] = source_pixel[2];
         }
     }
-    return {ErrorCode::kOk, 0U, "image_resizer.cpu.letterbox"};
+    return {common::ErrorCode::kOk, 0U, "image_resizer.cpu.letterbox"};
 }
 
 } // namespace uai::ai::image_resizer

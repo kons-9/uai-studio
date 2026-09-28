@@ -11,6 +11,7 @@ extern "C" {
 
 #include "driver/npu_driver/debug.h"
 #include "driver/npu_driver/npu_driver.hpp"
+#include "common/log.hpp"
 #include "task/task_diagnostics.hpp"
 
 namespace uai::ai::task {
@@ -26,16 +27,17 @@ TaskContext &GetTaskContext()
 
 [[noreturn]] void TaskContext::Halt(const char *message)
 {
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(message)));
+    UAI_LOG_TEXT(uai::ai::common::LogLevel::kError,
+                 reinterpret_cast<const UB *>(message));
     for (;;) {
         tk_dly_tsk(1000);
     }
 }
 
-bool TaskContext::IsBestEffort(ErrorCode code) const
+bool TaskContext::IsBestEffort(common::ErrorCode code) const
 {
-    return code == ErrorCode::kNoFrame || code == ErrorCode::kNoBuffer ||
-           code == ErrorCode::kQueueFull;
+    return code == common::ErrorCode::kNoFrame || code == common::ErrorCode::kNoBuffer ||
+           code == common::ErrorCode::kQueueFull;
 }
 
 std::uint32_t TaskContext::Now() const
@@ -44,16 +46,15 @@ std::uint32_t TaskContext::Now() const
     return tk_get_otm(&time) == E_OK ? time.lo : 0U;
 }
 
-Error TaskContext::InitializeDrivers()
+common::Error TaskContext::InitializeDrivers()
 {
-    using common::ErrorCode;
 
-    Error status = uai::ai::npu::NpuDriver::InitializeMemory();
-    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
+    common::Error status = uai::ai::npu::NpuDriver::InitializeMemory();
+    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
         return status;
     }
     status = cache.Initialize();
-    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
+    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
         return status;
     }
     status = memory.Initialize();
@@ -62,14 +63,14 @@ Error TaskContext::InitializeDrivers()
     }
 
     status = rif.Initialize();
-    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
+    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
         return status;
     }
 
     /* XSPI1/XSPI2 are RIF-protected on a cold boot. Configure their access
      * policy before the BSP touches either external memory. */
     if (!psram.Initialize()) {
-        return {ErrorCode::kHardware, 0U, "psram.initialize"};
+        return {common::ErrorCode::kHardware, 0U, "psram.initialize"};
     }
 
     constexpr bool initialize_nor = kInferenceMode == InferenceMode::kNpu;
@@ -77,17 +78,18 @@ Error TaskContext::InitializeDrivers()
     if (initialize_nor) {
         nor_status = nor.Initialize();
     } else {
-        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-            "boot: NOR skipped: inference disabled\n")));
+        UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                         "boot: NOR skipped: inference disabled\n"));
     }
     external_nor_ready = nor_status == 0;
 
     status = lcd.Initialize(memory, cache);
-    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
+    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
         return status;
     }
+    lcd.SetTimingDiagnostics(diagnostics.display_timing);
     status = camera.Initialize(memory, cache);
-    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
+    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
         return status;
     }
 
@@ -97,7 +99,7 @@ Error TaskContext::InitializeDrivers()
     uai::ai::npu::NpuDriver::KeepMemoryClocksOnSleep();
     lcd.KeepClocksOnSleep();
     camera.KeepClocksOnSleep();
-    return {ErrorCode::kOk, static_cast<std::uint32_t>(nor_status),
+    return {common::ErrorCode::kOk, static_cast<std::uint32_t>(nor_status),
             "task_context.initialize_drivers"};
 }
 
@@ -174,21 +176,21 @@ void TaskContext::StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
     task.bufptr = stack;
     const ID task_id = tk_cre_tsk(&task);
     if (task_id < E_OK) {
-        tm_printf(reinterpret_cast<const UB *>(
-                      "error: component=task_context operation=create_%s code=%x detail=0\n"),
-                  name, static_cast<unsigned int>(task_id));
+        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
+                          "error: component=task_context operation=create_%s code=%x detail=0\n"),
+                      name, static_cast<unsigned int>(task_id));
         Halt("ai: task create failed\n");
     }
     const ER error = tk_sta_tsk(task_id, 0);
     if (error != E_OK) {
-        tm_printf(reinterpret_cast<const UB *>(
-                      "error: component=task_context operation=start_%s code=%x detail=0\n"),
-                  name, static_cast<unsigned int>(error));
+        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
+                          "error: component=task_context operation=start_%s code=%x detail=0\n"),
+                      name, static_cast<unsigned int>(error));
         Halt("ai: task start failed\n");
     }
 }
 
-bool TaskContext::DrainLatestBoxes(BoxSet *active)
+bool TaskContext::DrainLatestBoxes(memory_allocator::BoxSet *active)
 {
     if (active == nullptr) {
         return false;
@@ -212,23 +214,23 @@ bool TaskContext::DrainLatestBoxes(BoxSet *active)
     }
 
     if (received && diagnostics.display_trace) {
-        tm_printf(reinterpret_cast<const UB *>(
-                      "lcd: box source=ai sequence=%u capture=%u count=%u\n"),
-                  static_cast<unsigned int>(active->model_sequence),
-                  static_cast<unsigned int>(active->capture_sequence),
-                  static_cast<unsigned int>(active->person.count +
-                                             active->face.count));
-        tm_printf(reinterpret_cast<const UB *>(
-                      "lcd: boxes person=%u face=%u mask_px=%u\n"),
-                  static_cast<unsigned int>(active->person.count),
-                  static_cast<unsigned int>(active->face.count),
-                  static_cast<unsigned int>(
-                      active->segmentation.mask_foreground_pixels));
+        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
+                          "lcd: box source=ai sequence=%u capture=%u count=%u\n"),
+                      static_cast<unsigned int>(active->model_sequence),
+                      static_cast<unsigned int>(active->capture_sequence),
+                      static_cast<unsigned int>(active->person.count +
+                                                 active->face.count));
+        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
+                          "lcd: boxes person=%u face=%u mask_px=%u\n"),
+                      static_cast<unsigned int>(active->person.count),
+                      static_cast<unsigned int>(active->face.count),
+                      static_cast<unsigned int>(
+                          active->segmentation.mask_foreground_pixels));
     }
     return received;
 }
 
-void TaskContext::SendLatestBoxes(const BoxSet &boxes)
+void TaskContext::SendLatestBoxes(const memory_allocator::BoxSet &boxes)
 {
     BoxMessage message{};
     message.boxes = boxes;
@@ -245,18 +247,18 @@ void TaskContext::SendLatestBoxes(const BoxSet &boxes)
     }
 }
 
-void TaskContext::SendInferenceFrame(const InferenceFrame &frame)
+void TaskContext::SendInferenceFrame(const memory_allocator::InferenceFrame &frame)
 {
     InferenceMessage message{};
     message.frame = frame;
     const ER error = tk_snd_mbf(frame_queue, &message, sizeof(message),
                                 TMO_POL);
     if (error != E_OK) {
-        const Error status = memory.ReleaseInferenceBuffer(frame);
+        const common::Error status = memory.ReleaseInferenceBuffer(frame);
         LogStatus("memory", status);
-        tm_printf(reinterpret_cast<const UB *>(
-                      "ai: frame dropped reason=queue_full sequence=%u\n"),
-                  static_cast<unsigned int>(frame.capture_sequence));
+        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
+                          "ai: frame dropped reason=queue_full sequence=%u\n"),
+                      static_cast<unsigned int>(frame.capture_sequence));
     }
 }
 
