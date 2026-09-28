@@ -141,6 +141,7 @@ set(AI_MODEL_C_API_SOURCES
     "${AI_SRC_DIR}/models/segmentation/model_segmentation.c"
     "${AI_SRC_DIR}/models/face/model_face.c")
 set(AI_MODEL_SOURCES
+    "${AI_SRC_DIR}/models/model.cpp"
     "${AI_SRC_DIR}/models/person/model.cpp"
     "${AI_SRC_DIR}/models/person/person_decoder.cpp"
     "${AI_SRC_DIR}/models/segmentation/model.cpp"
@@ -191,9 +192,9 @@ add_executable(sample-ai.elf
     src/driver/npu_driver/registers/npu_registers.cpp
     src/driver/npu_driver/npu_driver.cpp
     src/driver/npu_driver/debug.cpp
-    src/npu_scheduler/npu_scheduler.cpp
-    src/model_facade/model_facade.cpp
-    src/inference_dispatcher/inference_dispatcher.cpp
+    src/npu_runtime/npu_runtime.cpp
+    src/npu_runtime/scheduler/scheduler.cpp
+    src/npu_runtime/inference_dispatcher/inference_dispatcher.cpp
     ${AI_MODEL_SOURCES}
     # Project-owned ref-compatible BSP with a reset fallback for NOR left in
     # OPI-DTR by the external loader.

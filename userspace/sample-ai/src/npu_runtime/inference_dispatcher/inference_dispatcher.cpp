@@ -1,24 +1,13 @@
-#include "inference_dispatcher/inference_dispatcher.hpp"
+#include "npu_runtime/inference_dispatcher/inference_dispatcher.hpp"
 
 #include "common/log.hpp"
 
 #include <cstddef>
 #include <cstdint>
 
-namespace uai::ai {
+namespace uai::ai::npu_runtime {
 
 namespace {
-
-std::int16_t ClampCoordinate(float value, std::int32_t limit)
-{
-    if (value <= 0.0F) {
-        return 0;
-    }
-    if (value >= static_cast<float>(limit)) {
-        return static_cast<std::int16_t>(limit);
-    }
-    return static_cast<std::int16_t>(value);
-}
 
 models::ModelOutputSpec BuildOutputSpec(const stai_network_info &info)
 {
@@ -41,14 +30,15 @@ models::InferenceGeometry BuildInferenceGeometry(
     geometry.projection = from_pipe2
                               ? models::InputProjection::kLetterboxed
                               : models::InputProjection::kCenteredSquare;
-    geometry.frame_width = memory_allocator::kFrameWidth;
-    geometry.frame_height = memory_allocator::kFrameHeight;
+    geometry.frame_width = memory_allocator::kConfig.frame_width;
+    geometry.frame_height = memory_allocator::kConfig.frame_height;
     geometry.model_width = descriptor.input_width;
     geometry.model_height = descriptor.input_height;
     geometry.content_height =
-        (descriptor.input_width * memory_allocator::kInferenceSourceHeight +
-         memory_allocator::kInferenceSourceWidth - 1U) /
-        memory_allocator::kInferenceSourceWidth;
+        (descriptor.input_width *
+             memory_allocator::kConfig.inference_source_height +
+         memory_allocator::kConfig.inference_source_width - 1U) /
+        memory_allocator::kConfig.inference_source_width;
     geometry.pad_top = geometry.model_height > geometry.content_height
                            ? (geometry.model_height - geometry.content_height) /
                                  2U
@@ -56,31 +46,11 @@ models::InferenceGeometry BuildInferenceGeometry(
     return geometry;
 }
 
-void CopyDetections(const models::ModelResult &source,
-                    memory_allocator::DetectionSet *destination)
-{
-    destination->count = source.detection_count < memory_allocator::kMaxBoxes
-                             ? source.detection_count
-                             : memory_allocator::kMaxBoxes;
-    for (std::uint32_t i = 0U; i < destination->count; ++i) {
-        const models::Detection &detection = source.detections[i];
-        destination->boxes[i].x = ClampCoordinate(
-            detection.x, memory_allocator::kFrameWidth);
-        destination->boxes[i].y = ClampCoordinate(
-            detection.y, memory_allocator::kFrameHeight);
-        destination->boxes[i].width = ClampCoordinate(
-            detection.width, memory_allocator::kFrameWidth);
-        destination->boxes[i].height = ClampCoordinate(
-            detection.height, memory_allocator::kFrameHeight);
-        destination->boxes[i].confidence = detection.confidence;
-    }
-}
-
 } // namespace
 
 common::Error InferenceDispatcher::Initialize(
-    npu_scheduler::NpuScheduler &scheduler,
-    memory_allocator::MemoryAllocator &memory, cache::CacheDriver &cache)
+    scheduler::Scheduler &scheduler, npu::NpuDriver &npu,
+    cache::CacheDriver &cache)
 {
     if (initialized_) {
         return {common::ErrorCode::kAlreadyInitialized, 0U,
@@ -91,12 +61,12 @@ common::Error InferenceDispatcher::Initialize(
                 "ai.dispatcher.scheduler"};
     }
     scheduler_ = &scheduler;
-    memory_ = &memory;
+    npu_ = &npu;
     cache_ = &cache;
     const common::Error status = ConfigureCurrentModel();
     if (!status.Ok()) {
         scheduler_ = nullptr;
-        memory_ = nullptr;
+        npu_ = nullptr;
         cache_ = nullptr;
         return status;
     }
@@ -104,51 +74,43 @@ common::Error InferenceDispatcher::Initialize(
     return {common::ErrorCode::kOk, 0U, "ai.dispatcher.initialize"};
 }
 
-common::Error InferenceDispatcher::SelectNextModel()
+common::Error InferenceDispatcher::RefreshSelectedModel()
 {
     if (!initialized_ || scheduler_ == nullptr) {
         return {common::ErrorCode::kNotInitialized, 0U,
-                "ai.dispatcher.select_next"};
-    }
-    common::Error status = scheduler_->SelectNext();
-    if (!status.Ok()) {
-        last_error_ = status.detail;
-        return status;
+                "ai.dispatcher.refresh_model"};
     }
     initialized_ = false;
-    status = ConfigureCurrentModel();
+    const common::Error status = ConfigureCurrentModel();
     if (!status.Ok()) {
         last_error_ = status.detail;
         return status;
     }
     initialized_ = true;
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "ai: model switched to %s\n"),
-                 reinterpret_cast<const UB *>(
-                     scheduler_->GetDescriptor()->name));
-    return {common::ErrorCode::kOk, 0U, "ai.dispatcher.select_next"};
+    return {common::ErrorCode::kOk, 0U, "ai.dispatcher.refresh_model"};
 }
 
-models::ModelKind InferenceDispatcher::CurrentModel() const
+common::Error InferenceDispatcher::Shutdown()
 {
-    return scheduler_ != nullptr ? scheduler_->CurrentModel()
-                                 : models::ModelKind::kPerson;
-}
-
-const models::ModelDescriptor *InferenceDispatcher::CurrentDescriptor() const
-{
-    return scheduler_ != nullptr ? scheduler_->GetDescriptor() : nullptr;
-}
-
-const npu::Status &InferenceDispatcher::LastNpuStatus() const
-{
-    static const npu::Status kEmptyStatus{};
-    return scheduler_ != nullptr ? scheduler_->LastStatus() : kEmptyStatus;
+    if (!initialized_) {
+        return {common::ErrorCode::kNotInitialized, 0U,
+                "ai.dispatcher.shutdown"};
+    }
+    scheduler_ = nullptr;
+    npu_ = nullptr;
+    cache_ = nullptr;
+    info_ = {};
+    dynamic_outputs_ = false;
+    initialized_ = false;
+    model_sequence_ = 0U;
+    last_error_ = 0U;
+    last_npu_status_ = {};
+    return {common::ErrorCode::kOk, 0U, "ai.dispatcher.shutdown"};
 }
 
 common::Error InferenceDispatcher::ConfigureCurrentModel()
 {
-    if (scheduler_ == nullptr) {
+    if (scheduler_ == nullptr || npu_ == nullptr) {
         return {common::ErrorCode::kNotInitialized, 0U,
                 "ai.dispatcher.configure"};
     }
@@ -156,7 +118,8 @@ common::Error InferenceDispatcher::ConfigureCurrentModel()
     if (descriptor == nullptr) {
         return {common::ErrorCode::kModel, 0U, "ai.model_descriptor"};
     }
-    common::Error status = scheduler_->GetInfo(&info_);
+    last_npu_status_ = npu_->GetInfo(&info_);
+    common::Error status = last_npu_status_.error;
     if (!status.Ok() || info_.n_inputs != 1U || info_.inputs == nullptr ||
         info_.outputs == nullptr || info_.n_outputs == 0U ||
         info_.n_outputs > models::kMaxModelOutputs) {
@@ -169,7 +132,8 @@ common::Error InferenceDispatcher::ConfigureCurrentModel()
     }
 
     stai_size output_count = 0U;
-    status = scheduler_->GetOutputs(outputs_, &output_count);
+    last_npu_status_ = npu_->GetOutputs(outputs_, &output_count);
+    status = last_npu_status_.error;
     if (!status.Ok() || output_count != info_.n_outputs) {
         return {common::ErrorCode::kModel, status.detail, "ai.model_outputs"};
     }
@@ -185,7 +149,7 @@ common::Error InferenceDispatcher::ConfigureCurrentModel()
         }
     }
 
-    status = scheduler_->ConfigureActiveModel(BuildOutputSpec(info_));
+    status = scheduler_->ConfigureActiveDecoder(BuildOutputSpec(info_));
     if (!status.Ok()) {
         return status;
     }
@@ -194,10 +158,10 @@ common::Error InferenceDispatcher::ConfigureCurrentModel()
 }
 
 common::Error InferenceDispatcher::TryInfer(
-    const memory_allocator::InferenceFrame &frame,
+    memory_allocator::InferenceFrame &frame,
     memory_allocator::BoxSet *result)
 {
-    if (!initialized_ || scheduler_ == nullptr || memory_ == nullptr ||
+    if (!initialized_ || scheduler_ == nullptr || npu_ == nullptr ||
         cache_ == nullptr) {
         return {common::ErrorCode::kNotInitialized, 0U, "ai.infer"};
     }
@@ -218,6 +182,10 @@ common::Error InferenceDispatcher::TryInfer(
     if (descriptor == nullptr) {
         return {common::ErrorCode::kModel, 0U, "ai.model_descriptor"};
     }
+    common::Error status = scheduler_->PrepareActiveInput(frame, *cache_);
+    if (!status.Ok()) {
+        return status;
+    }
     if (frame.buffer.size < info_.inputs[0].size_bytes) {
         UAI_LOG_WARN(reinterpret_cast<const UB *>(
                          "ai: input rejected buffer=%u required=%u\n"),
@@ -237,17 +205,18 @@ common::Error InferenceDispatcher::TryInfer(
     const memory_allocator::Buffer input_buffer{
         frame.buffer.address, info_.inputs[0].size_bytes, frame.buffer.index,
         memory_allocator::Region::kInference};
-    common::Error status = frame.input_prepared_by_cpu
-                               ? cache_->PrepareForPeripheralRead(input_buffer)
-                               : frame.from_pipe2
-                                     ? cache_->PrepareForCpuRead(input_buffer)
-                                     : cache_->PrepareForPeripheralRead(
-                                           input_buffer);
+    status = frame.input_prepared_by_cpu
+                 ? cache_->PrepareForPeripheralRead(input_buffer)
+                 : frame.from_pipe2
+                       ? cache_->PrepareForCpuRead(input_buffer)
+                       : cache_->PrepareForPeripheralRead(input_buffer);
     if (!status.Ok()) {
         return status;
     }
-    status = scheduler_->SetInput(reinterpret_cast<stai_ptr>(frame.buffer.address),
-                                  info_.inputs[0].size_bytes);
+    last_npu_status_ = npu_->SetInput(
+        reinterpret_cast<stai_ptr>(frame.buffer.address),
+        info_.inputs[0].size_bytes);
+    status = last_npu_status_.error;
     if (!status.Ok()) {
         return status;
     }
@@ -257,7 +226,8 @@ common::Error InferenceDispatcher::TryInfer(
             return {common::ErrorCode::kInvalidArgument, frame.output_count,
                     "ai.dynamic_output_count"};
         }
-        stai_ptr dynamic_output_ptrs[memory_allocator::kMaxModelOutputs]{};
+        stai_ptr dynamic_output_ptrs[
+            memory_allocator::kConfig.model_output_bytes.size()]{};
         for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
             const memory_allocator::Buffer &output = frame.outputs[i];
             if (!output || output.size < info_.outputs[i].size_bytes ||
@@ -270,7 +240,9 @@ common::Error InferenceDispatcher::TryInfer(
             dynamic_output_ptrs[i] =
                 reinterpret_cast<stai_ptr>(output.address);
         }
-        status = scheduler_->SetOutputs(dynamic_output_ptrs, info_.n_outputs);
+        last_npu_status_ = npu_->SetOutputs(dynamic_output_ptrs,
+                                            info_.n_outputs);
+        status = last_npu_status_.error;
         if (!status.Ok()) {
             return status;
         }
@@ -279,7 +251,8 @@ common::Error InferenceDispatcher::TryInfer(
         }
     }
 
-    status = scheduler_->Run();
+    last_npu_status_ = npu_->Run();
+    status = last_npu_status_.error;
     last_error_ = status.detail;
     if (!status.Ok()) {
         return status;
@@ -311,47 +284,18 @@ common::Error InferenceDispatcher::TryInfer(
         BuildInferenceGeometry(*descriptor, frame.from_pipe2);
     const models::InferenceCompletionContext context{output_view, geometry};
     models::ModelResult decoded_result{};
-    status = scheduler_->DecodeActive(context, &decoded_result);
+    status = scheduler_->DecodeActiveOutputs(context, &decoded_result);
     if (!status.Ok()) {
         return status;
     }
 
-    switch (scheduler_->CurrentModel()) {
-    case models::ModelKind::kPerson:
-        if (decoded_result.kind != models::ModelKind::kPerson ||
-            !decoded_result.detections_valid) {
-            return {common::ErrorCode::kModel, 0U, "ai.person_decoder"};
-        }
-        CopyDetections(decoded_result, &result->person);
-        result->person_valid = true;
-        break;
-    case models::ModelKind::kFace:
-        if (decoded_result.kind != models::ModelKind::kFace ||
-            !decoded_result.detections_valid) {
-            return {common::ErrorCode::kModel, 0U, "ai.face_decoder"};
-        }
-        CopyDetections(decoded_result, &result->face);
-        result->face_valid = true;
-        break;
-    case models::ModelKind::kSegmentation:
-        if (decoded_result.kind != models::ModelKind::kSegmentation ||
-            !decoded_result.segmentation_valid) {
-            return {common::ErrorCode::kModel, 0U,
-                    "ai.segmentation_decoder"};
-        }
-        result->segmentation.mask_address =
-            decoded_result.segmentation.mask_address;
-        result->segmentation.mask_width =
-            decoded_result.segmentation.mask_width;
-        result->segmentation.mask_height =
-            decoded_result.segmentation.mask_height;
-        result->segmentation.mask_foreground_pixels =
-            decoded_result.segmentation.mask_foreground_pixels;
-        result->segmentation_valid = true;
-        break;
+    status = scheduler_->ConvertActiveResult(decoded_result, result);
+    if (!status.Ok()) {
+        return status;
     }
 
-    status = scheduler_->NewInference();
+    last_npu_status_ = npu_->NewInference();
+    status = last_npu_status_.error;
     if (!status.Ok()) {
         return status;
     }
@@ -360,4 +304,4 @@ common::Error InferenceDispatcher::TryInfer(
     return {common::ErrorCode::kOk, result_count, "ai.infer"};
 }
 
-} // namespace uai::ai
+} // namespace uai::ai::npu_runtime

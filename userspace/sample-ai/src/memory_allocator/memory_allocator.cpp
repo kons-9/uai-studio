@@ -1,16 +1,8 @@
 #include "memory_allocator/memory_allocator.hpp"
 
+#include "static_memory_layout/static_memory_layout.hpp"
+
 namespace uai::ai::memory_allocator {
-namespace {
-
-constexpr std::uintptr_t kCapture0 = 0x91000000UL;
-constexpr std::uintptr_t kCapture1 = 0x91100000UL;
-constexpr std::uintptr_t kDisplay0 = 0x91200000UL;
-constexpr std::uintptr_t kDisplay1 = 0x91300000UL;
-constexpr std::uintptr_t kInference0 = 0x91400000UL;
-constexpr std::uintptr_t kInference1 = 0x91500000UL;
-
-} // namespace
 
 common::Error MemoryAllocator::Make(common::ErrorCode code, std::uint32_t detail,
                           const char *operation)
@@ -31,24 +23,26 @@ void MemoryAllocator::PopulateInferenceFrame(std::uint8_t index,
 {
     frame->buffer = inference_[index].buffer;
     frame->scratch = {
-        kInferenceScratchAddress,
-        kInferenceScratchBytes,
+        static_memory_layout::kLayout.inference_scratch.address(),
+        kConfig.inference_scratch_bytes(),
         index,
         Region::kInference,
-        kBufferAlignment};
-    frame->output_count = static_cast<std::uint8_t>(kModelOutputCount);
+        kConfig.buffer_alignment};
+    frame->output_count = static_cast<std::uint8_t>(
+        kConfig.model_output_bytes.size());
     frame->capture_sequence = sequence;
     frame->from_pipe2 = from_pipe2;
     frame->input_prepared_by_cpu = false;
 
     std::uintptr_t output_address =
-        frame->buffer.address + kInferenceOutputsOffset;
-    for (std::size_t output = 0U; output < kMaxModelOutputs; ++output) {
-        const std::size_t output_size = kModelOutputBytes[output];
+        frame->buffer.address + kConfig.inference_outputs_offset();
+    for (std::size_t output = 0U;
+         output < kConfig.model_output_bytes.size(); ++output) {
+        const std::size_t output_size = kConfig.model_output_bytes[output];
         frame->outputs[output] = {
             output_address, output_size, index, Region::kInference,
-            kBufferAlignment};
-        output_address += AlignUp(output_size, kBufferAlignment);
+            kConfig.buffer_alignment};
+        output_address += kConfig.AlignUp(output_size);
     }
 }
 
@@ -58,11 +52,33 @@ common::Error MemoryAllocator::Initialize()
         return Make(common::ErrorCode::kAlreadyInitialized, 0U, "memory.initialize");
     }
 
-    display_[0].buffer = {kDisplay0, kFrameBytes, 0U, Region::kDisplay};
-    display_[1].buffer = {kDisplay1, kFrameBytes, 1U, Region::kDisplay};
-    inference_[0].buffer = {kInference0, kInferenceBufferBytes, 0U,
+    const auto &layout = static_memory_layout::kLayout;
+    const std::size_t frame_bytes = kConfig.frame_bytes();
+    const std::size_t inference_bytes = kConfig.inference_buffer_bytes();
+    const std::size_t scratch_bytes = kConfig.inference_scratch_bytes();
+    if (frame_bytes > layout.capture[0].size() ||
+        frame_bytes > layout.capture[1].size() ||
+        frame_bytes > layout.display[0].size() ||
+        frame_bytes > layout.display[1].size() ||
+        inference_bytes > layout.inference[0].size() ||
+        inference_bytes > layout.inference[1].size() ||
+        scratch_bytes > layout.inference_scratch.size()) {
+        return Make(common::ErrorCode::kInvalidArgument,
+                    static_cast<std::uint32_t>(inference_bytes),
+                    "memory.initialize.layout_capacity");
+    }
+
+    display_[0].buffer = {layout.display[0].address(),
+                          frame_bytes,
+                          0U, Region::kDisplay};
+    display_[1].buffer = {layout.display[1].address(),
+                          frame_bytes,
+                          1U, Region::kDisplay};
+    inference_[0].buffer = {layout.inference[0].address(),
+                             inference_bytes, 0U,
                              Region::kInference};
-    inference_[1].buffer = {kInference1, kInferenceBufferBytes, 1U,
+    inference_[1].buffer = {layout.inference[1].address(),
+                             inference_bytes, 1U,
                              Region::kInference};
     current_display_ = -1;
     pending_display_ = -1;
@@ -86,8 +102,8 @@ common::Error MemoryAllocator::CaptureBuffers(std::uintptr_t *first,
         return Make(common::ErrorCode::kInvalidArgument, 0U,
                     "memory.capture_buffers.null_output");
     }
-    *first = kCapture0;
-    *second = kCapture1;
+    *first = static_memory_layout::kLayout.capture[0].address();
+    *second = static_memory_layout::kLayout.capture[1].address();
     return Make(common::ErrorCode::kOk, 0U, "memory.capture_buffers");
 }
 
@@ -102,8 +118,8 @@ common::Error MemoryAllocator::InferenceBuffers(std::uintptr_t *first,
         return Make(common::ErrorCode::kInvalidArgument, 0U,
                     "memory.inference_buffers.null_output");
     }
-    *first = kInference0;
-    *second = kInference1;
+    *first = static_memory_layout::kLayout.inference[0].address();
+    *second = static_memory_layout::kLayout.inference[1].address();
     return Make(common::ErrorCode::kOk, 0U, "memory.inference_buffers");
 }
 
@@ -120,9 +136,9 @@ common::Error MemoryAllocator::ImportCompletedCapture(std::uintptr_t address,
     }
 
     std::uint8_t index = 0U;
-    if (address == kCapture1) {
+    if (address == static_memory_layout::kLayout.capture[1].address()) {
         index = 1U;
-    } else if (address != kCapture0) {
+    } else if (address != static_memory_layout::kLayout.capture[0].address()) {
         return Make(common::ErrorCode::kInvalidArgument,
                     static_cast<std::uint32_t>(address),
                     "memory.capture.import.unknown_address");
@@ -130,7 +146,8 @@ common::Error MemoryAllocator::ImportCompletedCapture(std::uintptr_t address,
 
     ++capture_sequence_;
     capture_generation_[index] = capture_sequence_;
-    frame->buffer = {address, kFrameBytes, index, Region::kCapture};
+    frame->buffer = {address, kConfig.frame_bytes(), index,
+                     Region::kCapture};
     frame->sequence = capture_sequence_;
     return Make(common::ErrorCode::kOk, frame->sequence, "memory.capture.import");
 }
@@ -151,9 +168,11 @@ common::Error MemoryAllocator::ValidateCaptureFrame(const CaptureFrame &frame) c
     }
 
     const std::uintptr_t expected_address =
-        frame.buffer.index == 0U ? kCapture0 : kCapture1;
+        frame.buffer.index == 0U
+            ? static_memory_layout::kLayout.capture[0].address()
+            : static_memory_layout::kLayout.capture[1].address();
     if (frame.buffer.address != expected_address ||
-        frame.buffer.size != kFrameBytes) {
+        frame.buffer.size != kConfig.frame_bytes()) {
         return Make(common::ErrorCode::kOwnership, frame.buffer.index,
                     "memory.capture.validate.not_owned");
     }
@@ -321,9 +340,9 @@ common::Error MemoryAllocator::ImportCompletedInference(std::uintptr_t address,
     }
 
     std::uint8_t index = 0U;
-    if (address == kInference1) {
+    if (address == static_memory_layout::kLayout.inference[1].address()) {
         index = 1U;
-    } else if (address != kInference0) {
+    } else if (address != static_memory_layout::kLayout.inference[0].address()) {
         return Make(common::ErrorCode::kInvalidArgument,
                     static_cast<std::uint32_t>(address),
                     "memory.inference.import.unknown_address");
@@ -346,8 +365,11 @@ bool MemoryAllocator::IsInferenceBufferFree(std::uintptr_t address) const
     if (!initialized_) {
         return false;
     }
-    const std::uint8_t index = address == kInference1 ? 1U : 0U;
-    if (address != kInference0 && address != kInference1) {
+    const std::uint8_t index =
+        address == static_memory_layout::kLayout.inference[1].address() ? 1U
+                                                                         : 0U;
+    if (address != static_memory_layout::kLayout.inference[0].address() &&
+        address != static_memory_layout::kLayout.inference[1].address()) {
         return false;
     }
     return inference_[index].state == BufferState::kFree;

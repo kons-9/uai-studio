@@ -1,5 +1,7 @@
 #include "driver/lcd_driver/registers/lcd_registers.hpp"
 
+#include "static_memory_layout/static_memory_layout.hpp"
+
 extern "C" {
 #include "stm32n6xx_hal.h"
 #include "stm32n6570_discovery_lcd.h"
@@ -12,7 +14,6 @@ constexpr std::uint32_t kDisplayInstance = 0U;
 constexpr std::uint32_t kDisplayLayer = 0U;
 constexpr std::uint32_t kDisplayWidth = 800U;
 constexpr std::uint32_t kDisplayHeight = 480U;
-constexpr std::uint32_t kInitialDisplayBuffer = 0x91200000U;
 
 } // namespace
 
@@ -27,7 +28,8 @@ uai::driver::DriverStatus LcdRegisterLayer::Initialize()
     }
 
     BSP_LCD_LayerConfig_t layer{};
-    layer.Address = kInitialDisplayBuffer;
+    layer.Address = static_cast<std::uint32_t>(
+        static_memory_layout::kLayout.display[0].address());
     layer.PixelFormat = LCD_PIXEL_FORMAT_RGB565;
     layer.X0 = 0U;
     layer.X1 = kDisplayWidth;

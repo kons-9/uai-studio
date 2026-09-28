@@ -109,7 +109,7 @@ void CameraRenderTask::Run()
             context.Halt("ai: diagnostic capture buffers unavailable\n");
         }
         const uai::ai::memory_allocator::Buffer source_buffer{
-            capture0, uai::ai::memory_allocator::kFrameBytes, 0U,
+            capture0, uai::ai::memory_allocator::kConfig.frame_bytes(), 0U,
             uai::ai::memory_allocator::Region::kCapture};
         status = context.cache.PrepareForDmaWrite(source_buffer);
         if (!status.Ok()) {

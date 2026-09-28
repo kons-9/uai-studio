@@ -268,6 +268,22 @@ Status NpuDriver::GetInputs(stai_ptr *inputs, stai_size *count) const
                         last_execution_};
 }
 
+Status NpuDriver::SetInput(stai_ptr input, stai_size size) const
+{
+    if (!initialized_ || model_ == nullptr || input == nullptr || size == 0U) {
+        return InvalidState("npu.set_input");
+    }
+    const stai_return_code code = model_->SetInput(input, size);
+    return IsError(code)
+               ? Status{common::Error{common::ErrorCode::kModel,
+                                      static_cast<std::uint32_t>(code),
+                                      "npu.set_input"},
+                        last_execution_}
+               : Status{common::Error{common::ErrorCode::kOk, 0U,
+                                      "npu.set_input"},
+                        last_execution_};
+}
+
 Status NpuDriver::GetOutputs(stai_ptr *outputs, stai_size *count) const
 {
     if (!initialized_ || model_ == nullptr || outputs == nullptr ||

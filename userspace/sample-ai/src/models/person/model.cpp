@@ -1,6 +1,9 @@
 #include "models/person/model.hpp"
 #include "models/person/person_decoder.hpp"
 
+#include "driver/cache_driver/cache_driver.hpp"
+#include "memory_allocator/memory_allocator.hpp"
+
 extern "C" {
 stai_return_code person_model_initialize(void);
 stai_return_code person_model_shutdown(void);
@@ -65,6 +68,69 @@ ModelCallbacks Model::GetCallbacks() const
 {
     return {ConfigurePersonDecoder, CompletePersonInference,
             &PersonDecoderInstance()};
+}
+
+common::Error Model::PrepareInput(memory_allocator::InferenceFrame &frame,
+                                  cache::CacheDriver &cache) const
+{
+    (void)cache;
+    if (!frame.from_pipe2) {
+        return {common::ErrorCode::kInvalidArgument, 0U,
+                "ai.model_input.invalid_pipe2_frame"};
+    }
+    frame.input_prepared_by_cpu = false;
+    return {common::ErrorCode::kOk, 0U, "ai.model_input.direct_pipe2"};
+}
+
+namespace {
+
+std::int16_t ClampCoordinate(float value, std::int32_t limit)
+{
+    if (value <= 0.0F) {
+        return 0;
+    }
+    if (value >= static_cast<float>(limit)) {
+        return static_cast<std::int16_t>(limit);
+    }
+    return static_cast<std::int16_t>(value);
+}
+
+} // namespace
+
+common::Error Model::ConvertResult(const ModelResult &source,
+                                   memory_allocator::BoxSet *destination) const
+{
+    if (destination == nullptr) {
+        return {common::ErrorCode::kInvalidArgument, 0U,
+                "person.model.result_destination"};
+    }
+    if (!source.detections_valid) {
+        return {common::ErrorCode::kModel, 0U, "person.model.result"};
+    }
+
+    destination->person = {};
+    destination->person.count = source.detection_count <
+                                        memory_allocator::kConfig.max_boxes
+                                    ? source.detection_count
+                                    : memory_allocator::kConfig.max_boxes;
+    for (std::uint32_t i = 0U; i < destination->person.count; ++i) {
+        const Detection &detection = source.detections[i];
+        destination->person.boxes[i].x =
+            ClampCoordinate(detection.x, memory_allocator::kConfig.frame_width);
+        destination->person.boxes[i].y =
+            ClampCoordinate(detection.y,
+                            memory_allocator::kConfig.frame_height);
+        destination->person.boxes[i].width =
+            ClampCoordinate(detection.width,
+                            memory_allocator::kConfig.frame_width);
+        destination->person.boxes[i].height =
+            ClampCoordinate(detection.height,
+                            memory_allocator::kConfig.frame_height);
+        destination->person.boxes[i].confidence = detection.confidence;
+    }
+    destination->person_valid = true;
+    return {common::ErrorCode::kOk, destination->person.count,
+            "person.model.result"};
 }
 
 ::uai::ai::models::ModelRuntime &Runtime(Model &model)

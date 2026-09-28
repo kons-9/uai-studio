@@ -7,6 +7,15 @@
 #include "common/error.hpp"
 #include "stai.h"
 
+namespace uai::ai::cache {
+class CacheDriver;
+}
+
+namespace uai::ai::memory_allocator {
+struct BoxSet;
+struct InferenceFrame;
+}
+
 namespace uai::ai::models {
 
 constexpr std::size_t kMaxModelOutputs = 4U;
@@ -145,8 +154,19 @@ public:
     {
         return {};
     }
+    /* Model-specific input preparation belongs to the concrete model. */
+    virtual common::Error PrepareInput(memory_allocator::InferenceFrame &frame,
+                                       cache::CacheDriver &cache) const = 0;
+    /* Model-specific conversion into the application result contract. */
+    virtual common::Error ConvertResult(
+        const ModelResult &source, memory_allocator::BoxSet *destination) const = 0;
 
 protected:
+    /* Shared implementation for models whose input is a letterboxed view of
+     * the camera's Pipe2 frame. This is intentionally not public model API. */
+    static common::Error PreparePipe2LetterboxedInput(
+        memory_allocator::InferenceFrame &frame, std::uint32_t model_width,
+        std::uint32_t model_height, cache::CacheDriver &cache);
     virtual ~Model() = default;
 };
 

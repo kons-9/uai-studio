@@ -19,9 +19,10 @@ constexpr std::uint16_t kFaceBlue = 0x001FU;
 constexpr std::uint16_t kSegmentationGreen = 0x07E0U;
 constexpr std::uint16_t kInferenceRegionColor = kSegmentationGreen;
 constexpr std::int32_t kLineWidth = 4;
-constexpr std::size_t kInferenceDisplaySize = memory_allocator::kInferenceWidth;
+constexpr std::size_t kInferenceDisplaySize =
+    memory_allocator::kConfig.inference_width;
 constexpr std::size_t kInferenceDisplayX =
-    (memory_allocator::kFrameWidth - kInferenceDisplaySize) / 2U;
+    (memory_allocator::kConfig.frame_width - kInferenceDisplaySize) / 2U;
 constexpr std::uint16_t kInitialPattern[] = {
     0xFFFFU, 0xFFE0U, 0x07FFU, 0x07E0U,
     0xF81FU, 0xF800U, 0x001FU, 0x0000U,
@@ -115,17 +116,17 @@ void LcdDriver::FillInitialFrame(
     const memory_allocator::BoxSet &boxes, bool coordinate_pattern)
 {
     auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
-    for (std::size_t y = 0U; y < memory_allocator::kFrameHeight; ++y) {
-        for (std::size_t x = 0U; x < memory_allocator::kFrameWidth; ++x) {
+    for (std::size_t y = 0U; y < memory_allocator::kConfig.frame_height; ++y) {
+        for (std::size_t x = 0U; x < memory_allocator::kConfig.frame_width; ++x) {
             if (coordinate_pattern) {
-                pixels[y * memory_allocator::kFrameWidth + x] =
+                pixels[y * memory_allocator::kConfig.frame_width + x] =
                     CoordinatePatternPixel(x, y);
                 continue;
             }
             const std::size_t color =
                 x * (sizeof(kInitialPattern) / sizeof(kInitialPattern[0])) /
-                memory_allocator::kFrameWidth;
-            pixels[y * memory_allocator::kFrameWidth + x] =
+                memory_allocator::kConfig.frame_width;
+            pixels[y * memory_allocator::kConfig.frame_width + x] =
                 kInitialPattern[color];
         }
     }
@@ -136,15 +137,15 @@ common::Error LcdDriver::GenerateCoordinatePattern(
     const memory_allocator::Buffer &destination) const
 {
     if (!initialized_ || destination.region != memory_allocator::Region::kCapture ||
-        destination.size != memory_allocator::kFrameBytes ||
+        destination.size != memory_allocator::kConfig.frame_bytes() ||
         destination.address == 0U) {
         return {common::ErrorCode::kInvalidArgument, 0U,
                 "lcd.generate_coordinate_pattern"};
     }
     auto *pixels = reinterpret_cast<std::uint16_t *>(destination.address);
-    for (std::size_t y = 0U; y < memory_allocator::kFrameHeight; ++y) {
-        for (std::size_t x = 0U; x < memory_allocator::kFrameWidth; ++x) {
-            pixels[y * memory_allocator::kFrameWidth + x] =
+    for (std::size_t y = 0U; y < memory_allocator::kConfig.frame_height; ++y) {
+        for (std::size_t x = 0U; x < memory_allocator::kConfig.frame_width; ++x) {
+            pixels[y * memory_allocator::kConfig.frame_width + x] =
                 CoordinatePatternPixel(x, y);
         }
     }
@@ -156,14 +157,15 @@ void LcdDriver::DrawBoxes(const memory_allocator::DisplayBuffer &buffer,
 {
     auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
     const std::int32_t width =
-        static_cast<std::int32_t>(memory_allocator::kFrameWidth);
+        static_cast<std::int32_t>(memory_allocator::kConfig.frame_width);
     const std::int32_t height =
-        static_cast<std::int32_t>(memory_allocator::kFrameHeight);
+        static_cast<std::int32_t>(memory_allocator::kConfig.frame_height);
     const auto draw_set = [&](const memory_allocator::DetectionSet &set,
                               std::uint16_t color) {
         const std::uint32_t count =
-            set.count < memory_allocator::kMaxBoxes ? set.count
-                                                    : memory_allocator::kMaxBoxes;
+            set.count < memory_allocator::kConfig.max_boxes
+                ? set.count
+                : memory_allocator::kConfig.max_boxes;
         for (std::uint32_t i = 0U; i < count; ++i) {
             const memory_allocator::Box &box = set.boxes[i];
             const std::int32_t left = box.x;
@@ -225,13 +227,13 @@ void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
     /* A mask is emitted only by the segmentation postprocessor. Pipe2 keeps
      * the complete Pipe1 crop and letterboxes it into 320x320: 320x192 of the
      * tensor is live image data and 64 rows are padding on each side. */
-    constexpr std::size_t crop_width = memory_allocator::kFrameWidth;
+    constexpr std::size_t crop_width = memory_allocator::kConfig.frame_width;
     constexpr std::size_t crop_x = 0U;
     constexpr std::size_t kMaskContentHeight = 192U;
     constexpr std::size_t kMaskPadTop = 64U;
-    for (std::size_t y = 0U; y < memory_allocator::kFrameHeight; ++y) {
+    for (std::size_t y = 0U; y < memory_allocator::kConfig.frame_height; ++y) {
         const std::size_t mask_y = kMaskPadTop +
-            y * kMaskContentHeight / memory_allocator::kFrameHeight;
+            y * kMaskContentHeight / memory_allocator::kConfig.frame_height;
         for (std::size_t x = 0U; x < crop_width; ++x) {
             const std::size_t mask_x =
                 x * boxes.segmentation.mask_width / crop_width;
@@ -239,7 +241,7 @@ void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
                 continue;
             }
             const std::size_t pixel_index =
-                y * memory_allocator::kFrameWidth + crop_x + x;
+                y * memory_allocator::kConfig.frame_width + crop_x + x;
             const std::uint16_t original = pixels[pixel_index];
             const std::uint16_t red =
                 static_cast<std::uint16_t>((original >> 11U) & 0x1FU);
@@ -354,7 +356,9 @@ common::Error LcdDriver::ComposeAndPresent(
     const auto *source_bytes = reinterpret_cast<const std::uint8_t *>(
         capture.buffer.address);
     const std::uint32_t source_crc =
-        log_copy_crc ? Crc32(source_bytes, memory_allocator::kFrameBytes) : 0U;
+        log_copy_crc
+            ? Crc32(source_bytes, memory_allocator::kConfig.frame_bytes())
+            : 0U;
 
     memory_allocator::DisplayBuffer display{};
     status = memory_->AcquireDisplayBuffer(&display);
@@ -367,7 +371,7 @@ common::Error LcdDriver::ComposeAndPresent(
     }
     std::memcpy(reinterpret_cast<void *>(display.buffer.address),
                 reinterpret_cast<const void *>(capture.buffer.address),
-                memory_allocator::kFrameBytes);
+                memory_allocator::kConfig.frame_bytes());
     if (timing_diagnostics_) {
         const std::uint32_t copy_elapsed_ms = HAL_GetTick() - copy_start_tick;
         static std::uint32_t copy_window_start = 0U;
@@ -404,8 +408,8 @@ common::Error LcdDriver::ComposeAndPresent(
     const std::uint32_t copied_crc =
         log_copy_crc
             ? Crc32(reinterpret_cast<const std::uint8_t *>(
-                        display.buffer.address),
-                    memory_allocator::kFrameBytes)
+                    display.buffer.address),
+                    memory_allocator::kConfig.frame_bytes())
             : 0U;
     DrawMask(display, boxes);
     DrawInferenceRegion(display);
@@ -424,7 +428,7 @@ common::Error LcdDriver::ComposeAndPresent(
         }
         const std::uint32_t memory_crc = Crc32(
             reinterpret_cast<const std::uint8_t *>(display.buffer.address),
-            memory_allocator::kFrameBytes);
+            memory_allocator::kConfig.frame_bytes());
         status = cache_->PrepareForPeripheralRead(display.buffer);
         if (!status.Ok()) {
             (void)memory_->ReleaseDisplayBuffer(display);
@@ -432,7 +436,7 @@ common::Error LcdDriver::ComposeAndPresent(
         }
         UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
                       "lcd: copy crc bytes=%u source=%x copied=%x psram=%x\n"),
-                  static_cast<unsigned int>(memory_allocator::kFrameBytes),
+                  static_cast<unsigned int>(memory_allocator::kConfig.frame_bytes()),
                   static_cast<unsigned int>(source_crc),
                   static_cast<unsigned int>(copied_crc),
                   static_cast<unsigned int>(memory_crc));
@@ -453,7 +457,7 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
         return {common::ErrorCode::kNotInitialized, 0U, "lcd.compose_inference"};
     }
     if (!frame || !frame.from_pipe2 ||
-        frame.buffer.size < memory_allocator::kInferenceFrameBytes) {
+        frame.buffer.size < memory_allocator::kConfig.inference_frame_bytes()) {
         return {common::ErrorCode::kInvalidArgument, 0U, "lcd.compose_inference"};
     }
 
@@ -472,7 +476,7 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
     }
 
     const memory_allocator::Buffer input_buffer{
-        frame.buffer.address, memory_allocator::kInferenceFrameBytes,
+        frame.buffer.address, memory_allocator::kConfig.inference_frame_bytes(),
         frame.buffer.index, memory_allocator::Region::kInference};
     status = cache_->PrepareForCpuRead(input_buffer);
     if (!status.Ok()) {
@@ -489,26 +493,29 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
         frame.buffer.address);
     auto *destination = reinterpret_cast<std::uint16_t *>(
         display.buffer.address);
-    for (std::size_t y = 0U; y < memory_allocator::kFrameHeight; ++y) {
-        for (std::size_t x = 0U; x < memory_allocator::kFrameWidth; ++x) {
-            destination[y * memory_allocator::kFrameWidth + x] = 0U;
+    for (std::size_t y = 0U; y < memory_allocator::kConfig.frame_height; ++y) {
+        for (std::size_t x = 0U; x < memory_allocator::kConfig.frame_width; ++x) {
+            destination[y * memory_allocator::kConfig.frame_width + x] = 0U;
         }
     }
     for (std::size_t y = 0U; y < kInferenceDisplaySize; ++y) {
         const std::size_t source_y =
-            y * memory_allocator::kInferenceHeight / kInferenceDisplaySize;
+            y * memory_allocator::kConfig.inference_height /
+            kInferenceDisplaySize;
         for (std::size_t x = 0U; x < kInferenceDisplaySize; ++x) {
             const std::size_t source_x =
-                x * memory_allocator::kInferenceWidth / kInferenceDisplaySize;
+            x * memory_allocator::kConfig.inference_width /
+            kInferenceDisplaySize;
             const std::size_t source_index =
-                (source_y * memory_allocator::kInferenceWidth + source_x) * 3U;
+                (source_y * memory_allocator::kConfig.inference_width +
+                 source_x) * 3U;
             const std::uint16_t red =
                 static_cast<std::uint16_t>(source[source_index] >> 3U);
             const std::uint16_t green =
                 static_cast<std::uint16_t>(source[source_index + 1U] >> 2U);
             const std::uint16_t blue =
                 static_cast<std::uint16_t>(source[source_index + 2U] >> 3U);
-            destination[y * memory_allocator::kFrameWidth +
+            destination[y * memory_allocator::kConfig.frame_width +
                         kInferenceDisplayX + x] =
                 static_cast<std::uint16_t>((red << 11U) | (green << 5U) |
                                             blue);

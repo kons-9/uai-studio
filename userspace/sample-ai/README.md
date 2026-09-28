@@ -104,24 +104,25 @@ ST公式のモデル取得元、モデルファイル名、ライセンスと利
   `face/`ごとのモデル実装・Decoderを配置します。STEdgeAIが生成した `*_model_*`
   C関数名と、anchor/dequant/NMS・mask変換・座標変換などのモデル固有処理は各モデル
   namespaceに閉じ込めます。具体的な型は `uai::ai::models::<model>::Model` です。
-- `src/model_facade/`：Schedulerが所有する`ModelFacade`です。Taskから登録されたモデルの
-  bindingを保持し、選択中モデルのDecoder設定・呼び出しを仲介します。NPU実行や
-  スケジューリングポリシーは持ちません。
-- `src/npu_scheduler/`：Taskからモデルを登録し、command blobのpreloadとNPU runtimeの
-  ライフサイクルを管理します。`SelectNext()`で登録済みモデルから次のモデルを選び、
-  入出力バインドとNPU実行を提供します。
-- `src/inference_dispatcher/`：選択済みモデルの入力cache処理、動的出力、NPU実行、Decoder
-  呼び出し、共通`BoxSet`への変換を担当します。
+- `src/npu_runtime/`：アプリケーション向けの`NpuRuntime` Facadeです。Taskにはモデル登録、
+  初期化、推論実行だけを公開し、SchedulerとInferenceDispatcherを内部に隠します。NPU
+  ドライバの初期化、preload、選択済みモデルのruntime切り替えもここで行います。
+- `src/npu_runtime/scheduler/`：登録済みモデルの管理と、次に実行するモデルの選択を
+  担当します。選択中Modelへの入力準備、Decoder、結果変換の委譲もこの層で行います。
+  モデル選択ポリシーはこの層に閉じ込め、NPUドライバは持ちません。
+- `src/npu_runtime/inference_dispatcher/`：選択済みモデルの入力準備、cache処理、動的出力、
+  NPU実行、Decoder呼び出しを担当します。モデル固有の入力準備と`BoxSet`変換は、
+  `Model`インターフェースを通して具体的なモデルへ委譲します。
 
-Taskは起動時に`NpuScheduler::RegisterModel()`でperson、segmentation、faceを登録するだけで、
-フレームごとのモデル順序を決定しません。Schedulerは現在ラウンドロビンで
-`SelectNext()`を実行します。`ModelKind`と入力形状だけを持つ`ModelDescriptor`の共通型は
+Taskは起動時に`NpuRuntime::RegisterModel()`でperson、segmentation、faceを登録し、
+`NpuRuntime::Run()`を呼ぶだけです。フレームごとのモデル順序はTaskが決定せず、Schedulerが
+現在ラウンドロビンで選択します。`ModelKind`と入力形状だけを持つ`ModelDescriptor`の共通型は
 `models/model.hpp`に置き、具体的なdescriptor値は各モデルの`model.cpp`が所有します。
 出力数・出力サイズ・量子化値は生成STAIの`stai_network_info`から実行時に取得し、公開
 モデルI/Fには持ち込みません。現在のdescriptorはSchedulerからDispatcherへ提供します。
 
-そのため、モデル切り替えやNPUの実行順序に関する条件分岐はSchedulerのbinding表へ
-集約しています。モデル選択用のCMakeオプションや`AI_MODEL_*`のビルド分岐はなく、
+そのため、モデル選択の条件分岐はSchedulerのbinding表へ集約し、NPUの実行手順は
+NpuRuntimeとDispatcherへ集約しています。モデル選択用のCMakeオプションや`AI_MODEL_*`のビルド分岐はなく、
 生成C API・後処理・3モデルのcommand blobを常に同じ構成でリンクします。生成C
 ラッパーとモデル固有後処理も各`src/models/<model>/`にまとめています。
 

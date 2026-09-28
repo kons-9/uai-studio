@@ -2,6 +2,7 @@
 #include "common/log.hpp"
 #include "sample_ai_config.hpp"
 #include "image_resizer/image_resizer.hpp"
+#include "static_memory_layout/static_memory_layout.hpp"
 
 #include "driver/camera_driver/sensor_driver/registers/imx335_registers.hpp"
 
@@ -28,8 +29,6 @@ constexpr std::uint32_t kSensorWidth = 2592U;
 constexpr std::uint32_t kSensorHeight = 1944U;
 constexpr std::uint32_t kOutputWidth = 800U;
 constexpr std::uint32_t kOutputHeight = 480U;
-constexpr std::uint32_t kInferenceWidth = 480U;
-constexpr std::uint32_t kInferenceHeight = 480U;
 constexpr std::uint32_t kFrameTimeoutMs = 2000U;
 constexpr std::uint32_t kRecoveryRetryMs = 5000U;
 /* Match ref/ on the STM32N6570-DK.  Keep the CSI PHY configuration
@@ -37,8 +36,6 @@ constexpr std::uint32_t kRecoveryRetryMs = 5000U;
  * the same timing margin as the reference application. */
 constexpr std::int32_t kFrameRateFps = 20;
 
-constexpr std::uintptr_t kRawDumpBuffer = 0x91600000UL;
-constexpr std::uint32_t kRawDumpBufferBytes = 4U * 1024U * 1024U;
 constexpr std::uint32_t kRawDumpWordLimit = 0x7F000U;
 constexpr std::uint8_t kRawDumpSentinel = 0xA5U;
 bool g_raw_dump_started = false;
@@ -81,7 +78,7 @@ std::uintptr_t InferenceDmaAddress(std::uintptr_t buffer)
 void ClearInferenceInput(std::uintptr_t buffer)
 {
     std::memset(reinterpret_cast<void *>(buffer), 0U,
-                uai::ai::memory_allocator::kInferenceFrameBytes);
+                uai::ai::memory_allocator::kConfig.inference_frame_bytes());
 }
 
 uai::ai::common::Error ApplyDcmippDecimation(std::uint32_t pipe,
@@ -373,11 +370,13 @@ void PrepareRawDump()
     }
     g_raw_dump_started = false;
     g_raw_dump_reported = false;
-    std::memset(reinterpret_cast<void *>(kRawDumpBuffer), kRawDumpSentinel,
-                kRawDumpBufferBytes);
+    const auto &raw_dump =
+        uai::ai::static_memory_layout::kLayout.raw_dump;
+    std::memset(reinterpret_cast<void *>(raw_dump.address()), kRawDumpSentinel,
+                raw_dump.size());
     SCB_CleanInvalidateDCache_by_Addr(
-        reinterpret_cast<std::uint32_t *>(kRawDumpBuffer),
-        static_cast<std::int32_t>(kRawDumpBufferBytes));
+        reinterpret_cast<std::uint32_t *>(raw_dump.address()),
+        static_cast<std::int32_t>(raw_dump.size()));
 }
 
 void StartRawDump()
@@ -391,7 +390,9 @@ void StartRawDump()
                                                  DCMIPP_FLAG_PIPE0_LIMIT);
     if (HAL_DCMIPP_CSI_PIPE_Start(&hcamera_dcmipp, DCMIPP_PIPE0,
                                   DCMIPP_VIRTUAL_CHANNEL0,
-                                  static_cast<std::uint32_t>(kRawDumpBuffer),
+                                  static_cast<std::uint32_t>(
+                                      uai::ai::static_memory_layout::kLayout
+                                          .raw_dump.address()),
                                   DCMIPP_MODE_SNAPSHOT) != HAL_OK) {
         g_raw_dump_reported = true;
         return;
@@ -546,7 +547,10 @@ uai::ai::common::Error CameraDriver::Initialize(memory_allocator::MemoryAllocato
     if (!ConfigureSensor(registers).Ok()) return Hardware("camera.sensor.configure");
     InstallExposureWorkaround();
     if (!ConfigurePipe().Ok() ||
-        !ConfigureInferencePipe(kInferenceWidth, kInferenceHeight).Ok() ||
+        !ConfigureInferencePipe(
+             memory_allocator::kConfig.inference_width,
+             memory_allocator::kConfig.inference_height)
+             .Ok() ||
         !ConfigureRawDumpPipe().Ok()) {
         return Hardware("camera.configure");
     }
@@ -570,8 +574,12 @@ uai::ai::common::Error CameraDriver::Start()
     std::uintptr_t first = 0U, second = 0U;
     uai::ai::common::Error status = memory_->CaptureBuffers(&first, &second);
     if (!status.Ok()) return status;
-    const memory_allocator::Buffer first_buffer{first, memory_allocator::kFrameBytes, 0U, memory_allocator::Region::kCapture};
-    const memory_allocator::Buffer second_buffer{second, memory_allocator::kFrameBytes, 1U, memory_allocator::Region::kCapture};
+    const memory_allocator::Buffer first_buffer{
+        first, memory_allocator::kConfig.frame_bytes(), 0U,
+        memory_allocator::Region::kCapture};
+    const memory_allocator::Buffer second_buffer{
+        second, memory_allocator::kConfig.frame_bytes(), 1U,
+        memory_allocator::Region::kCapture};
     status = cache_->PrepareForDmaWrite(first_buffer);
     if (!status.Ok()) return status;
     status = cache_->PrepareForDmaWrite(second_buffer);
@@ -580,10 +588,10 @@ uai::ai::common::Error CameraDriver::Start()
     status = memory_->InferenceBuffers(&inference_first, &inference_second);
     if (!status.Ok()) return status;
     const memory_allocator::Buffer inference_first_buffer{
-        inference_first, memory_allocator::kInferenceBufferBytes, 0U,
+        inference_first, memory_allocator::kConfig.inference_buffer_bytes(), 0U,
         memory_allocator::Region::kInference};
     const memory_allocator::Buffer inference_second_buffer{
-        inference_second, memory_allocator::kInferenceBufferBytes, 1U,
+        inference_second, memory_allocator::kConfig.inference_buffer_bytes(), 1U,
         memory_allocator::Region::kInference};
     ClearInferenceInput(inference_first);
     ClearInferenceInput(inference_second);
@@ -686,8 +694,10 @@ uai::ai::common::Error CameraDriver::Process()
         if (recovery_ok) {
             InstallExposureWorkaround();
             recovery_ok = ConfigurePipe().Ok() &&
-                          ConfigureInferencePipe(kInferenceWidth,
-                                                 kInferenceHeight).Ok() &&
+                          ConfigureInferencePipe(
+                              memory_allocator::kConfig.inference_width,
+                              memory_allocator::kConfig.inference_height)
+                              .Ok() &&
                           ConfigureRawDumpPipe().Ok();
         }
         if (!recovery_ok ||

@@ -11,6 +11,11 @@ public:
     static const ModelDescriptor &Descriptor();
     const ModelDescriptor &GetDescriptor() const override;
     ModelCallbacks GetCallbacks() const override;
+    common::Error PrepareInput(memory_allocator::InferenceFrame &frame,
+                               cache::CacheDriver &cache) const override;
+    common::Error ConvertResult(
+        const ModelResult &source,
+        memory_allocator::BoxSet *destination) const override;
 
 private:
     stai_return_code Initialize() override;
@@ -30,7 +35,7 @@ private:
     friend ::uai::ai::models::ModelRuntime &Runtime(Model &model);
 };
 
-/* Internal bridge for NpuScheduler; application code should use Model. */
+/* Internal bridge for NpuRuntime; application code should use Model. */
 ::uai::ai::models::ModelRuntime &Runtime(Model &model);
 
 } // namespace uai::ai::models::segmentation

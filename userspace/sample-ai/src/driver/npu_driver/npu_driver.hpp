@@ -51,6 +51,7 @@ public:
 
     Status GetInfo(stai_network_info *info) const;
     Status GetInputs(stai_ptr *inputs, stai_size *count) const;
+    Status SetInput(stai_ptr input, stai_size size) const;
     Status GetOutputs(stai_ptr *outputs, stai_size *count) const;
     Status SetOutputs(const stai_ptr *outputs, stai_size count) const;
 

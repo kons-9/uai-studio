@@ -1,6 +1,7 @@
 #ifndef UAI_AI_MEMORY_ALLOCATOR_HPP
 #define UAI_AI_MEMORY_ALLOCATOR_HPP
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -8,50 +9,78 @@
 
 namespace uai::ai::memory_allocator {
 
-constexpr std::uint32_t kFrameWidth = 800U;
-constexpr std::uint32_t kFrameHeight = 480U;
-constexpr std::size_t kFrameBytes =
-    static_cast<std::size_t>(kFrameWidth) * kFrameHeight * 2U;
-/* Runtime model switching keeps one pair of fixed-size Pipe2/NPU slots alive.
- * Allocate for the largest input/output in the model set; each active model
- * uses only the prefix and output slots described by its runtime descriptor. */
-constexpr std::uint32_t kInferenceWidth = 480U;
-constexpr std::uint32_t kInferenceHeight = 480U;
-constexpr std::size_t kInferenceFrameBytes =
-    static_cast<std::size_t>(kInferenceWidth) * kInferenceHeight * 3U;
-constexpr std::size_t kBufferAlignment = 32U;
-constexpr std::size_t AlignUp(std::size_t value, std::size_t alignment)
-{
-    return (value + alignment - 1U) / alignment * alignment;
-}
+/* Allocation sizing and policy live here. The physical memory map is provided
+ * separately by static_memory_layout from the linker script. Derived sizes
+ * stay constexpr, but are calculated from the values that describe the
+ * allocation policy. */
+struct MemoryAllocatorConfig {
+    std::uint32_t frame_width = 800U;
+    std::uint32_t frame_height = 480U;
+    std::uint32_t frame_bytes_per_pixel = 2U;
 
-constexpr std::size_t kMaxModelOutputs = 4U;
-constexpr std::size_t kModelOutputCount = 4U;
-constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
-    320U * 320U * 2U, 60U * 60U * 18U, 30U * 30U * 18U, 384U * 16U};
+    /* Runtime model switching keeps one pair of fixed-size Pipe2/NPU slots
+     * alive. Allocate for the largest input/output in the model set. */
+    std::uint32_t inference_width = 480U;
+    std::uint32_t inference_height = 480U;
+    std::uint32_t inference_bytes_per_pixel = 3U;
+    std::size_t buffer_alignment = 32U;
 
-/* Dynamic switching keeps the fixed person-sized Pipe2 image as a source for
- * the smaller segmentation and face tensors. The scratch area is a shared
- * allocator-owned region because inference is serialized; keeping it outside
- * the two 1-MB inference slots avoids overlap with the next DMA buffer. */
-constexpr std::uint32_t kInferenceSourceWidth = 480U;
-constexpr std::uint32_t kInferenceSourceHeight = 288U;
-constexpr std::size_t kInferenceScratchBytes =
-    static_cast<std::size_t>(kInferenceSourceWidth) *
-    kInferenceSourceHeight * 3U;
-/* 0x91600000-0x919FFFFF is reserved by the camera raw-dump diagnostic path. */
-constexpr std::uintptr_t kInferenceScratchAddress = 0x91C00000UL;
-constexpr std::size_t kInferenceOutputsOffset =
-    AlignUp(kInferenceFrameBytes, kBufferAlignment);
-constexpr std::size_t kInferenceOutputStorageBytes =
-    AlignUp(kModelOutputBytes[0], kBufferAlignment) +
-    AlignUp(kModelOutputBytes[1], kBufferAlignment) +
-    AlignUp(kModelOutputBytes[2], kBufferAlignment) +
-    AlignUp(kModelOutputBytes[3], kBufferAlignment);
-constexpr std::size_t kInferenceBufferBytes = AlignUp(
-    kInferenceOutputsOffset + kInferenceOutputStorageBytes,
-    kBufferAlignment);
-constexpr std::size_t kMaxBoxes = 16U;
+    std::array<std::size_t, 4U> model_output_bytes = {
+        320U * 320U * 2U, 60U * 60U * 18U, 30U * 30U * 18U, 384U * 16U};
+
+    /* Dynamic switching uses the fixed person-sized Pipe2 image as a source
+     * for smaller model tensors. Scratch capacity is shared because inference
+     * is serialized. */
+    std::uint32_t inference_source_width = 480U;
+    std::uint32_t inference_source_height = 288U;
+    std::size_t max_boxes = 16U;
+
+    constexpr std::size_t AlignUp(std::size_t value) const
+    {
+        return (value + buffer_alignment - 1U) / buffer_alignment *
+               buffer_alignment;
+    }
+
+    constexpr std::size_t frame_bytes() const
+    {
+        return static_cast<std::size_t>(frame_width) * frame_height *
+               frame_bytes_per_pixel;
+    }
+
+    constexpr std::size_t inference_frame_bytes() const
+    {
+        return static_cast<std::size_t>(inference_width) * inference_height *
+               inference_bytes_per_pixel;
+    }
+
+    constexpr std::size_t inference_scratch_bytes() const
+    {
+        return static_cast<std::size_t>(inference_source_width) *
+               inference_source_height * inference_bytes_per_pixel;
+    }
+
+    constexpr std::size_t inference_outputs_offset() const
+    {
+        return AlignUp(inference_frame_bytes());
+    }
+
+    constexpr std::size_t inference_output_storage_bytes() const
+    {
+        std::size_t total = 0U;
+        for (const std::size_t output_bytes : model_output_bytes) {
+            total += AlignUp(output_bytes);
+        }
+        return total;
+    }
+
+    constexpr std::size_t inference_buffer_bytes() const
+    {
+        return AlignUp(inference_outputs_offset() +
+                       inference_output_storage_bytes());
+    }
+};
+
+inline constexpr MemoryAllocatorConfig kConfig{};
 
 enum class Region : std::uint8_t {
     kCapture,
@@ -73,7 +102,7 @@ struct Buffer {
     std::size_t size = 0U;
     std::uint8_t index = 0U;
     Region region = Region::kCapture;
-    std::size_t alignment = kBufferAlignment;
+    std::size_t alignment = kConfig.buffer_alignment;
 
     explicit operator bool() const { return address != 0U && size != 0U; }
 };
@@ -94,7 +123,7 @@ struct DisplayBuffer {
 struct InferenceFrame {
     Buffer buffer{};
     Buffer scratch{};
-    Buffer outputs[kMaxModelOutputs]{};
+    Buffer outputs[kConfig.model_output_bytes.size()]{};
     std::uint8_t output_count = 0U;
     std::uint32_t capture_sequence = 0U;
     bool from_pipe2 = false;
@@ -113,7 +142,7 @@ struct Box {
 
 struct DetectionSet {
     std::uint32_t count = 0U;
-    Box boxes[kMaxBoxes]{};
+    Box boxes[kConfig.max_boxes]{};
 };
 
 struct SegmentationSet {

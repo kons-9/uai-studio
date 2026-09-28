@@ -19,6 +19,16 @@ MEMORY
    * the command-blob area, so the generated blob image is separate from the
    * model weights. */
   MODEL_FLASH (rx) : ORIGIN = 0x70500000, LENGTH = 0x00E00000
+
+  /* External PSRAM is not part of the load image. Reserve its fixed regions
+   * here so C++ obtains their addresses from linker symbols instead of
+   * duplicating physical addresses in allocator or driver code. */
+  PSRAM_CAPTURE (rwx) : ORIGIN = 0x91000000, LENGTH = 0x00200000
+  PSRAM_DISPLAY (rwx) : ORIGIN = 0x91200000, LENGTH = 0x00200000
+  PSRAM_INFERENCE (rwx) : ORIGIN = 0x91400000, LENGTH = 0x00200000
+  PSRAM_RAW_DUMP (rwx) : ORIGIN = 0x91600000, LENGTH = 0x00400000
+  PSRAM_MASK (rwx) : ORIGIN = 0x91A00000, LENGTH = 0x00040000
+  PSRAM_SCRATCH (rwx) : ORIGIN = 0x91C00000, LENGTH = 0x00100000
 }
 
 _estack = ORIGIN(APP) + LENGTH(APP);
@@ -200,6 +210,68 @@ SECTIONS
   __end = .;
   _end = .;
   PROVIDE(end = .);
+
+  /* These sections reserve address ranges only; the external PSRAM is
+   * initialized by the application before any of the buffers are used. */
+  .sample_ai_capture (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __sample_ai_capture0_start__ = .;
+    . = . + 0x00100000;
+    __sample_ai_capture0_end__ = .;
+    __sample_ai_capture1_start__ = .;
+    . = . + 0x00100000;
+    __sample_ai_capture1_end__ = .;
+  } >PSRAM_CAPTURE
+
+  .sample_ai_display (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __sample_ai_display0_start__ = .;
+    . = . + 0x00100000;
+    __sample_ai_display0_end__ = .;
+    __sample_ai_display1_start__ = .;
+    . = . + 0x00100000;
+    __sample_ai_display1_end__ = .;
+  } >PSRAM_DISPLAY
+
+  .sample_ai_inference (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __sample_ai_inference0_start__ = .;
+    . = . + 0x00100000;
+    __sample_ai_inference0_end__ = .;
+    __sample_ai_inference1_start__ = .;
+    . = . + 0x00100000;
+    __sample_ai_inference1_end__ = .;
+  } >PSRAM_INFERENCE
+
+  .sample_ai_raw_dump (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __sample_ai_raw_dump_start__ = .;
+    . = . + 0x00400000;
+    __sample_ai_raw_dump_end__ = .;
+  } >PSRAM_RAW_DUMP
+
+  .sample_ai_segmentation_mask (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __sample_ai_segmentation_mask0_start__ = .;
+    . = . + 0x00020000;
+    __sample_ai_segmentation_mask0_end__ = .;
+    __sample_ai_segmentation_mask1_start__ = .;
+    . = . + 0x00020000;
+    __sample_ai_segmentation_mask1_end__ = .;
+  } >PSRAM_MASK
+
+  .sample_ai_inference_scratch (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __sample_ai_inference_scratch_start__ = .;
+    . = . + 0x00100000;
+    __sample_ai_inference_scratch_end__ = .;
+  } >PSRAM_SCRATCH
 
   /DISCARD/ :
   {

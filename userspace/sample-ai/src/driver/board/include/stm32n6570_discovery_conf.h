@@ -1,7 +1,18 @@
 #ifndef UAI_AI_STM32N6570_DISCOVERY_CONF_H
 #define UAI_AI_STM32N6570_DISCOVERY_CONF_H
 
+#include <stdint.h>
+
 #include "stm32n6xx_hal.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern uint8_t __sample_ai_display0_start__[];
+extern uint8_t __sample_ai_display1_start__[];
+#ifdef __cplusplus
+}
+#endif
 
 #define USE_COM_LOG                         0U
 #define USE_BSP_COM_FEATURE                 0U
@@ -10,8 +21,8 @@
 #define USE_TS_MULTI_TOUCH                  0U
 #define TS_TOUCH_NBR                        0U
 
-#define LCD_LAYER_0_ADDRESS                 0x91200000U
-#define LCD_LAYER_1_ADDRESS                 0x91300000U
+#define LCD_LAYER_0_ADDRESS                 ((uintptr_t)__sample_ai_display0_start__)
+#define LCD_LAYER_1_ADDRESS                 ((uintptr_t)__sample_ai_display1_start__)
 
 #define DEFAULT_AUDIO_IN_BUFFER_SIZE        2048U
 

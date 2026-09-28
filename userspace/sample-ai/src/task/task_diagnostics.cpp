@@ -65,7 +65,7 @@ void LogFrameBrightness(
     const auto *pixels =
         reinterpret_cast<const std::uint16_t *>(capture.buffer.address);
     constexpr std::size_t kPixelCount =
-        uai::ai::memory_allocator::kFrameBytes / sizeof(*pixels);
+        uai::ai::memory_allocator::kConfig.frame_bytes() / sizeof(*pixels);
     constexpr std::size_t kSampleStep = 64U;
     std::uint32_t luminance_sum = 0U;
     std::uint32_t luminance_peak = 0U;
@@ -112,14 +112,16 @@ void LogInferenceInput(
     }
     TaskContext &context = GetTaskContext();
     if (!frame || !frame.from_pipe2 ||
-        frame.buffer.size < uai::ai::memory_allocator::kInferenceFrameBytes) {
+        frame.buffer.size <
+            uai::ai::memory_allocator::kConfig.inference_frame_bytes()) {
         UAI_LOG_TEXT(uai::ai::common::LogLevel::kDebug, reinterpret_cast<UB *>(const_cast<char *>(
             "ai: input inspect invalid frame\n")));
         return;
     }
 
     const uai::ai::memory_allocator::Buffer input_buffer{
-        frame.buffer.address, uai::ai::memory_allocator::kInferenceFrameBytes,
+        frame.buffer.address,
+        uai::ai::memory_allocator::kConfig.inference_frame_bytes(),
         frame.buffer.index, uai::ai::memory_allocator::Region::kInference};
     const common::Error cache_status = frame.from_pipe2
                                    ? context.cache.PrepareForCpuRead(input_buffer)
@@ -132,7 +134,7 @@ void LogInferenceInput(
     const auto *bytes = reinterpret_cast<const std::uint8_t *>(
         frame.buffer.address);
     const std::size_t byte_count =
-        uai::ai::memory_allocator::kInferenceFrameBytes;
+        uai::ai::memory_allocator::kConfig.inference_frame_bytes();
     std::uint32_t crc = 0xFFFFFFFFU;
     std::uint8_t minimum = 0xFFU;
     std::uint8_t maximum = 0U;
@@ -148,8 +150,8 @@ void LogInferenceInput(
     crc = ~crc;
 
     constexpr std::size_t kPixelCount =
-        uai::ai::memory_allocator::kInferenceWidth *
-        uai::ai::memory_allocator::kInferenceHeight;
+        uai::ai::memory_allocator::kConfig.inference_width *
+        uai::ai::memory_allocator::kConfig.inference_height;
     constexpr std::size_t kSampleStep = 64U;
     std::uint32_t luminance_sum = 0U;
     std::uint32_t sample_count = 0U;
@@ -164,9 +166,9 @@ void LogInferenceInput(
     }
 
     const std::size_t center =
-        ((uai::ai::memory_allocator::kInferenceHeight / 2U) *
-             uai::ai::memory_allocator::kInferenceWidth +
-         uai::ai::memory_allocator::kInferenceWidth / 2U) *
+        ((uai::ai::memory_allocator::kConfig.inference_height / 2U) *
+             uai::ai::memory_allocator::kConfig.inference_width +
+         uai::ai::memory_allocator::kConfig.inference_width / 2U) *
         3U;
     UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
                   "ai: input inspect seq=%u address=%x bytes=%u crc=%x "
@@ -472,22 +474,23 @@ void DumpFrozenCapture(const uai::ai::memory_allocator::CaptureFrame &frame)
     std::uint32_t zero_rows = 0U;
     std::uint32_t nonzero_rows = 0U;
     std::uint32_t first_nonzero =
-        uai::ai::memory_allocator::kFrameHeight;
+        uai::ai::memory_allocator::kConfig.frame_height;
     std::uint32_t last_nonzero = 0U;
     std::uint32_t distinct_row_crcs = 0U;
-    std::uint32_t row_crcs[uai::ai::memory_allocator::kFrameHeight] = {};
+    std::uint32_t row_crcs[
+        uai::ai::memory_allocator::kConfig.frame_height] = {};
     for (std::uint32_t y = 0U;
-         y < uai::ai::memory_allocator::kFrameHeight; ++y) {
+         y < uai::ai::memory_allocator::kConfig.frame_height; ++y) {
         const auto *row = pixels +
-                          y * uai::ai::memory_allocator::kFrameWidth;
+                          y * uai::ai::memory_allocator::kConfig.frame_width;
         bool any_nonzero = false;
         for (std::uint32_t x = 0U;
-         x < uai::ai::memory_allocator::kFrameWidth; ++x) {
+         x < uai::ai::memory_allocator::kConfig.frame_width; ++x) {
             any_nonzero = any_nonzero || row[x] != 0U;
         }
         row_crcs[y] = Crc32Bytes(
             reinterpret_cast<const std::uint8_t *>(row),
-                          uai::ai::memory_allocator::kFrameWidth * 2U);
+                          uai::ai::memory_allocator::kConfig.frame_width * 2U);
         if (any_nonzero) {
             ++nonzero_rows;
             first_nonzero = first_nonzero < y ? first_nonzero : y;
@@ -513,14 +516,14 @@ void DumpFrozenCapture(const uai::ai::memory_allocator::CaptureFrame &frame)
               nonzero_rows == 0U ? 0U : last_nonzero, distinct_row_crcs);
     std::uint32_t reported_nonzero = 0U;
     for (std::uint32_t y = 0U;
-         y < uai::ai::memory_allocator::kFrameHeight &&
+         y < uai::ai::memory_allocator::kConfig.frame_height &&
          reported_nonzero < 24U;
          ++y) {
         const auto *row = pixels +
-                          y * uai::ai::memory_allocator::kFrameWidth;
+                          y * uai::ai::memory_allocator::kConfig.frame_width;
         bool any_nonzero = false;
         for (std::uint32_t x = 0U;
-         x < uai::ai::memory_allocator::kFrameWidth; ++x) {
+         x < uai::ai::memory_allocator::kConfig.frame_width; ++x) {
             any_nonzero = any_nonzero || row[x] != 0U;
         }
         if (any_nonzero) {
@@ -535,16 +538,16 @@ void DumpFrozenCapture(const uai::ai::memory_allocator::CaptureFrame &frame)
     constexpr std::uint32_t kColumns[] = {0U, 1U, 16U, 39U, 40U, 799U};
     for (const std::uint32_t y : kRows) {
         const auto *row_bytes = reinterpret_cast<const std::uint8_t *>(
-            pixels + y * uai::ai::memory_allocator::kFrameWidth);
+            pixels + y * uai::ai::memory_allocator::kConfig.frame_width);
         const std::uint32_t row_crc = Crc32Bytes(
-            row_bytes, uai::ai::memory_allocator::kFrameWidth * 2U);
+            row_bytes, uai::ai::memory_allocator::kConfig.frame_width * 2U);
         UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
                       "camera: frozen row y=%u crc=%x samples="),
                   y, row_crc);
         for (const std::uint32_t x : kColumns) {
             UAI_LOG_DEBUG(reinterpret_cast<const UB *>("%04x%s"),
                       static_cast<unsigned int>(
-                          pixels[y * uai::ai::memory_allocator::kFrameWidth +
+                          pixels[y * uai::ai::memory_allocator::kConfig.frame_width +
                                  x]),
                       x == kColumns[sizeof(kColumns) / sizeof(kColumns[0]) - 1U]
                           ? "\n"

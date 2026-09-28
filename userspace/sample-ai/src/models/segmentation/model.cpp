@@ -1,4 +1,6 @@
 #include "models/segmentation/model.hpp"
+#include "driver/cache_driver/cache_driver.hpp"
+#include "memory_allocator/memory_allocator.hpp"
 #include "models/segmentation/segmentation_decoder.hpp"
 
 extern "C" {
@@ -68,6 +70,38 @@ ModelCallbacks Model::GetCallbacks() const
 {
     return {ConfigureSegmentationDecoder, CompleteSegmentationInference,
             &SegmentationDecoderInstance()};
+}
+
+common::Error Model::PrepareInput(memory_allocator::InferenceFrame &frame,
+                                  cache::CacheDriver &cache) const
+{
+    const ModelDescriptor &descriptor = GetDescriptor();
+    return PreparePipe2LetterboxedInput(
+        frame, descriptor.input_width, descriptor.input_height, cache);
+}
+
+common::Error Model::ConvertResult(
+    const ModelResult &source,
+    memory_allocator::BoxSet *destination) const
+{
+    if (destination == nullptr) {
+        return {common::ErrorCode::kInvalidArgument, 0U,
+                "segmentation.model.result_destination"};
+    }
+    if (!source.segmentation_valid) {
+        return {common::ErrorCode::kModel, 0U,
+                "segmentation.model.result"};
+    }
+
+    destination->segmentation = {};
+    destination->segmentation.mask_address =
+        source.segmentation.mask_address;
+    destination->segmentation.mask_width = source.segmentation.mask_width;
+    destination->segmentation.mask_height = source.segmentation.mask_height;
+    destination->segmentation.mask_foreground_pixels =
+        source.segmentation.mask_foreground_pixels;
+    destination->segmentation_valid = true;
+    return {common::ErrorCode::kOk, 0U, "segmentation.model.result"};
 }
 
 ::uai::ai::models::ModelRuntime &Runtime(Model &model)

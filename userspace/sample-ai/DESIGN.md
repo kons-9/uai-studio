@@ -48,8 +48,9 @@
 | display RAM B | 2 | コピー画像＋枠、LCD走査用 | camera_render_task | LTDC |
 | inference RAM C | 2 | 推論用の安定したスナップショット | camera_render_task | inference_task |
 
-PSRAM上の配置例は次のとおりとする。モデルの予約領域と重ならないよう、
-1 MiB境界から配置する。
+PSRAM上の固定配置は`stm32n6570-dk-npu-ram.ld`で予約する。capture/display/inferenceの
+各スロットは1 MiB境界に配置し、raw dump、segmentation mask、inference scratchも
+同じリンカスクリプトで重ならない領域として予約する。
 
 ```text
 0x91000000  capture A0
@@ -60,5 +61,8 @@ PSRAM上の配置例は次のとおりとする。モデルの予約領域と重
 0x91500000  inference C1
 ```
 
-実際のアドレスは`memory_manager`の領域定義から一元的に決め、各ドライバが個別に
-固定値を持たないようにする。
+実際のアドレスと予約容量はリンカシンボルから`static_memory_layout`が取得し、各
+ドライバや`MemoryAllocator`が個別に固定値を持たないようにする。`MemoryAllocator`は
+この固定領域の中で、フレームサイズ・推論出力サイズ・アライメントなどの動的な
+割り当てポリシーとバッファ所有権を管理する。設定したサイズがリンカ予約容量を
+超える場合は初期化時に失敗させる。
