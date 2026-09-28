@@ -49,11 +49,7 @@ int32_t AiGetSensorGainMdB(void);
 int32_t AiReadSensorRegisters(std::uint32_t *vmax,
                                    std::uint32_t *shutter,
                                    std::uint32_t *gain);
-#if defined(AI_MODEL_SEGMENTATION)
 void NPU0_IRQHandler(UINT intno);
-#else
-void NPU0_IRQHandler(void);
-#endif
 }
 
 namespace uai::ai::task {
@@ -69,6 +65,11 @@ inline constexpr UINT kExternalMemoryReady = 0x01U;
  * 20 ms submission period while retaining headroom for the camera and LCD
  * tasks. Pipe2's frame-rate divider remains the upper bound in practice. */
 inline constexpr std::uint32_t kInferencePeriod = 20U;
+#if defined(AI_MODEL_FACE)
+/* Use the DCMIPP RGB888 path for face input. It preserves more detail than
+ * rebuilding the 128x128 tensor from the RGB565 display frame on the CPU. */
+inline constexpr bool kFaceUsePipe2Input = true;
+#endif
 #if defined(AI_MODEL_SEGMENTATION)
 inline constexpr std::uint32_t kBoxLifetimeMs = 1000U;
 #else

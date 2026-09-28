@@ -7,9 +7,7 @@
 extern "C" {
 #include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
-#if defined(AI_MODEL_SEGMENTATION)
 void LL_ATON_NPU0_IRQHandler(void);
-#endif
 #if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
 #include "model_manager/model/segmentation/model_segmentation_diagnostics.h"
 #endif
@@ -17,23 +15,19 @@ void LL_ATON_NPU0_IRQHandler(void);
 stai_return_code stai_runtime_init(void);
 }
 
-#if defined(AI_MODEL_SEGMENTATION)
 namespace {
 
 constexpr UINT kNpuIrqEvent = 0x01U;
 ID g_npu_irq_event_flag = 0;
 
 } // namespace
-#endif
-
-#if defined(AI_MODEL_SEGMENTATION)
 extern "C" void NPU0_IRQHandler(UINT intno)
 {
-#if defined(AI_SEGMENTATION_DIAG)
+#if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
     ai_segmentation_diag_irq(0U);
 #endif
     LL_ATON_NPU0_IRQHandler();
-#if defined(AI_SEGMENTATION_DIAG)
+#if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
     ai_segmentation_diag_irq(1U);
 #endif
     if (g_npu_irq_event_flag > 0) {
@@ -41,7 +35,8 @@ extern "C" void NPU0_IRQHandler(UINT intno)
     }
     (void)intno;
 }
-#endif
+
+extern "C" volatile unsigned int g_npu_init_stage = 0U;
 
 namespace uai::ai::npu {
 
@@ -172,6 +167,7 @@ Status NpuDriver::InvalidState(const char *operation) const
 
 Status NpuDriver::Initialize(model_manager::Model &model)
 {
+    g_npu_init_stage = 1U;
     if (initialized_) {
         return {common::Error{common::ErrorCode::kAlreadyInitialized, 0U,
                               "npu.initialize"},
@@ -180,7 +176,6 @@ Status NpuDriver::Initialize(model_manager::Model &model)
 
     model_ = &model;
 
-#if defined(AI_MODEL_SEGMENTATION)
     if (g_npu_irq_event_flag == 0) {
         T_CFLG event_flag{};
         event_flag.flgatr = TA_TFIFO;
@@ -195,8 +190,8 @@ Status NpuDriver::Initialize(model_manager::Model &model)
                     last_execution_};
         }
     }
-#endif
 
+    g_npu_init_stage = 2U;
     AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu init begin irq_en=%u irq_pending=%u\n"),
               static_cast<unsigned int>(NVIC_GetEnableIRQ(NPU0_IRQn)),
@@ -226,7 +221,10 @@ Status NpuDriver::Initialize(model_manager::Model &model)
                 last_execution_};
     }
 
+    g_npu_init_stage = 3U;
+    g_npu_init_stage = 4U;
     const stai_return_code model_code = model_->Initialize();
+    g_npu_init_stage = 5U;
 #if AI_INFERENCE_DIAGNOSTICS
     const registers::NpuRegisterSnapshot model_hardware =
         registers_.ReadSnapshot();
@@ -248,6 +246,7 @@ Status NpuDriver::Initialize(model_manager::Model &model)
                 last_execution_};
     }
 
+    g_npu_init_stage = 6U;
     initialized_ = true;
     last_error_ = 0U;
     last_execution_ = {};
@@ -332,15 +331,13 @@ Status NpuDriver::Run()
     SegmentationDiagnosticRunScope segmentation_diagnostics;
 #endif
 
-    /* Keep the ref application's asynchronous STAI protocol. For
-     * segmentation, the NPU IRQ wakes this task through a kernel event flag;
-     * run_continue() then consumes the Neural-ART event state and starts the
-     * next epoch. */
+    /* Keep the ref application's asynchronous STAI protocol. The NPU IRQ
+     * wakes this task through a kernel event flag; run_continue() then
+     * consumes the Neural-ART event state and starts the next epoch. */
 #if AI_INFERENCE_DIAGNOSTICS
     const registers::NpuRegisterSnapshot before_run =
         registers_.ReadSnapshot();
 #endif
-#if defined(AI_MODEL_SEGMENTATION)
     const ER clear_event_status = tk_clr_flg(g_npu_irq_event_flag, 0U);
     if (clear_event_status != E_OK) {
         last_execution_.state = ExecutionState::kFaulted;
@@ -348,10 +345,9 @@ Status NpuDriver::Run()
             static_cast<std::uint32_t>(clear_event_status);
         return {common::Error{common::ErrorCode::kNpu,
                               static_cast<std::uint32_t>(clear_event_status),
-                              "npu.clear_irq_event"},
+                "npu.clear_irq_event"},
                 last_execution_};
     }
-#endif
     AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu run begin irq_en=%u pending=%u priority=%u count=%u last=%x csi=%x/%x epoch=%x int=%x bus=%x\n"),
               static_cast<unsigned int>(NVIC_GetEnableIRQ(NPU0_IRQn)),
@@ -415,12 +411,30 @@ Status NpuDriver::Run()
         }
  #endif
 
-        /* stai_ext_wfe() is a bare-metal WFE. Calling it from a µT-Kernel
-         * task can suspend the scheduler indefinitely when the NPU does not
-         * raise its IRQ (for example after a bad buffer binding). Always give
-         * the kernel a tick here instead; ContinueRun() performs the same
-         * Neural-ART state transition without monopolising the CPU. */
-        tk_dly_tsk(1);
+        /* The generated ST.AI runtime distinguishes two kinds of wait:
+         * STAI_RUNNING_NO_WFE means that the next epoch can be continued
+         * immediately, while STAI_RUNNING_WFE means that an NPU IRQ must
+         * arrive first.  Do not add a fixed 1-tick delay here.  A face model
+         * has many epoch blocks, so that delay accumulates into seconds. */
+        if (code == STAI_RUNNING_WFE) {
+            UINT pattern = 0U;
+            const ER wait_status = tk_wai_flg(
+                g_npu_irq_event_flag, kNpuIrqEvent,
+                TWF_ANDW | TWF_BITCLR, &pattern,
+                static_cast<TMO>(kTimeoutTicks));
+            if (wait_status == E_TMOUT) {
+                break;
+            }
+            if (wait_status != E_OK) {
+                last_execution_.state = ExecutionState::kFaulted;
+                last_execution_.stai_status =
+                    static_cast<std::uint32_t>(wait_status);
+                return {common::Error{common::ErrorCode::kNpu,
+                                      static_cast<std::uint32_t>(wait_status),
+                                      "npu.wait_irq"},
+                        last_execution_};
+            }
+        }
         code = model_->ContinueRun();
         last_error_ = static_cast<std::uint32_t>(code);
         if (IsError(code)) {

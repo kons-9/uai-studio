@@ -128,6 +128,11 @@ arm-none-eabi-objcopy -I binary \
     --change-addresses "$network_address" \
     -O ihex "$model_dir/network_data.hex"
 
+# Keep the legacy/manual programming filename synchronized with the generated
+# artifact.  The Intel HEX records contain absolute memory addresses; creating
+# a second shifted copy makes the generated network.c and Flash image disagree.
+cp "$model_dir/network_data.hex" "$model_dir/network_data_flash.hex"
+
 echo "Generated $model_name in $model_dir"
 echo "Model data address: $network_address"
 echo "Program $model_dir/network_data.hex to the DK XSPI2 model area before running sample-ai."

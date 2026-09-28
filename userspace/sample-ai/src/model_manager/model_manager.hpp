@@ -9,6 +9,8 @@
 #include "model_manager/model_api.hpp"
 #if defined(AI_MODEL_SEGMENTATION)
 #include "model_manager/model/segmentation/model_segmentation_adapter.hpp"
+#elif defined(AI_MODEL_FACE)
+#include "model_manager/model/face/model_face_adapter.hpp"
 #else
 #include "model_manager/model/person/model_person_adapter.hpp"
 #endif
@@ -37,11 +39,13 @@ private:
     npu::NpuDriver npu_{};
 #if defined(AI_MODEL_SEGMENTATION)
     model_manager::SegmentationModelAdapter model_{};
+#elif defined(AI_MODEL_FACE)
+    model_manager::FaceModelAdapter model_{};
 #else
     model_manager::PersonModelAdapter model_{};
 #endif
     stai_network_info info_{};
-    stai_ptr outputs_[3]{};
+    stai_ptr outputs_[memory_allocator::kMaxModelOutputs]{};
     bool dynamic_outputs_ = false;
     npu::Status last_npu_status_{};
     bool initialized_ = false;

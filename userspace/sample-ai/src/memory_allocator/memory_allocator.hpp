@@ -15,6 +15,9 @@ constexpr std::size_t kFrameBytes =
 #if defined(AI_MODEL_SEGMENTATION)
 constexpr std::uint32_t kInferenceWidth = 320U;
 constexpr std::uint32_t kInferenceHeight = 320U;
+#elif defined(AI_MODEL_FACE)
+constexpr std::uint32_t kInferenceWidth = 128U;
+constexpr std::uint32_t kInferenceHeight = 128U;
 #else
 constexpr std::uint32_t kInferenceWidth = 480U;
 constexpr std::uint32_t kInferenceHeight = 480U;
@@ -27,15 +30,19 @@ constexpr std::size_t AlignUp(std::size_t value, std::size_t alignment)
     return (value + alignment - 1U) / alignment * alignment;
 }
 
-constexpr std::size_t kMaxModelOutputs = 3U;
+constexpr std::size_t kMaxModelOutputs = 4U;
 #if defined(AI_MODEL_SEGMENTATION)
 constexpr std::size_t kModelOutputCount = 1U;
 constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
-    320U * 320U * 2U, 0U, 0U};
+    320U * 320U * 2U, 0U, 0U, 0U};
+#elif defined(AI_MODEL_FACE)
+constexpr std::size_t kModelOutputCount = 4U;
+constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
+    512U * 16U, 512U, 384U, 384U * 16U};
 #else
 constexpr std::size_t kModelOutputCount = 3U;
 constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
-    15U * 15U * 18U, 60U * 60U * 18U, 30U * 30U * 18U};
+    15U * 15U * 18U, 60U * 60U * 18U, 30U * 30U * 18U, 0U};
 #endif
 
 /* One slot contains the camera input followed by the user-replaceable model
@@ -46,7 +53,8 @@ constexpr std::size_t kInferenceOutputsOffset =
 constexpr std::size_t kInferenceOutputStorageBytes =
     AlignUp(kModelOutputBytes[0], kBufferAlignment) +
     AlignUp(kModelOutputBytes[1], kBufferAlignment) +
-    AlignUp(kModelOutputBytes[2], kBufferAlignment);
+    AlignUp(kModelOutputBytes[2], kBufferAlignment) +
+    AlignUp(kModelOutputBytes[3], kBufferAlignment);
 constexpr std::size_t kInferenceBufferBytes = AlignUp(
     kInferenceOutputsOffset + kInferenceOutputStorageBytes,
     kBufferAlignment);
@@ -115,6 +123,7 @@ struct BoxSet {
     std::uintptr_t mask_address = 0U;
     std::uint16_t mask_width = 0U;
     std::uint16_t mask_height = 0U;
+    std::uint32_t mask_foreground_pixels = 0U;
     Box boxes[kMaxBoxes]{};
 };
 

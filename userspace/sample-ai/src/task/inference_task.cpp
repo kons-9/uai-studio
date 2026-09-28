@@ -38,12 +38,22 @@ void inference_task(void)
     }
 
     bool inference_enabled = model_status.Ok();
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+    std::uint32_t fps_window_start = Now();
+    std::uint32_t fps_submitted = 0U;
+    std::uint32_t fps_completed = 0U;
+    std::uint32_t fps_inference_total_ms = 0U;
+    std::uint32_t fps_inference_max_ms = 0U;
+#endif
     for (;;) {
         InferenceMessage message{};
         const INT size = tk_rcv_mbf(g_frame_queue, &message, TMO_FEVR);
         if (size != static_cast<INT>(sizeof(message))) {
             continue;
         }
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+        ++fps_submitted;
+#endif
 
         Error status = g_memory.ClaimInferenceBuffer(message.frame);
         if (!status.Ok()) {
@@ -71,6 +81,12 @@ void inference_task(void)
             const std::uint32_t inference_start = Now();
             status = model.TryInfer(message.frame, &boxes);
             const std::uint32_t inference_elapsed = Now() - inference_start;
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+            fps_inference_total_ms += inference_elapsed;
+            if (inference_elapsed > fps_inference_max_ms) {
+                fps_inference_max_ms = inference_elapsed;
+            }
+#endif
 #if AI_INFERENCE_DIAGNOSTICS
             if ((message.frame.capture_sequence % 10U) == 0U) {
                 tm_printf(reinterpret_cast<const UB *>(
@@ -95,6 +111,9 @@ void inference_task(void)
             g_memory.ReleaseInferenceBuffer(message.frame);
         LogStatus("memory", release_status);
         if (status.Ok()) {
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+            ++fps_completed;
+#endif
             SendLatestBoxes(boxes);
 #if AI_INFERENCE_DIAGNOSTICS
             if ((boxes.model_sequence % 10U) == 0U) {
@@ -115,6 +134,33 @@ void inference_task(void)
             tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
                 "ai: inference disabled after NPU error; camera remains live\n")));
         }
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+        const std::uint32_t fps_now = Now();
+        const std::uint32_t fps_window_ms = fps_now - fps_window_start;
+        if (fps_window_ms >= 1000U) {
+            UB line[192] = {};
+            (void)tm_sprintf(
+                line,
+                reinterpret_cast<const UB *>(
+                    "ai: inference fps submitted=%u completed=%u "
+                    "window_ms=%u infer_total_ms=%u infer_max_ms=%u "
+                    "pipe2=%u drops=%u capture=%u\n"),
+                static_cast<unsigned int>(fps_submitted),
+                static_cast<unsigned int>(fps_completed),
+                static_cast<unsigned int>(fps_window_ms),
+                static_cast<unsigned int>(fps_inference_total_ms),
+                static_cast<unsigned int>(fps_inference_max_ms),
+                g_camera_pipe2_frame_event_count,
+                g_camera_pipe2_drop_count,
+                static_cast<unsigned int>(message.frame.capture_sequence));
+            tm_putstring(line);
+            fps_window_start = fps_now;
+            fps_submitted = 0U;
+            fps_completed = 0U;
+            fps_inference_total_ms = 0U;
+            fps_inference_max_ms = 0U;
+        }
+#endif
 #if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
         /* The diagnostic build is deliberately limited to one NPU attempt. */
         (void)tk_ext_tsk();

@@ -16,9 +16,26 @@ using common::ErrorCode;
 namespace {
 
 constexpr std::uint16_t kRed = 0xF800U;
+#if defined(AI_MODEL_FACE)
+/* Face detections are generated from Pipe2 and overlaid on the full Pipe1
+ * camera frame. */
+constexpr std::uint16_t kBoxColor = kRed;
+constexpr std::uint16_t kInferenceRegionColor = 0x07E0U;
+#else
+constexpr std::uint16_t kBoxColor = kRed;
+#endif
 constexpr std::int32_t kLineWidth = 4;
+#if defined(AI_MODEL_FACE)
+/* Keep the diagnostic image square, but enlarge the 128x128 NN input so that
+ * crop and exposure can be inspected on the 800x480 panel. The source bytes
+ * are still copied with nearest-neighbor sampling; no brightness adjustment
+ * is applied here. */
+constexpr std::size_t kInferenceDisplaySize = 480U;
+#else
+constexpr std::size_t kInferenceDisplaySize = memory_allocator::kInferenceWidth;
+#endif
 constexpr std::size_t kInferenceDisplayX =
-    (memory_allocator::kFrameWidth - memory_allocator::kInferenceWidth) / 2U;
+    (memory_allocator::kFrameWidth - kInferenceDisplaySize) / 2U;
 constexpr std::uint16_t kInitialPattern[] = {
     0xFFFFU, 0xFFE0U, 0x07FFU, 0x07E0U,
     0xF81FU, 0xF800U, 0x001FU, 0x0000U,
@@ -175,22 +192,65 @@ void LcdDriver::DrawBoxes(const memory_allocator::DisplayBuffer &buffer,
 
             for (std::int32_t x = left; x <= right; ++x) {
                 if (InRange(x, width) && InRange(y_top, height)) {
-                    pixels[y_top * width + x] = kRed;
+                    pixels[y_top * width + x] = kBoxColor;
                 }
                 if (InRange(x, width) && InRange(y_bottom, height)) {
-                    pixels[y_bottom * width + x] = kRed;
+                    pixels[y_bottom * width + x] = kBoxColor;
                 }
             }
             for (std::int32_t y = top; y <= bottom; ++y) {
                 if (InRange(x_left, width) && InRange(y, height)) {
-                    pixels[y * width + x_left] = kRed;
+                    pixels[y * width + x_left] = kBoxColor;
                 }
                 if (InRange(x_right, width) && InRange(y, height)) {
-                    pixels[y * width + x_right] = kRed;
+                    pixels[y * width + x_right] = kBoxColor;
                 }
             }
         }
     }
+}
+
+void LcdDriver::DrawInferenceRegion(
+    const memory_allocator::DisplayBuffer &buffer)
+{
+#if defined(AI_MODEL_FACE)
+    auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
+    const std::int32_t width =
+        static_cast<std::int32_t>(memory_allocator::kFrameWidth);
+    const std::int32_t height =
+        static_cast<std::int32_t>(memory_allocator::kFrameHeight);
+
+    /* Pipe2 consumes the centered 1555x1555 sensor square corresponding to
+     * the centered 480x480 square inside Pipe1's 800x480 image. */
+    constexpr std::int32_t left = 160;
+    constexpr std::int32_t right = 639;
+    constexpr std::int32_t top = 0;
+    constexpr std::int32_t bottom = 479;
+    for (std::int32_t thickness = 0; thickness < kLineWidth; ++thickness) {
+        const std::int32_t x_left = left + thickness;
+        const std::int32_t x_right = right - thickness;
+        const std::int32_t y_top = top + thickness;
+        const std::int32_t y_bottom = bottom - thickness;
+        for (std::int32_t x = left; x <= right; ++x) {
+            if (InRange(x, width) && InRange(y_top, height)) {
+                pixels[y_top * width + x] = kInferenceRegionColor;
+            }
+            if (InRange(x, width) && InRange(y_bottom, height)) {
+                pixels[y_bottom * width + x] = kInferenceRegionColor;
+            }
+        }
+        for (std::int32_t y = top; y <= bottom; ++y) {
+            if (InRange(x_left, width) && InRange(y, height)) {
+                pixels[y * width + x_left] = kInferenceRegionColor;
+            }
+            if (InRange(x_right, width) && InRange(y, height)) {
+                pixels[y * width + x_right] = kInferenceRegionColor;
+            }
+        }
+    }
+#else
+    (void)buffer;
+#endif
 }
 
 void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
@@ -204,9 +264,17 @@ void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
     const auto *mask = reinterpret_cast<const std::uint8_t *>(
         boxes.mask_address);
     auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
+/* Segmentation uses the same sensor crop as Pipe1, but its NN input is a
+ * square FIT resize. Map the resulting 320x320 mask back to the complete
+ * 800x480 Pipe1 frame. Face uses a centered square crop instead. */
+#if defined(AI_MODEL_SEGMENTATION)
+    constexpr std::size_t crop_width = memory_allocator::kFrameWidth;
+    constexpr std::size_t crop_x = 0U;
+#else
     constexpr std::size_t crop_width = 480U;
     constexpr std::size_t crop_x =
         (memory_allocator::kFrameWidth - crop_width) / 2U;
+#endif
     for (std::size_t y = 0U; y < memory_allocator::kFrameHeight; ++y) {
         const std::size_t mask_y = y * boxes.mask_height /
                                    memory_allocator::kFrameHeight;
@@ -225,9 +293,9 @@ void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
             const std::uint16_t blue =
                 static_cast<std::uint16_t>(original & 0x1FU);
             pixels[pixel_index] = static_cast<std::uint16_t>(
-                (((red * 2U) / 3U) << 11U) |
-                (((green * 2U + 63U) / 3U) << 5U) |
-                ((blue * 2U) / 3U));
+                ((red / 2U) << 11U) |
+                (((green + 63U) / 2U) << 5U) |
+                (blue / 2U));
         }
     }
 }
@@ -338,9 +406,45 @@ Error LcdDriver::ComposeAndPresent(
     if (!status.Ok()) {
         return status;
     }
+#if AI_DISPLAY_TIMING_DIAGNOSTICS
+    const std::uint32_t copy_start_tick = HAL_GetTick();
+#endif
     std::memcpy(reinterpret_cast<void *>(display.buffer.address),
                 reinterpret_cast<const void *>(capture.buffer.address),
                 memory_allocator::kFrameBytes);
+#if AI_DISPLAY_TIMING_DIAGNOSTICS
+    const std::uint32_t copy_elapsed_ms = HAL_GetTick() - copy_start_tick;
+    static std::uint32_t copy_window_start = 0U;
+    static std::uint32_t copy_count = 0U;
+    static std::uint32_t copy_total_ms = 0U;
+    static std::uint32_t copy_max_ms = 0U;
+    const std::uint32_t copy_now = HAL_GetTick();
+    if (copy_window_start == 0U) {
+        copy_window_start = copy_now;
+    }
+    ++copy_count;
+    copy_total_ms += copy_elapsed_ms;
+    if (copy_elapsed_ms > copy_max_ms) {
+        copy_max_ms = copy_elapsed_ms;
+    }
+    if (copy_now - copy_window_start >= 1000U) {
+        UB line[128] = {};
+        (void)tm_sprintf(
+            line,
+            reinterpret_cast<const UB *>(
+                "lcd: cpu_copy count=%u total_ms=%u max_ms=%u "
+                "window_ms=%u\n"),
+            static_cast<unsigned int>(copy_count),
+            static_cast<unsigned int>(copy_total_ms),
+            static_cast<unsigned int>(copy_max_ms),
+            static_cast<unsigned int>(copy_now - copy_window_start));
+        tm_putstring(line);
+        copy_window_start = copy_now;
+        copy_count = 0U;
+        copy_total_ms = 0U;
+        copy_max_ms = 0U;
+    }
+#endif
     const std::uint32_t copied_crc =
         log_copy_crc
             ? Crc32(reinterpret_cast<const std::uint8_t *>(
@@ -348,6 +452,7 @@ Error LcdDriver::ComposeAndPresent(
                     memory_allocator::kFrameBytes)
             : 0U;
     DrawMask(display, boxes);
+    DrawInferenceRegion(display);
     DrawBoxes(display, boxes);
 
     status = cache_->PrepareForPeripheralRead(display.buffer);
@@ -433,10 +538,14 @@ Error LcdDriver::ComposeInferenceAndPresent(
             destination[y * memory_allocator::kFrameWidth + x] = 0U;
         }
     }
-    for (std::size_t y = 0U; y < memory_allocator::kInferenceHeight; ++y) {
-        for (std::size_t x = 0U; x < memory_allocator::kInferenceWidth; ++x) {
+    for (std::size_t y = 0U; y < kInferenceDisplaySize; ++y) {
+        const std::size_t source_y =
+            y * memory_allocator::kInferenceHeight / kInferenceDisplaySize;
+        for (std::size_t x = 0U; x < kInferenceDisplaySize; ++x) {
+            const std::size_t source_x =
+                x * memory_allocator::kInferenceWidth / kInferenceDisplaySize;
             const std::size_t source_index =
-                (y * memory_allocator::kInferenceWidth + x) * 3U;
+                (source_y * memory_allocator::kInferenceWidth + source_x) * 3U;
             const std::uint16_t red =
                 static_cast<std::uint16_t>(source[source_index] >> 3U);
             const std::uint16_t green =

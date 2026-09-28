@@ -36,13 +36,17 @@ option(AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC
     "Display live Pipe2 inference input on the LCD while inference continues" OFF)
 option(AI_INFERENCE_DIAGNOSTICS
     "Keep verbose UART and tensor inspections in the inference hot path" OFF)
+option(AI_INFERENCE_FPS_DIAGNOSTICS
+    "Emit one lightweight inference FPS summary per second" OFF)
+option(AI_DISPLAY_TIMING_DIAGNOSTICS
+    "Emit one lightweight LCD copy timing summary per second" OFF)
 set(AI_DCMIPP_PIPE2_FRAME_RATE "DCMIPP_FRAME_RATE_1_OVER_2" CACHE STRING
     "Pipe2 frame-rate selector (DCMIPP_FRAME_RATE_1_OVER_4, DCMIPP_FRAME_RATE_1_OVER_2, or DCMIPP_FRAME_RATE_ALL)")
 set_property(CACHE AI_DCMIPP_PIPE2_FRAME_RATE PROPERTY STRINGS
     DCMIPP_FRAME_RATE_1_OVER_4 DCMIPP_FRAME_RATE_1_OVER_2
     DCMIPP_FRAME_RATE_ALL)
-set(AI_MODEL "person" CACHE STRING "Inference model: person or segmentation")
-set_property(CACHE AI_MODEL PROPERTY STRINGS person segmentation)
+set(AI_MODEL "person" CACHE STRING "Inference model: person, face, or segmentation")
+set_property(CACHE AI_MODEL PROPERTY STRINGS person face segmentation)
 if(AI_MODEL STREQUAL "person")
     set(AI_MODEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models/person")
     set(AI_MODEL_IMPL_DIR "${AI_SRC_DIR}/model_manager/model/person")
@@ -71,9 +75,24 @@ elseif(AI_MODEL STREQUAL "segmentation")
         "${AI_THIRDPARTY_DIR}/Lib/GCC/ARMCortexM55/NetworkRuntime1200_CM55_GCC.a")
     set(AI_MODEL_NOR_PROBE_OFFSET 0x00600000U)
     set(AI_MODEL_POSTFIX segmentation)
+elseif(AI_MODEL STREQUAL "face")
+    set(AI_MODEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models/face")
+    set(AI_MODEL_IMPL_DIR "${AI_SRC_DIR}/model_manager/model/face")
+    set(AI_MODEL_C_API_SOURCE
+        "${AI_MODEL_IMPL_DIR}/model_face.c")
+    set(AI_MODEL_ADAPTER_SOURCE
+        "${AI_MODEL_IMPL_DIR}/model_face_adapter.cpp")
+    set(AI_MODEL_TARGET sample-ai_face)
+    set(AI_MODEL_EXTRA_SOURCES
+        "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/fd_pp_blazeface.c"
+        "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp.c"
+        "${AI_MODEL_IMPL_DIR}/model_face_postprocess.c")
+    set(AI_MODEL_EXTRA_LIBRARIES)
+    set(AI_MODEL_NOR_PROBE_OFFSET 0x00800000U)
+    set(AI_MODEL_POSTFIX face)
 else()
     message(FATAL_ERROR
-        "Unsupported AI_MODEL='${AI_MODEL}' (use person or segmentation)")
+        "Unsupported AI_MODEL='${AI_MODEL}' (use person, face, or segmentation)")
 endif()
 
 if(AI_MODEL STREQUAL "segmentation" AND AI_SEGMENTATION_DIAGNOSTICS)
@@ -95,6 +114,7 @@ add_executable(sample-ai.elf
     src/task/task_diagnostics.cpp
     src/driver/camera_driver/sensor_driver/registers/imx335_registers.cpp
     src/driver/camera_driver/camera_driver.cpp
+    src/image_resizer/image_resizer.cpp
     src/driver/board/hal_time.c
     src/driver/cache_driver/cache_driver.cpp
     src/driver/nor_driver/registers/nor_registers.cpp
@@ -171,13 +191,19 @@ target_compile_definitions(sample-ai.elf PRIVATE
     AI_DCMIPP_DEMOSAIC_LINEAR=$<BOOL:${AI_DCMIPP_DEMOSAIC_LINEAR}>
     AI_DCMIPP_PIPE2_FRAME_RATE=${AI_DCMIPP_PIPE2_FRAME_RATE}
     AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC=$<BOOL:${AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC}>
-    AI_INFERENCE_DIAGNOSTICS=$<BOOL:${AI_INFERENCE_DIAGNOSTICS}>)
+    AI_INFERENCE_DIAGNOSTICS=$<BOOL:${AI_INFERENCE_DIAGNOSTICS}>
+    AI_INFERENCE_FPS_DIAGNOSTICS=$<BOOL:${AI_INFERENCE_FPS_DIAGNOSTICS}>
+    AI_DISPLAY_TIMING_DIAGNOSTICS=$<BOOL:${AI_DISPLAY_TIMING_DIAGNOSTICS}>)
 if(AI_MODEL STREQUAL "segmentation")
     target_compile_definitions(sample-ai.elf PRIVATE AI_MODEL_SEGMENTATION=1)
     if(AI_SEGMENTATION_DIAGNOSTICS)
         target_compile_definitions(sample-ai.elf PRIVATE
             AI_SEGMENTATION_DIAG=1)
     endif()
+elseif(AI_MODEL STREQUAL "face")
+    target_compile_definitions(sample-ai.elf PRIVATE AI_MODEL_FACE=1)
+else()
+    target_compile_definitions(sample-ai.elf PRIVATE AI_MODEL_PERSON=1)
 endif()
 target_compile_options(sample-ai.elf PRIVATE
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
@@ -265,16 +291,17 @@ target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
     LL_ATON_DBG_BUFFER_INFO_EXCLUDED=1
     NPU_CACHE_EXTERNAL_HAL_MSP)
 if(AI_MODEL STREQUAL "segmentation")
-    # Export the vendor NPU handler under a private name so the application
-    # can notify µT-Kernel from its HLL interrupt wrapper.
-    target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
-        NPU0_IRQHandler=LL_ATON_NPU0_IRQHandler)
     if(AI_SEGMENTATION_DIAGNOSTICS)
         target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
             AI_SEGMENTATION_DIAG=1
             LL_ATON_EB_DBG_INFO)
     endif()
 endif()
+# Export the vendor NPU handler under a private name for every model. The
+# application wrapper calls it first, then wakes the inference task through a
+# T-Kernel event flag. This avoids a fixed polling delay between epoch blocks.
+target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
+    NPU0_IRQHandler=LL_ATON_NPU0_IRQHandler)
 target_compile_options(${AI_MODEL_TARGET} PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-include;inttypes.h>
     $<$<COMPILE_LANGUAGE:C>:-include${CMAKE_CURRENT_SOURCE_DIR}/config/network_blobs_config.h>

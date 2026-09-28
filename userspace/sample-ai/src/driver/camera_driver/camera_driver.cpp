@@ -1,4 +1,5 @@
 #include "driver/camera_driver/camera_driver.hpp"
+#include "image_resizer/image_resizer.hpp"
 
 #include "driver/camera_driver/sensor_driver/registers/imx335_registers.hpp"
 
@@ -29,9 +30,17 @@ constexpr std::uint32_t kSensorWidth = 2592U;
 constexpr std::uint32_t kSensorHeight = 1944U;
 constexpr std::uint32_t kOutputWidth = 800U;
 constexpr std::uint32_t kOutputHeight = 480U;
+#if defined(AI_MODEL_FACE)
+/* The 1555-pixel square matches the centered 480x480 square in Pipe1. The
+ * image_resizer selects the required DCMIPP decimation for this crop. */
+constexpr std::uint32_t kFacePipe2CropSize = 1555U;
+#endif
 #if defined(AI_MODEL_SEGMENTATION)
 constexpr std::uint32_t kInferenceWidth = 320U;
 constexpr std::uint32_t kInferenceHeight = 320U;
+#elif defined(AI_MODEL_FACE)
+constexpr std::uint32_t kInferenceWidth = 128U;
+constexpr std::uint32_t kInferenceHeight = 128U;
 #else
 constexpr std::uint32_t kInferenceWidth = 480U;
 constexpr std::uint32_t kInferenceHeight = 480U;
@@ -93,6 +102,61 @@ Error Hardware(const char *operation, std::uint32_t detail = 0U)
     return {ErrorCode::kHardware, detail, operation};
 }
 
+Error ApplyDcmippDecimation(std::uint32_t pipe,
+                            const uai::ai::image_resizer::Selection &selection)
+{
+    if (selection.hardware != uai::ai::image_resizer::Hardware::kDcmipp) {
+        return Hardware("camera.resizer.backend");
+    }
+
+    if (selection.dcmipp_decimation == 1U) {
+        return HAL_DCMIPP_PIPE_DisableDecimation(&hcamera_dcmipp, pipe) ==
+                       HAL_OK
+                   ? Error{ErrorCode::kOk, 0U, "camera.resizer.decimation"}
+                   : Hardware("camera.resizer.decimation");
+    }
+
+    DCMIPP_DecimationConfTypeDef decimation{};
+    switch (selection.dcmipp_decimation) {
+    case 2U:
+        decimation.HRatio = DCMIPP_HDEC_1_OUT_2;
+        decimation.VRatio = DCMIPP_VDEC_1_OUT_2;
+        break;
+    case 4U:
+        decimation.HRatio = DCMIPP_HDEC_1_OUT_4;
+        decimation.VRatio = DCMIPP_VDEC_1_OUT_4;
+        break;
+    case 8U:
+        decimation.HRatio = DCMIPP_HDEC_1_OUT_8;
+        decimation.VRatio = DCMIPP_VDEC_1_OUT_8;
+        break;
+    default:
+        return Hardware("camera.resizer.decimation", selection.dcmipp_decimation);
+    }
+    if (HAL_DCMIPP_PIPE_SetDecimationConfig(&hcamera_dcmipp, pipe,
+                                            &decimation) != HAL_OK ||
+        HAL_DCMIPP_PIPE_EnableDecimation(&hcamera_dcmipp, pipe) != HAL_OK) {
+        return Hardware("camera.resizer.decimation");
+    }
+    return {ErrorCode::kOk, selection.dcmipp_decimation,
+            "camera.resizer.decimation"};
+}
+
+Error SelectDcmippResize(std::uint32_t input_width,
+                         std::uint32_t input_height,
+                         std::uint32_t output_width,
+                         std::uint32_t output_height,
+                         uai::ai::image_resizer::Selection *selection)
+{
+    uai::ai::image_resizer::Request request{};
+    request.input = uai::ai::image_resizer::InputKind::kCameraPipe;
+    request.input_width = input_width;
+    request.input_height = input_height;
+    request.output_width = output_width;
+    request.output_height = output_height;
+    return uai::ai::image_resizer::Select(request, selection);
+}
+
 Error ConfigureSensor(Imx335RegisterLayer &registers)
 {
     return registers.Configure(AI_IMX335_TEST_PATTERN_MODE, kFrameRateFps);
@@ -111,16 +175,27 @@ Error ConfigurePipe()
     crop.HStart = ((kSensorWidth - crop.HSize) / 2U) & ~1U;
     crop.VStart = ((kSensorHeight - crop.VSize) / 2U) & ~1U;
     crop.PipeArea = DCMIPP_POSITIVE_AREA;
+    uai::ai::image_resizer::Selection resize{};
+    Error resize_status = SelectDcmippResize(
+        crop.HSize, crop.VSize, kOutputWidth, kOutputHeight, &resize);
+    if (!resize_status.Ok()) {
+        return resize_status;
+    }
     if (HAL_DCMIPP_PIPE_SetCropConfig(&hcamera_dcmipp, DCMIPP_PIPE1, &crop) != HAL_OK ||
         HAL_DCMIPP_PIPE_EnableCrop(&hcamera_dcmipp, DCMIPP_PIPE1) != HAL_OK ||
-        HAL_DCMIPP_PIPE_DisableDecimation(&hcamera_dcmipp, DCMIPP_PIPE1) != HAL_OK ||
         HAL_DCMIPP_PIPE_DisableRedBlueSwap(&hcamera_dcmipp, DCMIPP_PIPE1) != HAL_OK ||
         HAL_DCMIPP_PIPE_DisableGammaConversion(&hcamera_dcmipp, DCMIPP_PIPE1) != HAL_OK) {
         return Hardware("camera.pipe.crop");
     }
+    resize_status = ApplyDcmippDecimation(DCMIPP_PIPE1, resize);
+    if (!resize_status.Ok()) {
+        return resize_status;
+    }
     DCMIPP_DownsizeTypeDef downsize{};
-    downsize.HRatio = static_cast<std::uint32_t>(8192.0F * crop.HSize / kOutputWidth);
-    downsize.VRatio = static_cast<std::uint32_t>(8192.0F * crop.VSize / kOutputHeight);
+    downsize.HRatio = static_cast<std::uint32_t>(
+        8192.0F * resize.dcmipp_input_width / kOutputWidth);
+    downsize.VRatio = static_cast<std::uint32_t>(
+        8192.0F * resize.dcmipp_input_height / kOutputHeight);
     downsize.HDivFactor = (1024U * 8192U - 1U) / downsize.HRatio;
     downsize.VDivFactor = (1024U * 8192U - 1U) / downsize.VRatio;
     downsize.HSize = kOutputWidth;
@@ -140,36 +215,46 @@ Error ConfigurePipe()
     pipe.PixelPipePitch = kOutputWidth * 2U;
     pipe.PixelPackerFormat = DCMIPP_PIXEL_PACKER_FORMAT_RGB565_1;
     const HAL_StatusTypeDef status = HAL_DCMIPP_PIPE_SetConfig(&hcamera_dcmipp, DCMIPP_PIPE1, &pipe);
-    return status == HAL_OK ? Error{ErrorCode::kOk, 0U, "camera.pipe.configure"}
-                            : Hardware("camera.pipe.configure", status);
+    if (status != HAL_OK) {
+        return Hardware("camera.pipe.configure", status);
+    }
+    tm_printf(reinterpret_cast<const UB *>(
+                  "image_resizer: pipe=1 hw=%s decimation=%u input=%ux%u output=%ux%u\n"),
+              uai::ai::image_resizer::HardwareName(resize.hardware),
+              static_cast<unsigned int>(resize.dcmipp_decimation),
+              static_cast<unsigned int>(resize.dcmipp_input_width),
+              static_cast<unsigned int>(resize.dcmipp_input_height),
+              static_cast<unsigned int>(kOutputWidth),
+              static_cast<unsigned int>(kOutputHeight));
+    return {ErrorCode::kOk, 0U, "camera.pipe.configure"};
 }
 
 Error ConfigureInferencePipe()
 {
     /* Pipe2 is the ancillary NN output. It consumes the same RAW10 CSI
      * stream as Pipe1, then performs the crop/scale and RGB888 packing in
-     * hardware. This is the same topology used by ref/. */
-    DCMIPP_CSI_PIPE_ConfTypeDef csi_pipe{};
-    csi_pipe.DataTypeMode = DCMIPP_DTMODE_DTIDA;
-    csi_pipe.DataTypeIDA = DCMIPP_DT_RAW10;
-    csi_pipe.DataTypeIDB = DCMIPP_DT_RAW10;
-    if (HAL_DCMIPP_CSI_PIPE_SetConfig(&hcamera_dcmipp, DCMIPP_PIPE2,
-                                      &csi_pipe) != HAL_OK ||
-        HAL_DCMIPP_PIPE_CSI_EnableShare(&hcamera_dcmipp, DCMIPP_PIPE2) !=
-            HAL_OK) {
+     * hardware. Configure the CSI selector once for Pipe1 in the BSP and
+     * share it here; reprogramming Pipe2's CSI selector corrupts the shared
+     * ancillary stream on this board. */
+    if (HAL_DCMIPP_PIPE_CSI_EnableShare(&hcamera_dcmipp, DCMIPP_PIPE2) !=
+        HAL_OK) {
         return Hardware("camera.pipe2.csi");
     }
 
+    DCMIPP_CropConfTypeDef crop{};
+    /* Keep the face crop aligned with the centered 480x480 region in Pipe1.
+     * For the other models, retain the display crop aspect ratio. The
+     * image_resizer applies the minimum common decimation needed to keep the
+     * DCMIPP fixed-point downsize ratio valid. */
+#if defined(AI_MODEL_FACE)
+    crop.HSize = kFacePipe2CropSize;
+    crop.VSize = kFacePipe2CropSize;
+#else
     const float ratio_width = static_cast<float>(kSensorWidth) / kOutputWidth;
     const float ratio_height = static_cast<float>(kSensorHeight) / kOutputHeight;
     const float display_to_sensor = ratio_width < ratio_height
                                         ? ratio_width
                                         : ratio_height;
-    DCMIPP_CropConfTypeDef crop{};
-    /* Keep Pipe2's source geometry identical to the reference person
-     * detector: the 800x480 display aspect-ratio crop is resized to the
-     * model's 480x480 tensor. The model was trained with this same horizontal
-     * stretch. */
     if (AI_DCMIPP_BYPASS_DOWNSIZE != 0) {
         crop.HSize = kInferenceWidth;
         crop.VSize = kInferenceHeight;
@@ -179,22 +264,32 @@ Error ConfigureInferencePipe()
         crop.VSize = static_cast<std::uint32_t>(
             static_cast<float>(kOutputHeight) * display_to_sensor);
     }
+#endif
     crop.HStart = ((kSensorWidth - crop.HSize) / 2U) & ~1U;
     crop.VStart = ((kSensorHeight - crop.VSize) / 2U) & ~1U;
     crop.PipeArea = DCMIPP_POSITIVE_AREA;
     if (HAL_DCMIPP_PIPE_SetCropConfig(&hcamera_dcmipp, DCMIPP_PIPE2, &crop) !=
             HAL_OK ||
-        HAL_DCMIPP_PIPE_EnableCrop(&hcamera_dcmipp, DCMIPP_PIPE2) != HAL_OK ||
-        HAL_DCMIPP_PIPE_DisableDecimation(&hcamera_dcmipp, DCMIPP_PIPE2) !=
-            HAL_OK) {
+        HAL_DCMIPP_PIPE_EnableCrop(&hcamera_dcmipp, DCMIPP_PIPE2) != HAL_OK) {
         return Hardware("camera.pipe2.crop");
+    }
+
+    uai::ai::image_resizer::Selection resize{};
+    Error resize_status = SelectDcmippResize(
+        crop.HSize, crop.VSize, kInferenceWidth, kInferenceHeight, &resize);
+    if (!resize_status.Ok()) {
+        return resize_status;
+    }
+    resize_status = ApplyDcmippDecimation(DCMIPP_PIPE2, resize);
+    if (!resize_status.Ok()) {
+        return resize_status;
     }
 
     DCMIPP_DownsizeTypeDef downsize{};
     downsize.HRatio = static_cast<std::uint32_t>(
-        8192.0F * crop.HSize / kInferenceWidth);
+        8192.0F * resize.dcmipp_input_width / kInferenceWidth);
     downsize.VRatio = static_cast<std::uint32_t>(
-        8192.0F * crop.VSize / kInferenceHeight);
+        8192.0F * resize.dcmipp_input_height / kInferenceHeight);
     downsize.HDivFactor = (1024U * 8192U - 1U) / downsize.HRatio;
     downsize.VDivFactor = (1024U * 8192U - 1U) / downsize.VRatio;
     downsize.HSize = kInferenceWidth;
@@ -226,6 +321,14 @@ Error ConfigureInferencePipe()
               static_cast<unsigned int>(crop.VStart),
               static_cast<unsigned int>(crop.HSize),
               static_cast<unsigned int>(crop.VSize),
+              static_cast<unsigned int>(kInferenceWidth),
+              static_cast<unsigned int>(kInferenceHeight));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "image_resizer: pipe=2 hw=%s decimation=%u input=%ux%u output=%ux%u\n"),
+              uai::ai::image_resizer::HardwareName(resize.hardware),
+              static_cast<unsigned int>(resize.dcmipp_decimation),
+              static_cast<unsigned int>(resize.dcmipp_input_width),
+              static_cast<unsigned int>(resize.dcmipp_input_height),
               static_cast<unsigned int>(kInferenceWidth),
               static_cast<unsigned int>(kInferenceHeight));
     return {ErrorCode::kOk, 0U, "camera.pipe2.configure"};

@@ -35,6 +35,8 @@ private:
                                  bool coordinate_pattern);
     static void DrawBoxes(const memory_allocator::DisplayBuffer &buffer,
                           const memory_allocator::BoxSet &boxes);
+    static void DrawInferenceRegion(
+        const memory_allocator::DisplayBuffer &buffer);
     static void DrawMask(const memory_allocator::DisplayBuffer &buffer,
                          const memory_allocator::BoxSet &boxes);
     static common::Error FromBackend(uai::driver::DriverStatus status,

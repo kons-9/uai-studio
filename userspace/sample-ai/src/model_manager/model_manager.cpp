@@ -3,6 +3,14 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <tk/tkernel.h>
+
+#if defined(AI_MODEL_FACE)
+#include "model_manager/model/face/model_face_postprocess.h"
+#endif
+
+#include "driver/npu_driver/debug.h"
+
 /* C実装のT-Monitor APIをC++から呼び出すためのCリンケージ。 */
 extern "C" {
 #include <tm/tmonitor.h>
@@ -22,12 +30,19 @@ using common::ErrorCode;
 namespace {
 
 using memory_allocator::BoxSet;
+using Float = float;
 
-#if !defined(AI_MODEL_SEGMENTATION)
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+std::uint32_t DiagnosticNow()
+{
+    SYSTIM time = {};
+    return tk_get_otm(&time) == E_OK ? time.lo : 0U;
+}
+#endif
+
+#if defined(AI_MODEL_PERSON)
 constexpr std::size_t kInputSize = 480U;
 constexpr std::uint32_t kMaxDetections = 100U;
-
-using Float = float;
 
 struct OdInput {
     void *raw_l = nullptr;
@@ -275,6 +290,186 @@ void LogBoxes(const char *stage, const BoxSet &boxes)
                   static_cast<unsigned int>(ConfidenceMilli(box.confidence)));
     }
 }
+#elif defined(AI_MODEL_FACE)
+constexpr std::size_t kFaceInputSize = 128U;
+constexpr std::size_t kFaceBoxes0 = 512U;
+constexpr std::size_t kFaceBoxes1 = 384U;
+std::size_t g_face_output_order[4]{};
+
+bool InitializeFacePostprocess(const stai_network_info &info)
+{
+    if (info.n_outputs != 4U || info.outputs == nullptr) {
+        return false;
+    }
+    /* The generated model currently emits box0, score0, score1, box1.
+     * Keep the mapping size-based so regeneration is harmless if the two
+     * output branches are reordered by ST Edge AI. */
+    bool found_box0 = false;
+    bool found_score0 = false;
+    bool found_score1 = false;
+    bool found_box1 = false;
+    for (std::size_t i = 0U; i < info.n_outputs; ++i) {
+        switch (info.outputs[i].size_bytes) {
+        case kFaceBoxes0 * 16U:
+            g_face_output_order[0] = i;
+            found_box0 = true;
+            break;
+        case kFaceBoxes0:
+            g_face_output_order[1] = i;
+            found_score0 = true;
+            break;
+        case kFaceBoxes1:
+            g_face_output_order[2] = i;
+            found_score1 = true;
+            break;
+        case kFaceBoxes1 * 16U:
+            g_face_output_order[3] = i;
+            found_box1 = true;
+            break;
+        default:
+            return false;
+        }
+    }
+    if (!found_box0 || !found_score0 || !found_score1 || !found_box1) {
+        return false;
+    }
+
+    const std::size_t box0 = g_face_output_order[0];
+    const std::size_t score0 = g_face_output_order[1];
+    const std::size_t score1 = g_face_output_order[2];
+    const std::size_t box1 = g_face_output_order[3];
+    return ai_face_postprocess_initialize(
+               info.outputs[box0].scale.data[0],
+               info.outputs[box0].zeropoint.data[0],
+               info.outputs[score0].scale.data[0],
+               info.outputs[score0].zeropoint.data[0],
+               info.outputs[box1].scale.data[0],
+               info.outputs[box1].zeropoint.data[0],
+               info.outputs[score1].scale.data[0],
+               info.outputs[score1].zeropoint.data[0]) == 0;
+}
+
+std::int16_t ClampFaceCoordinate(Float value, std::int32_t limit)
+{
+    if (value <= 0.0F) {
+        return 0;
+    }
+    if (value >= static_cast<Float>(limit)) {
+        return static_cast<std::int16_t>(limit);
+    }
+    return static_cast<std::int16_t>(value);
+}
+
+bool ConvertFaceDetections(stai_ptr *outputs, bool from_pipe2, BoxSet *result)
+{
+    ai_face_detection_t detections[memory_allocator::kMaxBoxes]{};
+    std::uint32_t count = 0U;
+    if (ai_face_postprocess_run(
+            outputs[g_face_output_order[0]], outputs[g_face_output_order[1]],
+            outputs[g_face_output_order[3]], outputs[g_face_output_order[2]],
+            detections, memory_allocator::kMaxBoxes, &count) != 0) {
+        return false;
+    }
+
+    result->count = count;
+    for (std::uint32_t i = 0U; i < result->count; ++i) {
+        const ai_face_detection_t &source = detections[i];
+        Float left = 0.0F;
+        Float top = 0.0F;
+        Float box_width = 0.0F;
+        Float box_height = 0.0F;
+        if (from_pipe2) {
+            /* Pipe2 uses the centered 1555x1555 sensor square after 2x
+             * decimation. The corresponding region in Pipe1 is the centered
+             * 480x480 square at x=160..639, y=0..479. */
+            constexpr Float kPipe2DisplayOffsetX = 160.0F;
+            constexpr Float kPipe2DisplayOffsetY = 0.0F;
+            constexpr Float kPipe2DisplayScaleX = 480.0F;
+            constexpr Float kPipe2DisplayScaleY = 480.0F;
+            left = kPipe2DisplayOffsetX +
+                   (source.x_center - source.width * 0.5F) *
+                       kPipe2DisplayScaleX;
+            top = kPipe2DisplayOffsetY +
+                  (source.y_center - source.height * 0.5F) *
+                      kPipe2DisplayScaleY;
+            box_width = source.width * kPipe2DisplayScaleX;
+            box_height = source.height * kPipe2DisplayScaleY;
+        } else {
+            /* CPU fallback: face input is the centered square crop of the
+             * 800x480 Pipe1 surface. */
+            constexpr Float kFaceCropSize =
+                static_cast<Float>(memory_allocator::kFrameHeight);
+            constexpr Float kFaceCropX =
+                static_cast<Float>(memory_allocator::kFrameWidth -
+                                   memory_allocator::kFrameHeight) /
+                2.0F;
+            left = kFaceCropX +
+                   (source.x_center - source.width * 0.5F) * kFaceCropSize;
+            top = (source.y_center - source.height * 0.5F) * kFaceCropSize;
+            box_width = source.width * kFaceCropSize;
+            box_height = source.height * kFaceCropSize;
+        }
+        result->boxes[i].x = ClampFaceCoordinate(
+            left, memory_allocator::kFrameWidth);
+        result->boxes[i].y = ClampFaceCoordinate(
+            top, memory_allocator::kFrameHeight);
+        result->boxes[i].width = ClampFaceCoordinate(
+            box_width,
+            memory_allocator::kFrameWidth);
+        result->boxes[i].height = ClampFaceCoordinate(
+            box_height,
+            memory_allocator::kFrameHeight);
+        result->boxes[i].confidence = source.confidence;
+    }
+    return true;
+}
+
+#if AI_INFERENCE_DIAGNOSTICS
+void LogFaceOutputs(const stai_network_info &info, stai_ptr *outputs)
+{
+    constexpr float kConfidenceLogit = -0.6190392084F; // logit(0.35)
+    for (std::size_t i = 0U; i < info.n_outputs; ++i) {
+        if (info.outputs[i].size_bytes != kFaceBoxes0 &&
+            info.outputs[i].size_bytes != kFaceBoxes1) {
+            continue;
+        }
+        const auto *values = reinterpret_cast<const std::int8_t *>(outputs[i]);
+        const std::size_t count = info.outputs[i].size_bytes;
+        std::int32_t minimum = 127;
+        std::int32_t maximum = -128;
+        std::size_t maximum_index = 0U;
+        for (std::size_t j = 0U; j < count; ++j) {
+            const std::int32_t value = values[j];
+            minimum = value < minimum ? value : minimum;
+            if (value > maximum) {
+                maximum = value;
+                maximum_index = j;
+            }
+        }
+        const float scale = info.outputs[i].scale.data[0];
+        const std::int32_t zero_point = info.outputs[i].zeropoint.data[0];
+        const float threshold = static_cast<float>(zero_point) +
+                                kConfidenceLogit / scale;
+        tm_printf(reinterpret_cast<const UB *>(
+                      "ai: face score slot=%u boxes=%u min=%d max=%d "
+                  "max_index=%u threshold_x1000=%u scale_x100000=%u "
+                  "zp=%d max_prob_x1000=%u\n"),
+                  static_cast<unsigned int>(i),
+                  static_cast<unsigned int>(count),
+                  static_cast<int>(minimum), static_cast<int>(maximum),
+                  static_cast<unsigned int>(maximum_index),
+                  static_cast<unsigned int>(threshold * 1000.0F),
+                  static_cast<unsigned int>(scale * 100000.0F),
+                  static_cast<int>(zero_point),
+                  static_cast<unsigned int>(
+                      (1.0F / (1.0F + __builtin_expf(
+                                        -((static_cast<float>(maximum) -
+                                           static_cast<float>(zero_point)) *
+                                          scale)))) *
+                      1000.0F));
+    }
+}
+#endif
 #else
 constexpr std::size_t kSegmentationInputWidth = 320U;
 constexpr std::size_t kSegmentationInputHeight = 320U;
@@ -296,12 +491,15 @@ bool ConvertSegmentationMask(stai_ptr output, std::uint8_t mask_index,
     const auto *logits = reinterpret_cast<const std::int8_t *>(output);
     auto *mask = reinterpret_cast<std::uint8_t *>(
         kSegmentationMaskBuffers[mask_index]);
+    std::uint32_t foreground_pixels = 0U;
     for (std::size_t i = 0U; i < kSegmentationMaskBytes; ++i) {
         mask[i] = logits[2U * i + 1U] > logits[2U * i] ? 1U : 0U;
+        foreground_pixels += mask[i];
     }
     result->mask_address = kSegmentationMaskBuffers[mask_index];
     result->mask_width = static_cast<std::uint16_t>(kSegmentationMaskWidth);
     result->mask_height = static_cast<std::uint16_t>(kSegmentationMaskHeight);
+    result->mask_foreground_pixels = foreground_pixels;
     return true;
 }
 #endif
@@ -329,6 +527,8 @@ Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
     const std::uint16_t expected_outputs =
 #if defined(AI_MODEL_SEGMENTATION)
         1U;
+#elif defined(AI_MODEL_FACE)
+        4U;
 #else
         3U;
 #endif
@@ -367,10 +567,22 @@ Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
         info_.outputs[0].size_bytes != kSegmentationMaskBytes * 2U) {
         return {ErrorCode::kModel, 0U, "ai.segmentation_tensor_shape"};
     }
+#elif defined(AI_MODEL_FACE)
+    if (info_.inputs[0].size_bytes != 128U * 128U * 3U ||
+        info_.outputs[0].size_bytes != 8192U ||
+        info_.outputs[1].size_bytes != 512U ||
+        info_.outputs[2].size_bytes != 384U ||
+        info_.outputs[3].size_bytes != 6144U) {
+        return {ErrorCode::kModel, 0U, "ai.face_tensor_shape"};
+    }
 #endif
-#if !defined(AI_MODEL_SEGMENTATION)
+#if defined(AI_MODEL_PERSON)
     if (!InitializePostprocess(info_)) {
         return {ErrorCode::kModel, 0U, "ai.postprocess_initialize"};
+    }
+#elif defined(AI_MODEL_FACE)
+    if (!InitializeFacePostprocess(info_)) {
+        return {ErrorCode::kModel, 0U, "ai.face_postprocess_initialize"};
     }
 #endif
 
@@ -404,14 +616,27 @@ Error ModelManager::TryInfer(
     result->mask_address = 0U;
     result->mask_width = 0U;
     result->mask_height = 0U;
+    result->mask_foreground_pixels = 0U;
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+    const std::uint32_t diagnostic_start = DiagnosticNow();
+    const unsigned int irq_start = g_aton_irq_count;
+    std::uint32_t input_ms = 0U;
+    std::uint32_t npu_ms = 0U;
+    std::uint32_t output_cache_ms = 0U;
+    std::uint32_t postprocess_ms = 0U;
+    std::uint32_t reset_ms = 0U;
+#endif
     AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: input direct begin sequence=%u source=%x size=%u pipe2=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence),
               static_cast<unsigned int>(frame.buffer.address),
               static_cast<unsigned int>(info_.inputs[0].size_bytes),
               static_cast<unsigned int>(frame.from_pipe2));
-    if (!frame.from_pipe2 ||
-        frame.buffer.size < info_.inputs[0].size_bytes) {
+    if (frame.buffer.size < info_.inputs[0].size_bytes
+#if !defined(AI_MODEL_FACE)
+        || !frame.from_pipe2
+#endif
+    ) {
         return {ErrorCode::kInvalidArgument,
                 static_cast<std::uint32_t>(frame.buffer.size),
                 "ai.direct_input"};
@@ -423,10 +648,12 @@ Error ModelManager::TryInfer(
                   "ai: input cache begin sequence=%u size=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence),
               static_cast<unsigned int>(input_buffer.size));
-    /* Pipe2 wrote this buffer. Invalidate the CPU cache so NPU sees the
-     * completed DMA contents; cleaning here could write stale CPU lines back
-     * over the camera image. */
-    Error status = cache_->PrepareForCpuRead(input_buffer);
+    /* Pipe2 wrote its input through DMA, while the face fallback produces the
+     * input from Pipe1 on the CPU. Invalidate only the former; clean the
+     * latter so the NPU sees the CPU-generated RGB888 bytes. */
+    Error status = frame.from_pipe2
+                       ? cache_->PrepareForCpuRead(input_buffer)
+                       : cache_->PrepareForPeripheralRead(input_buffer);
     if (!status.Ok()) {
         return status;
     }
@@ -451,7 +678,7 @@ Error ModelManager::TryInfer(
             return {ErrorCode::kInvalidArgument, frame.output_count,
                     "ai.dynamic_output_count"};
         }
-        stai_ptr dynamic_output_ptrs[3]{};
+        stai_ptr dynamic_output_ptrs[memory_allocator::kMaxModelOutputs]{};
         for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
             const memory_allocator::Buffer &output = frame.outputs[i];
             if (!output || output.size < info_.outputs[i].size_bytes ||
@@ -476,10 +703,20 @@ Error ModelManager::TryInfer(
         }
     }
 
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+    input_ms = DiagnosticNow() - diagnostic_start;
+#endif
+
     AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu run call sequence=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence));
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+    const std::uint32_t npu_start = DiagnosticNow();
+#endif
     status = RunNetwork();
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+    npu_ms = DiagnosticNow() - npu_start;
+#endif
     AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu run return sequence=%u code=%u detail=%x\n"),
               static_cast<unsigned int>(frame.capture_sequence),
@@ -501,11 +738,22 @@ Error ModelManager::TryInfer(
             return status;
         }
     }
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+    const std::uint32_t postprocess_start = DiagnosticNow();
+    output_cache_ms = postprocess_start - npu_start - npu_ms;
+#endif
 #if defined(AI_MODEL_SEGMENTATION)
     if (!ConvertSegmentationMask(outputs_[0], mask_buffer_index_, result)) {
         return {ErrorCode::kModel, 0U, "ai.segmentation_postprocess"};
     }
     mask_buffer_index_ ^= 1U;
+#elif defined(AI_MODEL_FACE)
+#if AI_INFERENCE_DIAGNOSTICS
+    LogFaceOutputs(info_, outputs_);
+#endif
+    if (!ConvertFaceDetections(outputs_, frame.from_pipe2, result)) {
+        return {ErrorCode::kModel, 0U, "ai.face_postprocess"};
+    }
 #else
 #if AI_INFERENCE_DIAGNOSTICS
     LogOutputObjectness(info_, outputs_);
@@ -518,12 +766,40 @@ Error ModelManager::TryInfer(
 #endif
 #endif
 
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+    postprocess_ms = DiagnosticNow() - postprocess_start;
+    const std::uint32_t reset_start = DiagnosticNow();
+#endif
+
     const npu::Status npu_status = npu_.NewInference();
     last_npu_status_ = npu_status;
     last_error_ = npu_status.error.detail;
     if (!npu_status.Ok()) {
         return npu_status.error;
     }
+#if AI_INFERENCE_FPS_DIAGNOSTICS
+    reset_ms = DiagnosticNow() - reset_start;
+    if ((result->model_sequence % 10U) == 0U) {
+        UB diagnostic_line[192] = {};
+        (void)tm_sprintf(
+            diagnostic_line,
+            reinterpret_cast<const UB *>(
+                "ai: stages input_ms=%u npu_ms=%u output_ms=%u post_ms=%u "
+                "reset_ms=%u total_ms=%u irq_delta=%u irq_last=%x count=%u "
+                "mask_px=%u\n"),
+            static_cast<unsigned int>(input_ms),
+            static_cast<unsigned int>(npu_ms),
+            static_cast<unsigned int>(output_cache_ms),
+            static_cast<unsigned int>(postprocess_ms),
+            static_cast<unsigned int>(reset_ms),
+            static_cast<unsigned int>(DiagnosticNow() - diagnostic_start),
+            static_cast<unsigned int>(g_aton_irq_count - irq_start),
+            g_aton_last_irqs,
+            static_cast<unsigned int>(result->count),
+            static_cast<unsigned int>(result->mask_foreground_pixels));
+        tm_putstring(diagnostic_line);
+    }
+#endif
     return {ErrorCode::kOk, result->count, "ai.infer"};
 }
 

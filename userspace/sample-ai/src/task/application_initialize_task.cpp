@@ -2,6 +2,19 @@
 
 namespace uai::ai::task {
 
+namespace {
+#if defined(AI_MODEL_FACE)
+constexpr std::uintptr_t kModelDataAddress = 0x70800000UL;
+constexpr const char *kModelDataAddressName = "70800000";
+#elif defined(AI_MODEL_SEGMENTATION)
+constexpr std::uintptr_t kModelDataAddress = 0x70600000UL;
+constexpr const char *kModelDataAddressName = "70600000";
+#else
+constexpr std::uintptr_t kModelDataAddress = 0x70380000UL;
+constexpr const char *kModelDataAddressName = "70380000";
+#endif
+} // namespace
+
 void application_initialize_task(void)
 {
     /* Resume the nominal HAL tick after pre-kernel setup. The sample-ai HAL
@@ -42,9 +55,11 @@ void application_initialize_task(void)
         "boot: external memory init result=ok detail=0\n")));
     if (g_external_nor_ready) {
         const volatile std::uint32_t *model_data =
-            reinterpret_cast<const volatile std::uint32_t *>(0x70380000UL);
+            reinterpret_cast<const volatile std::uint32_t *>(kModelDataAddress);
         tm_printf(reinterpret_cast<const UB *>(
-                      "boot: model data @70380000=%x,%x,%x,%x\n"),
+                      "boot: model data @%s=%x,%x,%x,%x\n"),
+                  reinterpret_cast<const UB *>(
+                      const_cast<char *>(kModelDataAddressName)),
                   static_cast<unsigned int>(model_data[0]),
                   static_cast<unsigned int>(model_data[1]),
                   static_cast<unsigned int>(model_data[2]),

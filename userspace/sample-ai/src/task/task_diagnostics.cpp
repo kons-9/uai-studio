@@ -78,7 +78,10 @@ void LogFrameBrightness(
 void LogInferenceInput(
     const uai::ai::memory_allocator::InferenceFrame &frame)
 {
-    if (!frame || !frame.from_pipe2 ||
+    if (!frame ||
+#if !defined(AI_MODEL_FACE)
+        !frame.from_pipe2 ||
+#endif
         frame.buffer.size < uai::ai::memory_allocator::kInferenceFrameBytes) {
         tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
             "ai: input inspect invalid frame\n")));
@@ -88,7 +91,9 @@ void LogInferenceInput(
     const uai::ai::memory_allocator::Buffer input_buffer{
         frame.buffer.address, uai::ai::memory_allocator::kInferenceFrameBytes,
         frame.buffer.index, uai::ai::memory_allocator::Region::kInference};
-    const Error cache_status = g_cache.PrepareForCpuRead(input_buffer);
+    const Error cache_status = frame.from_pipe2
+                                   ? g_cache.PrepareForCpuRead(input_buffer)
+                                   : g_cache.PrepareForPeripheralRead(input_buffer);
     if (!cache_status.Ok()) {
         LogStatus("ai-input", cache_status);
         return;

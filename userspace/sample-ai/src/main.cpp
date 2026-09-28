@@ -17,11 +17,7 @@ extern "C" {
 
 extern DCMIPP_HandleTypeDef hcamera_dcmipp;
 
-#if defined(AI_MODEL_SEGMENTATION)
 void NPU0_IRQHandler(UINT intno);
-#else
-void NPU0_IRQHandler(void);
-#endif
 void IAC_IRQHandler(void);
 /* カメラ診断値はaiのcamera driverが定義する。 */
 extern volatile unsigned int g_camera_vsync_event_count;
@@ -173,7 +169,12 @@ bool DrainLatestBoxes(BoxSet *active)
              * briefly crosses the threshold. Keep the last valid detection
              * until the camera task's lifetime timer expires instead of
              * blinking the box on every miss. */
-            if (message.boxes.count > 0U) {
+            const bool has_detections = message.boxes.count > 0U;
+            const bool has_segmentation_mask =
+                message.boxes.mask_address != 0U &&
+                message.boxes.mask_width != 0U &&
+                message.boxes.mask_height != 0U;
+            if (has_detections || has_segmentation_mask) {
                 *active = message.boxes;
                 received = true;
             }
@@ -324,15 +325,11 @@ extern "C" INT usermain(void)
     DumpCoreRegisters("usermain");
 
     /* µT-Kernel replaces the startup vector table with its RAM table. Use its
-     * HLL wrapper for segmentation's NPU IRQ so the handler can signal the
-     * inference task through an event flag. Keep the other vendor IRQ handlers
-     * direct because they already provide the exception entry/return ABI. */
+     * HLL wrapper for the NPU IRQ so the handler can signal the inference task
+     * through an event flag. Keep the other vendor IRQ handlers direct because
+     * they already provide the exception entry/return ABI. */
     T_DINT npu_interrupt = {};
-#if defined(AI_MODEL_SEGMENTATION)
     npu_interrupt.intatr = TA_HLNG;
-#else
-    npu_interrupt.intatr = TA_ASM;
-#endif
     npu_interrupt.inthdr = reinterpret_cast<FP>(NPU0_IRQHandler);
     const ER npu_interrupt_status =
         tk_def_int(static_cast<UINT>(NPU0_IRQn), &npu_interrupt);
