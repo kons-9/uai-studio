@@ -1,31 +1,23 @@
 #ifndef UAI_AI_MODEL_MANAGER_HPP
 #define UAI_AI_MODEL_MANAGER_HPP
 
+#include <cstddef>
 #include <cstdint>
 
 #include "common/error.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "memory_allocator/memory_allocator.hpp"
-#include "model_manager/model_api.hpp"
-#include "model_manager/model_descriptor.hpp"
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
-#include "model_manager/model/face/model_face_adapter.hpp"
-#include "model_manager/model/person/model_person_adapter.hpp"
-#include "model_manager/model/segmentation/model_segmentation_adapter.hpp"
-#elif defined(AI_MODEL_SEGMENTATION)
-#include "model_manager/model/segmentation/model_segmentation_adapter.hpp"
-#elif defined(AI_MODEL_FACE)
-#include "model_manager/model/face/model_face_adapter.hpp"
-#else
-#include "model_manager/model/person/model_person_adapter.hpp"
-#endif
-#include "driver/npu_driver/npu_driver.hpp"
+#include "models/face/model.hpp"
+#include "models/model.hpp"
+#include "models/person/model.hpp"
+#include "models/segmentation/model.hpp"
+#include "npu_scheduler/npu_scheduler.hpp"
 
 namespace uai::ai {
 
 class ModelManager final {
 public:
-    using ModelKind = model_manager::ModelKind;
+    using ModelKind = models::ModelKind;
     common::Error Initialize(memory_allocator::MemoryAllocator &memory,
                              cache::CacheDriver &cache);
     common::Error SwitchModel(ModelKind kind);
@@ -35,47 +27,31 @@ public:
 
     const npu::Status &LastNpuStatus() const
     {
-        return last_npu_status_;
+        return scheduler_.LastStatus();
     }
 
     ModelKind CurrentModel() const { return model_kind_; }
 
 private:
-    common::Error RunNetwork();
+    common::Error ConfigureCurrentModel();
+    void BuildModelBindings();
 
     memory_allocator::MemoryAllocator *memory_ = nullptr;
     cache::CacheDriver *cache_ = nullptr;
-    npu::NpuDriver npu_{};
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
-    model_manager::Model *active_model_ = nullptr;
-    model_manager::PersonModelAdapter person_model_{};
-    model_manager::SegmentationModelAdapter segmentation_model_{};
-    model_manager::FaceModelAdapter face_model_{};
-#elif defined(AI_MODEL_SEGMENTATION)
-    model_manager::SegmentationModelAdapter model_{};
-#elif defined(AI_MODEL_FACE)
-    model_manager::FaceModelAdapter model_{};
-#else
-    model_manager::PersonModelAdapter model_{};
-#endif
+    npu_scheduler::NpuScheduler scheduler_{};
+    npu_scheduler::ModelBinding bindings_[3]{};
+    std::size_t binding_count_ = 0U;
+    models::person::Model person_model_{};
+    models::segmentation::Model segmentation_model_{};
+    models::face::Model face_model_{};
     stai_network_info info_{};
     stai_ptr outputs_[memory_allocator::kMaxModelOutputs]{};
     bool dynamic_outputs_ = false;
-    npu::Status last_npu_status_{};
     bool initialized_ = false;
-    ModelKind model_kind_ =
-#if defined(AI_MODEL_SEGMENTATION)
-        ModelKind::kSegmentation;
-#elif defined(AI_MODEL_FACE)
-        ModelKind::kFace;
-#else
-        ModelKind::kPerson;
-#endif
+    ModelKind model_kind_ = models::ModelKind::kPerson;
     std::uint32_t model_sequence_ = 0U;
     std::uint32_t last_error_ = 0U;
-#if defined(AI_DYNAMIC_MODEL_SWITCHING) || defined(AI_MODEL_SEGMENTATION)
     std::uint8_t mask_buffer_index_ = 0U;
-#endif
 };
 
 } // namespace uai::ai

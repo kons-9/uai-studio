@@ -78,10 +78,7 @@ void LogFrameBrightness(
 void LogInferenceInput(
     const uai::ai::memory_allocator::InferenceFrame &frame)
 {
-    if (!frame ||
-#if !defined(AI_MODEL_FACE)
-        !frame.from_pipe2 ||
-#endif
+    if (!frame || !frame.from_pipe2 ||
         frame.buffer.size < uai::ai::memory_allocator::kInferenceFrameBytes) {
         tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
             "ai: input inspect invalid frame\n")));

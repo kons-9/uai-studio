@@ -1,10 +1,6 @@
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
 #define ECBLOB_CONST_SECTION __attribute__((section(".network_blobs_segmentation")))
-#else
-#include "../../../../config/network_blobs_config.h"
-#endif
 
-#include "model_manager/model/segmentation/model_segmentation_diagnostics.h"
+#include "models/segmentation/model_segmentation_diagnostics.h"
 
 #define stai_network_init segmentation_stai_network_init
 #define stai_network_deinit segmentation_stai_network_deinit

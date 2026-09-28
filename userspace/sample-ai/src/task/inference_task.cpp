@@ -14,17 +14,16 @@
 
 namespace uai::ai::task {
 
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
 namespace {
 
 Error PrepareDynamicModelInput(
-    InferenceFrame *frame, model_manager::ModelKind model_kind)
+    InferenceFrame *frame, models::ModelKind model_kind)
 {
     if (frame == nullptr || !frame->from_pipe2) {
         return {ErrorCode::kInvalidArgument, 0U,
                 "ai.dynamic_input.invalid_frame"};
     }
-    if (model_kind == model_manager::ModelKind::kPerson) {
+    if (model_kind == models::ModelKind::kPerson) {
         frame->input_prepared_by_cpu = false;
         return {ErrorCode::kOk, 0U, "ai.dynamic_input.direct"};
     }
@@ -52,7 +51,7 @@ Error PrepareDynamicModelInput(
                     kSourceRowBytes);
     }
 
-    const auto &descriptor = model_manager::Describe(model_kind);
+    const auto &descriptor = models::DescriptorFor(model_kind);
     const std::uint32_t content_height =
         (descriptor.input_width * memory_allocator::kInferenceSourceHeight +
          memory_allocator::kInferenceSourceWidth - 1U) /
@@ -73,7 +72,6 @@ Error PrepareDynamicModelInput(
 }
 
 } // namespace
-#endif
 
 void inference_task(void)
 {
@@ -103,14 +101,12 @@ void inference_task(void)
     }
 
     bool inference_enabled = model_status.Ok();
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
-    constexpr model_manager::ModelKind kModelSequence[] = {
-        model_manager::ModelKind::kPerson,
-        model_manager::ModelKind::kSegmentation,
-        model_manager::ModelKind::kFace};
+    constexpr models::ModelKind kModelSequence[] = {
+        models::ModelKind::kPerson,
+        models::ModelKind::kSegmentation,
+        models::ModelKind::kFace};
     std::size_t next_model_index = 0U;
     BoxSet integrated_boxes{};
-#endif
 #if AI_INFERENCE_FPS_DIAGNOSTICS
     std::uint32_t fps_window_start = Now();
     std::uint32_t fps_submitted = 0U;
@@ -124,8 +120,7 @@ void inference_task(void)
         if (size != static_cast<INT>(sizeof(message))) {
             continue;
         }
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
-        const model_manager::ModelKind selected_model =
+        const models::ModelKind selected_model =
             kModelSequence[next_model_index];
         next_model_index =
             (next_model_index + 1U) %
@@ -136,14 +131,13 @@ void inference_task(void)
                 tm_printf(reinterpret_cast<const UB *>(
                               "ai: per-frame model switch failed model=%s code=%d detail=%x\n"),
                           reinterpret_cast<const UB *>(
-                              model_manager::Describe(selected_model).name),
+                              models::DescriptorFor(selected_model).name),
                           static_cast<int>(switch_status.code),
                           static_cast<unsigned int>(switch_status.detail));
                 (void)g_memory.ReleaseInferenceBuffer(message.frame);
                 continue;
             }
         }
-#endif
 #if AI_INFERENCE_FPS_DIAGNOSTICS
         ++fps_submitted;
 #endif
@@ -156,15 +150,13 @@ void inference_task(void)
 
         BoxSet boxes{};
         if (inference_enabled) {
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
-            const model_manager::ModelKind selected_model = model.CurrentModel();
+            const models::ModelKind selected_model = model.CurrentModel();
             status = PrepareDynamicModelInput(&message.frame, selected_model);
             if (!status.Ok()) {
                 (void)g_memory.ReleaseInferenceBuffer(message.frame);
                 LogStatus("ai.input", status);
                 continue;
             }
-#endif
             AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                           "ai: inference begin sequence=%u\n"),
                       static_cast<unsigned int>(message.frame.capture_sequence));
@@ -216,21 +208,20 @@ void inference_task(void)
 #if AI_INFERENCE_FPS_DIAGNOSTICS
             ++fps_completed;
 #endif
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
             switch (model.CurrentModel()) {
-            case model_manager::ModelKind::kPerson:
+            case models::ModelKind::kPerson:
                 if (boxes.person_valid) {
                     integrated_boxes.person = boxes.person;
                     integrated_boxes.person_valid = true;
                 }
                 break;
-            case model_manager::ModelKind::kFace:
+            case models::ModelKind::kFace:
                 if (boxes.face_valid) {
                     integrated_boxes.face = boxes.face;
                     integrated_boxes.face_valid = true;
                 }
                 break;
-            case model_manager::ModelKind::kSegmentation:
+            case models::ModelKind::kSegmentation:
                 if (boxes.segmentation_valid) {
                     integrated_boxes.segmentation = boxes.segmentation;
                     integrated_boxes.segmentation_valid = true;
@@ -240,9 +231,6 @@ void inference_task(void)
             integrated_boxes.model_sequence = boxes.model_sequence;
             integrated_boxes.capture_sequence = boxes.capture_sequence;
             SendLatestBoxes(integrated_boxes);
-#else
-            SendLatestBoxes(boxes);
-#endif
 #if AI_INFERENCE_DIAGNOSTICS
             if ((boxes.model_sequence % 10U) == 0U) {
                 tm_printf(reinterpret_cast<const UB *>(
@@ -290,7 +278,7 @@ void inference_task(void)
             fps_inference_max_ms = 0U;
         }
 #endif
-#if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
+#if defined(AI_SEGMENTATION_DIAG)
         /* The diagnostic build is deliberately limited to one NPU attempt. */
         (void)tk_ext_tsk();
 #endif

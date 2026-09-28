@@ -56,7 +56,7 @@ personモデルの推論入力は Pipe2 の 480x480 RGB888 です。実際に NP
 
 ```sh
 cmake -S . -B build-sample-ai \
-  -DAPP_TARGET=sample-ai -DAI_MODEL=person \
+  -DAPP_TARGET=sample-ai \
   -DAI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC=ON
 cmake --build build-sample-ai --target sample-ai.elf
 ```
@@ -69,11 +69,10 @@ UARTには30フレームごとに `ai: input inspect` としてアドレス、�
 
 ## モデル
 
-通常の単一モデル構成では、モデルのcommand blobを`AI_MODEL`で1つ選択します。
-`AI_DYNAMIC_MODEL_SWITCHING=ON`を指定した構成ではperson、segmentation、faceの
-3モデルを同時にリンクし、起動時に各モデルのEC command blobをランタイムRAMへ
-一度だけ展開します。切り替え時はNPUのモデルコンテキストを選択するだけなので、
-モデルごとのNOR再読み出し・再初期化を行いません。
+sample-aiはperson、segmentation、faceの3モデルを常に同時にリンクし、起動時に
+各モデルのEC command blobをランタイムRAMへ一度だけ展開します。切り替え時はNPUの
+モデルコンテキストを選択するだけなので、モデルごとのNOR再読み出し・再初期化を
+行いません。単一モデルだけをリンクするビルド構成は廃止しています。
 
 ここでいうランタイムRAMは、生成コードの`ECBLOB_RUNTIME_SECTION`にある実行用
 command bufferです。NPU activation用のAXISRAM3-6を3モデル分重複確保する方式では
@@ -95,6 +94,31 @@ command bufferです。NPU activation用のAXISRAM3-6を3モデル分重複確�
 
 ST公式のモデル取得元、モデルファイル名、ライセンスと利用条件は
 [`models/README.md`](models/README.md) に記載しています。
+
+### 推論ソフトウェアの構成
+
+推論実行は、生成モデルのC APIとアプリケーションの責務を分離した3層構成です。
+
+- `src/models/`：共通の `Model` インターフェースと、`person/`・`segmentation/`・
+  `face/`ごとのモデル実装を配置します。STEdgeAIが生成した `*_model_*` C関数名は
+  各モデルnamespaceに閉じ込めます。具体的な型は
+  `uai::ai::models::<model>::Model` です。
+- `src/npu_scheduler/`：`NpuDriver`の初期化、command blobのpreload、モデル選択、
+  入出力バインド、NPU実行と完了待ちを管理します。動的切り替え時もここで
+  `SelectModel()`を呼ぶだけで、`ModelManager::Initialize()`をやり直しません。
+- `src/model_manager/`：モデルの入力変換、出力所有権、person/face/segmentationの
+  後処理と表示用結果への変換を担当します。
+
+`ModelManager`に残す責務は、アプリケーションから見た推論のライフサイクル、現在の
+モデル状態、allocator/cacheとの入出力バインド、モデル固有出力の共通`BoxSet`への
+変換です。`ModelKind`と`ModelDescriptor`の共通型は`models/model.hpp`に置き、具体的な
+descriptor値は各モデルの`model.cpp`が所有します。`models/model_catalog.cpp`は、モデル
+インスタンス生成前に`ModelKind`から各モデルのdescriptorを取得するための薄い検索層です。
+
+そのため、モデル切り替えやNPUの実行順序に関する条件分岐はschedulerのbinding表へ
+集約しています。モデル選択用のCMakeオプションや`AI_MODEL_*`のビルド分岐はなく、
+生成C API・後処理・3モデルのcommand blobを常に同じ構成でリンクします。生成C
+ラッパーとモデル固有後処理も各`src/models/<model>/`にまとめています。
 
 ## 先に必要なもの
 
@@ -154,16 +178,15 @@ AXISRAM2-6はNPU用に残します。モデルがXSPI1を使う場合にも対�
 実行時にDKのPSRAMとNORのmemory-mappedモードを初期化します。
 これは `sample-hello-world` のリンカスクリプトを変更するものではありません。
 
-### 動的モデル切り替え
+### モデル切り替え
 
 ```sh
 cmake -S . -B build \
-  -DAPP_TARGET=sample-ai \
-  -DAI_DYNAMIC_MODEL_SWITCHING=ON
+  -DAPP_TARGET=sample-ai
 cmake --build build --target sample-ai
 ```
 
-この構成では起動時に`ai: model preloaded=segmentation`と
+起動時に`ai: model preloaded=segmentation`と
 `ai: model preloaded=face`がUARTへ出ます（初期モデルpersonは通常の初期化ログに
 含まれます）。切り替え時には`ai: model switched to ...`が出ますが、command blobの
 再ロードログは出ません。Pipe2はperson用の480x480テンソル（有効画像480x288）で

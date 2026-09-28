@@ -32,5 +32,5 @@
 - カメラsequence増加とNPU `npu done code=0` を確認。撮影画像の明るさログはmean=132、peak=253。
 - 追加のUART診断では、カメラの無フレーム判定が2秒で発生し、復旧の `BSP_CAMERA_Init()` を含む処理は約570msで完了。NPU timeoutは記録されず、復旧後はフレームsequenceが再開。
 - 2026-09-25、Pipe2化後のperson構成をRAMロード。UARTで `pipe2 frame queued`、Pipe2イベント増加、`input ... pipe2=1`、`npu done code=0` を確認。15秒の採取中にCSIエラーは増加したが、Pipe1のフレームsequenceは継続し、カメラ`recovery`は発生しなかった。
-- 同日、`AI_MODEL=segmentation` 構成もクロスビルド成功。
+- 同日、segmentationモデルを含む3モデル動的構成のクロスビルド成功。
 - **LCD実表示は未確認**。UARTとレジスター値はパネル上の表示を証明しないため、目視確認までこの項目は未合格。

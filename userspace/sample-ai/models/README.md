@@ -58,12 +58,8 @@ experimental runtime activation/state allocation options.
 the generator.
 
 Each model's `network_blobs.hex` must be programmed at its corresponding
-command blob address above. The linker places `.network_blobs` at that address
-for the selected `AI_MODEL`, so the RAM application and the NOR contents must
-be built from the same model selection.
-
-For the dynamic build (`AI_DYNAMIC_MODEL_SWITCHING=ON`), the linker emits three
-sections and three separate command-blob images:
+command blob address above. sample-ai always links all three models; the linker
+emits three sections and three separate command-blob images:
 
 | model | section | image | address |
 | --- | --- | --- | ---: |

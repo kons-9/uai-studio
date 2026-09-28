@@ -8,8 +8,8 @@ extern "C" {
 #include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
 void LL_ATON_NPU0_IRQHandler(void);
-#if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
-#include "model_manager/model/segmentation/model_segmentation_diagnostics.h"
+#if defined(AI_SEGMENTATION_DIAG)
+#include "models/segmentation/model_segmentation_diagnostics.h"
 #endif
 
 stai_return_code stai_runtime_init(void);
@@ -24,11 +24,11 @@ ID g_npu_irq_event_flag = 0;
 } // namespace
 extern "C" void NPU0_IRQHandler(UINT intno)
 {
-#if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
+#if defined(AI_SEGMENTATION_DIAG)
     ai_segmentation_diag_irq(0U);
 #endif
     LL_ATON_NPU0_IRQHandler();
-#if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
+#if defined(AI_SEGMENTATION_DIAG)
     ai_segmentation_diag_irq(1U);
 #endif
     if (g_npu_irq_event_flag > 0) {
@@ -103,7 +103,7 @@ void EnableNpuMemory()
     HAL_SYSCFG_EnableInterleavingCpuRam();
 }
 
-#if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
+#if defined(AI_SEGMENTATION_DIAG)
 class SegmentationDiagnosticRunScope final {
 public:
     SegmentationDiagnosticRunScope()
@@ -164,7 +164,7 @@ Status NpuDriver::InvalidState(const char *operation) const
             last_execution_};
 }
 
-Status NpuDriver::Initialize(model_manager::Model &model)
+Status NpuDriver::Initialize(models::Model &model)
 {
     if (initialized_) {
         for (std::uint32_t i = 0U; i < loaded_model_count_; ++i) {
@@ -259,7 +259,7 @@ Status NpuDriver::Initialize(model_manager::Model &model)
             last_execution_};
 }
 
-Status NpuDriver::Preload(model_manager::Model &model)
+Status NpuDriver::Preload(models::Model &model)
 {
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.preload");
@@ -293,7 +293,7 @@ Status NpuDriver::Preload(model_manager::Model &model)
             last_execution_};
 }
 
-Status NpuDriver::SelectModel(model_manager::Model &model)
+Status NpuDriver::SelectModel(models::Model &model)
 {
     if (!initialized_) {
         return InvalidState("npu.select_model");
@@ -313,7 +313,7 @@ Status NpuDriver::SelectModel(model_manager::Model &model)
             last_execution_};
 }
 
-bool NpuDriver::IsLoaded(const model_manager::Model &model) const
+bool NpuDriver::IsLoaded(const models::Model &model) const
 {
     for (std::uint32_t i = 0U; i < loaded_model_count_; ++i) {
         if (loaded_models_[i] == &model) {
@@ -395,7 +395,7 @@ Status NpuDriver::Run()
         return InvalidState("npu.run");
     }
 
-#if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
+#if defined(AI_SEGMENTATION_DIAG)
     SegmentationDiagnosticRunScope segmentation_diagnostics;
 #endif
 
@@ -445,7 +445,7 @@ Status NpuDriver::Run()
     for (std::uint32_t tick = 0U; tick < kTimeoutTicks; ++tick) {
         code = model_->GetRunStatus();
         last_error_ = static_cast<std::uint32_t>(code);
-#if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
+#if defined(AI_SEGMENTATION_DIAG)
         ai_segmentation_diag_poll(tick, static_cast<std::uint32_t>(code));
 #endif
         if (code == STAI_DONE) {

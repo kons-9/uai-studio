@@ -4,79 +4,10 @@
 #include <tk/tkernel.h>
 
 #include "driver/camera_driver/camera_driver.hpp"
-#include "image_resizer/image_resizer.hpp"
 #include "driver/lcd_driver/lcd_driver.hpp"
 #include "task/task_context.hpp"
 
 namespace uai::ai::task {
-
-#if defined(AI_MODEL_FACE)
-Error PrepareFaceInferenceInput(
-    const uai::ai::memory_allocator::CaptureFrame &capture,
-    uai::ai::memory_allocator::InferenceFrame *inference)
-{
-    if (inference == nullptr) {
-        return {ErrorCode::kInvalidArgument, 0U,
-                "ai.face_input.null_output"};
-    }
-
-    Error status = g_memory.AcquireInferenceBuffer(capture, inference);
-    if (!status.Ok()) {
-        return status;
-    }
-
-    status = g_cache.PrepareForCpuRead(capture.buffer);
-    if (!status.Ok()) {
-        (void)g_memory.ReleaseInferenceBuffer(*inference);
-        return status;
-    }
-
-    /* The official BlazeFace camera path uses ASPECT_RATIO_CROP and
-     * COLOR_RGB. Pipe1 is already 800x480, so use its centered 480x480
-     * square and resize that to the 128x128 model input. */
-    constexpr std::uint32_t kSquareSize =
-        uai::ai::memory_allocator::kFrameHeight;
-    constexpr std::uint32_t kSquareXOffset =
-        (uai::ai::memory_allocator::kFrameWidth - kSquareSize) / 2U;
-    image_resizer::Request request{};
-    request.input = image_resizer::InputKind::kRgb565Memory;
-    request.input_width = kSquareSize;
-    request.input_height = kSquareSize;
-    request.output_width = uai::ai::memory_allocator::kInferenceWidth;
-    request.output_height = uai::ai::memory_allocator::kInferenceHeight;
-    image_resizer::Selection selection{};
-    status = image_resizer::Select(request, &selection);
-    if (!status.Ok()) {
-        (void)g_memory.ReleaseInferenceBuffer(*inference);
-        return status;
-    }
-    status = image_resizer::ResizeRgb565ToRgb888(
-        {reinterpret_cast<const std::uint16_t *>(capture.buffer.address),
-         uai::ai::memory_allocator::kFrameWidth,
-         uai::ai::memory_allocator::kFrameHeight,
-         uai::ai::memory_allocator::kFrameWidth},
-        kSquareXOffset, 0U, kSquareSize, kSquareSize,
-        {reinterpret_cast<std::uint8_t *>(inference->buffer.address),
-         uai::ai::memory_allocator::kInferenceWidth,
-         uai::ai::memory_allocator::kInferenceHeight,
-         uai::ai::memory_allocator::kInferenceWidth * 3U});
-    if (!status.Ok()) {
-        (void)g_memory.ReleaseInferenceBuffer(*inference);
-        return status;
-    }
-
-    status = g_cache.PrepareForPeripheralRead({
-        inference->buffer.address,
-        uai::ai::memory_allocator::kInferenceFrameBytes,
-        inference->buffer.index,
-        uai::ai::memory_allocator::Region::kInference});
-    if (!status.Ok()) {
-        (void)g_memory.ReleaseInferenceBuffer(*inference);
-        return status;
-    }
-    return {ErrorCode::kOk, 0U, "ai.face_input.prepare"};
-}
-#endif
 
 void camera_render_task(void)
 {
@@ -308,10 +239,10 @@ void camera_render_task(void)
             g_camera_reconfigure_request) {
             const std::uint32_t request = g_camera_reconfigure_request;
             const auto requested_kind = static_cast<
-                uai::ai::model_manager::ModelKind>(
+                uai::ai::models::ModelKind>(
                 g_camera_reconfigure_kind);
             const Error reconfigure_status = camera.ReconfigureInference(
-                uai::ai::model_manager::Describe(requested_kind));
+                uai::ai::models::DescriptorFor(requested_kind));
             g_camera_reconfigure_code =
                 static_cast<std::uint32_t>(reconfigure_status.code);
             g_camera_reconfigure_detail = reconfigure_status.detail;
@@ -387,111 +318,36 @@ void camera_render_task(void)
                 LogStatus("memory", status);
             }
         } else if (pipe2_status.Ok()) {
-#if defined(AI_MODEL_FACE)
             if constexpr (kInferenceInputDisplayDiagnostic) {
-                /* Diagnostic mode intentionally displays the exact Pipe2
-                 * tensor and pauses NPU submission so the input can be
-                 * inspected without sharing the DMA buffer with inference. */
                 status = g_memory.ClaimInferenceBuffer(pipe2_frame);
                 if (!status.Ok()) {
                     LogStatus("memory", status);
-                    Halt("ai: face input display claim failed\n");
+                    Halt("ai: inference input display claim failed\n");
                 }
-#if AI_INFERENCE_DIAGNOSTICS
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: face input display pipe2 sequence=%u source=%x\n"),
-                          static_cast<unsigned int>(
-                              pipe2_frame.capture_sequence),
-                          static_cast<unsigned int>(pipe2_frame.buffer.address));
-#endif
+                const bool log_input =
+                    pipe2_frame.capture_sequence <= 3U ||
+                    (pipe2_frame.capture_sequence % 30U) == 0U;
+                if (log_input) {
+                    tm_printf(reinterpret_cast<const UB *>(
+                                  "ai: input display live sequence=%u buffer=%x\n"),
+                              static_cast<unsigned int>(
+                                  pipe2_frame.capture_sequence),
+                              static_cast<unsigned int>(
+                                  pipe2_frame.buffer.address));
+                    LogInferenceInput(pipe2_frame);
+                }
                 status = lcd.ComposeInferenceAndPresent(pipe2_frame);
-                if (!status.Ok() && !IsBestEffort(status.code)) {
+                if (!status.Ok() &&
+                    (!IsBestEffort(status.code) || log_input)) {
                     LogStatus("lcd", status);
                 }
                 const Error release_status =
                     g_memory.ReleaseInferenceBuffer(pipe2_frame);
                 if (!release_status.Ok()) {
                     LogStatus("memory", release_status);
-                    Halt("ai: face input display release failed\n");
+                    Halt("ai: diagnostic inference release failed\n");
                 }
-            } else if constexpr (kFaceUsePipe2Input) {
-                if (inference_due && kInferenceMode == InferenceMode::kNpu) {
-#if AI_INFERENCE_DIAGNOSTICS
-                    const bool log_input =
-                        pipe2_frame.capture_sequence <= 3U ||
-                        (pipe2_frame.capture_sequence % 30U) == 0U;
-                    tm_printf(reinterpret_cast<const UB *>(
-                                  "ai: face input from pipe2 sequence=%u source=%x\n"),
-                              static_cast<unsigned int>(
-                                  pipe2_frame.capture_sequence),
-                              static_cast<unsigned int>(
-                                  pipe2_frame.buffer.address));
-                    if (log_input) {
-                        LogInferenceInput(pipe2_frame);
-                    }
-#endif
-                    SendInferenceFrame(pipe2_frame);
-                    next_inference = now + kInferencePeriod;
-                } else {
-                    status = g_memory.ReleaseInferenceBuffer(pipe2_frame);
-                    if (!status.Ok()) {
-                        LogStatus("memory", status);
-                    }
-                }
-            } else {
-                /* CPU fallback retained for comparison/debugging. */
-                status = g_memory.ReleaseInferenceBuffer(pipe2_frame);
-                if (!status.Ok()) {
-                    LogStatus("memory", status);
-                }
-            }
-#else
-            bool inference_buffer_released = false;
-            if constexpr (kInferenceInputDisplayDiagnostic) {
-                /* Keep the live Pipe2 image on the LCD for this diagnostic.
-                 * A frame that is due for NPU inference is left untouched so
-                 * the inference task can claim the same buffer. */
-                if (!inference_due || kInferenceMode != InferenceMode::kNpu) {
-                    status = g_memory.ClaimInferenceBuffer(pipe2_frame);
-                    if (!status.Ok()) {
-                        LogStatus("memory", status);
-                        Halt("ai: inference input claim failed\n");
-                    }
-                    const bool log_input =
-                        pipe2_frame.capture_sequence <= 3U ||
-                        (pipe2_frame.capture_sequence % 30U) == 0U;
-                    if (log_input) {
-                        tm_printf(reinterpret_cast<const UB *>(
-                                      "ai: input display live sequence=%u buffer=%x\n"),
-                                  static_cast<unsigned int>(
-                                      pipe2_frame.capture_sequence),
-                                  static_cast<unsigned int>(
-                                      pipe2_frame.buffer.address));
-                        LogInferenceInput(pipe2_frame);
-                    }
-                    status = lcd.ComposeInferenceAndPresent(pipe2_frame);
-                    if (!status.Ok()) {
-                        if (!IsBestEffort(status.code) || log_input) {
-                            LogStatus("lcd", status);
-                        }
-                    } else if (log_input) {
-                        tm_printf(reinterpret_cast<const UB *>(
-                                      "lcd: inference frame presented sequence=%u\n"),
-                                  static_cast<unsigned int>(
-                                      pipe2_frame.capture_sequence));
-                    }
-                    const Error release_status =
-                        g_memory.ReleaseInferenceBuffer(pipe2_frame);
-                    if (!release_status.Ok()) {
-                        LogStatus("memory", release_status);
-                        Halt("ai: diagnostic inference release failed\n");
-                    }
-                    inference_buffer_released = true;
-                }
-            }
-#endif
-#if !defined(AI_MODEL_FACE)
-            if (!inference_buffer_released && inference_due &&
+            } else if (inference_due &&
                 kInferenceMode == InferenceMode::kNpu) {
 #if AI_INFERENCE_DIAGNOSTICS
                 tm_printf(reinterpret_cast<const UB *>(
@@ -503,14 +359,13 @@ void camera_render_task(void)
 #endif
                 SendInferenceFrame(pipe2_frame);
                 next_inference = now + kInferencePeriod;
-            } else if (!inference_buffer_released) {
+            } else {
                 const Error release_status =
                     g_memory.ReleaseInferenceBuffer(pipe2_frame);
                 if (!release_status.Ok()) {
                     LogStatus("memory", release_status);
                 }
             }
-#endif
         } else if (pipe2_status.code != ErrorCode::kNoFrame &&
                    pipe2_status.code != ErrorCode::kNoBuffer) {
             LogStatus("camera", pipe2_status);
@@ -541,27 +396,6 @@ void camera_render_task(void)
                       g_aton_last_irqs);
         }
         LogFrameBrightness(capture);
-#endif
-
-#if defined(AI_MODEL_FACE)
-        if constexpr (!kFaceUsePipe2Input) {
-        if (inference_due && kInferenceMode == InferenceMode::kNpu) {
-            InferenceFrame face_frame{};
-            status = PrepareFaceInferenceInput(capture, &face_frame);
-            if (status.Ok()) {
-#if AI_INFERENCE_DIAGNOSTICS
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: face input from pipe1 sequence=%u source=%x\n"),
-                          static_cast<unsigned int>(capture.sequence),
-                          static_cast<unsigned int>(capture.buffer.address));
-#endif
-                SendInferenceFrame(face_frame);
-                next_inference = now + kInferencePeriod;
-            } else if (status.code != ErrorCode::kNoBuffer) {
-                LogStatus("ai-face-input", status);
-            }
-        }
-        }
 #endif
 
         /* In the live Pipe2 diagnostic mode, the LCD is reserved for the

@@ -1,4 +1,4 @@
-#include "model_manager/model/segmentation/model_segmentation_diagnostics.h"
+#include "models/segmentation/model_segmentation_diagnostics.h"
 
 #include "driver/npu_driver/debug.h"
 #include "ll_aton_NN_interface.h"

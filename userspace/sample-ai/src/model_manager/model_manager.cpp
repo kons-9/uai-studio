@@ -5,9 +5,7 @@
 
 #include <tk/tkernel.h>
 
-#if defined(AI_MODEL_FACE) || defined(AI_DYNAMIC_MODEL_SWITCHING)
-#include "model_manager/model/face/model_face_postprocess.h"
-#endif
+#include "models/face/model_face_postprocess.h"
 
 #include "driver/npu_driver/debug.h"
 
@@ -42,7 +40,6 @@ std::uint32_t DiagnosticNow()
 }
 #endif
 
-#if defined(AI_MODEL_PERSON) || defined(AI_DYNAMIC_MODEL_SWITCHING)
 constexpr std::size_t kInputSize = 480U;
 constexpr std::uint32_t kMaxDetections = 100U;
 
@@ -224,6 +221,7 @@ bool ConvertDetections(stai_ptr *outputs, DetectionSet *result)
     return true;
 }
 
+#if AI_INFERENCE_DIAGNOSTICS
 void LogOutputObjectness(const stai_network_info &info, stai_ptr *outputs)
 {
     constexpr std::size_t kOutputChannels = 18U;
@@ -296,7 +294,6 @@ void LogBoxes(const char *stage, const DetectionSet &boxes)
 }
 #endif
 
-#if defined(AI_MODEL_FACE) || defined(AI_DYNAMIC_MODEL_SWITCHING)
 constexpr std::size_t kFaceInputSize = 128U;
 constexpr std::size_t kFaceBoxes0 = 512U;
 constexpr std::size_t kFaceBoxes1 = 384U;
@@ -479,9 +476,7 @@ void LogFaceOutputs(const stai_network_info &info, stai_ptr *outputs)
     }
 }
 #endif
-#endif
 
-#if defined(AI_MODEL_SEGMENTATION) || defined(AI_DYNAMIC_MODEL_SWITCHING)
 constexpr std::size_t kSegmentationInputWidth = 320U;
 constexpr std::size_t kSegmentationInputHeight = 320U;
 constexpr std::size_t kSegmentationMaskWidth = 320U;
@@ -513,112 +508,45 @@ bool ConvertSegmentationMask(stai_ptr output, std::uint8_t mask_index,
     result->mask_foreground_pixels = foreground_pixels;
     return true;
 }
-#endif
 
 } // namespace
 
-Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
-                               cache::CacheDriver &cache)
+void ModelManager::BuildModelBindings()
 {
-    if (initialized_) {
-        return {ErrorCode::kAlreadyInitialized, 0U, "ai.initialize"};
+    bindings_[0] = {ModelKind::kPerson, &person_model_};
+    bindings_[1] = {ModelKind::kSegmentation, &segmentation_model_};
+    bindings_[2] = {ModelKind::kFace, &face_model_};
+    binding_count_ = 3U;
+}
+
+Error ModelManager::ConfigureCurrentModel()
+{
+    const models::ModelDescriptor *descriptor = scheduler_.GetDescriptor();
+    if (descriptor == nullptr) {
+        return {ErrorCode::kModel, 0U, "ai.model_descriptor"};
     }
-    memory_ = &memory;
-    cache_ = &cache;
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
-    if (active_model_ == nullptr) {
-        switch (model_kind_) {
-        case ModelKind::kSegmentation:
-            active_model_ = &segmentation_model_;
-            break;
-        case ModelKind::kFace:
-            active_model_ = &face_model_;
-            break;
-        case ModelKind::kPerson:
-        default:
-            active_model_ = &person_model_;
-            break;
-        }
-    }
-    npu::Status npu_status = npu_.Initialize(*active_model_);
-    if (npu_status.Ok()) {
-        /* Keep every generated network context initialized.  Its generated
-         * EC command blob is copied from external flash to the model's
-         * runtime buffer here, once, instead of during every switch. */
-        const model_manager::ModelKind preload_order[] = {
-            ModelKind::kPerson, ModelKind::kSegmentation, ModelKind::kFace};
-        for (const ModelKind kind : preload_order) {
-            model_manager::Model *candidate = nullptr;
-            switch (kind) {
-            case ModelKind::kPerson:
-                candidate = &person_model_;
-                break;
-            case ModelKind::kSegmentation:
-                candidate = &segmentation_model_;
-                break;
-            case ModelKind::kFace:
-                candidate = &face_model_;
-                break;
-            }
-            if (candidate == active_model_) {
-                continue;
-            }
-            const bool was_loaded = npu_.IsLoaded(*candidate);
-            npu_status = npu_.Preload(*candidate);
-            if (!npu_status.Ok()) {
-                break;
-            }
-            if (!was_loaded) {
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: model preloaded=%s\n"),
-                          reinterpret_cast<const UB *>(Describe(kind).name));
-            }
-        }
-    }
-#else
-    npu::Status npu_status = npu_.Initialize(model_);
-#endif
-    last_npu_status_ = npu_status;
-    if (!npu_status.Ok()) {
-        last_error_ = npu_status.error.detail;
-        return npu_status.error;
+    Error status = scheduler_.GetInfo(&info_);
+    if (!status.Ok() || info_.n_inputs != 1U || info_.inputs == nullptr ||
+        info_.outputs == nullptr ||
+        info_.n_outputs != descriptor->output_count) {
+        return {ErrorCode::kModel, status.detail, "ai.model_info"};
     }
 
-    npu_status = npu_.GetInfo(&info_);
-    last_npu_status_ = npu_status;
-    last_error_ = npu_status.error.detail;
-    const std::uint16_t expected_outputs =
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
-        Describe(model_kind_).output_count;
-#else
-#if defined(AI_MODEL_SEGMENTATION)
-        1U;
-#elif defined(AI_MODEL_FACE)
-        4U;
-#else
-        3U;
-#endif
-#endif
-    if (!npu_status.Ok() || info_.n_inputs != 1U ||
-        info_.n_outputs != expected_outputs ||
-        info_.inputs == nullptr || info_.outputs == nullptr) {
-        return {ErrorCode::kModel, last_error_, "ai.model_info"};
+    if (info_.inputs[0].size_bytes !=
+        static_cast<std::size_t>(descriptor->input_width) *
+            descriptor->input_height * 3U) {
+        return {ErrorCode::kModel, 0U, "ai.model_input_shape"};
     }
 
     stai_size output_count = 0U;
-    npu_status = npu_.GetOutputs(outputs_, &output_count);
-    last_npu_status_ = npu_status;
-    if (!npu_status.Ok() || output_count != expected_outputs) {
-        last_error_ = npu_status.error.detail;
-        return {ErrorCode::kModel, last_error_, "ai.model_outputs"};
+    status = scheduler_.GetOutputs(outputs_, &output_count);
+    if (!status.Ok() || output_count != descriptor->output_count) {
+        return {ErrorCode::kModel, status.detail, "ai.model_outputs"};
     }
 
-    /* Neural-ART uses STAI_FLAG_OVERRIDE for both compiler-owned and
-     * user-owned outputs. The reliable indication of --no-outputs-allocation
-     * is the pointer returned before the application supplies buffers: a
-     * user-owned output is still NULL at this point. Do not infer ownership
-     * from STAI flags, otherwise allocator-provided buffers are never bound
-     * and the NPU receives NULL output addresses. */
+    /* The generated model reports NULL outputs when the application owns the
+     * output buffers. This is the only reliable ownership indication; STAI
+     * flags are shared by compiler-owned and user-owned output paths. */
     dynamic_outputs_ = false;
     for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
         const bool output_is_user_owned = outputs_[i] == nullptr;
@@ -628,68 +556,62 @@ Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
             return {ErrorCode::kModel, i, "ai.mixed_output_ownership"};
         }
     }
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
-    const model_manager::ModelDescriptor &descriptor = Describe(model_kind_);
-    if (info_.inputs[0].size_bytes !=
-            static_cast<std::size_t>(descriptor.input_width) *
-                descriptor.input_height * 3U) {
-        return {ErrorCode::kModel, 0U, "ai.segmentation_tensor_shape"};
-    }
-#endif
-#if defined(AI_MODEL_SEGMENTATION)
-    if (info_.inputs[0].size_bytes !=
-            kSegmentationInputWidth * kSegmentationInputHeight * 3U ||
-        info_.outputs[0].size_bytes != kSegmentationMaskBytes * 2U) {
-        return {ErrorCode::kModel, 0U, "ai.segmentation_tensor_shape"};
-    }
-#elif defined(AI_MODEL_FACE)
-    if (info_.inputs[0].size_bytes != 128U * 128U * 3U ||
-        info_.outputs[0].size_bytes != 8192U ||
-        info_.outputs[1].size_bytes != 512U ||
-        info_.outputs[2].size_bytes != 384U ||
-        info_.outputs[3].size_bytes != 6144U) {
-        return {ErrorCode::kModel, 0U, "ai.face_tensor_shape"};
-    }
-#endif
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+
     bool postprocess_ok = false;
     switch (model_kind_) {
     case ModelKind::kPerson:
         postprocess_ok = InitializePostprocess(info_);
-        break;
-    case ModelKind::kFace:
-        postprocess_ok = InitializeFacePostprocess(info_);
         break;
     case ModelKind::kSegmentation:
         postprocess_ok = info_.n_outputs == 1U &&
                          info_.outputs[0].size_bytes ==
                              kSegmentationMaskBytes * 2U;
         break;
+    case ModelKind::kFace:
+        postprocess_ok = InitializeFacePostprocess(info_);
+        break;
     }
     if (!postprocess_ok) {
         return {ErrorCode::kModel, 0U, "ai.postprocess_initialize"};
     }
-#elif defined(AI_MODEL_PERSON)
-    if (!InitializePostprocess(info_)) {
-        return {ErrorCode::kModel, 0U, "ai.postprocess_initialize"};
-    }
-#elif defined(AI_MODEL_FACE)
-    if (!InitializeFacePostprocess(info_)) {
-        return {ErrorCode::kModel, 0U, "ai.face_postprocess_initialize"};
-    }
-#endif
-
-    initialized_ = true;
     last_error_ = 0U;
+    return {ErrorCode::kOk, 0U, "ai.configure"};
+}
+
+Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
+                               cache::CacheDriver &cache)
+{
+    if (initialized_) {
+        return {ErrorCode::kAlreadyInitialized, 0U, "ai.initialize"};
+    }
+    memory_ = &memory;
+    cache_ = &cache;
+    BuildModelBindings();
+    Error status = scheduler_.Initialize(bindings_, binding_count_, model_kind_);
+    if (!status.Ok()) {
+        last_error_ = status.detail;
+        return status;
+    }
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: model preloaded=%s\n"),
+              reinterpret_cast<const UB *>(
+                  bindings_[1].model->GetDescriptor().name));
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: model preloaded=%s\n"),
+              reinterpret_cast<const UB *>(
+                  bindings_[2].model->GetDescriptor().name));
+    status = ConfigureCurrentModel();
+    if (!status.Ok()) {
+        (void)scheduler_.Shutdown();
+        last_error_ = status.detail;
+        return status;
+    }
+    initialized_ = true;
     return {ErrorCode::kOk, 0U, "ai.initialize"};
 }
 
 Error ModelManager::SwitchModel(ModelKind kind)
 {
-#if !defined(AI_DYNAMIC_MODEL_SWITCHING)
-    (void)kind;
-    return {ErrorCode::kInvalidState, 0U, "ai.switch_model.disabled"};
-#else
     if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
         return {ErrorCode::kNotInitialized, 0U, "ai.switch_model"};
     }
@@ -697,26 +619,23 @@ Error ModelManager::SwitchModel(ModelKind kind)
         return {ErrorCode::kOk, 0U, "ai.switch_model"};
     }
 
-    initialized_ = false;
+    const Error select_status = scheduler_.SelectModel(kind);
+    if (!select_status.Ok()) {
+        last_error_ = select_status.detail;
+        return select_status;
+    }
     model_kind_ = kind;
-    active_model_ = nullptr;
-    const Error status = Initialize(*memory_, *cache_);
+    initialized_ = false;
+    const Error status = ConfigureCurrentModel();
     if (!status.Ok()) {
         return status;
     }
+    initialized_ = true;
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: model switched to %s\n"),
-              reinterpret_cast<const UB *>(Describe(model_kind_).name));
+              reinterpret_cast<const UB *>(
+                  scheduler_.GetDescriptor()->name));
     return status;
-#endif
-}
-
-Error ModelManager::RunNetwork()
-{
-    const npu::Status status = npu_.Run();
-    last_npu_status_ = status;
-    last_error_ = status.error.detail;
-    return status.error;
 }
 
 Error ModelManager::TryInfer(
@@ -738,6 +657,10 @@ Error ModelManager::TryInfer(
     result->segmentation_valid = false;
     result->capture_sequence = frame.capture_sequence;
     result->model_sequence = ++model_sequence_;
+    const models::ModelDescriptor *descriptor = scheduler_.GetDescriptor();
+    if (descriptor == nullptr) {
+        return {ErrorCode::kModel, 0U, "ai.model_descriptor"};
+    }
 #if AI_INFERENCE_FPS_DIAGNOSTICS
     const std::uint32_t diagnostic_start = DiagnosticNow();
     const unsigned int irq_start = g_aton_irq_count;
@@ -762,18 +685,12 @@ Error ModelManager::TryInfer(
                 static_cast<std::uint32_t>(frame.buffer.size),
                 "ai.direct_input"};
     }
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
-    if (Describe(model_kind_).input_from_pipe2 && !frame.from_pipe2) {
+    if (descriptor->input_from_pipe2 && !frame.from_pipe2) {
         tm_printf(reinterpret_cast<const UB *>(
                       "ai: input rejected source_not_pipe2 model=%s\n"),
-                  reinterpret_cast<const UB *>(Describe(model_kind_).name));
+                  reinterpret_cast<const UB *>(descriptor->name));
         return {ErrorCode::kInvalidArgument, 2U, "ai.direct_input"};
     }
-#elif !defined(AI_MODEL_FACE)
-    if (!frame.from_pipe2) {
-        return {ErrorCode::kInvalidArgument, 2U, "ai.direct_input"};
-    }
-#endif
     const memory_allocator::Buffer input_buffer{
         frame.buffer.address, info_.inputs[0].size_bytes, frame.buffer.index,
         memory_allocator::Region::kInference};
@@ -796,16 +713,10 @@ Error ModelManager::TryInfer(
               "ai: input cache end sequence=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence));
 
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
-    const stai_return_code set_input = active_model_->SetInput(
-#else
-    const stai_return_code set_input = model_.SetInput(
-#endif
-        reinterpret_cast<stai_ptr>(frame.buffer.address),
-        info_.inputs[0].size_bytes);
-    if (set_input != STAI_SUCCESS) {
-        return {ErrorCode::kModel, static_cast<std::uint32_t>(set_input),
-                "ai.set_user_input"};
+    status = scheduler_.SetInput(reinterpret_cast<stai_ptr>(frame.buffer.address),
+                                  info_.inputs[0].size_bytes);
+    if (!status.Ok()) {
+        return status;
     }
     AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: input allocator end sequence=%u source=%x\n"),
@@ -833,12 +744,9 @@ Error ModelManager::TryInfer(
             dynamic_output_ptrs[i] =
                 reinterpret_cast<stai_ptr>(output.address);
         }
-        const npu::Status set_outputs =
-            npu_.SetOutputs(dynamic_output_ptrs, info_.n_outputs);
-        last_npu_status_ = set_outputs;
-        last_error_ = set_outputs.error.detail;
-        if (!set_outputs.Ok()) {
-            return set_outputs.error;
+        status = scheduler_.SetOutputs(dynamic_output_ptrs, info_.n_outputs);
+        if (!status.Ok()) {
+            return status;
         }
         for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
             outputs_[i] = dynamic_output_ptrs[i];
@@ -855,7 +763,8 @@ Error ModelManager::TryInfer(
 #if AI_INFERENCE_FPS_DIAGNOSTICS
     const std::uint32_t npu_start = DiagnosticNow();
 #endif
-    status = RunNetwork();
+    status = scheduler_.Run();
+    last_error_ = status.detail;
 #if AI_INFERENCE_FPS_DIAGNOSTICS
     npu_ms = DiagnosticNow() - npu_start;
 #endif
@@ -884,7 +793,6 @@ Error ModelManager::TryInfer(
     const std::uint32_t postprocess_start = DiagnosticNow();
     output_cache_ms = postprocess_start - npu_start - npu_ms;
 #endif
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
     switch (model_kind_) {
     case ModelKind::kSegmentation:
         if (!ConvertSegmentationMask(outputs_[0], mask_buffer_index_,
@@ -898,7 +806,7 @@ Error ModelManager::TryInfer(
 #if AI_INFERENCE_DIAGNOSTICS
         LogFaceOutputs(info_, outputs_);
 #endif
-        if (!ConvertFaceDetections(outputs_, true, &result->face)) {
+        if (!ConvertFaceDetections(outputs_, frame.from_pipe2, &result->face)) {
             return {ErrorCode::kModel, 0U, "ai.face_postprocess"};
         }
         result->face_valid = true;
@@ -919,44 +827,15 @@ Error ModelManager::TryInfer(
 #endif
         break;
     }
-#elif defined(AI_MODEL_SEGMENTATION)
-    if (!ConvertSegmentationMask(outputs_[0], mask_buffer_index_,
-                                 &result->segmentation)) {
-        return {ErrorCode::kModel, 0U, "ai.segmentation_postprocess"};
-    }
-    result->segmentation_valid = true;
-    mask_buffer_index_ ^= 1U;
-#elif defined(AI_MODEL_FACE)
-#if AI_INFERENCE_DIAGNOSTICS
-    LogFaceOutputs(info_, outputs_);
-#endif
-    if (!ConvertFaceDetections(outputs_, frame.from_pipe2, &result->face)) {
-        return {ErrorCode::kModel, 0U, "ai.face_postprocess"};
-    }
-    result->face_valid = true;
-#else
-#if AI_INFERENCE_DIAGNOSTICS
-    LogOutputObjectness(info_, outputs_);
-#endif
-    if (!ConvertDetections(outputs_, &result->person)) {
-        return {ErrorCode::kModel, 0U, "ai.postprocess"};
-    }
-    result->person_valid = true;
-#if AI_INFERENCE_DIAGNOSTICS
-    LogBoxes("postprocess-person", result->person);
-#endif
-#endif
 
 #if AI_INFERENCE_FPS_DIAGNOSTICS
     postprocess_ms = DiagnosticNow() - postprocess_start;
     const std::uint32_t reset_start = DiagnosticNow();
 #endif
 
-    const npu::Status npu_status = npu_.NewInference();
-    last_npu_status_ = npu_status;
-    last_error_ = npu_status.error.detail;
-    if (!npu_status.Ok()) {
-        return npu_status.error;
+    status = scheduler_.NewInference();
+    if (!status.Ok()) {
+        return status;
     }
 #if AI_INFERENCE_FPS_DIAGNOSTICS
     reset_ms = DiagnosticNow() - reset_start;
@@ -991,11 +870,10 @@ Error ModelManager::Shutdown()
     if (!initialized_) {
         return {ErrorCode::kNotInitialized, 0U, "ai.shutdown"};
     }
-    const npu::Status status = npu_.Shutdown();
-    last_npu_status_ = status;
-    last_error_ = status.error.detail;
+    const Error status = scheduler_.Shutdown();
+    last_error_ = status.detail;
     initialized_ = false;
-    return status.error;
+    return status;
 }
 
 } // namespace uai::ai

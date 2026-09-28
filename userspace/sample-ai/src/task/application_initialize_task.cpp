@@ -3,16 +3,8 @@
 namespace uai::ai::task {
 
 namespace {
-#if defined(AI_MODEL_FACE)
-constexpr std::uintptr_t kModelDataAddress = 0x70800000UL;
-constexpr const char *kModelDataAddressName = "70800000";
-#elif defined(AI_MODEL_SEGMENTATION)
-constexpr std::uintptr_t kModelDataAddress = 0x70600000UL;
-constexpr const char *kModelDataAddressName = "70600000";
-#else
 constexpr std::uintptr_t kModelDataAddress = 0x70380000UL;
 constexpr const char *kModelDataAddressName = "70380000";
-#endif
 } // namespace
 
 void application_initialize_task(void)

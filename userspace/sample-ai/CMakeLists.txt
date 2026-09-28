@@ -40,96 +40,38 @@ option(AI_INFERENCE_FPS_DIAGNOSTICS
     "Emit one lightweight inference FPS summary per second" OFF)
 option(AI_DISPLAY_TIMING_DIAGNOSTICS
     "Emit one lightweight LCD copy timing summary per second" OFF)
-option(AI_DYNAMIC_MODEL_SWITCHING
-    "Link person, segmentation, and face and switch them without reboot" OFF)
 set(AI_DCMIPP_PIPE2_FRAME_RATE "DCMIPP_FRAME_RATE_1_OVER_2" CACHE STRING
     "Pipe2 frame-rate selector (DCMIPP_FRAME_RATE_1_OVER_4, DCMIPP_FRAME_RATE_1_OVER_2, or DCMIPP_FRAME_RATE_ALL)")
 set_property(CACHE AI_DCMIPP_PIPE2_FRAME_RATE PROPERTY STRINGS
     DCMIPP_FRAME_RATE_1_OVER_4 DCMIPP_FRAME_RATE_1_OVER_2
     DCMIPP_FRAME_RATE_ALL)
-set(AI_MODEL "person" CACHE STRING "Inference model: person, face, or segmentation")
-set_property(CACHE AI_MODEL PROPERTY STRINGS person face segmentation)
-if(AI_DYNAMIC_MODEL_SWITCHING)
-    set(AI_MODEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models/person")
-    set(AI_MODEL_TARGET sample-ai_models)
-    set(AI_MODEL_C_API_SOURCES
-        "${AI_SRC_DIR}/model_manager/model/person/model_person.c"
-        "${AI_SRC_DIR}/model_manager/model/segmentation/model_segmentation.c"
-        "${AI_SRC_DIR}/model_manager/model/face/model_face.c")
-    set(AI_MODEL_ADAPTER_SOURCES
-        "${AI_SRC_DIR}/model_manager/model/person/model_person_adapter.cpp"
-        "${AI_SRC_DIR}/model_manager/model/segmentation/model_segmentation_adapter.cpp"
-        "${AI_SRC_DIR}/model_manager/model/face/model_face_adapter.cpp")
-    set(AI_MODEL_EXTRA_SOURCES
-        "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/od_pp_st_yolox.c"
-        "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/fd_pp_blazeface.c"
-        "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp_maxi_is8.c"
-        "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp.c"
-        "${AI_SRC_DIR}/model_manager/model/face/model_face_postprocess.c")
-    set(AI_MODEL_EXTRA_LIBRARIES
-        "${AI_THIRDPARTY_DIR}/Lib/GCC/ARMCortexM55/NetworkRuntime1200_CM55_GCC.a")
-    set(AI_MODEL_NOR_PROBE_OFFSET 0x00380000U)
-    set(AI_MODEL_POSTFIX dynamic)
-elseif(AI_MODEL STREQUAL "person")
-    set(AI_MODEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models/person")
-    set(AI_MODEL_IMPL_DIR "${AI_SRC_DIR}/model_manager/model/person")
-    set(AI_MODEL_C_API_SOURCE
-        "${AI_MODEL_IMPL_DIR}/model_person.c")
-    set(AI_MODEL_ADAPTER_SOURCE
-        "${AI_MODEL_IMPL_DIR}/model_person_adapter.cpp")
-    set(AI_MODEL_TARGET sample-ai_person)
-    set(AI_MODEL_EXTRA_SOURCES
-        "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/od_pp_st_yolox.c"
-        "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp_maxi_is8.c"
-        "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp.c")
-    set(AI_MODEL_EXTRA_LIBRARIES)
-    set(AI_MODEL_NOR_PROBE_OFFSET 0x00380000U)
-    set(AI_MODEL_BLOB_ADDRESS 0x70500000)
-    set(AI_MODEL_POSTFIX person)
-elseif(AI_MODEL STREQUAL "segmentation")
-    set(AI_MODEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation")
-    set(AI_MODEL_IMPL_DIR "${AI_SRC_DIR}/model_manager/model/segmentation")
-    set(AI_MODEL_C_API_SOURCE
-        "${AI_MODEL_IMPL_DIR}/model_segmentation.c")
-    set(AI_MODEL_ADAPTER_SOURCE
-        "${AI_MODEL_IMPL_DIR}/model_segmentation_adapter.cpp")
-    set(AI_MODEL_TARGET sample-ai_segmentation)
-    set(AI_MODEL_EXTRA_SOURCES)
-    set(AI_MODEL_EXTRA_LIBRARIES
-        "${AI_THIRDPARTY_DIR}/Lib/GCC/ARMCortexM55/NetworkRuntime1200_CM55_GCC.a")
-    set(AI_MODEL_NOR_PROBE_OFFSET 0x00600000U)
-    set(AI_MODEL_BLOB_ADDRESS 0x70560000)
-    set(AI_MODEL_POSTFIX segmentation)
-elseif(AI_MODEL STREQUAL "face")
-    set(AI_MODEL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models/face")
-    set(AI_MODEL_IMPL_DIR "${AI_SRC_DIR}/model_manager/model/face")
-    set(AI_MODEL_C_API_SOURCE
-        "${AI_MODEL_IMPL_DIR}/model_face.c")
-    set(AI_MODEL_ADAPTER_SOURCE
-        "${AI_MODEL_IMPL_DIR}/model_face_adapter.cpp")
-    set(AI_MODEL_TARGET sample-ai_face)
-    set(AI_MODEL_EXTRA_SOURCES
-        "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/fd_pp_blazeface.c"
-        "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp.c"
-        "${AI_MODEL_IMPL_DIR}/model_face_postprocess.c")
-    set(AI_MODEL_EXTRA_LIBRARIES)
-    set(AI_MODEL_NOR_PROBE_OFFSET 0x00800000U)
-    set(AI_MODEL_BLOB_ADDRESS 0x70580000)
-    set(AI_MODEL_POSTFIX face)
-else()
-    message(FATAL_ERROR
-        "Unsupported AI_MODEL='${AI_MODEL}' (use person, face, or segmentation)")
-endif()
+set(AI_MODEL_TARGET sample-ai_models)
+set(AI_MODEL_INCLUDE_DIRS
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/person"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/face")
+set(AI_MODEL_C_API_SOURCES
+    "${AI_SRC_DIR}/models/person/model_person.c"
+    "${AI_SRC_DIR}/models/segmentation/model_segmentation.c"
+    "${AI_SRC_DIR}/models/face/model_face.c")
+set(AI_MODEL_SOURCES
+    "${AI_SRC_DIR}/models/model_catalog.cpp"
+    "${AI_SRC_DIR}/models/person/model.cpp"
+    "${AI_SRC_DIR}/models/segmentation/model.cpp"
+    "${AI_SRC_DIR}/models/face/model.cpp")
+set(AI_MODEL_EXTRA_SOURCES
+    "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/od_pp_st_yolox.c"
+    "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/fd_pp_blazeface.c"
+    "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp_maxi_is8.c"
+    "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp.c"
+    "${AI_SRC_DIR}/models/face/model_face_postprocess.c")
+set(AI_MODEL_EXTRA_LIBRARIES
+    "${AI_THIRDPARTY_DIR}/Lib/GCC/ARMCortexM55/NetworkRuntime1200_CM55_GCC.a")
+set(AI_MODEL_NOR_PROBE_OFFSET 0x00380000U)
 
-if(NOT AI_DYNAMIC_MODEL_SWITCHING)
-    set(AI_MODEL_C_API_SOURCES "${AI_MODEL_C_API_SOURCE}")
-    set(AI_MODEL_ADAPTER_SOURCES "${AI_MODEL_ADAPTER_SOURCE}")
-endif()
-
-if((AI_MODEL STREQUAL "segmentation" OR AI_DYNAMIC_MODEL_SWITCHING) AND
-   AI_SEGMENTATION_DIAGNOSTICS)
+if(AI_SEGMENTATION_DIAGNOSTICS)
     list(APPEND AI_MODEL_EXTRA_SOURCES
-        "${AI_SRC_DIR}/model_manager/model/segmentation/model_segmentation_diagnostics.c")
+        "${AI_SRC_DIR}/models/segmentation/model_segmentation_diagnostics.c")
 endif()
 
 set(AI_CAMERA_BSP_SOURCE
@@ -159,8 +101,9 @@ add_executable(sample-ai.elf
     src/memory_allocator/memory_allocator.cpp
     src/driver/npu_driver/registers/npu_registers.cpp
     src/driver/npu_driver/npu_driver.cpp
+    src/npu_scheduler/npu_scheduler.cpp
     src/model_manager/model_manager.cpp
-    ${AI_MODEL_ADAPTER_SOURCES}
+    ${AI_MODEL_SOURCES}
     # Project-owned ref-compatible BSP with a reset fallback for NOR left in
     # OPI-DTR by the external loader.
     "${AI_SRC_DIR}/driver/c_bsp/stm32n6570_discovery_xspi.c"
@@ -185,9 +128,7 @@ target_include_directories(sample-ai.elf PRIVATE
     "${AI_SRC_DIR}"
     "${AI_SRC_DIR}/driver/board/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/config"
-    "${AI_MODEL_DIR}"
-    "$<$<BOOL:${AI_DYNAMIC_MODEL_SWITCHING}>:${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation>"
-    "$<$<BOOL:${AI_DYNAMIC_MODEL_SWITCHING}>:${CMAKE_CURRENT_SOURCE_DIR}/models/face>"
+    ${AI_MODEL_INCLUDE_DIRS}
     "${AI_THIRDPARTY_DIR}/Inc"
     "${AI_THIRDPARTY_DIR}/Npu/ll_aton"
     "${AI_THIRDPARTY_DIR}/Npu/Devices/STM32N6xx"
@@ -228,19 +169,8 @@ target_compile_definitions(sample-ai.elf PRIVATE
     AI_INFERENCE_DIAGNOSTICS=$<BOOL:${AI_INFERENCE_DIAGNOSTICS}>
     AI_INFERENCE_FPS_DIAGNOSTICS=$<BOOL:${AI_INFERENCE_FPS_DIAGNOSTICS}>
     AI_DISPLAY_TIMING_DIAGNOSTICS=$<BOOL:${AI_DISPLAY_TIMING_DIAGNOSTICS}>)
-if(AI_DYNAMIC_MODEL_SWITCHING)
-    target_compile_definitions(sample-ai.elf PRIVATE
-        AI_DYNAMIC_MODEL_SWITCHING=1)
-elseif(AI_MODEL STREQUAL "segmentation")
-    target_compile_definitions(sample-ai.elf PRIVATE AI_MODEL_SEGMENTATION=1)
-    if(AI_SEGMENTATION_DIAGNOSTICS)
-        target_compile_definitions(sample-ai.elf PRIVATE
-            AI_SEGMENTATION_DIAG=1)
-    endif()
-elseif(AI_MODEL STREQUAL "face")
-    target_compile_definitions(sample-ai.elf PRIVATE AI_MODEL_FACE=1)
-else()
-    target_compile_definitions(sample-ai.elf PRIVATE AI_MODEL_PERSON=1)
+if(AI_SEGMENTATION_DIAGNOSTICS)
+    target_compile_definitions(sample-ai.elf PRIVATE AI_SEGMENTATION_DIAG=1)
 endif()
 target_compile_options(sample-ai.elf PRIVATE
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
@@ -253,28 +183,18 @@ target_link_libraries(sample-ai.elf PRIVATE
 
 set(AI_LINKER_SCRIPT
     "${CMAKE_CURRENT_SOURCE_DIR}/stm32n6570-dk-npu-ram.ld")
-set(AI_NETWORK_BLOBS_BIN
-    "${CMAKE_CURRENT_BINARY_DIR}/network_blobs.bin")
-set(AI_NETWORK_BLOBS_HEX
-    "${CMAKE_CURRENT_BINARY_DIR}/network_blobs.hex")
 target_link_options(sample-ai.elf PRIVATE
     "-T${AI_LINKER_SCRIPT}"
     "-Wl,--undefined=NPU0_IRQHandler"
     "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/sample-ai.map"
     "-Wl,--print-memory-usage")
-if(AI_DYNAMIC_MODEL_SWITCHING)
-    target_link_options(sample-ai.elf PRIVATE
-        "-Wl,--section-start=.network_blobs_person=0x70500000"
-        "-Wl,--section-start=.network_blobs_segmentation=0x70560000"
-        "-Wl,--section-start=.network_blobs_face=0x70580000")
-else()
-    target_link_options(sample-ai.elf PRIVATE
-        "-Wl,--section-start=.network_blobs=${AI_MODEL_BLOB_ADDRESS}")
-endif()
+target_link_options(sample-ai.elf PRIVATE
+    "-Wl,--section-start=.network_blobs_person=0x70500000"
+    "-Wl,--section-start=.network_blobs_segmentation=0x70560000"
+    "-Wl,--section-start=.network_blobs_face=0x70580000")
 set_target_properties(sample-ai.elf PROPERTIES
     LINK_DEPENDS "${AI_LINKER_SCRIPT}")
 
-if(AI_DYNAMIC_MODEL_SWITCHING)
 add_custom_command(TARGET sample-ai.elf POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary
             --remove-section=.network_blobs_person
@@ -308,23 +228,6 @@ add_custom_command(TARGET sample-ai.elf POST_BUILD
             "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_face.hex"
     COMMAND ${CMAKE_SIZE} "$<TARGET_FILE:sample-ai.elf>"
     VERBATIM)
-else()
-add_custom_command(TARGET sample-ai.elf POST_BUILD
-    COMMAND ${CMAKE_OBJCOPY} -O binary
-            --remove-section=.network_blobs
-            "$<TARGET_FILE:sample-ai.elf>"
-            "${CMAKE_CURRENT_BINARY_DIR}/sample-ai.bin"
-    COMMAND ${CMAKE_OBJCOPY} -O binary
-            --only-section=.network_blobs
-            "$<TARGET_FILE:sample-ai.elf>"
-            "${AI_NETWORK_BLOBS_BIN}"
-    COMMAND ${CMAKE_OBJCOPY} -O ihex
-            --only-section=.network_blobs
-            "$<TARGET_FILE:sample-ai.elf>"
-            "${AI_NETWORK_BLOBS_HEX}"
-    COMMAND ${CMAKE_SIZE} "$<TARGET_FILE:sample-ai.elf>"
-    VERBATIM)
-endif()
 
 add_custom_target(sample-ai DEPENDS sample-ai.elf)
 
@@ -348,9 +251,7 @@ add_library(${AI_MODEL_TARGET} STATIC
 target_include_directories(${AI_MODEL_TARGET} PRIVATE
     "${AI_SRC_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/config"
-    "${AI_MODEL_DIR}"
-    "$<$<BOOL:${AI_DYNAMIC_MODEL_SWITCHING}>:${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation>"
-    "$<$<BOOL:${AI_DYNAMIC_MODEL_SWITCHING}>:${CMAKE_CURRENT_SOURCE_DIR}/models/face>"
+    ${AI_MODEL_INCLUDE_DIRS}
     "${AI_THIRDPARTY_DIR}/Inc"
     "${AI_THIRDPARTY_DIR}/Npu/ll_aton"
     "${AI_THIRDPARTY_DIR}/Npu/Devices/STM32N6xx"
@@ -374,15 +275,10 @@ target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
     LL_ATON_SW_FALLBACK
     LL_ATON_DBG_BUFFER_INFO_EXCLUDED=1
     NPU_CACHE_EXTERNAL_HAL_MSP)
-if(AI_DYNAMIC_MODEL_SWITCHING)
+if(AI_SEGMENTATION_DIAGNOSTICS)
     target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
-        AI_DYNAMIC_MODEL_SWITCHING=1)
-elseif(AI_MODEL STREQUAL "segmentation")
-    if(AI_SEGMENTATION_DIAGNOSTICS)
-        target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
-            AI_SEGMENTATION_DIAG=1
-            LL_ATON_EB_DBG_INFO)
-    endif()
+        AI_SEGMENTATION_DIAG=1
+        LL_ATON_EB_DBG_INFO)
 endif()
 # Export the vendor NPU handler under a private name for every model. The
 # application wrapper calls it first, then wakes the inference task through a
@@ -398,4 +294,4 @@ target_link_libraries(${AI_MODEL_TARGET} PRIVATE
 target_link_libraries(sample-ai.elf PRIVATE
     ${AI_MODEL_TARGET}
     ${AI_MODEL_EXTRA_LIBRARIES})
-add_custom_target(sample-ai-${AI_MODEL_POSTFIX} DEPENDS ${AI_MODEL_TARGET})
+add_custom_target(sample-ai-models DEPENDS ${AI_MODEL_TARGET})

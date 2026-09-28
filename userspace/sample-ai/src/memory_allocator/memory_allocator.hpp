@@ -12,22 +12,11 @@ constexpr std::uint32_t kFrameWidth = 800U;
 constexpr std::uint32_t kFrameHeight = 480U;
 constexpr std::size_t kFrameBytes =
     static_cast<std::size_t>(kFrameWidth) * kFrameHeight * 2U;
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
 /* Runtime model switching keeps one pair of fixed-size Pipe2/NPU slots alive.
  * Allocate for the largest input/output in the model set; each active model
  * uses only the prefix and output slots described by its runtime descriptor. */
 constexpr std::uint32_t kInferenceWidth = 480U;
 constexpr std::uint32_t kInferenceHeight = 480U;
-#elif defined(AI_MODEL_SEGMENTATION)
-constexpr std::uint32_t kInferenceWidth = 320U;
-constexpr std::uint32_t kInferenceHeight = 320U;
-#elif defined(AI_MODEL_FACE)
-constexpr std::uint32_t kInferenceWidth = 128U;
-constexpr std::uint32_t kInferenceHeight = 128U;
-#else
-constexpr std::uint32_t kInferenceWidth = 480U;
-constexpr std::uint32_t kInferenceHeight = 480U;
-#endif
 constexpr std::size_t kInferenceFrameBytes =
     static_cast<std::size_t>(kInferenceWidth) * kInferenceHeight * 3U;
 constexpr std::size_t kBufferAlignment = 32U;
@@ -37,29 +26,14 @@ constexpr std::size_t AlignUp(std::size_t value, std::size_t alignment)
 }
 
 constexpr std::size_t kMaxModelOutputs = 4U;
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
 constexpr std::size_t kModelOutputCount = 4U;
 constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
     320U * 320U * 2U, 60U * 60U * 18U, 30U * 30U * 18U, 384U * 16U};
-#elif defined(AI_MODEL_SEGMENTATION)
-constexpr std::size_t kModelOutputCount = 1U;
-constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
-    320U * 320U * 2U, 0U, 0U, 0U};
-#elif defined(AI_MODEL_FACE)
-constexpr std::size_t kModelOutputCount = 4U;
-constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
-    512U * 16U, 512U, 384U, 384U * 16U};
-#else
-constexpr std::size_t kModelOutputCount = 3U;
-constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
-    15U * 15U * 18U, 60U * 60U * 18U, 30U * 30U * 18U, 0U};
-#endif
 
 /* Dynamic switching keeps the fixed person-sized Pipe2 image as a source for
  * the smaller segmentation and face tensors. The scratch area is a shared
  * allocator-owned region because inference is serialized; keeping it outside
  * the two 1-MB inference slots avoids overlap with the next DMA buffer. */
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
 constexpr std::uint32_t kInferenceSourceWidth = 480U;
 constexpr std::uint32_t kInferenceSourceHeight = 288U;
 constexpr std::size_t kInferenceScratchBytes =
@@ -67,12 +41,6 @@ constexpr std::size_t kInferenceScratchBytes =
     kInferenceSourceHeight * 3U;
 /* 0x91600000-0x919FFFFF is reserved by the camera raw-dump diagnostic path. */
 constexpr std::uintptr_t kInferenceScratchAddress = 0x91C00000UL;
-#else
-constexpr std::uint32_t kInferenceSourceWidth = 0U;
-constexpr std::uint32_t kInferenceSourceHeight = 0U;
-constexpr std::size_t kInferenceScratchBytes = 0U;
-constexpr std::uintptr_t kInferenceScratchAddress = 0U;
-#endif
 constexpr std::size_t kInferenceOutputsOffset =
     AlignUp(kInferenceFrameBytes, kBufferAlignment);
 constexpr std::size_t kInferenceOutputStorageBytes =

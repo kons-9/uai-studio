@@ -20,15 +20,7 @@ constexpr std::uint16_t kFaceBlue = 0x001FU;
 constexpr std::uint16_t kSegmentationGreen = 0x07E0U;
 constexpr std::uint16_t kInferenceRegionColor = kSegmentationGreen;
 constexpr std::int32_t kLineWidth = 4;
-#if defined(AI_MODEL_FACE)
-/* Keep the diagnostic image square, but enlarge the 128x128 NN input so that
- * crop and exposure can be inspected on the 800x480 panel. The source bytes
- * are still copied with nearest-neighbor sampling; no brightness adjustment
- * is applied here. */
-constexpr std::size_t kInferenceDisplaySize = 480U;
-#else
 constexpr std::size_t kInferenceDisplaySize = memory_allocator::kInferenceWidth;
-#endif
 constexpr std::size_t kInferenceDisplayX =
     (memory_allocator::kFrameWidth - kInferenceDisplaySize) / 2U;
 constexpr std::uint16_t kInitialPattern[] = {
@@ -216,44 +208,7 @@ void LcdDriver::DrawBoxes(const memory_allocator::DisplayBuffer &buffer,
 void LcdDriver::DrawInferenceRegion(
     const memory_allocator::DisplayBuffer &buffer)
 {
-#if defined(AI_MODEL_FACE)
-    auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
-    const std::int32_t width =
-        static_cast<std::int32_t>(memory_allocator::kFrameWidth);
-    const std::int32_t height =
-        static_cast<std::int32_t>(memory_allocator::kFrameHeight);
-
-    /* Pipe2 now consumes the complete Pipe1 crop and letterboxes it inside
-     * the square model input, so the inference region covers the full frame. */
-    constexpr std::int32_t left = 0;
-    constexpr std::int32_t right = 799;
-    constexpr std::int32_t top = 0;
-    constexpr std::int32_t bottom = 479;
-    for (std::int32_t thickness = 0; thickness < kLineWidth; ++thickness) {
-        const std::int32_t x_left = left + thickness;
-        const std::int32_t x_right = right - thickness;
-        const std::int32_t y_top = top + thickness;
-        const std::int32_t y_bottom = bottom - thickness;
-        for (std::int32_t x = left; x <= right; ++x) {
-            if (InRange(x, width) && InRange(y_top, height)) {
-                pixels[y_top * width + x] = kInferenceRegionColor;
-            }
-            if (InRange(x, width) && InRange(y_bottom, height)) {
-                pixels[y_bottom * width + x] = kInferenceRegionColor;
-            }
-        }
-        for (std::int32_t y = top; y <= bottom; ++y) {
-            if (InRange(x_left, width) && InRange(y, height)) {
-                pixels[y * width + x_left] = kInferenceRegionColor;
-            }
-            if (InRange(x_right, width) && InRange(y, height)) {
-                pixels[y * width + x_right] = kInferenceRegionColor;
-            }
-        }
-    }
-#else
     (void)buffer;
-#endif
 }
 
 void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,

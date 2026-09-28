@@ -1,12 +1,14 @@
-#ifndef UAI_AI_MODEL_SEGMENTATION_ADAPTER_HPP
-#define UAI_AI_MODEL_SEGMENTATION_ADAPTER_HPP
+#ifndef UAI_AI_MODELS_PERSON_MODEL_HPP
+#define UAI_AI_MODELS_PERSON_MODEL_HPP
 
-#include "model_manager/model_api.hpp"
+#include "models/model.hpp"
 
-namespace uai::ai::model_manager {
+namespace uai::ai::models::person {
 
-class SegmentationModelAdapter final : public Model {
+class Model final : public ::uai::ai::models::Model {
 public:
+    static const ModelDescriptor &Descriptor();
+    const ModelDescriptor &GetDescriptor() const override;
     stai_return_code Initialize() override;
     stai_return_code Shutdown() override;
     stai_return_code GetInfo(stai_network_info *info) override;
@@ -22,6 +24,6 @@ public:
     stai_return_code NewInference() override;
 };
 
-} // namespace uai::ai::model_manager
+} // namespace uai::ai::models::person
 
 #endif

@@ -30,29 +30,10 @@ constexpr std::uint32_t kSensorWidth = 2592U;
 constexpr std::uint32_t kSensorHeight = 1944U;
 constexpr std::uint32_t kOutputWidth = 800U;
 constexpr std::uint32_t kOutputHeight = 480U;
-#if defined(AI_DYNAMIC_MODEL_SWITCHING)
 constexpr auto kInitialInferenceModel =
-    uai::ai::model_manager::ModelKind::kPerson;
-#elif defined(AI_MODEL_SEGMENTATION)
-constexpr auto kInitialInferenceModel =
-    uai::ai::model_manager::ModelKind::kSegmentation;
-#elif defined(AI_MODEL_FACE)
-constexpr auto kInitialInferenceModel =
-    uai::ai::model_manager::ModelKind::kFace;
-#else
-constexpr auto kInitialInferenceModel =
-    uai::ai::model_manager::ModelKind::kPerson;
-#endif
-#if defined(AI_MODEL_SEGMENTATION)
-constexpr std::uint32_t kInferenceWidth = 320U;
-constexpr std::uint32_t kInferenceHeight = 320U;
-#elif defined(AI_MODEL_FACE)
-constexpr std::uint32_t kInferenceWidth = 128U;
-constexpr std::uint32_t kInferenceHeight = 128U;
-#else
+    uai::ai::models::ModelKind::kPerson;
 constexpr std::uint32_t kInferenceWidth = 480U;
 constexpr std::uint32_t kInferenceHeight = 480U;
-#endif
 constexpr std::uint32_t kFrameTimeoutMs = 2000U;
 constexpr std::uint32_t kRecoveryRetryMs = 5000U;
 /* Match ref/ on the STM32N6570-DK.  Keep the CSI PHY configuration
@@ -253,7 +234,7 @@ Error ConfigurePipe()
 }
 
 Error ConfigureInferencePipe(
-    const uai::ai::model_manager::ModelDescriptor &model)
+    const uai::ai::models::ModelDescriptor &model)
 {
     /* Pipe2 is the ancillary NN output. It consumes the same RAW10 CSI
      * stream as Pipe1, then performs the crop/scale and RGB888 packing in
@@ -543,7 +524,7 @@ Error CameraDriver::Initialize(memory_allocator::MemoryAllocator &memory,
     InstallExposureWorkaround();
     inference_model_ = kInitialInferenceModel;
     if (!ConfigurePipe().Ok() ||
-        !ConfigureInferencePipe(uai::ai::model_manager::Describe(
+        !ConfigureInferencePipe(uai::ai::models::DescriptorFor(
                                     kInitialInferenceModel)).Ok() ||
         !ConfigureRawDumpPipe().Ok()) {
         return Hardware("camera.configure");
@@ -637,7 +618,7 @@ Error CameraDriver::Stop()
 }
 
 Error CameraDriver::ReconfigureInference(
-    const model_manager::ModelDescriptor &model)
+    const models::ModelDescriptor &model)
 {
     if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
         return {ErrorCode::kNotInitialized, 0U,
@@ -781,7 +762,7 @@ Error CameraDriver::Process()
         if (recovery_ok) {
             InstallExposureWorkaround();
             recovery_ok = ConfigurePipe().Ok() &&
-                          ConfigureInferencePipe(uai::ai::model_manager::Describe(
+                          ConfigureInferencePipe(uai::ai::models::DescriptorFor(
                               inference_model_)).Ok() &&
                           ConfigureRawDumpPipe().Ok();
         }
