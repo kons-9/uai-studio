@@ -1,0 +1,6 @@
+/home/toshiki/Documents/uai-studio/userspace/sample-ai/build/CMakeFiles/sample-ai.elf.dir
+/home/toshiki/Documents/uai-studio/userspace/sample-ai/build/CMakeFiles/sample-ai.dir
+/home/toshiki/Documents/uai-studio/userspace/sample-ai/build/CMakeFiles/sample-ai_models.dir
+/home/toshiki/Documents/uai-studio/userspace/sample-ai/build/CMakeFiles/sample-ai-dynamic.dir
+/home/toshiki/Documents/uai-studio/userspace/sample-ai/build/CMakeFiles/edit_cache.dir
+/home/toshiki/Documents/uai-studio/userspace/sample-ai/build/CMakeFiles/rebuild_cache.dir

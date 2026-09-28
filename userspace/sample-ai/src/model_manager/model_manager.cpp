@@ -5,7 +5,7 @@
 
 #include <tk/tkernel.h>
 
-#if defined(AI_MODEL_FACE)
+#if defined(AI_MODEL_FACE) || defined(AI_DYNAMIC_MODEL_SWITCHING)
 #include "model_manager/model/face/model_face_postprocess.h"
 #endif
 
@@ -30,6 +30,8 @@ using common::ErrorCode;
 namespace {
 
 using memory_allocator::BoxSet;
+using memory_allocator::DetectionSet;
+using memory_allocator::SegmentationSet;
 using Float = float;
 
 #if AI_INFERENCE_FPS_DIAGNOSTICS
@@ -40,7 +42,7 @@ std::uint32_t DiagnosticNow()
 }
 #endif
 
-#if defined(AI_MODEL_PERSON)
+#if defined(AI_MODEL_PERSON) || defined(AI_DYNAMIC_MODEL_SWITCHING)
 constexpr std::size_t kInputSize = 480U;
 constexpr std::uint32_t kMaxDetections = 100U;
 
@@ -169,7 +171,7 @@ std::int16_t ClampCoordinate(Float value, std::int32_t limit)
     return static_cast<std::int16_t>(value);
 }
 
-bool ConvertDetections(stai_ptr *outputs, BoxSet *result)
+bool ConvertDetections(stai_ptr *outputs, DetectionSet *result)
 {
     OdInput input{};
     input.raw_s = outputs[g_output_order[0]];
@@ -192,28 +194,30 @@ bool ConvertDetections(stai_ptr *outputs, BoxSet *result)
                         : memory_allocator::kMaxBoxes;
     for (std::uint32_t i = 0U; i < result->count; ++i) {
         const OdDetection &source = g_postprocess_buffer[i];
-        /* Pipe2 uses the same 800x480 aspect-ratio crop as Pipe1 and then
-         * stretches it to the 480x480 model input. Map detections back to the
-         * full 800-pixel Pipe1 surface. */
+        /* Pipe2 keeps the complete 800x480 crop and letterboxes it into the
+         * 480x480 model input. Undo the vertical padding before mapping back to
+         * the Pipe1 surface. */
+        constexpr Float kContentHeight = 288.0F;
+        constexpr Float kPadTop = 96.0F;
         const Float display_x_scale =
             static_cast<Float>(memory_allocator::kFrameWidth) /
             static_cast<Float>(kInputSize);
         const Float display_y_scale =
             static_cast<Float>(memory_allocator::kFrameHeight) /
-            static_cast<Float>(kInputSize);
-        const Float left =
-            (source.x_center - source.width * 0.5F) * display_x_scale *
-            static_cast<Float>(kInputSize);
-        const Float top =
-            (source.y_center - source.height * 0.5F) * display_y_scale *
-            static_cast<Float>(kInputSize);
+            kContentHeight;
+        const Float left = (source.x_center - source.width * 0.5F) *
+                           display_x_scale * static_cast<Float>(kInputSize);
+        const Float top = ((source.y_center - source.height * 0.5F) *
+                               static_cast<Float>(kInputSize) -
+                           kPadTop) *
+                          display_y_scale;
         result->boxes[i].x = ClampCoordinate(left, memory_allocator::kFrameWidth);
         result->boxes[i].y = ClampCoordinate(top, memory_allocator::kFrameHeight);
         result->boxes[i].width = ClampCoordinate(
             source.width * display_x_scale * static_cast<Float>(kInputSize),
             memory_allocator::kFrameWidth);
         result->boxes[i].height = ClampCoordinate(
-            source.height * display_y_scale * static_cast<Float>(kInputSize),
+            source.height * static_cast<Float>(kInputSize) * display_y_scale,
             memory_allocator::kFrameHeight);
         result->boxes[i].confidence = source.confidence;
     }
@@ -270,7 +274,7 @@ std::uint32_t ConfidenceMilli(float confidence)
     return static_cast<std::uint32_t>(confidence * 1000.0F + 0.5F);
 }
 
-void LogBoxes(const char *stage, const BoxSet &boxes)
+void LogBoxes(const char *stage, const DetectionSet &boxes)
 {
     AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: boxes stage=%s model=%u capture=%u count=%u\n"),
@@ -290,7 +294,9 @@ void LogBoxes(const char *stage, const BoxSet &boxes)
                   static_cast<unsigned int>(ConfidenceMilli(box.confidence)));
     }
 }
-#elif defined(AI_MODEL_FACE)
+#endif
+
+#if defined(AI_MODEL_FACE) || defined(AI_DYNAMIC_MODEL_SWITCHING)
 constexpr std::size_t kFaceInputSize = 128U;
 constexpr std::size_t kFaceBoxes0 = 512U;
 constexpr std::size_t kFaceBoxes1 = 384U;
@@ -360,7 +366,8 @@ std::int16_t ClampFaceCoordinate(Float value, std::int32_t limit)
     return static_cast<std::int16_t>(value);
 }
 
-bool ConvertFaceDetections(stai_ptr *outputs, bool from_pipe2, BoxSet *result)
+bool ConvertFaceDetections(stai_ptr *outputs, bool from_pipe2,
+                          DetectionSet *result)
 {
     ai_face_detection_t detections[memory_allocator::kMaxBoxes]{};
     std::uint32_t count = 0U;
@@ -379,21 +386,23 @@ bool ConvertFaceDetections(stai_ptr *outputs, bool from_pipe2, BoxSet *result)
         Float box_width = 0.0F;
         Float box_height = 0.0F;
         if (from_pipe2) {
-            /* Pipe2 uses the centered 1555x1555 sensor square after 2x
-             * decimation. The corresponding region in Pipe1 is the centered
-             * 480x480 square at x=160..639, y=0..479. */
-            constexpr Float kPipe2DisplayOffsetX = 160.0F;
-            constexpr Float kPipe2DisplayOffsetY = 0.0F;
-            constexpr Float kPipe2DisplayScaleX = 480.0F;
-            constexpr Float kPipe2DisplayScaleY = 480.0F;
-            left = kPipe2DisplayOffsetX +
-                   (source.x_center - source.width * 0.5F) *
-                       kPipe2DisplayScaleX;
-            top = kPipe2DisplayOffsetY +
-                  (source.y_center - source.height * 0.5F) *
-                      kPipe2DisplayScaleY;
-            box_width = source.width * kPipe2DisplayScaleX;
-            box_height = source.height * kPipe2DisplayScaleY;
+            /* Pipe2 contains the complete Pipe1 crop letterboxed into the
+             * 128x128 model input. */
+            constexpr Float kContentHeight = 77.0F;
+            constexpr Float kPadTop = 25.0F;
+            constexpr Float kInputSize = 128.0F;
+            left = (source.x_center - source.width * 0.5F) *
+                   static_cast<Float>(memory_allocator::kFrameWidth);
+            top = ((source.y_center - source.height * 0.5F) * kInputSize -
+                   kPadTop) *
+                  static_cast<Float>(memory_allocator::kFrameHeight) /
+                  kContentHeight;
+            box_width = source.width * kInputSize *
+                        static_cast<Float>(memory_allocator::kFrameWidth) /
+                        kInputSize;
+            box_height = source.height * kInputSize *
+                         static_cast<Float>(memory_allocator::kFrameHeight) /
+                         kContentHeight;
         } else {
             /* CPU fallback: face input is the centered square crop of the
              * 800x480 Pipe1 surface. */
@@ -470,7 +479,9 @@ void LogFaceOutputs(const stai_network_info &info, stai_ptr *outputs)
     }
 }
 #endif
-#else
+#endif
+
+#if defined(AI_MODEL_SEGMENTATION) || defined(AI_DYNAMIC_MODEL_SWITCHING)
 constexpr std::size_t kSegmentationInputWidth = 320U;
 constexpr std::size_t kSegmentationInputHeight = 320U;
 constexpr std::size_t kSegmentationMaskWidth = 320U;
@@ -478,12 +489,12 @@ constexpr std::size_t kSegmentationMaskHeight = 320U;
 constexpr std::size_t kSegmentationMaskBytes =
     kSegmentationMaskWidth * kSegmentationMaskHeight;
 constexpr std::uintptr_t kSegmentationMaskBuffers[2] = {
-    0x91700000UL,
-    0x91720000UL,
+    0x91A00000UL,
+    0x91A20000UL,
 };
 
 bool ConvertSegmentationMask(stai_ptr output, std::uint8_t mask_index,
-                             BoxSet *result)
+                             SegmentationSet *result)
 {
     if (output == nullptr || result == nullptr || mask_index > 1U) {
         return false;
@@ -514,7 +525,59 @@ Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
     }
     memory_ = &memory;
     cache_ = &cache;
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+    if (active_model_ == nullptr) {
+        switch (model_kind_) {
+        case ModelKind::kSegmentation:
+            active_model_ = &segmentation_model_;
+            break;
+        case ModelKind::kFace:
+            active_model_ = &face_model_;
+            break;
+        case ModelKind::kPerson:
+        default:
+            active_model_ = &person_model_;
+            break;
+        }
+    }
+    npu::Status npu_status = npu_.Initialize(*active_model_);
+    if (npu_status.Ok()) {
+        /* Keep every generated network context initialized.  Its generated
+         * EC command blob is copied from external flash to the model's
+         * runtime buffer here, once, instead of during every switch. */
+        const model_manager::ModelKind preload_order[] = {
+            ModelKind::kPerson, ModelKind::kSegmentation, ModelKind::kFace};
+        for (const ModelKind kind : preload_order) {
+            model_manager::Model *candidate = nullptr;
+            switch (kind) {
+            case ModelKind::kPerson:
+                candidate = &person_model_;
+                break;
+            case ModelKind::kSegmentation:
+                candidate = &segmentation_model_;
+                break;
+            case ModelKind::kFace:
+                candidate = &face_model_;
+                break;
+            }
+            if (candidate == active_model_) {
+                continue;
+            }
+            const bool was_loaded = npu_.IsLoaded(*candidate);
+            npu_status = npu_.Preload(*candidate);
+            if (!npu_status.Ok()) {
+                break;
+            }
+            if (!was_loaded) {
+                tm_printf(reinterpret_cast<const UB *>(
+                              "ai: model preloaded=%s\n"),
+                          reinterpret_cast<const UB *>(Describe(kind).name));
+            }
+        }
+    }
+#else
     npu::Status npu_status = npu_.Initialize(model_);
+#endif
     last_npu_status_ = npu_status;
     if (!npu_status.Ok()) {
         last_error_ = npu_status.error.detail;
@@ -525,12 +588,16 @@ Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
     last_npu_status_ = npu_status;
     last_error_ = npu_status.error.detail;
     const std::uint16_t expected_outputs =
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+        Describe(model_kind_).output_count;
+#else
 #if defined(AI_MODEL_SEGMENTATION)
         1U;
 #elif defined(AI_MODEL_FACE)
         4U;
 #else
         3U;
+#endif
 #endif
     if (!npu_status.Ok() || info_.n_inputs != 1U ||
         info_.n_outputs != expected_outputs ||
@@ -561,6 +628,14 @@ Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
             return {ErrorCode::kModel, i, "ai.mixed_output_ownership"};
         }
     }
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+    const model_manager::ModelDescriptor &descriptor = Describe(model_kind_);
+    if (info_.inputs[0].size_bytes !=
+            static_cast<std::size_t>(descriptor.input_width) *
+                descriptor.input_height * 3U) {
+        return {ErrorCode::kModel, 0U, "ai.segmentation_tensor_shape"};
+    }
+#endif
 #if defined(AI_MODEL_SEGMENTATION)
     if (info_.inputs[0].size_bytes !=
             kSegmentationInputWidth * kSegmentationInputHeight * 3U ||
@@ -576,7 +651,25 @@ Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
         return {ErrorCode::kModel, 0U, "ai.face_tensor_shape"};
     }
 #endif
-#if defined(AI_MODEL_PERSON)
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+    bool postprocess_ok = false;
+    switch (model_kind_) {
+    case ModelKind::kPerson:
+        postprocess_ok = InitializePostprocess(info_);
+        break;
+    case ModelKind::kFace:
+        postprocess_ok = InitializeFacePostprocess(info_);
+        break;
+    case ModelKind::kSegmentation:
+        postprocess_ok = info_.n_outputs == 1U &&
+                         info_.outputs[0].size_bytes ==
+                             kSegmentationMaskBytes * 2U;
+        break;
+    }
+    if (!postprocess_ok) {
+        return {ErrorCode::kModel, 0U, "ai.postprocess_initialize"};
+    }
+#elif defined(AI_MODEL_PERSON)
     if (!InitializePostprocess(info_)) {
         return {ErrorCode::kModel, 0U, "ai.postprocess_initialize"};
     }
@@ -589,6 +682,33 @@ Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
     initialized_ = true;
     last_error_ = 0U;
     return {ErrorCode::kOk, 0U, "ai.initialize"};
+}
+
+Error ModelManager::SwitchModel(ModelKind kind)
+{
+#if !defined(AI_DYNAMIC_MODEL_SWITCHING)
+    (void)kind;
+    return {ErrorCode::kInvalidState, 0U, "ai.switch_model.disabled"};
+#else
+    if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
+        return {ErrorCode::kNotInitialized, 0U, "ai.switch_model"};
+    }
+    if (kind == model_kind_) {
+        return {ErrorCode::kOk, 0U, "ai.switch_model"};
+    }
+
+    initialized_ = false;
+    model_kind_ = kind;
+    active_model_ = nullptr;
+    const Error status = Initialize(*memory_, *cache_);
+    if (!status.Ok()) {
+        return status;
+    }
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: model switched to %s\n"),
+              reinterpret_cast<const UB *>(Describe(model_kind_).name));
+    return status;
+#endif
 }
 
 Error ModelManager::RunNetwork()
@@ -610,13 +730,14 @@ Error ModelManager::TryInfer(
         return {ErrorCode::kInvalidArgument, 0U, "ai.infer"};
     }
 
-    result->count = 0U;
+    result->person = {};
+    result->face = {};
+    result->segmentation = {};
+    result->person_valid = false;
+    result->face_valid = false;
+    result->segmentation_valid = false;
     result->capture_sequence = frame.capture_sequence;
     result->model_sequence = ++model_sequence_;
-    result->mask_address = 0U;
-    result->mask_width = 0U;
-    result->mask_height = 0U;
-    result->mask_foreground_pixels = 0U;
 #if AI_INFERENCE_FPS_DIAGNOSTICS
     const std::uint32_t diagnostic_start = DiagnosticNow();
     const unsigned int irq_start = g_aton_irq_count;
@@ -632,15 +753,27 @@ Error ModelManager::TryInfer(
               static_cast<unsigned int>(frame.buffer.address),
               static_cast<unsigned int>(info_.inputs[0].size_bytes),
               static_cast<unsigned int>(frame.from_pipe2));
-    if (frame.buffer.size < info_.inputs[0].size_bytes
-#if !defined(AI_MODEL_FACE)
-        || !frame.from_pipe2
-#endif
-    ) {
+    if (frame.buffer.size < info_.inputs[0].size_bytes) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "ai: input rejected buffer=%u required=%u\n"),
+                  static_cast<unsigned int>(frame.buffer.size),
+                  static_cast<unsigned int>(info_.inputs[0].size_bytes));
         return {ErrorCode::kInvalidArgument,
                 static_cast<std::uint32_t>(frame.buffer.size),
                 "ai.direct_input"};
     }
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+    if (Describe(model_kind_).input_from_pipe2 && !frame.from_pipe2) {
+        tm_printf(reinterpret_cast<const UB *>(
+                      "ai: input rejected source_not_pipe2 model=%s\n"),
+                  reinterpret_cast<const UB *>(Describe(model_kind_).name));
+        return {ErrorCode::kInvalidArgument, 2U, "ai.direct_input"};
+    }
+#elif !defined(AI_MODEL_FACE)
+    if (!frame.from_pipe2) {
+        return {ErrorCode::kInvalidArgument, 2U, "ai.direct_input"};
+    }
+#endif
     const memory_allocator::Buffer input_buffer{
         frame.buffer.address, info_.inputs[0].size_bytes, frame.buffer.index,
         memory_allocator::Region::kInference};
@@ -648,12 +781,14 @@ Error ModelManager::TryInfer(
                   "ai: input cache begin sequence=%u size=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence),
               static_cast<unsigned int>(input_buffer.size));
-    /* Pipe2 wrote its input through DMA, while the face fallback produces the
-     * input from Pipe1 on the CPU. Invalidate only the former; clean the
-     * latter so the NPU sees the CPU-generated RGB888 bytes. */
-    Error status = frame.from_pipe2
-                       ? cache_->PrepareForCpuRead(input_buffer)
-                       : cache_->PrepareForPeripheralRead(input_buffer);
+    /* Pipe2 wrote its input through DMA. For a dynamically selected smaller
+     * model the inference task has rebuilt the tensor in-place from the same
+     * frame, so clean that CPU-written input instead. */
+    Error status = frame.input_prepared_by_cpu
+                       ? cache_->PrepareForPeripheralRead(input_buffer)
+                       : frame.from_pipe2
+                             ? cache_->PrepareForCpuRead(input_buffer)
+                             : cache_->PrepareForPeripheralRead(input_buffer);
     if (!status.Ok()) {
         return status;
     }
@@ -661,7 +796,11 @@ Error ModelManager::TryInfer(
               "ai: input cache end sequence=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence));
 
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+    const stai_return_code set_input = active_model_->SetInput(
+#else
     const stai_return_code set_input = model_.SetInput(
+#endif
         reinterpret_cast<stai_ptr>(frame.buffer.address),
         info_.inputs[0].size_bytes);
     if (set_input != STAI_SUCCESS) {
@@ -674,7 +813,10 @@ Error ModelManager::TryInfer(
               static_cast<unsigned int>(frame.buffer.address));
 
     if (dynamic_outputs_) {
-        if (frame.output_count != info_.n_outputs) {
+        /* The dynamic allocator exposes the maximum four output slots for
+         * every model. A model may consume only a prefix of those slots
+         * (person=3, segmentation=1), so reject only insufficient capacity. */
+        if (frame.output_count < info_.n_outputs) {
             return {ErrorCode::kInvalidArgument, frame.output_count,
                     "ai.dynamic_output_count"};
         }
@@ -742,27 +884,66 @@ Error ModelManager::TryInfer(
     const std::uint32_t postprocess_start = DiagnosticNow();
     output_cache_ms = postprocess_start - npu_start - npu_ms;
 #endif
-#if defined(AI_MODEL_SEGMENTATION)
-    if (!ConvertSegmentationMask(outputs_[0], mask_buffer_index_, result)) {
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+    switch (model_kind_) {
+    case ModelKind::kSegmentation:
+        if (!ConvertSegmentationMask(outputs_[0], mask_buffer_index_,
+                                     &result->segmentation)) {
+            return {ErrorCode::kModel, 0U, "ai.segmentation_postprocess"};
+        }
+        result->segmentation_valid = true;
+        mask_buffer_index_ ^= 1U;
+        break;
+    case ModelKind::kFace:
+#if AI_INFERENCE_DIAGNOSTICS
+        LogFaceOutputs(info_, outputs_);
+#endif
+        if (!ConvertFaceDetections(outputs_, true, &result->face)) {
+            return {ErrorCode::kModel, 0U, "ai.face_postprocess"};
+        }
+        result->face_valid = true;
+#if AI_INFERENCE_DIAGNOSTICS
+        LogBoxes("postprocess-face", result->face);
+#endif
+        break;
+    case ModelKind::kPerson:
+#if AI_INFERENCE_DIAGNOSTICS
+        LogOutputObjectness(info_, outputs_);
+#endif
+        if (!ConvertDetections(outputs_, &result->person)) {
+            return {ErrorCode::kModel, 0U, "ai.postprocess"};
+        }
+        result->person_valid = true;
+#if AI_INFERENCE_DIAGNOSTICS
+        LogBoxes("postprocess-person", result->person);
+#endif
+        break;
+    }
+#elif defined(AI_MODEL_SEGMENTATION)
+    if (!ConvertSegmentationMask(outputs_[0], mask_buffer_index_,
+                                 &result->segmentation)) {
         return {ErrorCode::kModel, 0U, "ai.segmentation_postprocess"};
     }
+    result->segmentation_valid = true;
     mask_buffer_index_ ^= 1U;
 #elif defined(AI_MODEL_FACE)
 #if AI_INFERENCE_DIAGNOSTICS
     LogFaceOutputs(info_, outputs_);
 #endif
-    if (!ConvertFaceDetections(outputs_, frame.from_pipe2, result)) {
+    if (!ConvertFaceDetections(outputs_, frame.from_pipe2, &result->face)) {
         return {ErrorCode::kModel, 0U, "ai.face_postprocess"};
     }
+    result->face_valid = true;
 #else
 #if AI_INFERENCE_DIAGNOSTICS
     LogOutputObjectness(info_, outputs_);
 #endif
-    if (!ConvertDetections(outputs_, result)) {
+    if (!ConvertDetections(outputs_, &result->person)) {
         return {ErrorCode::kModel, 0U, "ai.postprocess"};
     }
+    result->person_valid = true;
 #if AI_INFERENCE_DIAGNOSTICS
-    LogBoxes("postprocess", *result);
+    LogBoxes("postprocess-person", result->person);
 #endif
 #endif
 
@@ -795,12 +976,14 @@ Error ModelManager::TryInfer(
             static_cast<unsigned int>(DiagnosticNow() - diagnostic_start),
             static_cast<unsigned int>(g_aton_irq_count - irq_start),
             g_aton_last_irqs,
-            static_cast<unsigned int>(result->count),
-            static_cast<unsigned int>(result->mask_foreground_pixels));
+            static_cast<unsigned int>(result->person.count + result->face.count),
+            static_cast<unsigned int>(result->segmentation.mask_foreground_pixels));
         tm_putstring(diagnostic_line);
     }
 #endif
-    return {ErrorCode::kOk, result->count, "ai.infer"};
+    const std::uint32_t result_count =
+        result->person.count + result->face.count;
+    return {ErrorCode::kOk, result_count, "ai.infer"};
 }
 
 Error ModelManager::Shutdown()

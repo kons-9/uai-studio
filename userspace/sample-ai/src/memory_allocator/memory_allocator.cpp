@@ -33,9 +33,19 @@ void MemoryAllocator::PopulateInferenceFrame(std::uint8_t index,
                                              InferenceFrame *frame) const
 {
     frame->buffer = inference_[index].buffer;
+    frame->scratch = {};
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+    frame->scratch = {
+        kInferenceScratchAddress,
+        kInferenceScratchBytes,
+        index,
+        Region::kInference,
+        kBufferAlignment};
+#endif
     frame->output_count = static_cast<std::uint8_t>(kModelOutputCount);
     frame->capture_sequence = sequence;
     frame->from_pipe2 = from_pipe2;
+    frame->input_prepared_by_cpu = false;
 
     std::uintptr_t output_address =
         frame->buffer.address + kInferenceOutputsOffset;

@@ -1,5 +1,9 @@
 #include "task/task_context.hpp"
 
+#include <cstring>
+
+#include "image_resizer/image_resizer.hpp"
+
 #include "model_manager/model_manager.hpp"
 
 #if AI_INFERENCE_DIAGNOSTICS
@@ -9,6 +13,67 @@
 #endif
 
 namespace uai::ai::task {
+
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+namespace {
+
+Error PrepareDynamicModelInput(
+    InferenceFrame *frame, model_manager::ModelKind model_kind)
+{
+    if (frame == nullptr || !frame->from_pipe2) {
+        return {ErrorCode::kInvalidArgument, 0U,
+                "ai.dynamic_input.invalid_frame"};
+    }
+    if (model_kind == model_manager::ModelKind::kPerson) {
+        frame->input_prepared_by_cpu = false;
+        return {ErrorCode::kOk, 0U, "ai.dynamic_input.direct"};
+    }
+    if (!frame->scratch ||
+        frame->scratch.size < memory_allocator::kInferenceScratchBytes) {
+        return {ErrorCode::kNoBuffer, 0U, "ai.dynamic_input.no_scratch"};
+    }
+
+    /* Pipe2 stays in the person-sized 480x480 layout. Its live image is the
+     * 480x288 region at y=96; copy that region before overwriting the input
+     * prefix with the selected smaller tensor. */
+    Error status = g_cache.PrepareForCpuRead(frame->buffer);
+    if (!status.Ok()) {
+        return status;
+    }
+    constexpr std::size_t kSourceRowBytes =
+        static_cast<std::size_t>(memory_allocator::kInferenceSourceWidth) * 3U;
+    const auto *pipe2 = reinterpret_cast<const std::uint8_t *>(
+        frame->buffer.address) + 96U * kSourceRowBytes;
+    auto *scratch = reinterpret_cast<std::uint8_t *>(frame->scratch.address);
+    for (std::uint32_t y = 0U;
+         y < memory_allocator::kInferenceSourceHeight; ++y) {
+        std::memcpy(scratch + static_cast<std::size_t>(y) * kSourceRowBytes,
+                    pipe2 + static_cast<std::size_t>(y) * kSourceRowBytes,
+                    kSourceRowBytes);
+    }
+
+    const auto &descriptor = model_manager::Describe(model_kind);
+    const std::uint32_t content_height =
+        (descriptor.input_width * memory_allocator::kInferenceSourceHeight +
+         memory_allocator::kInferenceSourceWidth - 1U) /
+        memory_allocator::kInferenceSourceWidth;
+    status = image_resizer::ResizeRgb888Letterbox(
+        {scratch, memory_allocator::kInferenceSourceWidth,
+         memory_allocator::kInferenceSourceHeight,
+         static_cast<std::uint32_t>(kSourceRowBytes)},
+        {reinterpret_cast<std::uint8_t *>(frame->buffer.address),
+         descriptor.input_width, descriptor.input_height,
+         descriptor.input_width * 3U},
+        descriptor.input_width, content_height);
+    if (!status.Ok()) {
+        return status;
+    }
+    frame->input_prepared_by_cpu = true;
+    return {ErrorCode::kOk, 0U, "ai.dynamic_input.letterbox"};
+}
+
+} // namespace
+#endif
 
 void inference_task(void)
 {
@@ -38,6 +103,14 @@ void inference_task(void)
     }
 
     bool inference_enabled = model_status.Ok();
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+    constexpr model_manager::ModelKind kModelSequence[] = {
+        model_manager::ModelKind::kPerson,
+        model_manager::ModelKind::kSegmentation,
+        model_manager::ModelKind::kFace};
+    std::size_t next_model_index = 0U;
+    BoxSet integrated_boxes{};
+#endif
 #if AI_INFERENCE_FPS_DIAGNOSTICS
     std::uint32_t fps_window_start = Now();
     std::uint32_t fps_submitted = 0U;
@@ -51,6 +124,26 @@ void inference_task(void)
         if (size != static_cast<INT>(sizeof(message))) {
             continue;
         }
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+        const model_manager::ModelKind selected_model =
+            kModelSequence[next_model_index];
+        next_model_index =
+            (next_model_index + 1U) %
+            (sizeof(kModelSequence) / sizeof(kModelSequence[0]));
+        if (inference_enabled && model.CurrentModel() != selected_model) {
+            const Error switch_status = model.SwitchModel(selected_model);
+            if (!switch_status.Ok()) {
+                tm_printf(reinterpret_cast<const UB *>(
+                              "ai: per-frame model switch failed model=%s code=%d detail=%x\n"),
+                          reinterpret_cast<const UB *>(
+                              model_manager::Describe(selected_model).name),
+                          static_cast<int>(switch_status.code),
+                          static_cast<unsigned int>(switch_status.detail));
+                (void)g_memory.ReleaseInferenceBuffer(message.frame);
+                continue;
+            }
+        }
+#endif
 #if AI_INFERENCE_FPS_DIAGNOSTICS
         ++fps_submitted;
 #endif
@@ -63,6 +156,15 @@ void inference_task(void)
 
         BoxSet boxes{};
         if (inference_enabled) {
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+            const model_manager::ModelKind selected_model = model.CurrentModel();
+            status = PrepareDynamicModelInput(&message.frame, selected_model);
+            if (!status.Ok()) {
+                (void)g_memory.ReleaseInferenceBuffer(message.frame);
+                LogStatus("ai.input", status);
+                continue;
+            }
+#endif
             AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                           "ai: inference begin sequence=%u\n"),
                       static_cast<unsigned int>(message.frame.capture_sequence));
@@ -114,17 +216,44 @@ void inference_task(void)
 #if AI_INFERENCE_FPS_DIAGNOSTICS
             ++fps_completed;
 #endif
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+            switch (model.CurrentModel()) {
+            case model_manager::ModelKind::kPerson:
+                if (boxes.person_valid) {
+                    integrated_boxes.person = boxes.person;
+                    integrated_boxes.person_valid = true;
+                }
+                break;
+            case model_manager::ModelKind::kFace:
+                if (boxes.face_valid) {
+                    integrated_boxes.face = boxes.face;
+                    integrated_boxes.face_valid = true;
+                }
+                break;
+            case model_manager::ModelKind::kSegmentation:
+                if (boxes.segmentation_valid) {
+                    integrated_boxes.segmentation = boxes.segmentation;
+                    integrated_boxes.segmentation_valid = true;
+                }
+                break;
+            }
+            integrated_boxes.model_sequence = boxes.model_sequence;
+            integrated_boxes.capture_sequence = boxes.capture_sequence;
+            SendLatestBoxes(integrated_boxes);
+#else
             SendLatestBoxes(boxes);
+#endif
 #if AI_INFERENCE_DIAGNOSTICS
             if ((boxes.model_sequence % 10U) == 0U) {
                 tm_printf(reinterpret_cast<const UB *>(
                               "ai: inference sequence=%u capture=%u count=%u\n"),
                           static_cast<unsigned int>(boxes.model_sequence),
                           static_cast<unsigned int>(boxes.capture_sequence),
-                          static_cast<unsigned int>(boxes.count));
+                          static_cast<unsigned int>(
+                              boxes.person.count + boxes.face.count));
             }
 #endif
-        } else if (model_status.Ok()) {
+        } else if (model_status.Ok() && inference_enabled) {
             LogStatus("ai", status);
             LogNpuStatus(model.LastNpuStatus());
             /* A failed/timed-out NPU execution must not make the camera task

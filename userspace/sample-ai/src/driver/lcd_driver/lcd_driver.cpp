@@ -16,14 +16,9 @@ using common::ErrorCode;
 namespace {
 
 constexpr std::uint16_t kRed = 0xF800U;
-#if defined(AI_MODEL_FACE)
-/* Face detections are generated from Pipe2 and overlaid on the full Pipe1
- * camera frame. */
-constexpr std::uint16_t kBoxColor = kRed;
-constexpr std::uint16_t kInferenceRegionColor = 0x07E0U;
-#else
-constexpr std::uint16_t kBoxColor = kRed;
-#endif
+constexpr std::uint16_t kFaceBlue = 0x001FU;
+constexpr std::uint16_t kSegmentationGreen = 0x07E0U;
+constexpr std::uint16_t kInferenceRegionColor = kSegmentationGreen;
 constexpr std::int32_t kLineWidth = 4;
 #if defined(AI_MODEL_FACE)
 /* Keep the diagnostic image square, but enlarge the 128x128 NN input so that
@@ -173,41 +168,49 @@ void LcdDriver::DrawBoxes(const memory_allocator::DisplayBuffer &buffer,
         static_cast<std::int32_t>(memory_allocator::kFrameWidth);
     const std::int32_t height =
         static_cast<std::int32_t>(memory_allocator::kFrameHeight);
-    const std::uint32_t count =
-        boxes.count < memory_allocator::kMaxBoxes ? boxes.count
-                                                : memory_allocator::kMaxBoxes;
+    const auto draw_set = [&](const memory_allocator::DetectionSet &set,
+                              std::uint16_t color) {
+        const std::uint32_t count =
+            set.count < memory_allocator::kMaxBoxes ? set.count
+                                                    : memory_allocator::kMaxBoxes;
+        for (std::uint32_t i = 0U; i < count; ++i) {
+            const memory_allocator::Box &box = set.boxes[i];
+            const std::int32_t left = box.x;
+            const std::int32_t top = box.y;
+            const std::int32_t right = left + box.width - 1;
+            const std::int32_t bottom = top + box.height - 1;
 
-    for (std::uint32_t i = 0U; i < count; ++i) {
-        const memory_allocator::Box &box = boxes.boxes[i];
-        const std::int32_t left = box.x;
-        const std::int32_t top = box.y;
-        const std::int32_t right = left + box.width - 1;
-        const std::int32_t bottom = top + box.height - 1;
+            for (std::int32_t thickness = 0; thickness < kLineWidth;
+                 ++thickness) {
+                const std::int32_t y_top = top + thickness;
+                const std::int32_t y_bottom = bottom - thickness;
+                const std::int32_t x_left = left + thickness;
+                const std::int32_t x_right = right - thickness;
 
-        for (std::int32_t thickness = 0; thickness < kLineWidth; ++thickness) {
-            const std::int32_t y_top = top + thickness;
-            const std::int32_t y_bottom = bottom - thickness;
-            const std::int32_t x_left = left + thickness;
-            const std::int32_t x_right = right - thickness;
-
-            for (std::int32_t x = left; x <= right; ++x) {
-                if (InRange(x, width) && InRange(y_top, height)) {
-                    pixels[y_top * width + x] = kBoxColor;
+                for (std::int32_t x = left; x <= right; ++x) {
+                    if (InRange(x, width) && InRange(y_top, height)) {
+                        pixels[y_top * width + x] = color;
+                    }
+                    if (InRange(x, width) && InRange(y_bottom, height)) {
+                        pixels[y_bottom * width + x] = color;
+                    }
                 }
-                if (InRange(x, width) && InRange(y_bottom, height)) {
-                    pixels[y_bottom * width + x] = kBoxColor;
-                }
-            }
-            for (std::int32_t y = top; y <= bottom; ++y) {
-                if (InRange(x_left, width) && InRange(y, height)) {
-                    pixels[y * width + x_left] = kBoxColor;
-                }
-                if (InRange(x_right, width) && InRange(y, height)) {
-                    pixels[y * width + x_right] = kBoxColor;
+                for (std::int32_t y = top; y <= bottom; ++y) {
+                    if (InRange(x_left, width) && InRange(y, height)) {
+                        pixels[y * width + x_left] = color;
+                    }
+                    if (InRange(x_right, width) && InRange(y, height)) {
+                        pixels[y * width + x_right] = color;
+                    }
                 }
             }
         }
-    }
+    };
+
+    /* Separate receivers keep the visual result unambiguous:
+     * person=red, face=blue, segmentation=green mask. */
+    draw_set(boxes.person, kRed);
+    draw_set(boxes.face, kFaceBlue);
 }
 
 void LcdDriver::DrawInferenceRegion(
@@ -220,10 +223,10 @@ void LcdDriver::DrawInferenceRegion(
     const std::int32_t height =
         static_cast<std::int32_t>(memory_allocator::kFrameHeight);
 
-    /* Pipe2 consumes the centered 1555x1555 sensor square corresponding to
-     * the centered 480x480 square inside Pipe1's 800x480 image. */
-    constexpr std::int32_t left = 160;
-    constexpr std::int32_t right = 639;
+    /* Pipe2 now consumes the complete Pipe1 crop and letterboxes it inside
+     * the square model input, so the inference region covers the full frame. */
+    constexpr std::int32_t left = 0;
+    constexpr std::int32_t right = 799;
     constexpr std::int32_t top = 0;
     constexpr std::int32_t bottom = 479;
     for (std::int32_t thickness = 0; thickness < kLineWidth; ++thickness) {
@@ -256,31 +259,29 @@ void LcdDriver::DrawInferenceRegion(
 void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
                           const memory_allocator::BoxSet &boxes)
 {
-    if (boxes.mask_address == 0U || boxes.mask_width == 0U ||
-        boxes.mask_height == 0U) {
+    if (boxes.segmentation.mask_address == 0U ||
+        boxes.segmentation.mask_width == 0U ||
+        boxes.segmentation.mask_height == 0U) {
         return;
     }
 
     const auto *mask = reinterpret_cast<const std::uint8_t *>(
-        boxes.mask_address);
+        boxes.segmentation.mask_address);
     auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
-/* Segmentation uses the same sensor crop as Pipe1, but its NN input is a
- * square FIT resize. Map the resulting 320x320 mask back to the complete
- * 800x480 Pipe1 frame. Face uses a centered square crop instead. */
-#if defined(AI_MODEL_SEGMENTATION)
+    /* A mask is emitted only by the segmentation postprocessor. Pipe2 keeps
+     * the complete Pipe1 crop and letterboxes it into 320x320: 320x192 of the
+     * tensor is live image data and 64 rows are padding on each side. */
     constexpr std::size_t crop_width = memory_allocator::kFrameWidth;
     constexpr std::size_t crop_x = 0U;
-#else
-    constexpr std::size_t crop_width = 480U;
-    constexpr std::size_t crop_x =
-        (memory_allocator::kFrameWidth - crop_width) / 2U;
-#endif
+    constexpr std::size_t kMaskContentHeight = 192U;
+    constexpr std::size_t kMaskPadTop = 64U;
     for (std::size_t y = 0U; y < memory_allocator::kFrameHeight; ++y) {
-        const std::size_t mask_y = y * boxes.mask_height /
-                                   memory_allocator::kFrameHeight;
+        const std::size_t mask_y = kMaskPadTop +
+            y * kMaskContentHeight / memory_allocator::kFrameHeight;
         for (std::size_t x = 0U; x < crop_width; ++x) {
-            const std::size_t mask_x = x * boxes.mask_width / crop_width;
-            if (mask[mask_y * boxes.mask_width + mask_x] == 0U) {
+            const std::size_t mask_x =
+                x * boxes.segmentation.mask_width / crop_width;
+            if (mask[mask_y * boxes.segmentation.mask_width + mask_x] == 0U) {
                 continue;
             }
             const std::size_t pixel_index =

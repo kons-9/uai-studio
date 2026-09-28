@@ -6,6 +6,7 @@
 #include "common/error.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "memory_allocator/memory_allocator.hpp"
+#include "model_manager/model_descriptor.hpp"
 
 namespace uai::ai::camera {
 
@@ -18,6 +19,8 @@ public:
     void KeepClocksOnSleep() const;
     common::Error Start();
     common::Error Stop();
+    common::Error ReconfigureInference(
+        const model_manager::ModelDescriptor &model);
     common::Error Process();
     common::Error TakeCompletedCapture(memory_allocator::CaptureFrame *frame);
     common::Error TakeCompletedInference(memory_allocator::InferenceFrame *frame);
@@ -25,6 +28,8 @@ public:
 private:
     memory_allocator::MemoryAllocator *memory_ = nullptr;
     cache::CacheDriver *cache_ = nullptr;
+    model_manager::ModelKind inference_model_ =
+        model_manager::ModelKind::kPerson;
     bool initialized_ = false;
     bool started_ = false;
 };

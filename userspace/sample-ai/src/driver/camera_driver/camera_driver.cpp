@@ -30,10 +30,18 @@ constexpr std::uint32_t kSensorWidth = 2592U;
 constexpr std::uint32_t kSensorHeight = 1944U;
 constexpr std::uint32_t kOutputWidth = 800U;
 constexpr std::uint32_t kOutputHeight = 480U;
-#if defined(AI_MODEL_FACE)
-/* The 1555-pixel square matches the centered 480x480 square in Pipe1. The
- * image_resizer selects the required DCMIPP decimation for this crop. */
-constexpr std::uint32_t kFacePipe2CropSize = 1555U;
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+constexpr auto kInitialInferenceModel =
+    uai::ai::model_manager::ModelKind::kPerson;
+#elif defined(AI_MODEL_SEGMENTATION)
+constexpr auto kInitialInferenceModel =
+    uai::ai::model_manager::ModelKind::kSegmentation;
+#elif defined(AI_MODEL_FACE)
+constexpr auto kInitialInferenceModel =
+    uai::ai::model_manager::ModelKind::kFace;
+#else
+constexpr auto kInitialInferenceModel =
+    uai::ai::model_manager::ModelKind::kPerson;
 #endif
 #if defined(AI_MODEL_SEGMENTATION)
 constexpr std::uint32_t kInferenceWidth = 320U;
@@ -88,6 +96,10 @@ std::uintptr_t g_active_inference = 0U;
 std::uintptr_t g_next_inference = 0U;
 std::uintptr_t g_inference_buffer0 = 0U;
 std::uintptr_t g_inference_buffer1 = 0U;
+/* Pipe2 writes the aspect-preserving image into the vertical center of the
+ * square NPU tensor. Keep the allocator-visible address at the beginning of
+ * the slot; only the DMA destination is offset. */
+std::uintptr_t g_inference_dma_offset = 0U;
 volatile std::uint32_t g_inference_sequence = 0U;
 uai::ai::memory_allocator::MemoryAllocator *g_pipe2_memory = nullptr;
 volatile std::uint32_t g_last_frame_tick = 0U;
@@ -100,6 +112,17 @@ bool g_camera_recovery_attempted = false;
 Error Hardware(const char *operation, std::uint32_t detail = 0U)
 {
     return {ErrorCode::kHardware, detail, operation};
+}
+
+std::uintptr_t InferenceDmaAddress(std::uintptr_t buffer)
+{
+    return buffer + g_inference_dma_offset;
+}
+
+void ClearInferenceInput(std::uintptr_t buffer)
+{
+    std::memset(reinterpret_cast<void *>(buffer), 0U,
+                uai::ai::memory_allocator::kInferenceFrameBytes);
 }
 
 Error ApplyDcmippDecimation(std::uint32_t pipe,
@@ -229,7 +252,8 @@ Error ConfigurePipe()
     return {ErrorCode::kOk, 0U, "camera.pipe.configure"};
 }
 
-Error ConfigureInferencePipe()
+Error ConfigureInferencePipe(
+    const uai::ai::model_manager::ModelDescriptor &model)
 {
     /* Pipe2 is the ancillary NN output. It consumes the same RAW10 CSI
      * stream as Pipe1, then performs the crop/scale and RGB888 packing in
@@ -242,29 +266,34 @@ Error ConfigureInferencePipe()
     }
 
     DCMIPP_CropConfTypeDef crop{};
-    /* Keep the face crop aligned with the centered 480x480 region in Pipe1.
-     * For the other models, retain the display crop aspect ratio. The
-     * image_resizer applies the minimum common decimation needed to keep the
-     * DCMIPP fixed-point downsize ratio valid. */
-#if defined(AI_MODEL_FACE)
-    crop.HSize = kFacePipe2CropSize;
-    crop.VSize = kFacePipe2CropSize;
-#else
+    /* Keep the complete Pipe1 camera crop. The model inputs are square, so
+     * DCMIPP produces an aspect-preserving image with a shorter content height
+     * and writes it into the center of the square tensor. This is letterbox,
+     * not a center crop and not a non-uniform stretch. */
+    const std::uint32_t inference_width = model.input_width;
+    const std::uint32_t inference_height = model.input_height;
+    const std::uint32_t content_height =
+        (inference_width * kOutputHeight + kOutputWidth - 1U) / kOutputWidth;
+    if (content_height == 0U || content_height > inference_height) {
+        return {ErrorCode::kInvalidArgument, content_height,
+                "camera.pipe2.letterbox"};
+    }
+    g_inference_dma_offset = static_cast<std::uintptr_t>(
+        (inference_height - content_height) / 2U) * inference_width * 3U;
     const float ratio_width = static_cast<float>(kSensorWidth) / kOutputWidth;
     const float ratio_height = static_cast<float>(kSensorHeight) / kOutputHeight;
     const float display_to_sensor = ratio_width < ratio_height
                                         ? ratio_width
                                         : ratio_height;
     if (AI_DCMIPP_BYPASS_DOWNSIZE != 0) {
-        crop.HSize = kInferenceWidth;
-        crop.VSize = kInferenceHeight;
+        crop.HSize = inference_width;
+        crop.VSize = content_height;
     } else {
         crop.HSize = static_cast<std::uint32_t>(
             static_cast<float>(kOutputWidth) * display_to_sensor);
         crop.VSize = static_cast<std::uint32_t>(
             static_cast<float>(kOutputHeight) * display_to_sensor);
     }
-#endif
     crop.HStart = ((kSensorWidth - crop.HSize) / 2U) & ~1U;
     crop.VStart = ((kSensorHeight - crop.VSize) / 2U) & ~1U;
     crop.PipeArea = DCMIPP_POSITIVE_AREA;
@@ -276,7 +305,7 @@ Error ConfigureInferencePipe()
 
     uai::ai::image_resizer::Selection resize{};
     Error resize_status = SelectDcmippResize(
-        crop.HSize, crop.VSize, kInferenceWidth, kInferenceHeight, &resize);
+        crop.HSize, crop.VSize, inference_width, content_height, &resize);
     if (!resize_status.Ok()) {
         return resize_status;
     }
@@ -287,13 +316,13 @@ Error ConfigureInferencePipe()
 
     DCMIPP_DownsizeTypeDef downsize{};
     downsize.HRatio = static_cast<std::uint32_t>(
-        8192.0F * resize.dcmipp_input_width / kInferenceWidth);
+        8192.0F * resize.dcmipp_input_width / inference_width);
     downsize.VRatio = static_cast<std::uint32_t>(
-        8192.0F * resize.dcmipp_input_height / kInferenceHeight);
+        8192.0F * resize.dcmipp_input_height / content_height);
     downsize.HDivFactor = (1024U * 8192U - 1U) / downsize.HRatio;
     downsize.VDivFactor = (1024U * 8192U - 1U) / downsize.VRatio;
-    downsize.HSize = kInferenceWidth;
-    downsize.VSize = kInferenceHeight;
+    downsize.HSize = inference_width;
+    downsize.VSize = content_height;
     if (HAL_DCMIPP_PIPE_SetDownsizeConfig(&hcamera_dcmipp, DCMIPP_PIPE2,
                                           &downsize) != HAL_OK ||
         HAL_DCMIPP_PIPE_EnableDownsize(&hcamera_dcmipp, DCMIPP_PIPE2) !=
@@ -305,7 +334,7 @@ Error ConfigureInferencePipe()
     /* Keep this selectable: 1/4 reduces PSRAM traffic, while 1/2 or ALL can
      * make the bounding-box refresh visibly more responsive. */
     pipe.FrameRate = AI_DCMIPP_PIPE2_FRAME_RATE;
-    pipe.PixelPipePitch = kInferenceWidth * 3U;
+    pipe.PixelPipePitch = inference_width * 3U;
     pipe.PixelPackerFormat = DCMIPP_PIXEL_PACKER_FORMAT_RGB888_YUV444_1;
     if (HAL_DCMIPP_PIPE_SetConfig(&hcamera_dcmipp, DCMIPP_PIPE2, &pipe) !=
             HAL_OK ||
@@ -321,16 +350,19 @@ Error ConfigureInferencePipe()
               static_cast<unsigned int>(crop.VStart),
               static_cast<unsigned int>(crop.HSize),
               static_cast<unsigned int>(crop.VSize),
-              static_cast<unsigned int>(kInferenceWidth),
-              static_cast<unsigned int>(kInferenceHeight));
+              static_cast<unsigned int>(inference_width),
+              static_cast<unsigned int>(content_height));
     tm_printf(reinterpret_cast<const UB *>(
-                  "image_resizer: pipe=2 hw=%s decimation=%u input=%ux%u output=%ux%u\n"),
+                  "image_resizer: pipe=2 hw=%s decimation=%u input=%ux%u output=%ux%u pad_top=%u model=%ux%u\n"),
               uai::ai::image_resizer::HardwareName(resize.hardware),
               static_cast<unsigned int>(resize.dcmipp_decimation),
               static_cast<unsigned int>(resize.dcmipp_input_width),
               static_cast<unsigned int>(resize.dcmipp_input_height),
-              static_cast<unsigned int>(kInferenceWidth),
-              static_cast<unsigned int>(kInferenceHeight));
+              static_cast<unsigned int>(inference_width),
+              static_cast<unsigned int>(content_height),
+              static_cast<unsigned int>((inference_height - content_height) / 2U),
+              static_cast<unsigned int>(inference_width),
+              static_cast<unsigned int>(inference_height));
     return {ErrorCode::kOk, 0U, "camera.pipe2.configure"};
 }
 
@@ -509,7 +541,10 @@ Error CameraDriver::Initialize(memory_allocator::MemoryAllocator &memory,
     Imx335RegisterLayer registers;
     if (!ConfigureSensor(registers).Ok()) return Hardware("camera.sensor.configure");
     InstallExposureWorkaround();
-    if (!ConfigurePipe().Ok() || !ConfigureInferencePipe().Ok() ||
+    inference_model_ = kInitialInferenceModel;
+    if (!ConfigurePipe().Ok() ||
+        !ConfigureInferencePipe(uai::ai::model_manager::Describe(
+                                    kInitialInferenceModel)).Ok() ||
         !ConfigureRawDumpPipe().Ok()) {
         return Hardware("camera.configure");
     }
@@ -548,6 +583,8 @@ Error CameraDriver::Start()
     const memory_allocator::Buffer inference_second_buffer{
         inference_second, memory_allocator::kInferenceBufferBytes, 1U,
         memory_allocator::Region::kInference};
+    ClearInferenceInput(inference_first);
+    ClearInferenceInput(inference_second);
     status = cache_->PrepareForDmaWrite(inference_first_buffer);
     if (!status.Ok()) return status;
     status = cache_->PrepareForDmaWrite(inference_second_buffer);
@@ -566,7 +603,8 @@ Error CameraDriver::Start()
     if (BSP_CAMERA_Start(0U, reinterpret_cast<uint8_t *>(g_active_frame), CAMERA_MODE_CONTINUOUS) != BSP_ERROR_NONE) return Hardware("camera.start");
     if (HAL_DCMIPP_CSI_PIPE_Start(&hcamera_dcmipp, DCMIPP_PIPE2,
                                   DCMIPP_VIRTUAL_CHANNEL0,
-                                  static_cast<std::uint32_t>(g_active_inference),
+                                  static_cast<std::uint32_t>(InferenceDmaAddress(
+                                      g_active_inference)),
                                   DCMIPP_MODE_CONTINUOUS) != HAL_OK) {
         return Hardware("camera.pipe2.start");
     }
@@ -596,6 +634,103 @@ Error CameraDriver::Stop()
     if (BSP_CAMERA_Stop(0U) != BSP_ERROR_NONE) return Hardware("camera.stop");
     started_ = false;
     return {ErrorCode::kOk, 0U, "camera.stop"};
+}
+
+Error CameraDriver::ReconfigureInference(
+    const model_manager::ModelDescriptor &model)
+{
+    if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
+        return {ErrorCode::kNotInitialized, 0U,
+                "camera.reconfigure_inference"};
+    }
+    if (!started_) {
+        inference_model_ = model.kind;
+        return {ErrorCode::kOk, 0U, "camera.reconfigure_inference"};
+    }
+
+    /* Pipe1 and Pipe2 share CSI virtual channel 0 on this board. The HAL's
+     * CSI_PIPE_Stop(Pipe2, VC0) also stops VC0, so calling it while Pipe1 is
+     * active waits for a timeout and leaves the camera in recovery. Put the
+     * sensor in standby first, then stop the two pipes as one transaction.
+     * This keeps the VC0 stop short and avoids the timeout on every switch. */
+    Imx335RegisterLayer registers;
+    const Error standby_status = registers.SetStreaming(false);
+    if (!standby_status.Ok()) {
+        return standby_status;
+    }
+    HAL_Delay(20U);
+    const HAL_StatusTypeDef pipe2_first_stop =
+        HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE2,
+                                 DCMIPP_VIRTUAL_CHANNEL0);
+    const HAL_StatusTypeDef pipe1_stop =
+        HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE1,
+                                 DCMIPP_VIRTUAL_CHANNEL0);
+    HAL_StatusTypeDef pipe2_stop = HAL_OK;
+    if (pipe2_first_stop != HAL_OK) {
+        /* If the first stop still raced the last CSI transaction, Pipe2's
+         * DCMIPP block is already disabled. Retry after Pipe1 has released
+         * VC0 so the HAL state becomes READY. */
+        pipe2_stop = HAL_DCMIPP_CSI_PIPE_Stop(
+            &hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0);
+    }
+    if (pipe1_stop != HAL_OK || pipe2_stop != HAL_OK) {
+        return Hardware("camera.reconfigure.stop",
+                        (static_cast<std::uint32_t>(pipe2_first_stop) << 16U) |
+                            (static_cast<std::uint32_t>(pipe1_stop) << 8U) |
+                            static_cast<std::uint32_t>(pipe2_stop));
+    }
+    g_completed_inference = 0U;
+    g_inference_sequence = 0U;
+    Error status = ConfigureInferencePipe(model);
+    if (!status.Ok()) {
+        return status;
+    }
+    std::uintptr_t first = 0U;
+    std::uintptr_t second = 0U;
+    status = memory_->InferenceBuffers(&first, &second);
+    if (!status.Ok()) {
+        return status;
+    }
+    ClearInferenceInput(first);
+    ClearInferenceInput(second);
+    status = cache_->PrepareForDmaWrite({
+        first, memory_allocator::kInferenceBufferBytes, 0U,
+        memory_allocator::Region::kInference});
+    if (!status.Ok()) {
+        return status;
+    }
+    status = cache_->PrepareForDmaWrite({
+        second, memory_allocator::kInferenceBufferBytes, 1U,
+        memory_allocator::Region::kInference});
+    if (!status.Ok()) {
+        return status;
+    }
+    g_active_inference = first;
+    g_next_inference = second;
+    /* Pipe1 was stopped together with Pipe2 because both use CSI VC0. Its
+     * configuration is unchanged; restart it with the next capture buffer
+     * before restarting the newly configured Pipe2. */
+    if (HAL_DCMIPP_CSI_PIPE_Start(
+            &hcamera_dcmipp, DCMIPP_PIPE1, DCMIPP_VIRTUAL_CHANNEL0,
+            static_cast<std::uint32_t>(g_active_frame),
+            DCMIPP_MODE_CONTINUOUS) != HAL_OK) {
+        return Hardware("camera.pipe1.reconfigure.start");
+    }
+    if (HAL_DCMIPP_CSI_PIPE_Start(
+            &hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0,
+            static_cast<std::uint32_t>(InferenceDmaAddress(g_active_inference)),
+            DCMIPP_MODE_CONTINUOUS) != HAL_OK) {
+        return Hardware("camera.pipe2.reconfigure.start");
+    }
+    Error stream_status = StartStream(registers);
+    if (!stream_status.Ok()) {
+        return stream_status;
+    }
+    inference_model_ = model.kind;
+    tm_printf(reinterpret_cast<const UB *>(
+                  "camera: pipe2 model switched to %s\n"),
+              reinterpret_cast<const UB *>(model.name));
+    return {ErrorCode::kOk, 0U, "camera.reconfigure_inference"};
 }
 
 Error CameraDriver::Process()
@@ -645,7 +780,9 @@ Error CameraDriver::Process()
             ConfigureSensor(registers).Ok();
         if (recovery_ok) {
             InstallExposureWorkaround();
-            recovery_ok = ConfigurePipe().Ok() && ConfigureInferencePipe().Ok() &&
+            recovery_ok = ConfigurePipe().Ok() &&
+                          ConfigureInferencePipe(uai::ai::model_manager::Describe(
+                              inference_model_)).Ok() &&
                           ConfigureRawDumpPipe().Ok();
         }
         if (!recovery_ok ||
@@ -749,7 +886,7 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
     }
     if (HAL_DCMIPP_PIPE_SetMemoryAddress(
             &hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_MEMORY_ADDRESS_0,
-            static_cast<std::uint32_t>(selected)) != HAL_OK) {
+            static_cast<std::uint32_t>(InferenceDmaAddress(selected))) != HAL_OK) {
         ++g_camera_dcmipp_error_count;
         return;
     }

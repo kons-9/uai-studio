@@ -298,9 +298,27 @@ void camera_render_task(void)
     unsigned int reported_recovery_errors = 0U;
     unsigned int reported_isp_errors = 0U;
     std::uint32_t last_async_error_log_tick = Now();
-    std::uint32_t last_box_update = Now();
     for (;;) {
         ++loop_count;
+        /* Pipe2 belongs to this task.  Reconfiguring it from the inference
+         * task races with Process()/TakeCompletedInference() and can leave
+         * DCMIPP in a state where the camera recovery path is triggered.
+         * Complete the request here, before the next camera poll. */
+        if (g_camera_reconfigure_complete !=
+            g_camera_reconfigure_request) {
+            const std::uint32_t request = g_camera_reconfigure_request;
+            const auto requested_kind = static_cast<
+                uai::ai::model_manager::ModelKind>(
+                g_camera_reconfigure_kind);
+            const Error reconfigure_status = camera.ReconfigureInference(
+                uai::ai::model_manager::Describe(requested_kind));
+            g_camera_reconfigure_code =
+                static_cast<std::uint32_t>(reconfigure_status.code);
+            g_camera_reconfigure_detail = reconfigure_status.detail;
+            /* Publish completion last so the inference task never observes
+             * a request as complete before its result fields are written. */
+            g_camera_reconfigure_complete = request;
+        }
         status = camera.Process();
         if (!status.Ok()) {
             LogStatus("camera", status);
@@ -361,7 +379,14 @@ void camera_render_task(void)
          * inference period is intentionally slow. */
         InferenceFrame pipe2_frame{};
         const Error pipe2_status = camera.TakeCompletedInference(&pipe2_frame);
-        if (pipe2_status.Ok()) {
+        if (pipe2_status.Ok() && g_model_switch_in_progress) {
+            /* Do not queue frames in the old tensor format while the model
+             * and Pipe2 are being switched. */
+            status = g_memory.ReleaseInferenceBuffer(pipe2_frame);
+            if (!status.Ok()) {
+                LogStatus("memory", status);
+            }
+        } else if (pipe2_status.Ok()) {
 #if defined(AI_MODEL_FACE)
             if constexpr (kInferenceInputDisplayDiagnostic) {
                 /* Diagnostic mode intentionally displays the exact Pipe2
@@ -491,15 +516,9 @@ void camera_render_task(void)
             LogStatus("camera", pipe2_status);
         }
         if (DrainLatestBoxes(&active_boxes)) {
-            last_box_update = now;
-        } else if (active_boxes.count > 0U &&
-                   static_cast<std::uint32_t>(now - last_box_update) >=
-                       kBoxLifetimeMs) {
-            active_boxes = EmptyBoxes();
-#if AI_INFERENCE_DIAGNOSTICS
-            tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-                "lcd: stale inference boxes cleared\n")));
-#endif
+            /* The latest inference result is authoritative. Until it arrives,
+             * keep presenting the previous result so model switching does not
+             * create a blank frame. */
         }
         uai::ai::memory_allocator::CaptureFrame capture{};
         status = camera.TakeCompletedCapture(&capture);

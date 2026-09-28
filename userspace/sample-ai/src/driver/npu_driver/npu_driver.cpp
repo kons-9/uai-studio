@@ -13,6 +13,7 @@ void LL_ATON_NPU0_IRQHandler(void);
 #endif
 
 stai_return_code stai_runtime_init(void);
+stai_return_code stai_runtime_deinit(void);
 }
 
 namespace {
@@ -166,8 +167,17 @@ Status NpuDriver::InvalidState(const char *operation) const
 Status NpuDriver::Initialize(model_manager::Model &model)
 {
     if (initialized_) {
-        return {common::Error{common::ErrorCode::kAlreadyInitialized, 0U,
-                              "npu.initialize"},
+        for (std::uint32_t i = 0U; i < loaded_model_count_; ++i) {
+            if (loaded_models_[i] == &model) {
+                model_ = &model;
+                last_execution_.state = ExecutionState::kReady;
+                return {common::Error{common::ErrorCode::kOk, 0U,
+                                      "npu.select_model"},
+                        last_execution_};
+            }
+        }
+        return {common::Error{common::ErrorCode::kInvalidState, 0U,
+                              "npu.initialize.unloaded_model"},
                 last_execution_};
     }
 
@@ -240,11 +250,77 @@ Status NpuDriver::Initialize(model_manager::Model &model)
     }
 
     initialized_ = true;
+    loaded_models_[0] = &model;
+    loaded_model_count_ = 1U;
     last_error_ = 0U;
     last_execution_ = {};
     last_execution_.state = ExecutionState::kReady;
     return {common::Error{common::ErrorCode::kOk, 0U, "npu.initialize"},
             last_execution_};
+}
+
+Status NpuDriver::Preload(model_manager::Model &model)
+{
+    if (!initialized_ || model_ == nullptr) {
+        return InvalidState("npu.preload");
+    }
+    for (std::uint32_t i = 0U; i < loaded_model_count_; ++i) {
+        if (loaded_models_[i] == &model) {
+            return {common::Error{common::ErrorCode::kOk, 0U,
+                                  "npu.preload"},
+                    last_execution_};
+        }
+    }
+    if (loaded_model_count_ >=
+        static_cast<std::uint32_t>(sizeof(loaded_models_) /
+                                   sizeof(loaded_models_[0]))) {
+        return {common::Error{common::ErrorCode::kInvalidState,
+                              loaded_model_count_, "npu.preload.full"},
+                last_execution_};
+    }
+
+    const stai_return_code code = model.Initialize();
+    last_error_ = static_cast<std::uint32_t>(code);
+    if (IsError(code)) {
+        last_execution_.state = ExecutionState::kFaulted;
+        last_execution_.stai_status = last_error_;
+        return {common::Error{common::ErrorCode::kModel, last_error_,
+                              "npu.preload"},
+                last_execution_};
+    }
+    loaded_models_[loaded_model_count_++] = &model;
+    return {common::Error{common::ErrorCode::kOk, 0U, "npu.preload"},
+            last_execution_};
+}
+
+Status NpuDriver::SelectModel(model_manager::Model &model)
+{
+    if (!initialized_) {
+        return InvalidState("npu.select_model");
+    }
+    for (std::uint32_t i = 0U; i < loaded_model_count_; ++i) {
+        if (loaded_models_[i] == &model) {
+            model_ = &model;
+            last_execution_.state = ExecutionState::kReady;
+            last_execution_.stai_status = 0U;
+            return {common::Error{common::ErrorCode::kOk, 0U,
+                                  "npu.select_model"},
+                    last_execution_};
+        }
+    }
+    return {common::Error{common::ErrorCode::kInvalidState, 0U,
+                          "npu.select_model.unloaded_model"},
+            last_execution_};
+}
+
+bool NpuDriver::IsLoaded(const model_manager::Model &model) const
+{
+    for (std::uint32_t i = 0U; i < loaded_model_count_; ++i) {
+        if (loaded_models_[i] == &model) {
+            return true;
+        }
+    }
+    return false;
 }
 
 Status NpuDriver::GetInfo(stai_network_info *info) const
@@ -515,12 +591,32 @@ Status NpuDriver::Shutdown()
         return InvalidState("npu.shutdown");
     }
 
-    const stai_return_code code = model_->Shutdown();
+    stai_return_code code = static_cast<stai_return_code>(0U);
+    for (std::uint32_t i = loaded_model_count_; i > 0U; --i) {
+        const stai_return_code model_code = loaded_models_[i - 1U]->Shutdown();
+        if (IsError(model_code) && !IsError(code)) {
+            code = model_code;
+        }
+    }
+    const stai_return_code runtime_code = stai_runtime_deinit();
+    if (IsError(runtime_code) && !IsError(code)) {
+        code = runtime_code;
+    }
     last_error_ = static_cast<std::uint32_t>(code);
-#if defined(AI_MODEL_SEGMENTATION)
-    (void)tk_del_flg(g_npu_irq_event_flag);
-    g_npu_irq_event_flag = 0;
-#endif
+    /* A model switch reuses this driver with a different generated context.
+     * Tear down the wait object and the IRQ state for every model, not only
+     * the old segmentation build that happened to need a restart. */
+    HAL_NVIC_DisableIRQ(NPU0_IRQn);
+    NVIC_ClearPendingIRQ(NPU0_IRQn);
+    if (g_npu_irq_event_flag > 0) {
+        (void)tk_del_flg(g_npu_irq_event_flag);
+        g_npu_irq_event_flag = 0;
+    }
+    model_ = nullptr;
+    for (auto &loaded_model : loaded_models_) {
+        loaded_model = nullptr;
+    }
+    loaded_model_count_ = 0U;
     initialized_ = false;
     last_execution_.state = ExecutionState::kUninitialized;
     last_execution_.stai_status = last_error_;

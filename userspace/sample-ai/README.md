@@ -9,8 +9,10 @@
 ## カメラ推論経路
 
 カメラ表示は `DCMIPP_PIPE1` の RGB565 800x480、推論入力は `DCMIPP_PIPE2` の
-RGB888（person: 480x480、segmentation: 320x320）を使用します。Pipe2の出力は
-PSRAM上の推論バッファへDMAします。
+RGB888（person: 480x480、segmentation: 320x320、face: 128x128）を使用します。
+Pipe2は800x480全体をアスペクト比維持でモデル入力内へletterboxし、実画像領域は
+それぞれ480x288、320x192、128x77です。上下の余白を含む正方形テンソルをPSRAM上の
+推論バッファへDMAします。
 
 checked-inのperson、segmentation、face生成物は、`--no-inputs-allocation
 --no-outputs-allocation`で生成してPipe2入力とallocator出力を受け取ります。
@@ -67,9 +69,16 @@ UARTには30フレームごとに `ai: input inspect` としてアドレス、�
 
 ## モデル
 
-モデルのcommand blobは同時にリンクせず、`AI_MODEL`で1つを選択します。
-一方、重みデータは同じXSPI2上の別アドレスへ配置できるため、3モデルを
-Flashに共存させられます。
+通常の単一モデル構成では、モデルのcommand blobを`AI_MODEL`で1つ選択します。
+`AI_DYNAMIC_MODEL_SWITCHING=ON`を指定した構成ではperson、segmentation、faceの
+3モデルを同時にリンクし、起動時に各モデルのEC command blobをランタイムRAMへ
+一度だけ展開します。切り替え時はNPUのモデルコンテキストを選択するだけなので、
+モデルごとのNOR再読み出し・再初期化を行いません。
+
+ここでいうランタイムRAMは、生成コードの`ECBLOB_RUNTIME_SECTION`にある実行用
+command bufferです。NPU activation用のAXISRAM3-6を3モデル分重複確保する方式では
+なく、生成済みmpoolのactivation領域を各モデルで共有します。したがって、現在の
+構成は「command blobを全モデル分RAM常駐」「activationは実行中モデル分を共有」です。
 
 | モデル | 重みの配置アドレス | サイズ |
 | --- | ---: | ---: |
@@ -144,6 +153,24 @@ sample-ai専用リンカスクリプトは、生成されたcommand blobをXSPI2
 AXISRAM2-6はNPU用に残します。モデルがXSPI1を使う場合にも対応できるよう、
 実行時にDKのPSRAMとNORのmemory-mappedモードを初期化します。
 これは `sample-hello-world` のリンカスクリプトを変更するものではありません。
+
+### 動的モデル切り替え
+
+```sh
+cmake -S . -B build \
+  -DAPP_TARGET=sample-ai \
+  -DAI_DYNAMIC_MODEL_SWITCHING=ON
+cmake --build build --target sample-ai
+```
+
+この構成では起動時に`ai: model preloaded=segmentation`と
+`ai: model preloaded=face`がUARTへ出ます（初期モデルpersonは通常の初期化ログに
+含まれます）。切り替え時には`ai: model switched to ...`が出ますが、command blobの
+再ロードログは出ません。Pipe2はperson用の480x480テンソル（有効画像480x288）で
+常時動作し、segmentation/faceではallocatorの共有scratch領域を使って同じ有効画像を
+320x320/128x128へCPU letterboxします。そのため、モデル切り替えのたびにカメラを
+停止・再起動せず、推論結果はperson/faceの枠とsegmentationマスクを別々に保持して
+LCD合成します。表示色はperson=赤、face=青、segmentation=緑です。
 
 ## 後で行う configure/build
 

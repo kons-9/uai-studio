@@ -70,12 +70,6 @@ inline constexpr std::uint32_t kInferencePeriod = 20U;
  * rebuilding the 128x128 tensor from the RGB565 display frame on the CPU. */
 inline constexpr bool kFaceUsePipe2Input = true;
 #endif
-#if defined(AI_MODEL_SEGMENTATION)
-inline constexpr std::uint32_t kBoxLifetimeMs = 1000U;
-#else
-inline constexpr std::uint32_t kBoxLifetimeMs = 1000U;
-#endif
-
 enum class InferenceMode : std::uint8_t {
     kDisabled,
     kCopyOnly,
@@ -130,6 +124,15 @@ extern uai::ai::camera::CameraDriver g_camera;
 extern volatile std::uint32_t g_app_stage;
 extern volatile bool g_external_nor_ready;
 extern ID g_external_memory_ready;
+/* Kept for the camera reconfiguration API used by fixed-model diagnostics.
+ * Dynamic model switching itself leaves Pipe2 running and does not use these
+ * request fields. */
+extern volatile bool g_model_switch_in_progress;
+extern volatile std::uint32_t g_camera_reconfigure_request;
+extern volatile std::uint32_t g_camera_reconfigure_complete;
+extern volatile std::uint32_t g_camera_reconfigure_kind;
+extern volatile std::uint32_t g_camera_reconfigure_code;
+extern volatile std::uint32_t g_camera_reconfigure_detail;
 extern ID g_frame_queue;
 extern ID g_box_queue;
 extern UB g_frame_queue_storage[sizeof(InferenceMessage) * kFrameQueueDepth];

@@ -53,6 +53,13 @@ struct Rgb888Destination {
     std::uint32_t stride_bytes = 0U;
 };
 
+struct Rgb888Source {
+    const std::uint8_t *pixels = nullptr;
+    std::uint32_t width = 0U;
+    std::uint32_t height = 0U;
+    std::uint32_t stride_bytes = 0U;
+};
+
 /* Backend selection is deliberately independent from HAL register writes.
  * This keeps the policy testable and lets the camera driver apply the
  * returned DCMIPP plan to either Pipe1 or Pipe2. */
@@ -67,6 +74,14 @@ common::Error ResizeRgb565ToRgb888(
     const Rgb565Source &source, std::uint32_t crop_x, std::uint32_t crop_y,
     std::uint32_t crop_width, std::uint32_t crop_height,
     const Rgb888Destination &destination);
+
+/* Resize an RGB888 source into a letterboxed RGB888 tensor. The source is
+ * sampled with nearest-neighbour interpolation, while the unused padding is
+ * filled with pad_value. No allocation is performed. */
+common::Error ResizeRgb888Letterbox(
+    const Rgb888Source &source, const Rgb888Destination &destination,
+    std::uint32_t content_width, std::uint32_t content_height,
+    std::uint8_t pad_value = 0U);
 
 } // namespace uai::ai::image_resizer
 

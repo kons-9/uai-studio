@@ -42,6 +42,12 @@ public:
     static void KeepMemoryClocksOnSleep();
 
     Status Initialize(model_manager::Model &model);
+    /* Initialize a second generated network while the shared ATON runtime is
+     * already alive.  This copies its command blob into its runtime buffer so
+     * a later model switch does not have to read the external flash again. */
+    Status Preload(model_manager::Model &model);
+    Status SelectModel(model_manager::Model &model);
+    bool IsLoaded(const model_manager::Model &model) const;
 
     Status GetInfo(stai_network_info *info) const;
     Status GetInputs(stai_ptr *inputs, stai_size *count) const;
@@ -59,6 +65,8 @@ private:
     Status InvalidState(const char *operation) const;
 
     model_manager::Model *model_ = nullptr;
+    model_manager::Model *loaded_models_[3] = {};
+    std::uint32_t loaded_model_count_ = 0U;
     registers::NpuRegisterLayer registers_{};
     ExecutionSnapshot last_execution_{};
     std::uint32_t last_error_ = 0U;

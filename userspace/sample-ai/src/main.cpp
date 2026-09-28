@@ -64,6 +64,12 @@ uai::ai::lcd::LcdDriver g_lcd;
 uai::ai::camera::CameraDriver g_camera;
 volatile std::uint32_t g_app_stage = 0U;
 volatile bool g_external_nor_ready = false;
+volatile bool g_model_switch_in_progress = false;
+volatile std::uint32_t g_camera_reconfigure_request = 0U;
+volatile std::uint32_t g_camera_reconfigure_complete = 0U;
+volatile std::uint32_t g_camera_reconfigure_kind = 0U;
+volatile std::uint32_t g_camera_reconfigure_code = 0U;
+volatile std::uint32_t g_camera_reconfigure_detail = 0U;
 ID g_external_memory_ready = 0;
 ID g_frame_queue = 0;
 ID g_box_queue = 0;
@@ -167,17 +173,15 @@ bool DrainLatestBoxes(BoxSet *active)
             break;
         }
         if (size == static_cast<INT>(sizeof(message))) {
-            /* A single empty NPU result is common when the confidence score
-             * briefly crosses the threshold. Keep the last valid detection
-             * until the camera task's lifetime timer expires instead of
-             * blinking the box on every miss. */
-            const bool has_detections = message.boxes.count > 0U;
-            const bool has_segmentation_mask =
-                message.boxes.mask_address != 0U &&
-                message.boxes.mask_width != 0U &&
-                message.boxes.mask_height != 0U;
-            if (has_detections || has_segmentation_mask) {
+            /* Keep the current display until the next inference result
+             * arrives. The integrated result contains the latest state of all
+             * models, so an empty result intentionally clears only the model
+             * that just ran while preserving the other model states. */
+            if (message.boxes.person_valid || message.boxes.face_valid ||
+                message.boxes.segmentation_valid) {
                 *active = message.boxes;
+                active->model_sequence = message.boxes.model_sequence;
+                active->capture_sequence = message.boxes.capture_sequence;
                 received = true;
             }
         }
@@ -188,29 +192,17 @@ bool DrainLatestBoxes(BoxSet *active)
 #if AI_INFERENCE_DIAGNOSTICS
     if (received) {
         tm_printf(reinterpret_cast<const UB *>(
-                      "lcd: box source=ai sequence=%u capture=%u count=%u\n"),
+                  "lcd: box source=ai sequence=%u capture=%u count=%u\n"),
                   static_cast<unsigned int>(active->model_sequence),
                   static_cast<unsigned int>(active->capture_sequence),
-                  static_cast<unsigned int>(active->count));
-        const std::uint32_t count =
-            active->count < uai::ai::memory_allocator::kMaxBoxes
-                ? active->count
-                : uai::ai::memory_allocator::kMaxBoxes;
-        for (std::uint32_t i = 0U; i < count; ++i) {
-            const auto &box = active->boxes[i];
-            const auto confidence_milli = box.confidence > 0.0F
-                                              ? static_cast<std::uint32_t>(
-                                                    box.confidence * 1000.0F +
-                                                    0.5F)
-                                              : 0U;
-            tm_printf(reinterpret_cast<const UB *>(
-                          "lcd: box active index=%u x=%d y=%d w=%d h=%d conf_milli=%u\n"),
-                      static_cast<unsigned int>(i),
-                      static_cast<int>(box.x), static_cast<int>(box.y),
-                      static_cast<int>(box.width),
-                      static_cast<int>(box.height),
-                      static_cast<unsigned int>(confidence_milli));
-        }
+                  static_cast<unsigned int>(active->person.count +
+                                             active->face.count));
+        tm_printf(reinterpret_cast<const UB *>(
+                      "lcd: boxes person=%u face=%u mask_px=%u\n"),
+                  static_cast<unsigned int>(active->person.count),
+                  static_cast<unsigned int>(active->face.count),
+                  static_cast<unsigned int>(
+                      active->segmentation.mask_foreground_pixels));
     }
 #endif
     return received;

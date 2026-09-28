@@ -59,11 +59,11 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  /* Reserve the 0x34049000 gap after .rodata and before the RAM entry at
-   * 0x34050000 for the C runtime callback tables. NPU-on adds command data to
-   * .rodata through 0x340486df, so the former 0x34048000 slot overlaps it.
-   * Keep a fixed table location for RAM launch startup. */
-  .preinit_array 0x34049000 :
+  /* Reserve a fixed gap after .rodata and before the RAM entry at 0x34050000
+   * for the C runtime callback tables. The dynamic model dispatcher and its
+   * CPU letterbox path enlarged .rodata beyond the previous 0x34049000 slot.
+   * Keep the launch entry address unchanged while moving only these tables. */
+  .preinit_array 0x3404A000 :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__preinit_array_start = .);
@@ -72,7 +72,7 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  .init_array 0x34049000 :
+  .init_array 0x3404A000 :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__init_array_start = .);
@@ -82,7 +82,7 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  .fini_array 0x34049010 :
+  .fini_array 0x3404A010 :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__fini_array_start = .);
@@ -100,6 +100,27 @@ SECTIONS
     KEEP(*(.text.uai_ram_entry))
     . = ALIGN(4);
   } >APP
+
+  .network_blobs_person :
+  {
+    . = ALIGN(64);
+    KEEP(*(.network_blobs_person))
+    . = ALIGN(64);
+  } >MODEL_FLASH
+
+  .network_blobs_segmentation :
+  {
+    . = ALIGN(64);
+    KEEP(*(.network_blobs_segmentation))
+    . = ALIGN(64);
+  } >MODEL_FLASH
+
+  .network_blobs_face :
+  {
+    . = ALIGN(64);
+    KEEP(*(.network_blobs_face))
+    . = ALIGN(64);
+  } >MODEL_FLASH
 
   .network_blobs :
   {

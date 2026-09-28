@@ -12,7 +12,13 @@ constexpr std::uint32_t kFrameWidth = 800U;
 constexpr std::uint32_t kFrameHeight = 480U;
 constexpr std::size_t kFrameBytes =
     static_cast<std::size_t>(kFrameWidth) * kFrameHeight * 2U;
-#if defined(AI_MODEL_SEGMENTATION)
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+/* Runtime model switching keeps one pair of fixed-size Pipe2/NPU slots alive.
+ * Allocate for the largest input/output in the model set; each active model
+ * uses only the prefix and output slots described by its runtime descriptor. */
+constexpr std::uint32_t kInferenceWidth = 480U;
+constexpr std::uint32_t kInferenceHeight = 480U;
+#elif defined(AI_MODEL_SEGMENTATION)
 constexpr std::uint32_t kInferenceWidth = 320U;
 constexpr std::uint32_t kInferenceHeight = 320U;
 #elif defined(AI_MODEL_FACE)
@@ -31,7 +37,11 @@ constexpr std::size_t AlignUp(std::size_t value, std::size_t alignment)
 }
 
 constexpr std::size_t kMaxModelOutputs = 4U;
-#if defined(AI_MODEL_SEGMENTATION)
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+constexpr std::size_t kModelOutputCount = 4U;
+constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
+    320U * 320U * 2U, 60U * 60U * 18U, 30U * 30U * 18U, 384U * 16U};
+#elif defined(AI_MODEL_SEGMENTATION)
 constexpr std::size_t kModelOutputCount = 1U;
 constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
     320U * 320U * 2U, 0U, 0U, 0U};
@@ -45,9 +55,24 @@ constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
     15U * 15U * 18U, 60U * 60U * 18U, 30U * 30U * 18U, 0U};
 #endif
 
-/* One slot contains the camera input followed by the user-replaceable model
- * outputs.  Keeping them in the same allocator slot preserves ownership
- * across the asynchronous Pipe2 -> NPU handoff. */
+/* Dynamic switching keeps the fixed person-sized Pipe2 image as a source for
+ * the smaller segmentation and face tensors. The scratch area is a shared
+ * allocator-owned region because inference is serialized; keeping it outside
+ * the two 1-MB inference slots avoids overlap with the next DMA buffer. */
+#if defined(AI_DYNAMIC_MODEL_SWITCHING)
+constexpr std::uint32_t kInferenceSourceWidth = 480U;
+constexpr std::uint32_t kInferenceSourceHeight = 288U;
+constexpr std::size_t kInferenceScratchBytes =
+    static_cast<std::size_t>(kInferenceSourceWidth) *
+    kInferenceSourceHeight * 3U;
+/* 0x91600000-0x919FFFFF is reserved by the camera raw-dump diagnostic path. */
+constexpr std::uintptr_t kInferenceScratchAddress = 0x91C00000UL;
+#else
+constexpr std::uint32_t kInferenceSourceWidth = 0U;
+constexpr std::uint32_t kInferenceSourceHeight = 0U;
+constexpr std::size_t kInferenceScratchBytes = 0U;
+constexpr std::uintptr_t kInferenceScratchAddress = 0U;
+#endif
 constexpr std::size_t kInferenceOutputsOffset =
     AlignUp(kInferenceFrameBytes, kBufferAlignment);
 constexpr std::size_t kInferenceOutputStorageBytes =
@@ -100,10 +125,12 @@ struct DisplayBuffer {
 
 struct InferenceFrame {
     Buffer buffer{};
+    Buffer scratch{};
     Buffer outputs[kMaxModelOutputs]{};
     std::uint8_t output_count = 0U;
     std::uint32_t capture_sequence = 0U;
     bool from_pipe2 = false;
+    bool input_prepared_by_cpu = false;
 
     explicit operator bool() const { return static_cast<bool>(buffer); }
 };
@@ -116,15 +143,27 @@ struct Box {
     float confidence = 0.0F;
 };
 
-struct BoxSet {
+struct DetectionSet {
     std::uint32_t count = 0U;
-    std::uint32_t model_sequence = 0U;
-    std::uint32_t capture_sequence = 0U;
+    Box boxes[kMaxBoxes]{};
+};
+
+struct SegmentationSet {
     std::uintptr_t mask_address = 0U;
     std::uint16_t mask_width = 0U;
     std::uint16_t mask_height = 0U;
     std::uint32_t mask_foreground_pixels = 0U;
-    Box boxes[kMaxBoxes]{};
+};
+
+struct BoxSet {
+    std::uint32_t model_sequence = 0U;
+    std::uint32_t capture_sequence = 0U;
+    bool person_valid = false;
+    bool face_valid = false;
+    bool segmentation_valid = false;
+    DetectionSet person{};
+    DetectionSet face{};
+    SegmentationSet segmentation{};
 };
 
 class MemoryAllocator final {
