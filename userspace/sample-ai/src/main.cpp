@@ -106,6 +106,13 @@ Error InitializeDrivers()
         return status;
     }
 
+    status = g_rif.Initialize();
+    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
+        return status;
+    }
+
+    /* XSPI1/XSPI2 are RIF-protected on a cold boot. Configure their access
+     * policy before the BSP touches either external memory. */
     if (!g_psram.Initialize()) {
         return {ErrorCode::kHardware, 0U, "psram.initialize"};
     }
@@ -119,11 +126,6 @@ Error InitializeDrivers()
             "boot: NOR skipped: inference disabled\n")));
     }
     g_external_nor_ready = nor_status == 0;
-
-    status = g_rif.Initialize();
-    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
-        return status;
-    }
 
     status = g_lcd.Initialize(g_memory, g_cache);
     if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {

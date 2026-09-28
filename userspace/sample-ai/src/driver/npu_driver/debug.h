@@ -9,7 +9,6 @@ extern "C" {
 
 extern volatile unsigned int g_aton_irq_count;
 extern volatile unsigned int g_aton_last_irqs;
-extern volatile unsigned int g_npu_init_stage;
 extern volatile unsigned int g_npu_cache_init_status;
 extern volatile unsigned int g_npu_cache_enable_status;
 extern volatile unsigned int g_npu_cache_invalidate_status;

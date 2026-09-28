@@ -36,8 +36,6 @@ extern "C" void NPU0_IRQHandler(UINT intno)
     (void)intno;
 }
 
-extern "C" volatile unsigned int g_npu_init_stage = 0U;
-
 namespace uai::ai::npu {
 
 namespace {
@@ -167,7 +165,6 @@ Status NpuDriver::InvalidState(const char *operation) const
 
 Status NpuDriver::Initialize(model_manager::Model &model)
 {
-    g_npu_init_stage = 1U;
     if (initialized_) {
         return {common::Error{common::ErrorCode::kAlreadyInitialized, 0U,
                               "npu.initialize"},
@@ -191,7 +188,6 @@ Status NpuDriver::Initialize(model_manager::Model &model)
         }
     }
 
-    g_npu_init_stage = 2U;
     AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu init begin irq_en=%u irq_pending=%u\n"),
               static_cast<unsigned int>(NVIC_GetEnableIRQ(NPU0_IRQn)),
@@ -221,10 +217,7 @@ Status NpuDriver::Initialize(model_manager::Model &model)
                 last_execution_};
     }
 
-    g_npu_init_stage = 3U;
-    g_npu_init_stage = 4U;
     const stai_return_code model_code = model_->Initialize();
-    g_npu_init_stage = 5U;
 #if AI_INFERENCE_DIAGNOSTICS
     const registers::NpuRegisterSnapshot model_hardware =
         registers_.ReadSnapshot();
@@ -246,7 +239,6 @@ Status NpuDriver::Initialize(model_manager::Model &model)
                 last_execution_};
     }
 
-    g_npu_init_stage = 6U;
     initialized_ = true;
     last_error_ = 0U;
     last_execution_ = {};
