@@ -4,9 +4,10 @@
 #include <cstdint>
 
 #include "common/error.hpp"
+#include "driver/npu_driver/registers/npu_registers.hpp"
 #include "model_manager/model_api.hpp"
 
-namespace uai::ai::npu_driver {
+namespace uai::ai::npu {
 
 enum class ExecutionState : std::uint8_t {
     kUninitialized,
@@ -31,12 +32,15 @@ struct Status {
 };
 
 /*
- * NPU execution use cases.  This layer owns the STAI/Neural-ART lifecycle and
- * the asynchronous run protocol.  It does not access NPU registers directly;
- * all hardware observation goes through NpuHardware.
+ * NPU execution operations.  This layer owns the STAI/Neural-ART lifecycle and
+ * the asynchronous run protocol. Hardware observation used by diagnostics is
+ * kept in this implementation as part of the same driver boundary.
  */
 class NpuDriver final {
 public:
+    static common::Error InitializeMemory();
+    static void KeepMemoryClocksOnSleep();
+
     Status Initialize(model_manager::Model &model);
 
     Status GetInfo(stai_network_info *info) const;
@@ -54,11 +58,12 @@ private:
     Status InvalidState(const char *operation) const;
 
     model_manager::Model *model_ = nullptr;
+    registers::NpuRegisterLayer registers_{};
     ExecutionSnapshot last_execution_{};
     std::uint32_t last_error_ = 0U;
     bool initialized_ = false;
 };
 
-} // namespace uai::ai::npu_driver
+} // namespace uai::ai::npu
 
 #endif

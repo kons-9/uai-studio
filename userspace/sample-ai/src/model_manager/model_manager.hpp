@@ -4,8 +4,8 @@
 #include <cstdint>
 
 #include "common/error.hpp"
-#include "memory_manager/memory_hardware.hpp"
-#include "memory_manager/memory_manager.hpp"
+#include "driver/cache_driver/cache_driver.hpp"
+#include "memory_allocator/memory_allocator.hpp"
 #include "model_manager/model_api.hpp"
 #if defined(AI_MODEL_SEGMENTATION)
 #include "model_manager/model/segmentation/model_segmentation_adapter.hpp"
@@ -18,13 +18,13 @@ namespace uai::ai {
 
 class ModelManager final {
 public:
-    common::Error Initialize(memory_manager::MemoryManager &memory,
-                             memory_manager::MemoryHardware &memory_hardware);
-    common::Error TryInfer(const memory_manager::InferenceFrame &frame,
-                           memory_manager::BoxSet *result);
+    common::Error Initialize(memory_allocator::MemoryAllocator &memory,
+                             cache::CacheDriver &cache);
+    common::Error TryInfer(const memory_allocator::InferenceFrame &frame,
+                           memory_allocator::BoxSet *result);
     common::Error Shutdown();
 
-    const npu_driver::Status &LastNpuStatus() const
+    const npu::Status &LastNpuStatus() const
     {
         return last_npu_status_;
     }
@@ -32,9 +32,9 @@ public:
 private:
     common::Error RunNetwork();
 
-    memory_manager::MemoryManager *memory_ = nullptr;
-    memory_manager::MemoryHardware *memory_hardware_ = nullptr;
-    npu_driver::NpuDriver npu_{};
+    memory_allocator::MemoryAllocator *memory_ = nullptr;
+    cache::CacheDriver *cache_ = nullptr;
+    npu::NpuDriver npu_{};
 #if defined(AI_MODEL_SEGMENTATION)
     model_manager::SegmentationModelAdapter model_{};
 #else
@@ -42,7 +42,7 @@ private:
 #endif
     stai_network_info info_{};
     stai_ptr outputs_[3]{};
-    npu_driver::Status last_npu_status_{};
+    npu::Status last_npu_status_{};
     bool initialized_ = false;
     std::uint32_t model_sequence_ = 0U;
     std::uint32_t last_error_ = 0U;

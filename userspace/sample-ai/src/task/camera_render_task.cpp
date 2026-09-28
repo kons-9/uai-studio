@@ -3,7 +3,7 @@
 
 #include <tk/tkernel.h>
 
-#include "driver/imager_driver/usecase/imager_use_case.hpp"
+#include "driver/camera_driver/camera_driver.hpp"
 #include "driver/lcd_driver/lcd_driver.hpp"
 #include "task/task_context.hpp"
 
@@ -13,19 +13,12 @@ void camera_render_task(void)
 {
     Error status{};
 
-    uai::ai::LcdDriver lcd;
-    uai::ai::imager::usecase::ImagerUseCase imager;
+    auto &lcd = g_lcd;
+    auto &camera = g_camera;
     const BoxSet initial = EmptyBoxes();
 
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "lcd: initialize begin\n")));
-    status = lcd.Initialize(g_memory, g_memory_hardware);
-    if (!status.Ok()) {
-        LogStatus("lcd", status);
-        Halt("ai: lcd initialization failed\n");
-    }
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "lcd: initialize result=ok\n")));
+        "lcd: driver ready\n")));
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
         "lcd: initial frame begin\n")));
     status = lcd.ShowInitialFrame(initial,
@@ -74,10 +67,10 @@ void camera_render_task(void)
             LogStatus("memory", status);
             Halt("ai: diagnostic capture buffers unavailable\n");
         }
-        const uai::ai::memory_manager::Buffer source_buffer{
-            capture0, uai::ai::memory_manager::kFrameBytes, 0U,
-            uai::ai::memory_manager::Region::kCapture};
-        status = g_memory_hardware.PrepareForDmaWrite(source_buffer);
+        const uai::ai::memory_allocator::Buffer source_buffer{
+            capture0, uai::ai::memory_allocator::kFrameBytes, 0U,
+            uai::ai::memory_allocator::Region::kCapture};
+        status = g_cache.PrepareForDmaWrite(source_buffer);
         if (!status.Ok()) {
             LogStatus("memory", status);
             Halt("ai: diagnostic source cache prepare failed\n");
@@ -91,7 +84,7 @@ void camera_render_task(void)
             reinterpret_cast<std::uint32_t *>(source_buffer.address),
             static_cast<std::int32_t>(source_buffer.size));
 
-        uai::ai::memory_manager::CaptureFrame synthetic_capture{};
+        uai::ai::memory_allocator::CaptureFrame synthetic_capture{};
         status = g_memory.ImportCompletedCapture(source_buffer.address,
                                                   &synthetic_capture);
         if (!status.Ok()) {
@@ -116,15 +109,8 @@ void camera_render_task(void)
     }
 
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "camera: initialize begin\n")));
-    status = imager.Initialize(g_memory, g_memory_hardware);
-    if (!status.Ok()) {
-        LogStatus("camera", status);
-        Halt("ai: camera initialization failed\n");
-    }
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "camera: initialize result=ok\n")));
-    status = imager.Start();
+        "camera: driver ready\n")));
+    status = camera.Start();
     if (!status.Ok()) {
         LogStatus("camera", status);
         Halt("ai: camera start failed\n");
@@ -132,16 +118,16 @@ void camera_render_task(void)
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
         "camera: start result=ok detail=0\n")));
     if constexpr (kLiveCaptureFreezeDiagnostic) {
-        uai::ai::memory_manager::CaptureFrame first_capture{};
+        uai::ai::memory_allocator::CaptureFrame first_capture{};
         const std::uint32_t wait_start = Now();
         for (;;) {
-            status = imager.Process();
+            status = camera.Process();
             if (!status.Ok()) {
                 LogStatus("camera", status);
                 Halt("ai: frozen capture process failed\n");
             }
-            uai::ai::memory_manager::CaptureFrame candidate{};
-            status = imager.TakeCompletedCapture(&candidate);
+            uai::ai::memory_allocator::CaptureFrame candidate{};
+            status = camera.TakeCompletedCapture(&candidate);
             if (status.Ok()) {
                 if ((candidate.sequence % 10U) == 0U) {
                     LogFrameBrightness(candidate);
@@ -172,22 +158,22 @@ void camera_render_task(void)
                   static_cast<unsigned int>(first_capture.sequence),
                   static_cast<unsigned int>(first_capture.buffer.address),
                   events_before_stop);
-        status = imager.Stop();
+        status = camera.Stop();
         if (!status.Ok()) {
             LogStatus("camera", status);
             Halt("ai: camera stop failed; capture not inspected\n");
         }
 
-        uai::ai::memory_manager::CaptureFrame latest_capture{};
+        uai::ai::memory_allocator::CaptureFrame latest_capture{};
         const Error latest_status =
-            imager.TakeCompletedCapture(&latest_capture);
+            camera.TakeCompletedCapture(&latest_capture);
         if (latest_status.Ok()) {
             first_capture = latest_capture;
         } else if (latest_status.code != ErrorCode::kNoFrame) {
             LogStatus("camera", latest_status);
             Halt("ai: stopped capture acquire failed\n");
         }
-        status = g_memory_hardware.PrepareForCpuRead(first_capture.buffer);
+        status = g_cache.PrepareForCpuRead(first_capture.buffer);
         if (!status.Ok()) {
             LogStatus("memory", status);
             Halt("ai: frozen capture cache invalidate failed\n");
@@ -246,7 +232,7 @@ void camera_render_task(void)
     std::uint32_t last_box_update = Now();
     for (;;) {
         ++loop_count;
-        status = imager.Process();
+        status = camera.Process();
         if (!status.Ok()) {
             LogStatus("camera", status);
             Halt("ai: camera process failed\n");
@@ -305,7 +291,7 @@ void camera_render_task(void)
          * iteration so the two DMA buffers are returned quickly even when the
          * inference period is intentionally slow. */
         InferenceFrame pipe2_frame{};
-        const Error pipe2_status = imager.TakeCompletedInference(&pipe2_frame);
+        const Error pipe2_status = camera.TakeCompletedInference(&pipe2_frame);
         if (pipe2_status.Ok()) {
             if (inference_due && kInferenceMode == InferenceMode::kNpu) {
                 tm_printf(reinterpret_cast<const UB *>(
@@ -336,8 +322,8 @@ void camera_render_task(void)
             tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
                 "lcd: stale inference boxes cleared\n")));
         }
-        uai::ai::memory_manager::CaptureFrame capture{};
-        status = imager.TakeCompletedCapture(&capture);
+        uai::ai::memory_allocator::CaptureFrame capture{};
+        status = camera.TakeCompletedCapture(&capture);
         if (!status.Ok()) {
             if (status.code != ErrorCode::kNoFrame) {
                 LogStatus("camera", status);

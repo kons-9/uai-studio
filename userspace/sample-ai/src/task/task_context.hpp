@@ -8,8 +8,13 @@
 #include "common/error.hpp"
 #include "driver/npu_driver/debug.h"
 #include "driver/npu_driver/npu_driver.hpp"
-#include "memory_manager/memory_hardware.hpp"
-#include "memory_manager/memory_manager.hpp"
+#include "driver/cache_driver/cache_driver.hpp"
+#include "driver/camera_driver/camera_driver.hpp"
+#include "driver/lcd_driver/lcd_driver.hpp"
+#include "driver/nor_driver/nor_driver.hpp"
+#include "driver/psram_driver/psram_driver.hpp"
+#include "driver/rif_driver/rif_driver.hpp"
+#include "memory_allocator/memory_allocator.hpp"
 #include "task/task_diagnostics.hpp"
 
 extern "C" {
@@ -17,7 +22,7 @@ extern "C" {
 #include "stm32n6xx_hal.h"
 
 extern DCMIPP_HandleTypeDef hcamera_dcmipp;
-/* Camera diagnostics are owned by the ai camera UseCase. */
+/* Camera diagnostics are owned by the ai camera driver. */
 extern volatile unsigned int g_camera_vsync_event_count;
 extern volatile unsigned int g_camera_frame_event_count;
 extern volatile unsigned int g_camera_recovery_count;
@@ -55,10 +60,9 @@ namespace uai::ai::task {
 
 using uai::ai::common::Error;
 using uai::ai::common::ErrorCode;
-using BoxSet = uai::ai::memory_manager::BoxSet;
-using InferenceFrame = uai::ai::memory_manager::InferenceFrame;
-using MemoryHardware = uai::ai::memory_manager::MemoryHardware;
-using MemoryManager = uai::ai::memory_manager::MemoryManager;
+using BoxSet = uai::ai::memory_allocator::BoxSet;
+using InferenceFrame = uai::ai::memory_allocator::InferenceFrame;
+using MemoryAllocator = uai::ai::memory_allocator::MemoryAllocator;
 inline constexpr UINT kExternalMemoryReady = 0x01U;
 inline constexpr std::uint32_t kInferencePeriod = 5000U;
 #if defined(AI_MODEL_SEGMENTATION)
@@ -105,8 +109,13 @@ struct BoxMessage {
     BoxSet boxes{};
 };
 
-extern MemoryManager g_memory;
-extern MemoryHardware g_memory_hardware;
+extern MemoryAllocator g_memory;
+extern uai::ai::cache::CacheDriver g_cache;
+extern uai::ai::psram::PsramDriver g_psram;
+extern uai::ai::nor::NorDriver g_nor;
+extern uai::ai::rif::RifDriver g_rif;
+extern uai::ai::lcd::LcdDriver g_lcd;
+extern uai::ai::camera::CameraDriver g_camera;
 extern volatile std::uint32_t g_app_stage;
 extern volatile bool g_external_nor_ready;
 extern ID g_external_memory_ready;
@@ -127,6 +136,7 @@ bool DrainLatestBoxes(BoxSet *active);
 void SendLatestBoxes(const BoxSet &boxes);
 void SendInferenceFrame(const InferenceFrame &frame);
 void ConfigureReferenceInterruptPriorities();
+Error InitializeDrivers();
 
 void StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
                const char *name);

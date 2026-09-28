@@ -19,7 +19,7 @@ void inference_task(void)
     uai::ai::ModelManager model;
     const Error model_status =
         g_external_nor_ready
-            ? model.Initialize(g_memory, g_memory_hardware)
+            ? model.Initialize(g_memory, g_cache)
             : Error{ErrorCode::kNotInitialized, 0U,
                     "ai.external_nor_unavailable"};
     if (model_status.Ok()) {

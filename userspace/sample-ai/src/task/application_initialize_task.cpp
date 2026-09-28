@@ -8,45 +8,15 @@ void application_initialize_task(void)
      * time bridge uses µT-Kernel time for HAL_GetTick/HAL_Delay. */
     HAL_ResumeTick();
     ConfigureReferenceInterruptPriorities();
-    /* The RAM-launch trampoline disables D-cache to prevent stale lines from
-     * the previous image overwriting the freshly programmed image.  Re-enable
-     * it after C runtime/kernel startup, as the reference application does;
-     * otherwise PSRAM frame copies and RGB conversion become prohibitively
-     * slow and starve the display pipeline. */
-    SCB_EnableDCache();
-    tm_printf(reinterpret_cast<const UB *>(
-                  "boot: dcache enabled ccr=%x\n"),
-              static_cast<unsigned int>(SCB->CCR));
     g_app_stage = 1U;
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
         "boot: external memory init begin\n")));
 
-    const Error memory_hardware_status = g_memory_hardware.Initialize();
-    if (!memory_hardware_status.Ok()) {
-        LogStatus("memory-hardware", memory_hardware_status);
-        Halt("ai: memory hardware initialization failed\n");
+    const Error driver_status = InitializeDrivers();
+    if (!driver_status.Ok()) {
+        LogStatus("driver", driver_status);
+        Halt("ai: driver initialization failed\n");
     }
-    const Error status = g_memory.Initialize();
-    if (!status.Ok()) {
-        LogStatus("memory", status);
-        Halt("ai: memory initialization failed\n");
-    }
-    g_memory_hardware.KeepInferenceClocksOnSleep();
-    /* Initialize external devices before applying the final RIF policy. */
-    constexpr bool initialize_nor = kInferenceMode == InferenceMode::kNpu;
-    int nor_status = -1;
-    if constexpr (!initialize_nor) {
-        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-            "boot: NOR skipped: inference disabled\n")));
-    }
-    const Error external_memory_status =
-        g_memory_hardware.InitializeExternalMemory(&nor_status,
-                                                  initialize_nor);
-    if (!external_memory_status.Ok()) {
-        LogStatus("memory-hardware", external_memory_status);
-        Halt("ai: external memory initialization failed\n");
-    }
-    g_external_nor_ready = nor_status == 0;
     /* The XSPI NOR driver emits a long register snapshot on failure.
      * Keep other tasks from writing to the same T-Monitor UART while that
      * snapshot is being transferred, otherwise the diagnostic lines become
@@ -56,14 +26,8 @@ void application_initialize_task(void)
         if (!g_external_nor_ready) {
             tm_printf(reinterpret_cast<const UB *>(
                           "ai: external NOR unavailable status=%d; inference disabled\n"),
-                      nor_status);
+                      static_cast<int>(driver_status.detail));
         }
-    }
-    const Error access_status =
-        g_memory_hardware.InitializePeripheralAccess();
-    if (!access_status.Ok()) {
-        LogStatus("memory", access_status);
-        Halt("ai: peripheral access initialization failed\n");
     }
     g_app_stage = 2U;
     g_app_stage = 3U;

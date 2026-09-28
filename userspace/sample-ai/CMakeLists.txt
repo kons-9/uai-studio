@@ -74,7 +74,7 @@ if(AI_MODEL STREQUAL "segmentation" AND AI_SEGMENTATION_DIAGNOSTICS)
 endif()
 
 set(AI_CAMERA_BSP_SOURCE
-    "${AI_SRC_DIR}/driver/camera/board/stm32n6570_discovery_camera.c")
+    "${AI_SRC_DIR}/driver/camera_driver/board_driver/stm32n6570_discovery_camera.c")
 set_source_files_properties(${AI_CAMERA_BSP_SOURCE} PROPERTIES
     COMPILE_DEFINITIONS
     "HAL_DCMIPP_PIPE_VsyncEventCallback=sample_ai_HAL_DCMIPP_PIPE_VsyncEventCallback;HAL_DCMIPP_PIPE_FrameEventCallback=sample_ai_HAL_DCMIPP_PIPE_FrameEventCallback")
@@ -85,21 +85,19 @@ add_executable(sample-ai.elf
     src/task/camera_render_task.cpp
     src/task/inference_task.cpp
     src/task/task_diagnostics.cpp
-    src/driver/imager_driver/registers/imx335_registers.cpp
-    src/driver/imager_driver/usecase/imager_use_case.cpp
+    src/driver/camera_driver/sensor_driver/registers/imx335_registers.cpp
+    src/driver/camera_driver/camera_driver.cpp
     src/driver/board/hal_time.c
-    src/driver/lcd_driver/lcd_hardware.cpp
-    src/driver/cache_controller/cache_controller.cpp
-    src/driver/nor_driver/nor_hardware.cpp
+    src/driver/cache_driver/cache_driver.cpp
+    src/driver/nor_driver/registers/nor_registers.cpp
     src/driver/nor_driver/nor_driver.cpp
-    src/driver/psram_driver/psram_hardware.cpp
+    src/driver/psram_driver/registers/psram_registers.cpp
     src/driver/psram_driver/psram_driver.cpp
-    src/driver/rif_controller/rif_hardware.cpp
-    src/driver/rif_controller/rif_controller.cpp
+    src/driver/rif_driver/rif_driver.cpp
+    src/driver/lcd_driver/registers/lcd_registers.cpp
     src/driver/lcd_driver/lcd_driver.cpp
-    src/memory_manager/memory_manager.cpp
-    src/memory_manager/memory_hardware.cpp
-    src/driver/npu_driver/npu_hardware.cpp
+    src/memory_allocator/memory_allocator.cpp
+    src/driver/npu_driver/registers/npu_registers.cpp
     src/driver/npu_driver/npu_driver.cpp
     src/model_manager/model_manager.cpp
     "${AI_MODEL_ADAPTER_SOURCE}"
@@ -108,8 +106,8 @@ add_executable(sample-ai.elf
     "${AI_SRC_DIR}/driver/c_bsp/stm32n6570_discovery_xspi.c"
     "${AI_BSP_ROOT}/stm32n6570_discovery_bus.c"
     ${AI_CAMERA_BSP_SOURCE}
-    src/driver/camera/board/dcmipp_callbacks.c
-    src/driver/camera/sensor/imx335.c
+    src/driver/camera_driver/dcmipp_driver/dcmipp_callbacks.c
+    src/driver/camera_driver/sensor_driver/imx335_driver.c
     "${AI_CUBE_ROOT}/Drivers/BSP/Components/imx335/imx335_reg.c"
     "${AI_BSP_ROOT}/stm32n6570_discovery_lcd.c"
     "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/isp/Src/isp_core.c"

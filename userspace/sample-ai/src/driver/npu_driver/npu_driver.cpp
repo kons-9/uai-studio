@@ -1,6 +1,5 @@
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/debug.h"
-#include "driver/npu_driver/npu_hardware.hpp"
 
 #include <tk/tkernel.h>
 
@@ -12,7 +11,7 @@ extern "C" {
 void LL_ATON_NPU0_IRQHandler(void);
 #endif
 #if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
-#include "model_manager/model/segmentation/model_segmentation_c_api.h"
+#include "model_manager/model/segmentation/model_segmentation_diagnostics.h"
 #endif
 
 stai_return_code stai_runtime_init(void);
@@ -44,11 +43,41 @@ extern "C" void NPU0_IRQHandler(UINT intno)
 }
 #endif
 
-namespace uai::ai::npu_driver {
+namespace uai::ai::npu {
 
 namespace {
 
 constexpr std::uint32_t kTimeoutTicks = 5000U;
+
+void EnableNpuMemory()
+{
+    __HAL_RCC_NPU_CLK_ENABLE();
+    __HAL_RCC_NPU_FORCE_RESET();
+    __HAL_RCC_NPU_RELEASE_RESET();
+    __HAL_RCC_FLEXRAM_MEM_CLK_ENABLE();
+    __HAL_RCC_AXISRAM1_MEM_CLK_ENABLE();
+    __HAL_RCC_AXISRAM2_MEM_CLK_ENABLE();
+    __HAL_RCC_AXISRAM3_MEM_CLK_ENABLE();
+    __HAL_RCC_AXISRAM4_MEM_CLK_ENABLE();
+    __HAL_RCC_AXISRAM5_MEM_CLK_ENABLE();
+    __HAL_RCC_AXISRAM6_MEM_CLK_ENABLE();
+    __HAL_RCC_RAMCFG_CLK_ENABLE();
+
+    RAMCFG_HandleTypeDef ramcfg = {};
+    ramcfg.Instance = RAMCFG_SRAM2_AXI;
+    (void)HAL_RAMCFG_EnableAXISRAM(&ramcfg);
+    ramcfg.Instance = RAMCFG_SRAM3_AXI;
+    (void)HAL_RAMCFG_EnableAXISRAM(&ramcfg);
+    ramcfg.Instance = RAMCFG_SRAM4_AXI;
+    (void)HAL_RAMCFG_EnableAXISRAM(&ramcfg);
+    ramcfg.Instance = RAMCFG_SRAM5_AXI;
+    (void)HAL_RAMCFG_EnableAXISRAM(&ramcfg);
+    ramcfg.Instance = RAMCFG_SRAM6_AXI;
+    (void)HAL_RAMCFG_EnableAXISRAM(&ramcfg);
+
+    __HAL_RCC_SYSCFG_CLK_ENABLE();
+    HAL_SYSCFG_EnableInterleavingCpuRam();
+}
 
 #if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
 class SegmentationDiagnosticRunScope final {
@@ -71,6 +100,31 @@ private:
 #endif
 
 } // namespace
+
+common::Error NpuDriver::InitializeMemory()
+{
+    static bool initialized = false;
+    if (initialized) {
+        return {common::ErrorCode::kAlreadyInitialized, 0U,
+                "npu.memory_initialize"};
+    }
+    EnableNpuMemory();
+    initialized = true;
+    return {common::ErrorCode::kOk, 0U, "npu.memory_initialize"};
+}
+
+void NpuDriver::KeepMemoryClocksOnSleep()
+{
+    __HAL_RCC_NPU_CLK_SLEEP_ENABLE();
+    __HAL_RCC_RAMCFG_CLK_SLEEP_ENABLE();
+    __HAL_RCC_FLEXRAM_MEM_CLK_SLEEP_ENABLE();
+    __HAL_RCC_AXISRAM1_MEM_CLK_SLEEP_ENABLE();
+    __HAL_RCC_AXISRAM2_MEM_CLK_SLEEP_ENABLE();
+    __HAL_RCC_AXISRAM3_MEM_CLK_SLEEP_ENABLE();
+    __HAL_RCC_AXISRAM4_MEM_CLK_SLEEP_ENABLE();
+    __HAL_RCC_AXISRAM5_MEM_CLK_SLEEP_ENABLE();
+    __HAL_RCC_AXISRAM6_MEM_CLK_SLEEP_ENABLE();
+}
 
 bool NpuDriver::IsError(stai_return_code code)
 {
@@ -118,8 +172,8 @@ Status NpuDriver::Initialize(model_manager::Model &model)
     HAL_NVIC_EnableIRQ(NPU0_IRQn);
 
     const stai_return_code runtime_code = stai_runtime_init();
-    const NpuHardwareSnapshot runtime_hardware =
-        NpuHardware{}.ReadSnapshot();
+    const registers::NpuRegisterSnapshot runtime_hardware =
+        registers_.ReadSnapshot();
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu runtime init code=%x irq_en=%u pending=%u epoch=%x int=%x bus=%x\n"),
               static_cast<unsigned int>(runtime_code),
@@ -138,7 +192,8 @@ Status NpuDriver::Initialize(model_manager::Model &model)
     }
 
     const stai_return_code model_code = model_->Initialize();
-    const NpuHardwareSnapshot model_hardware = NpuHardware{}.ReadSnapshot();
+    const registers::NpuRegisterSnapshot model_hardware =
+        registers_.ReadSnapshot();
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu model init code=%x irq_en=%u pending=%u epoch=%x int=%x bus=%x\n"),
               static_cast<unsigned int>(model_code),
@@ -228,7 +283,8 @@ Status NpuDriver::Run()
      * segmentation, the NPU IRQ wakes this task through a kernel event flag;
      * run_continue() then consumes the Neural-ART event state and starts the
      * next epoch. */
-    const NpuHardwareSnapshot before_run = NpuHardware{}.ReadSnapshot();
+    const registers::NpuRegisterSnapshot before_run =
+        registers_.ReadSnapshot();
 #if defined(AI_MODEL_SEGMENTATION)
     const ER clear_event_status = tk_clr_flg(g_npu_irq_event_flag, 0U);
     if (clear_event_status != E_OK) {
@@ -287,7 +343,8 @@ Status NpuDriver::Run()
         }
 
         if ((tick % 100U) == 0U) {
-            const NpuHardwareSnapshot waiting = NpuHardware{}.ReadSnapshot();
+            const registers::NpuRegisterSnapshot waiting =
+                registers_.ReadSnapshot();
             tm_printf(reinterpret_cast<const UB *>(
                           "ai: npu wait tick=%u status=%x irq=%u last=%x epoch=%x int=%x bus=%x\n"),
                       static_cast<unsigned int>(tick),
@@ -339,8 +396,8 @@ Status NpuDriver::Run()
     if (!completed) {
         last_execution_.state = ExecutionState::kTimedOut;
         last_execution_.stai_status = last_error_;
-        const NpuHardwareSnapshot timeout_hardware =
-            NpuHardware{}.ReadSnapshot();
+        const registers::NpuRegisterSnapshot timeout_hardware =
+            registers_.ReadSnapshot();
         tm_printf(reinterpret_cast<const UB *>(
                       "ai: npu done timeout status=%x irq=%u last=%x epoch=%x/%x bc=%x int=%x bus=%x/%x,%x/%x stream=%x/%x size=%x count=%x/%x/%x/%x\n"),
                   static_cast<unsigned int>(last_error_), g_aton_irq_count,
@@ -423,4 +480,4 @@ Status NpuDriver::Shutdown()
                         last_execution_};
 }
 
-} // namespace uai::ai::npu_driver
+} // namespace uai::ai::npu

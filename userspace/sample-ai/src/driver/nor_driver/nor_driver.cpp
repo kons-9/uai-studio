@@ -1,12 +1,14 @@
 #include "driver/nor_driver/nor_driver.hpp"
 
-#include <cstdint>
+extern "C" {
+#include "stm32n6xx_hal.h"
+}
 
 #ifndef AI_MODEL_NOR_PROBE_OFFSET
 #define AI_MODEL_NOR_PROBE_OFFSET 0x00380000U
 #endif
 
-namespace uai::ai::driver::xspi {
+namespace uai::ai::nor {
 
 int NorDriver::Initialize()
 {
@@ -14,7 +16,7 @@ int NorDriver::Initialize()
         return 0;
     }
 
-    const int init_status = hardware_.Initialize();
+    const int init_status = registers_.Initialize();
     if (init_status != 0) {
         return -1;
     }
@@ -22,14 +24,19 @@ int NorDriver::Initialize()
     /* Probe the model weights before switching the NOR to memory-mapped mode. */
     uint8_t model_probe[16] = {};
     const int read_status =
-        hardware_.Read(model_probe, AI_MODEL_NOR_PROBE_OFFSET,
-                       sizeof(model_probe));
+        registers_.Read(model_probe, AI_MODEL_NOR_PROBE_OFFSET,
+                        sizeof(model_probe));
     if (read_status != 0) {
         return -1;
     }
 
-    initialized_ = hardware_.EnableMemoryMappedMode() == 0;
+    initialized_ = registers_.EnableMemoryMappedMode() == 0;
     return initialized_ ? 0 : -1;
 }
 
-} // namespace uai::ai::driver::xspi
+void NorDriver::KeepClocksOnSleep() const
+{
+    __HAL_RCC_XSPI2_CLK_SLEEP_ENABLE();
+}
+
+} // namespace uai::ai::nor

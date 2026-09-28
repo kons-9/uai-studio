@@ -1,5 +1,5 @@
 #include "task/task_context.hpp"
-#include "driver/npu_driver/npu_hardware.hpp"
+#include "driver/npu_driver/registers/npu_registers.hpp"
 
 namespace uai::ai::task {
 
@@ -16,7 +16,7 @@ void LogStatus(const char *component, const Error &error)
 }
 
 void LogFrameBrightness(
-    const uai::ai::memory_manager::CaptureFrame &capture)
+    const uai::ai::memory_allocator::CaptureFrame &capture)
 {
     if ((capture.sequence % 30U) != 0U) {
         return;
@@ -28,7 +28,7 @@ void LogFrameBrightness(
         return;
     }
     const Error cache_status =
-        g_memory_hardware.PrepareForCpuRead(capture.buffer);
+        g_cache.PrepareForCpuRead(capture.buffer);
     if (!cache_status.Ok()) {
         LogStatus("camera-luminance", cache_status);
         return;
@@ -37,7 +37,7 @@ void LogFrameBrightness(
     const auto *pixels =
         reinterpret_cast<const std::uint16_t *>(capture.buffer.address);
     constexpr std::size_t kPixelCount =
-        uai::ai::memory_manager::kFrameBytes / sizeof(*pixels);
+        uai::ai::memory_allocator::kFrameBytes / sizeof(*pixels);
     constexpr std::size_t kSampleStep = 64U;
     std::uint32_t luminance_sum = 0U;
     std::uint32_t luminance_peak = 0U;
@@ -79,7 +79,7 @@ void LogNpuStatus(const NpuStatus &status)
 {
     const auto &execution = status.execution;
     const auto npu_hardware =
-        uai::ai::npu_driver::NpuHardware{}.ReadSnapshot();
+        uai::ai::npu::registers::NpuRegisterLayer{}.ReadSnapshot();
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: npu state=%u stai=%x epoch=%x addr=%x irq=%x label=%x bc=%x int=%x\n"),
               static_cast<unsigned int>(execution.state),
@@ -236,7 +236,7 @@ void DumpPeripheralRegisters(const char *stage)
               static_cast<unsigned int>(RISAF12->REG[0].CIDCFGR));
 
     const auto npu_hardware =
-        uai::ai::npu_driver::NpuHardware{}.ReadSnapshot();
+        uai::ai::npu::registers::NpuRegisterLayer{}.ReadSnapshot();
     tm_printf(reinterpret_cast<const UB *>(
                   "debug: npu epoch=%x/%x/%x irq=%x label=%x bc=%x int=%x/%x/%x bus=%x/%x\n"),
               static_cast<unsigned int>(npu_hardware.epoch_control),
@@ -281,7 +281,7 @@ std::uint32_t Crc32Bytes(const std::uint8_t *bytes, std::size_t size)
     return ~crc;
 }
 
-void DumpFrozenCapture(const uai::ai::memory_manager::CaptureFrame &frame)
+void DumpFrozenCapture(const uai::ai::memory_allocator::CaptureFrame &frame)
 {
     const auto *pixels = reinterpret_cast<const std::uint16_t *>(
         frame.buffer.address);
@@ -349,22 +349,22 @@ void DumpFrozenCapture(const uai::ai::memory_manager::CaptureFrame &frame)
     std::uint32_t zero_rows = 0U;
     std::uint32_t nonzero_rows = 0U;
     std::uint32_t first_nonzero =
-        uai::ai::memory_manager::kFrameHeight;
+        uai::ai::memory_allocator::kFrameHeight;
     std::uint32_t last_nonzero = 0U;
     std::uint32_t distinct_row_crcs = 0U;
-    std::uint32_t row_crcs[uai::ai::memory_manager::kFrameHeight] = {};
+    std::uint32_t row_crcs[uai::ai::memory_allocator::kFrameHeight] = {};
     for (std::uint32_t y = 0U;
-         y < uai::ai::memory_manager::kFrameHeight; ++y) {
+         y < uai::ai::memory_allocator::kFrameHeight; ++y) {
         const auto *row = pixels +
-                          y * uai::ai::memory_manager::kFrameWidth;
+                          y * uai::ai::memory_allocator::kFrameWidth;
         bool any_nonzero = false;
         for (std::uint32_t x = 0U;
-             x < uai::ai::memory_manager::kFrameWidth; ++x) {
+         x < uai::ai::memory_allocator::kFrameWidth; ++x) {
             any_nonzero = any_nonzero || row[x] != 0U;
         }
         row_crcs[y] = Crc32Bytes(
             reinterpret_cast<const std::uint8_t *>(row),
-            uai::ai::memory_manager::kFrameWidth * 2U);
+                          uai::ai::memory_allocator::kFrameWidth * 2U);
         if (any_nonzero) {
             ++nonzero_rows;
             first_nonzero = first_nonzero < y ? first_nonzero : y;
@@ -390,14 +390,14 @@ void DumpFrozenCapture(const uai::ai::memory_manager::CaptureFrame &frame)
               nonzero_rows == 0U ? 0U : last_nonzero, distinct_row_crcs);
     std::uint32_t reported_nonzero = 0U;
     for (std::uint32_t y = 0U;
-         y < uai::ai::memory_manager::kFrameHeight &&
+         y < uai::ai::memory_allocator::kFrameHeight &&
          reported_nonzero < 24U;
          ++y) {
         const auto *row = pixels +
-                          y * uai::ai::memory_manager::kFrameWidth;
+                          y * uai::ai::memory_allocator::kFrameWidth;
         bool any_nonzero = false;
         for (std::uint32_t x = 0U;
-             x < uai::ai::memory_manager::kFrameWidth; ++x) {
+         x < uai::ai::memory_allocator::kFrameWidth; ++x) {
             any_nonzero = any_nonzero || row[x] != 0U;
         }
         if (any_nonzero) {
@@ -412,16 +412,16 @@ void DumpFrozenCapture(const uai::ai::memory_manager::CaptureFrame &frame)
     constexpr std::uint32_t kColumns[] = {0U, 1U, 16U, 39U, 40U, 799U};
     for (const std::uint32_t y : kRows) {
         const auto *row_bytes = reinterpret_cast<const std::uint8_t *>(
-            pixels + y * uai::ai::memory_manager::kFrameWidth);
+            pixels + y * uai::ai::memory_allocator::kFrameWidth);
         const std::uint32_t row_crc = Crc32Bytes(
-            row_bytes, uai::ai::memory_manager::kFrameWidth * 2U);
+            row_bytes, uai::ai::memory_allocator::kFrameWidth * 2U);
         tm_printf(reinterpret_cast<const UB *>(
                       "camera: frozen row y=%u crc=%x samples="),
                   y, row_crc);
         for (const std::uint32_t x : kColumns) {
             tm_printf(reinterpret_cast<const UB *>("%04x%s"),
                       static_cast<unsigned int>(
-                          pixels[y * uai::ai::memory_manager::kFrameWidth +
+                          pixels[y * uai::ai::memory_allocator::kFrameWidth +
                                  x]),
                       x == kColumns[sizeof(kColumns) / sizeof(kColumns[0]) - 1U]
                           ? "\n"

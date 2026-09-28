@@ -1,4 +1,3 @@
-#include "model_segmentation_c_api.h"
 #include "model_manager/model/segmentation/model_segmentation_diagnostics.h"
 
 #define stai_network_init segmentation_stai_network_init
@@ -42,7 +41,7 @@ extern stai_return_code stai_ext_wfe(void);
 
 STAI_NETWORK_CONTEXT_DECLARE(segmentation_context, STAI_NETWORK_CONTEXT_SIZE)
 
-static stai_return_code segmentation_init(void)
+stai_return_code segmentation_model_initialize(void)
 {
     const stai_return_code code =
         segmentation_stai_network_init(segmentation_context);
@@ -56,24 +55,24 @@ static stai_return_code segmentation_init(void)
     return code;
 }
 
-static stai_return_code segmentation_deinit(void)
+stai_return_code segmentation_model_shutdown(void)
 {
     return segmentation_stai_network_deinit(segmentation_context);
 }
 
-static stai_return_code segmentation_get_info(stai_network_info *info)
+stai_return_code segmentation_model_get_info(stai_network_info *info)
 {
     return segmentation_stai_network_get_info(segmentation_context, info);
 }
 
-static stai_return_code segmentation_get_inputs(stai_ptr *inputs,
-                                                stai_size *count)
+stai_return_code segmentation_model_get_inputs(stai_ptr *inputs,
+                                               stai_size *count)
 {
     return segmentation_stai_network_get_inputs(segmentation_context, inputs,
                                                 count);
 }
 
-static stai_return_code segmentation_set_input(stai_ptr input, stai_size size)
+stai_return_code segmentation_model_set_input(stai_ptr input, stai_size size)
 {
     return segmentation_LL_ATON_Set_User_Input_Buffer_network(
                0U, input, size) == LL_ATON_User_IO_NOERROR
@@ -81,53 +80,35 @@ static stai_return_code segmentation_set_input(stai_ptr input, stai_size size)
                : STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS;
 }
 
-static stai_return_code segmentation_get_outputs(stai_ptr *outputs,
-                                                 stai_size *count)
+stai_return_code segmentation_model_get_outputs(stai_ptr *outputs,
+                                                stai_size *count)
 {
     return segmentation_stai_network_get_outputs(segmentation_context,
                                                  outputs, count);
 }
 
-static stai_return_code segmentation_run(stai_run_mode mode)
+stai_return_code segmentation_model_run(stai_run_mode mode)
 {
     return segmentation_stai_network_run(segmentation_context, mode);
 }
 
-static stai_return_code segmentation_run_continue(void)
+stai_return_code segmentation_model_continue_run(void)
 {
     return segmentation_stai_ext_network_run_continue(segmentation_context);
 }
 
-static stai_return_code segmentation_wfe(void)
+stai_return_code segmentation_model_wait_for_event(void)
 {
     return stai_ext_wfe();
 }
 
-static stai_return_code segmentation_get_run_status(void)
+stai_return_code segmentation_model_get_run_status(void)
 {
     return segmentation_stai_ext_network_get_nn_run_status(
         segmentation_context);
 }
 
-static stai_return_code segmentation_new_inference(void)
+stai_return_code segmentation_model_new_inference(void)
 {
     return segmentation_stai_ext_network_new_inference(segmentation_context);
 }
-
-const ai_model_c_api segmentation_model_c_api = {
-    "DEEPLAB_SEGMENTATION",
-    320U,
-    320U,
-    3U,
-    segmentation_init,
-    segmentation_deinit,
-    segmentation_get_info,
-    segmentation_get_inputs,
-    segmentation_set_input,
-    segmentation_get_outputs,
-    segmentation_run,
-    segmentation_run_continue,
-    segmentation_wfe,
-    segmentation_get_run_status,
-    segmentation_new_inference,
-};

@@ -15,7 +15,7 @@ using common::ErrorCode;
 
 namespace {
 
-using memory_manager::BoxSet;
+using memory_allocator::BoxSet;
 
 #if !defined(AI_MODEL_SEGMENTATION)
 constexpr std::size_t kInputCropX = 160U;
@@ -167,9 +167,9 @@ bool ConvertDetections(stai_ptr *outputs, BoxSet *result)
     const std::uint32_t count = output.count > 0
                                     ? static_cast<std::uint32_t>(output.count)
                                     : 0U;
-    result->count = count < memory_manager::kMaxBoxes
+    result->count = count < memory_allocator::kMaxBoxes
                         ? count
-                        : memory_manager::kMaxBoxes;
+                        : memory_allocator::kMaxBoxes;
     for (std::uint32_t i = 0U; i < result->count; ++i) {
         const OdDetection &source = g_postprocess_buffer[i];
         const Float left = static_cast<Float>(kInputCropX) +
@@ -178,14 +178,14 @@ bool ConvertDetections(stai_ptr *outputs, BoxSet *result)
         const Float top =
             (source.y_center - source.height * 0.5F) *
             static_cast<Float>(kInputSize);
-        result->boxes[i].x = ClampCoordinate(left, memory_manager::kFrameWidth);
-        result->boxes[i].y = ClampCoordinate(top, memory_manager::kFrameHeight);
+        result->boxes[i].x = ClampCoordinate(left, memory_allocator::kFrameWidth);
+        result->boxes[i].y = ClampCoordinate(top, memory_allocator::kFrameHeight);
         result->boxes[i].width = ClampCoordinate(
             source.width * static_cast<Float>(kInputSize),
-            memory_manager::kFrameWidth);
+            memory_allocator::kFrameWidth);
         result->boxes[i].height = ClampCoordinate(
             source.height * static_cast<Float>(kInputSize),
-            memory_manager::kFrameHeight);
+            memory_allocator::kFrameHeight);
         result->boxes[i].confidence = source.confidence;
     }
     return true;
@@ -206,11 +206,11 @@ void LogBoxes(const char *stage, const BoxSet &boxes)
               stage, static_cast<unsigned int>(boxes.model_sequence),
               static_cast<unsigned int>(boxes.capture_sequence),
               static_cast<unsigned int>(boxes.count));
-    const std::uint32_t count = boxes.count < memory_manager::kMaxBoxes
+    const std::uint32_t count = boxes.count < memory_allocator::kMaxBoxes
                                     ? boxes.count
-                                    : memory_manager::kMaxBoxes;
+                                    : memory_allocator::kMaxBoxes;
     for (std::uint32_t i = 0U; i < count; ++i) {
-        const memory_manager::Box &box = boxes.boxes[i];
+        const memory_allocator::Box &box = boxes.boxes[i];
         tm_printf(reinterpret_cast<const UB *>(
                       "ai: box stage=%s index=%u x=%d y=%d w=%d h=%d conf_milli=%u\n"),
                   stage, static_cast<unsigned int>(i),
@@ -252,15 +252,15 @@ bool ConvertSegmentationMask(stai_ptr output, std::uint8_t mask_index,
 
 } // namespace
 
-Error ModelManager::Initialize(memory_manager::MemoryManager &memory,
-                               memory_manager::MemoryHardware &memory_hardware)
+Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
+                               cache::CacheDriver &cache)
 {
     if (initialized_) {
         return {ErrorCode::kAlreadyInitialized, 0U, "ai.initialize"};
     }
     memory_ = &memory;
-    memory_hardware_ = &memory_hardware;
-    npu_driver::Status npu_status = npu_.Initialize(model_);
+    cache_ = &cache;
+    npu::Status npu_status = npu_.Initialize(model_);
     last_npu_status_ = npu_status;
     if (!npu_status.Ok()) {
         last_error_ = npu_status.error.detail;
@@ -309,15 +309,15 @@ Error ModelManager::Initialize(memory_manager::MemoryManager &memory,
 
 Error ModelManager::RunNetwork()
 {
-    const npu_driver::Status status = npu_.Run();
+    const npu::Status status = npu_.Run();
     last_npu_status_ = status;
     last_error_ = status.error.detail;
     return status.error;
 }
 
 Error ModelManager::TryInfer(
-    const memory_manager::InferenceFrame &frame,
-    memory_manager::BoxSet *result)
+    const memory_allocator::InferenceFrame &frame,
+    memory_allocator::BoxSet *result)
 {
     if (!initialized_ || memory_ == nullptr) {
         return {ErrorCode::kNotInitialized, 0U, "ai.infer"};
@@ -344,9 +344,9 @@ Error ModelManager::TryInfer(
                 static_cast<std::uint32_t>(frame.buffer.size),
                 "ai.direct_input"};
     }
-    const memory_manager::Buffer input_buffer{
+    const memory_allocator::Buffer input_buffer{
         frame.buffer.address, info_.inputs[0].size_bytes, frame.buffer.index,
-        memory_manager::Region::kInference};
+        memory_allocator::Region::kInference};
     tm_printf(reinterpret_cast<const UB *>(
                   "ai: input cache begin sequence=%u size=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence),
@@ -354,7 +354,7 @@ Error ModelManager::TryInfer(
     /* Pipe2 wrote this buffer. Invalidate the CPU cache so NPU sees the
      * completed DMA contents; cleaning here could write stale CPU lines back
      * over the camera image. */
-    Error status = memory_hardware_->PrepareForCpuRead(input_buffer);
+    Error status = cache_->PrepareForCpuRead(input_buffer);
     if (!status.Ok()) {
         return status;
     }
@@ -387,11 +387,11 @@ Error ModelManager::TryInfer(
         return status;
     }
     for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
-        const memory_manager::Buffer output_buffer{
+        const memory_allocator::Buffer output_buffer{
             reinterpret_cast<std::uintptr_t>(outputs_[i]),
             info_.outputs[i].size_bytes, 0U,
-            memory_manager::Region::kInference};
-        status = memory_hardware_->PrepareForCpuRead(output_buffer);
+            memory_allocator::Region::kInference};
+        status = cache_->PrepareForCpuRead(output_buffer);
         if (!status.Ok()) {
             return status;
         }
@@ -408,7 +408,7 @@ Error ModelManager::TryInfer(
     LogBoxes("postprocess", *result);
 #endif
 
-    const npu_driver::Status npu_status = npu_.NewInference();
+    const npu::Status npu_status = npu_.NewInference();
     last_npu_status_ = npu_status;
     last_error_ = npu_status.error.detail;
     if (!npu_status.Ok()) {
@@ -422,7 +422,7 @@ Error ModelManager::Shutdown()
     if (!initialized_) {
         return {ErrorCode::kNotInitialized, 0U, "ai.shutdown"};
     }
-    const npu_driver::Status status = npu_.Shutdown();
+    const npu::Status status = npu_.Shutdown();
     last_npu_status_ = status;
     last_error_ = status.error.detail;
     initialized_ = false;

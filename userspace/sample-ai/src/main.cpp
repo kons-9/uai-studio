@@ -4,9 +4,7 @@
 #include <tk/tkernel.h>
 
 #include "common/error.hpp"
-#include "driver/lcd_driver/lcd_driver.hpp"
-#include "memory_manager/memory_hardware.hpp"
-#include "memory_manager/memory_manager.hpp"
+#include "memory_allocator/memory_allocator.hpp"
 #include "model_manager/model_manager.hpp"
 #include "driver/npu_driver/debug.h"
 #include "task/task_context.hpp"
@@ -25,7 +23,7 @@ void NPU0_IRQHandler(UINT intno);
 void NPU0_IRQHandler(void);
 #endif
 void IAC_IRQHandler(void);
-/* カメラ診断値はaiのcamera use caseが定義する。 */
+/* カメラ診断値はaiのcamera driverが定義する。 */
 extern volatile unsigned int g_camera_vsync_event_count;
 extern volatile unsigned int g_camera_recovery_count;
 extern volatile unsigned int g_camera_recovery_error_count;
@@ -50,7 +48,7 @@ int32_t AiReadSensorRegisters(std::uint32_t *vmax,
                                    std::uint32_t *shutter,
                                    std::uint32_t *gain);
 }
-/* HALの共通診断値はcamera use case側で定義する。 */
+/* HALの共通診断値はcamera driver側で定義する。 */
 extern "C" {
 volatile std::uint32_t uai_hal_tick_calls = 0U;
 volatile std::uint32_t uai_hal_tick_first = 0U;
@@ -61,8 +59,13 @@ volatile std::uint32_t uai_systick_count = 0U;
 
 namespace uai::ai::task {
 
-MemoryManager g_memory;
-MemoryHardware g_memory_hardware;
+MemoryAllocator g_memory;
+uai::ai::cache::CacheDriver g_cache;
+uai::ai::psram::PsramDriver g_psram;
+uai::ai::nor::NorDriver g_nor;
+uai::ai::rif::RifDriver g_rif;
+uai::ai::lcd::LcdDriver g_lcd;
+uai::ai::camera::CameraDriver g_camera;
 volatile std::uint32_t g_app_stage = 0U;
 volatile bool g_external_nor_ready = false;
 ID g_external_memory_ready = 0;
@@ -88,6 +91,61 @@ bool IsBestEffort(ErrorCode code)
 {
     return code == ErrorCode::kNoFrame || code == ErrorCode::kNoBuffer ||
            code == ErrorCode::kQueueFull;
+}
+
+Error InitializeDrivers()
+{
+    using common::ErrorCode;
+
+    Error status = uai::ai::npu::NpuDriver::InitializeMemory();
+    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
+        return status;
+    }
+    status = g_cache.Initialize();
+    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
+        return status;
+    }
+    status = g_memory.Initialize();
+    if (!status.Ok()) {
+        return status;
+    }
+
+    if (!g_psram.Initialize()) {
+        return {ErrorCode::kHardware, 0U, "psram.initialize"};
+    }
+
+    constexpr bool initialize_nor = kInferenceMode == InferenceMode::kNpu;
+    int nor_status = -1;
+    if (initialize_nor) {
+        nor_status = g_nor.Initialize();
+    } else {
+        tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+            "boot: NOR skipped: inference disabled\n")));
+    }
+    g_external_nor_ready = nor_status == 0;
+
+    status = g_rif.Initialize();
+    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
+        return status;
+    }
+
+    status = g_lcd.Initialize(g_memory, g_cache);
+    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
+        return status;
+    }
+    status = g_camera.Initialize(g_memory, g_cache);
+    if (!status.Ok() && status.code != ErrorCode::kAlreadyInitialized) {
+        return status;
+    }
+
+    g_cache.KeepClocksOnSleep();
+    g_psram.KeepClocksOnSleep();
+    g_nor.KeepClocksOnSleep();
+    uai::ai::npu::NpuDriver::KeepMemoryClocksOnSleep();
+    g_lcd.KeepClocksOnSleep();
+    g_camera.KeepClocksOnSleep();
+    return {ErrorCode::kOk, static_cast<std::uint32_t>(nor_status),
+            "main.initialize_drivers"};
 }
 
 std::uint32_t Now()
@@ -122,9 +180,9 @@ bool DrainLatestBoxes(BoxSet *active)
                   static_cast<unsigned int>(active->capture_sequence),
                   static_cast<unsigned int>(active->count));
         const std::uint32_t count =
-            active->count < uai::ai::memory_manager::kMaxBoxes
+            active->count < uai::ai::memory_allocator::kMaxBoxes
                 ? active->count
-                : uai::ai::memory_manager::kMaxBoxes;
+                : uai::ai::memory_allocator::kMaxBoxes;
         for (std::uint32_t i = 0U; i < count; ++i) {
             const auto &box = active->boxes[i];
             const auto confidence_milli = box.confidence > 0.0F

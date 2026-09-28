@@ -1,6 +1,10 @@
 #include "driver/psram_driver/psram_driver.hpp"
 
-namespace uai::ai::driver::xspi {
+extern "C" {
+#include "stm32n6xx_hal.h"
+}
+
+namespace uai::ai::psram {
 
 bool PsramDriver::Initialize()
 {
@@ -8,7 +12,7 @@ bool PsramDriver::Initialize()
         return true;
     }
 
-    if (!hardware_.Initialize()) {
+    if (!registers_.Initialize()) {
         return false;
     }
 
@@ -16,4 +20,9 @@ bool PsramDriver::Initialize()
     return true;
 }
 
-} // namespace uai::ai::driver::xspi
+void PsramDriver::KeepClocksOnSleep() const
+{
+    __HAL_RCC_XSPI1_CLK_SLEEP_ENABLE();
+}
+
+} // namespace uai::ai::psram
