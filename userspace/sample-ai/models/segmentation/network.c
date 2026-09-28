@@ -18,26 +18,26 @@
   */
 
 /*
- * GIT_SHA         "7cc654104236b2ac726c804c5d7f201e2afd1c79"
+ * GIT_SHA         "6770925d2803cfc24528c45bb3ba8b791b2a83e4"
  * GIT_BRANCH      "STAI-4.0"
- * GIT_DESCRIPTION "STAI-3.0.0-254-g7cc65410"
+ * GIT_DESCRIPTION "atonn-v1.1.3-275-g6770925d"
  *
  * Command Line options:
- * --load-mdesc-file = "/opt/ST/STEdgeAI/Utilities/configs/stm32n6"
- * --load-cdesc-file = "/opt/ST/STEdgeAI/Utilities/configs/cortex-m55"
- * --load-mpool-file = "/home/jenkins/agent/workspace/manticSegmentation_ModelZoo_sseg/Model/my_mpools/stm32n6-app2_STM32N6570-DK"
+ * --load-mdesc-file = "/opt/ST/STEdgeAI/4.0/Utilities/configs/stm32n6"
+ * --load-cdesc-file = "/opt/ST/STEdgeAI/4.0/Utilities/configs/cortex-m55"
+ * --load-mpool-file = "/tmp/sample-ai-segmentation.OT6nW5/model"
  * --cache-maintenance = true
  * --enable-virtual-mem-pools = true
  * --native-float = true
- * --json-quant-file = "/home/jenkins/agent/workspace/manticSegmentation_ModelZoo_sseg/Model/st_ai_output/deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8_OE_3_3_1_Q.json"
+ * --json-quant-file = "/tmp/sample-ai-segmentation.OT6nW5/st_ai_output/deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8_OE_3_3_1_Q.json"
  * --optimization = 3
  * --Os = true
  * --Omax-ca-pipe = 4
  * --Ocache-opt = true
  * --enable-epoch-controller = true
  * --output-info-file = "c_info"
- * --onnx-input = "/home/jenkins/agent/workspace/manticSegmentation_ModelZoo_sseg/Model/st_ai_output/deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8_OE_3_3_1.onnx"
- * --out-dir-prefix = "/home/jenkins/agent/workspace/manticSegmentation_ModelZoo_sseg/Model/st_ai_ws/neural_art__network/"
+ * --onnx-input = "/tmp/sample-ai-segmentation.OT6nW5/st_ai_output/deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8_OE_3_3_1.onnx"
+ * --out-dir-prefix = "/tmp/sample-ai-segmentation.OT6nW5/st_ai_ws/neural_art__network/"
  * --network-name = "network"
  * --all-buffers-info = true
  * --generate-stai = true
@@ -55,7 +55,7 @@
 #include "ecloader.h"
 #include "ll_aton_cipher.h"
 
-#if LL_ATON_VERSION_MAJOR != 1 || LL_ATON_VERSION_MINOR != 1 || LL_ATON_VERSION_MICRO != 3 || LL_ATON_VERSION_DEV != 262
+#if LL_ATON_VERSION_MAJOR != 1 || LL_ATON_VERSION_MINOR != 1 || LL_ATON_VERSION_MICRO != 3 || LL_ATON_VERSION_DEV != 275
 #  error "Possible mismatch in ll_aton library used"
 #endif
 
@@ -103,34 +103,56 @@ const LL_Streng_EncryptionTypedef *LL_ATON_BlobEncryption_Info_network()
   return &LL_Streng_EncryptionStruct;
 }
 
-/* Pipe2 supplies the RGB888 tensor directly.  This is normally emitted by
- * STEdgeAI with --no-inputs-allocation. */
-static unsigned char *_mem_pool__user_io_input_network = NULL;
+/* User Input allocated buffer (mempool 12) size 307200 */
+static unsigned char *_mem_pool__user_io_input_0_network = NULL; /* tensor name Input_0_out_0 */
+
+/* User Output allocated buffer (mempool 13) size 204800 */
+static unsigned char *_mem_pool__user_io_output_0_network = NULL; /* tensor name Transpose_204_out_0 */
 
 LL_ATON_User_IO_Result_t LL_ATON_Set_User_Input_Buffer_network(uint32_t num, void* buffer, uint32_t size)
 {
-  if (num == 0U) {
-    if (((uintptr_t)buffer % 32U) != 0U)
-      return LL_ATON_User_IO_WRONG_ALIGN;
-    if (size < 307200U)
-      return LL_ATON_User_IO_WRONG_SIZE;
-    _mem_pool__user_io_input_network = (unsigned char *)buffer;
+  LL_ATON_LIB_UNUSED(num);
+  LL_ATON_LIB_UNUSED(buffer);
+  LL_ATON_LIB_UNUSED(size);
+
+  if (num == 0) {
+    if (((uintptr_t)buffer % 32) != 0)
+      return LL_ATON_User_IO_WRONG_ALIGN; /* enforce MCU cacheline alignment */
+    if (size < 307200)
+      return LL_ATON_User_IO_WRONG_SIZE; /* enforce size needed */
+    _mem_pool__user_io_input_0_network = buffer;
     return LL_ATON_User_IO_NOERROR;
+  } else
+  {
+    return LL_ATON_User_IO_WRONG_INDEX;
   }
-  return LL_ATON_User_IO_WRONG_INDEX;
 }
 
 void *LL_ATON_Get_User_Input_Buffer_network(uint32_t num)
 {
-  return num == 0U ? _mem_pool__user_io_input_network : NULL;
-}
+  LL_ATON_LIB_UNUSED(num);
 
+  if (num == 0) {
+    return _mem_pool__user_io_input_0_network;
+  } else
+  {
+    return NULL;
+  }
+}
 LL_ATON_User_IO_Result_t LL_ATON_Set_User_Output_Buffer_network(uint32_t num, void* buffer, uint32_t size)
 {
   LL_ATON_LIB_UNUSED(num);
   LL_ATON_LIB_UNUSED(buffer);
   LL_ATON_LIB_UNUSED(size);
 
+  if (num == 0) {
+    if (((uintptr_t)buffer % 32) != 0)
+      return LL_ATON_User_IO_WRONG_ALIGN; /* enforce MCU cacheline alignment */
+    if (size < 204800)
+      return LL_ATON_User_IO_WRONG_SIZE; /* enforce size needed */
+    _mem_pool__user_io_output_0_network = buffer;
+    return LL_ATON_User_IO_NOERROR;
+  } else
   { 
     return LL_ATON_User_IO_WRONG_INDEX;
   }
@@ -140,6 +162,9 @@ void *LL_ATON_Get_User_Output_Buffer_network(uint32_t num)
 {
   LL_ATON_LIB_UNUSED(num);
 
+  if (num == 0) {
+    return _mem_pool__user_io_output_0_network;
+  } else
   { 
     return NULL;
   }
@@ -799,7 +824,7 @@ static void LL_ATON_End_EpochBlock_53(const LL_ATON_RT_EpochBlockItem_t *epoch_b
     .roi.stride.h = 32,
     .roi.stride.w = 32,
     .roi.stride.c = 4,
-    .roi.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914528))) /* Equivalent hex address = 0x7045f460UL */,
+    .roi.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914528))) /* Equivalent hex address = 0x706df460UL */,
     .roi.format.is_signed = 0,
     /* "scales" tensor-related info: */
     .scales.dim.tensor_b = 1,
@@ -811,7 +836,7 @@ static void LL_ATON_End_EpochBlock_53(const LL_ATON_RT_EpochBlockItem_t *epoch_b
     .scales.stride.h = 16,
     .scales.stride.w = 16,
     .scales.stride.c = 4,
-    .scales.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914592))) /* Equivalent hex address = 0x7045f4a0UL */,
+    .scales.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914592))) /* Equivalent hex address = 0x706df4a0UL */,
     .scales.format.is_signed = 0,
     /* "sizes" tensor-related info: */
     .sizes.dim.tensor_b = 1,
@@ -823,18 +848,18 @@ static void LL_ATON_End_EpochBlock_53(const LL_ATON_RT_EpochBlockItem_t *epoch_b
     .sizes.stride.h = 4,
     .sizes.stride.w = 4,
     .sizes.stride.c = 4,
-    .sizes.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914624))) /* Equivalent hex address = 0x7045f4c0UL */,
+    .sizes.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914624))) /* Equivalent hex address = 0x706df4c0UL */,
     .sizes.format.is_signed = 0,
     /* "is" tensor-related info: */
-    .is.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914688))) /* Equivalent hex address = 0x7045f500UL */,
+    .is.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914688))) /* Equivalent hex address = 0x706df500UL */,
     .is.format.is_signed = 1,
     .is.dim.num_elem = 1,
     /* "izp" tensor-related info: */
-    .izp.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914640))) /* Equivalent hex address = 0x7045f4d0UL */,
+    .izp.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914640))) /* Equivalent hex address = 0x706df4d0UL */,
     .izp.format.is_signed = 0,
     .izp.dim.num_elem = 1,
     /* "os" tensor-related info: */
-    .os.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914704))) /* Equivalent hex address = 0x7045f510UL */,
+    .os.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914704))) /* Equivalent hex address = 0x706df510UL */,
     .os.format.is_signed = 1,
     .os.dim.num_elem = 1,
     /* "general.output" tensor-related info: */
@@ -880,9 +905,9 @@ static void _ec_blob_cache_start_func_54(const LL_ATON_RT_EpochBlockItem_t *epoc
 
   /* *** MCU cache invalidate (only) operation (HW, whole range) *** */
   /*     memory pool: 1 */
-  /*     start: ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 204800))) */
-  /*     end:   ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 205600))) */
-  LL_ATON_Cache_MCU_Invalidate_Range(((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 204800))) /* Equivalent hex address = 0x34312000UL */, 800);
+  /*     start: ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 115200))) */
+  /*     end:   ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 116000))) */
+  LL_ATON_Cache_MCU_Invalidate_Range(((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 115200))) /* Equivalent hex address = 0x342fc200UL */, 800);
 
 };
 
@@ -909,7 +934,7 @@ static void LL_ATON_End_EpochBlock_62(const LL_ATON_RT_EpochBlockItem_t *epoch_b
     .general.input.stride.h = 40,
     .general.input.stride.w = 2,
     .general.input.stride.c = 1,
-    .general.input.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 204800))) /* Equivalent hex address = 0x34312000UL */,
+    .general.input.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 115200))) /* Equivalent hex address = 0x342fc200UL */,
     .general.input.format.is_signed = 1,
     /* "roi" tensor-related info: */
     .roi.dim.tensor_b = 1,
@@ -921,7 +946,7 @@ static void LL_ATON_End_EpochBlock_62(const LL_ATON_RT_EpochBlockItem_t *epoch_b
     .roi.stride.h = 32,
     .roi.stride.w = 32,
     .roi.stride.c = 4,
-    .roi.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914560))) /* Equivalent hex address = 0x7045f480UL */,
+    .roi.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914560))) /* Equivalent hex address = 0x706df480UL */,
     .roi.format.is_signed = 0,
     /* "scales" tensor-related info: */
     .scales.dim.tensor_b = 1,
@@ -933,7 +958,7 @@ static void LL_ATON_End_EpochBlock_62(const LL_ATON_RT_EpochBlockItem_t *epoch_b
     .scales.stride.h = 16,
     .scales.stride.w = 16,
     .scales.stride.c = 4,
-    .scales.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914608))) /* Equivalent hex address = 0x7045f4b0UL */,
+    .scales.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914608))) /* Equivalent hex address = 0x706df4b0UL */,
     .scales.format.is_signed = 0,
     /* "sizes" tensor-related info: */
     .sizes.dim.tensor_b = 1,
@@ -945,18 +970,18 @@ static void LL_ATON_End_EpochBlock_62(const LL_ATON_RT_EpochBlockItem_t *epoch_b
     .sizes.stride.h = 4,
     .sizes.stride.w = 4,
     .sizes.stride.c = 4,
-    .sizes.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914656))) /* Equivalent hex address = 0x7045f4e0UL */,
+    .sizes.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914656))) /* Equivalent hex address = 0x706df4e0UL */,
     .sizes.format.is_signed = 0,
     /* "is" tensor-related info: */
-    .is.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914720))) /* Equivalent hex address = 0x7045f520UL */,
+    .is.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914720))) /* Equivalent hex address = 0x706df520UL */,
     .is.format.is_signed = 1,
     .is.dim.num_elem = 1,
     /* "izp" tensor-related info: */
-    .izp.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914672))) /* Equivalent hex address = 0x7045f4f0UL */,
+    .izp.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914672))) /* Equivalent hex address = 0x706df4f0UL */,
     .izp.format.is_signed = 0,
     .izp.dim.num_elem = 1,
     /* "os" tensor-related info: */
-    .os.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914736))) /* Equivalent hex address = 0x7045f530UL */,
+    .os.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x70600000UL + 914736))) /* Equivalent hex address = 0x706df530UL */,
     .os.format.is_signed = 1,
     .os.dim.num_elem = 1,
     /* "general.output" tensor-related info: */
@@ -969,7 +994,7 @@ static void LL_ATON_End_EpochBlock_62(const LL_ATON_RT_EpochBlockItem_t *epoch_b
     .general.output.stride.h = 640,
     .general.output.stride.w = 2,
     .general.output.stride.c = 1,
-    .general.output.mem.start_offset = ((unsigned char *)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 0))) /* Equivalent hex address = 0x342e0000UL */,
+    .general.output.mem.start_offset = ((unsigned char *)((((uintptr_t)(_mem_pool__user_io_output_0_network)) + 0))) /* Equivalent hex offset = 0x0 */,
     .general.output.format.is_signed = 1,
     /* Node-specific Hyper-parameters: */
     .mode = RESIZE_LINEAR,
@@ -985,10 +1010,10 @@ static void LL_ATON_End_EpochBlock_62(const LL_ATON_RT_EpochBlockItem_t *epoch_b
   /* Node Resize_202 mapped on EmbedNets (INTEGER) as Resize | Category: Computational */
   ll_sw_forward_resize_integer(&resize_integer2_sw_info);
   /* *** MCU cache clean (only) operation (SW, whole range) *** */
-  /*     memory pool: 1 */
-  /*     start: ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 0))) */
-  /*     end:   ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 204800))) */
-  LL_ATON_Cache_MCU_Clean_Range(((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 0))) /* Equivalent hex address = 0x342e0000UL */, 204800);
+  /*     memory pool: 13 */
+  /*     start: (((uintptr_t)(_mem_pool__user_io_output_0_network)) + 0) */
+  /*     end:   (((uintptr_t)(_mem_pool__user_io_output_0_network)) + 204800) */
+  LL_ATON_Cache_MCU_Clean_Range((((uintptr_t)(_mem_pool__user_io_output_0_network)) + 0) /* Equivalent hex offset = 0x0 */, 204800);
 
 
 }
@@ -1361,10 +1386,10 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
   static const LL_Buffer_InfoTypeDef buff_info[] = {
     {
       .name = "Input_0_out_0",
-      .addr_base = {((unsigned char *)&_mem_pool__user_io_input_network)},
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_input_0_network)},
       .offset_start = 0,
       .offset_end = 307200,
-      .offset_limit = 307264,
+      .offset_limit = 307208,
       .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 0,
@@ -2938,11 +2963,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Output_Buffers_Info_network(void)
   static const LL_Buffer_InfoTypeDef buff_info[] = {
     {
       .name = "Transpose_204_out_0",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_0_network)},
       .offset_start = 0,
       .offset_end = 204800,
-      .offset_limit = 204864,
-      .is_user_allocated = 0,
+      .offset_limit = 204808,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 63,
       .batch = 1,
@@ -3163,11 +3188,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
   static const LL_Buffer_InfoTypeDef buff_info[] = {
     {
       .name = "Transpose_1_out_0",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_input_0_network)},
       .offset_start = 0,
       .offset_end = 307200,
-      .offset_limit = 307264,
-      .is_user_allocated = 0,
+      .offset_limit = 307208,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 1,
       .batch = 3,
@@ -3187,7 +3212,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     },
     {
       .name = "Quantize_5_out_0",
-      .addr_base = {(unsigned char *)(0x34200000UL) /* Equivalent hex address = 0x34200000UL */},
+      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
       .offset_start = 0,
       .offset_end = 307200,
       .offset_limit = 307264,
@@ -5024,9 +5049,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_199_off_bias_out_445",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 204800,
-      .offset_end = 205600,
-      .offset_limit = 205664,
+      .offset_start = 115200,
+      .offset_end = 116000,
+      .offset_limit = 116064,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 61,
@@ -5047,11 +5072,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     },
     {
       .name = "Resize_202_out_0",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_0_network)},
       .offset_start = 0,
       .offset_end = 204800,
-      .offset_limit = 204864,
-      .is_user_allocated = 0,
+      .offset_limit = 204808,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 62,
       .batch = 2,

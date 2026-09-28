@@ -338,12 +338,14 @@ void camera_render_task(void)
             }
             if (!inference_buffer_released && inference_due &&
                 kInferenceMode == InferenceMode::kNpu) {
+#if AI_INFERENCE_DIAGNOSTICS
                 tm_printf(reinterpret_cast<const UB *>(
                               "ai: pipe2 frame queued sequence=%u buffer=%x events=%u drops=%u\n"),
                           static_cast<unsigned int>(pipe2_frame.capture_sequence),
                           static_cast<unsigned int>(pipe2_frame.buffer.address),
                           g_camera_pipe2_frame_event_count,
                           g_camera_pipe2_drop_count);
+#endif
                 SendInferenceFrame(pipe2_frame);
                 next_inference = now + kInferencePeriod;
             } else if (!inference_buffer_released) {
@@ -363,8 +365,10 @@ void camera_render_task(void)
                    static_cast<std::uint32_t>(now - last_box_update) >=
                        kBoxLifetimeMs) {
             active_boxes = EmptyBoxes();
+#if AI_INFERENCE_DIAGNOSTICS
             tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
                 "lcd: stale inference boxes cleared\n")));
+#endif
         }
         uai::ai::memory_allocator::CaptureFrame capture{};
         status = camera.TakeCompletedCapture(&capture);
@@ -376,6 +380,7 @@ void camera_render_task(void)
             continue;
         }
 
+#if AI_INFERENCE_DIAGNOSTICS
         if (capture.sequence <= 3U ||
             (capture.sequence % 10U) == 0U) {
             tm_printf(reinterpret_cast<const UB *>(
@@ -386,30 +391,37 @@ void camera_render_task(void)
                       g_aton_last_irqs);
         }
         LogFrameBrightness(capture);
+#endif
 
         /* In the live Pipe2 diagnostic mode, the LCD is reserved for the
          * actual inference input. Capture buffers are still drained below. */
         const bool display_due = !kInferenceInputDisplayDiagnostic;
         if (display_due) {
+#if AI_INFERENCE_DIAGNOSTICS
             if (capture.sequence <= 3U ||
                 (capture.sequence % 10U) == 0U) {
                 tm_printf(reinterpret_cast<const UB *>(
                               "lcd: compose begin sequence=%u\n"),
                           static_cast<unsigned int>(capture.sequence));
             }
+#endif
             status = lcd.ComposeAndPresent(capture, active_boxes);
             if (!status.Ok()) {
                 LogStatus("lcd", status);
                 if (!IsBestEffort(status.code)) {
                     Halt("ai: lcd compose failed\n");
                 }
-            } else if (capture.sequence <= 3U ||
+            }
+#if AI_INFERENCE_DIAGNOSTICS
+            else if (capture.sequence <= 3U ||
                        (capture.sequence % 10U) == 0U) {
                 tm_printf(reinterpret_cast<const UB *>(
                               "lcd: frame presented sequence=%u buffer=%x\n"),
                           static_cast<unsigned int>(capture.sequence),
                           static_cast<unsigned int>(capture.buffer.address));
             }
+#endif
+#if AI_INFERENCE_DIAGNOSTICS
             if (capture.sequence <= 3U ||
                 (capture.sequence % 10U) == 0U) {
                 tm_printf(reinterpret_cast<const UB *>(
@@ -417,8 +429,10 @@ void camera_render_task(void)
                           static_cast<unsigned int>(capture.sequence),
                           g_aton_irq_count, g_aton_last_irqs);
             }
+#endif
         }
 
+#if AI_INFERENCE_DIAGNOSTICS
         if ((loop_count % 1000U) == 0U) {
             tm_printf(reinterpret_cast<const UB *>(
                           "camera: heartbeat loop=%u sequence=%u pipe2=%u drops=%u aton_irq=%u last=%x\n"),
@@ -428,6 +442,7 @@ void camera_render_task(void)
                       g_camera_pipe2_drop_count,
                       g_aton_irq_count, g_aton_last_irqs);
         }
+#endif
         tk_dly_tsk(1);
     }
 }

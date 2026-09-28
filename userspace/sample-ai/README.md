@@ -12,17 +12,20 @@
 RGB888（person: 480x480、segmentation: 320x320）を使用します。Pipe2の出力は
 PSRAM上の推論バッファへDMAします。
 
-現在のchecked-in person生成物は、network.cの入力情報だけを手動でユーザー入力へ
-変更した過渡状態で、command blob内部には固定入力アドレス `0x34100000` が残って
-います。そのため `AI_MODEL_FORCE_FIXED_INPUT=ON`（デフォルト）でPipe2のRGB888を
-固定入力領域へコピーしてからNPUを実行します。実機でこのコピーを外すとobjectness
-が下がって枠が0件になることを確認しています。完全なPipe2直結にする場合は、同じ
-STEdgeAIバージョンで `--no-inputs-allocation --no-outputs-allocation` を付けて
-モデルとcommand blobを再生成してください。
+checked-inのperson、segmentation、face生成物は、`--no-inputs-allocation
+--no-outputs-allocation`で生成してPipe2入力とallocator出力を受け取ります。
+実行時に`MemoryAllocator`が返すPipe2入力バッファと出力バッファをSTAIへ接続し、
+固定入力アドレスへのコピーは使用しません。モデル内部のactivationは、Neural-ARTが
+生成時にmemory poolへ割り当てるNPU内部領域です。
 
 UARTには `pipe2 frame queued`、`pipe2` イベント数、ドロップ数を出力します。CSI
 エラーが発生してもPipe1のフレームsequenceが継続するか、`recovery` が増えないかを
 合わせて確認してください。
+
+推論の投入周期は20 msです。実機でのpersonモデルは初回ウォームアップ後、NPU実行が
+おおむね10〜12 msでした。詳細UART・入力テンソル走査を有効にして測定する場合は
+`-DAI_INFERENCE_DIAGNOSTICS=ON`を指定してください。通常はUARTが推論を妨げないよう
+`OFF`（デフォルト）にします。
 
 ### CSIエラー／カメラ再起動の切り分け結果（2026-09-25）
 
@@ -32,12 +35,17 @@ NPUを同時動作させた場合に `ESOTSYNCDL*`、`SYNCERR`、`CCFIFO` が再
 同時使用が再起動の誘因である。FPSを20に下げてもエラーは残ったため、FPSだけでは
 根本対策にならない。
 
-ref/はモデル生成時に `--no-inputs-allocation --no-outputs-allocation` を指定し、
-Pipe2のPSRAMバッファをNPUのユーザー入力へ直接渡す。現在のsample-ai生成物は入力を
-固定AXISRAM (`0x34100000`) に割り当てており、Pipe2からCPU側の入力準備を経由する
-点がref/との差分である。最終対策は、同じ生成オプションでモデルを再生成して
-Pipe2→NPUの直接入力にすること。CSIエラー割込みの再アームは行わず、フレーム停止を
-監視するフェイルセーフ復旧は残す。
+ref/と同じく、sample-aiもPipe2のPSRAMバッファをNPUのユーザー入力へ直接渡す
+生成設定に更新済みである。CSIエラー割込みの再アームは行わず、フレーム停止を
+監視するフェイルセーフ復旧を残す。
+
+### 推論バッファの所有権
+
+allocatorはPipe2の入力とモデル出力を1つの推論スロットとして管理します。
+各スロットは32 byte境界で、入力領域の後ろにモデル出力領域を確保します。
+推論中はスロットをNPUが所有し、NPU完了とキャッシュ無効化後に再利用します。
+`--no-outputs-allocation` で生成したモデルはこの出力領域へ切り替わり、旧生成物は
+固定出力へフォールバックします。
 
 ### 推論入力画像の確認
 
@@ -57,50 +65,79 @@ UARTには30フレームごとに `ai: input inspect` としてアドレス、�
 継続しますが、LCDはPipe1表示ではなく推論入力の確認表示になります。通常の枠表示に
 戻すときは `OFF`（デフォルト）に戻してください。
 
-## 2つのモデル
+## モデル
 
-モデルは同時にリンクするのではなく、`AI_MODEL` で1つを選択します。
-重みは同じ XSPI2 の領域を使うため、実行時に選んだモデルの重みを1つだけ
-書き込みます。
+モデルのcommand blobは同時にリンクせず、`AI_MODEL`で1つを選択します。
+一方、重みデータは同じXSPI2上の別アドレスへ配置できるため、3モデルを
+Flashに共存させられます。
 
-- `model1`: ST公式の STM32N6570-DK 例と同じ EfficientNet v2 B1 (240x240)
-- `model2`: 小さい MobileNet v1 0.25 (96x96)。初期確認用
+| モデル | 重みの配置アドレス | サイズ |
+| --- | ---: | ---: |
+| `person` | `0x70380000` | 約1.15 MiB |
+| `segmentation` | `0x70600000` | 約0.87 MiB |
+| `face` | `0x70800000` | 約0.10 MiB |
 
-ST公式のモデルファイルは
-[STM32N6-GettingStarted-ImageClassification](https://github.com/STMicroelectronics/STM32N6-GettingStarted-ImageClassification)
-の `Model/` にあります。モデルのライセンスと利用条件は公式リポジトリを
-確認してください。
+- `person`: ST YOLOX Nano、480x480、人物検出
+- `segmentation`: DeepLabV3 MobileNetV2、320x320、人物セグメンテーション
+- `face`: BlazeFace Front、128x128、顔検出
+
+モデル生成の対応表と公式取得元は
+[`models/README.md`](models/README.md) にまとめています。
+
+ST公式のモデル取得元、モデルファイル名、ライセンスと利用条件は
+[`models/README.md`](models/README.md) に記載しています。
 
 ## 先に必要なもの
 
-このリポジトリには、STEdgeAI が生成するモデル固有の C ファイルと重みを
-含めていません。生成物はモデルごとに大きく、STEdgeAI のバージョンにも
-依存するためです。次を準備してください。
+モデルの元ファイルは公式リポジトリから取得します。生成物はモデルごとに
+大きく、STEdgeAIのバージョンにも依存するため、現在はperson、segmentation、
+faceの生成済みファイルをリポジトリに保持しています。再生成する場合は次を
+準備してください。
 
 1. STM32CubeN6 パッケージ。`STM32CUBE_N6_DIR` に設定します。
 2. `stedgeai-lib`。STEdgeAI の配布物、または上記公式リポジトリの
    `Middlewares/stedgeai-lib` を `STEDGEAI_LIB_DIR` に設定します。
 3. `stedgeai` CLI と `arm-none-eabi-objcopy` が PATH にあること。
-4. 上記公式リポジトリから、model1/model2 の元モデルを取得すること。
+4. [`models/README.md`](models/README.md) に記載した公式モデルを取得すること。
 
 生成された4ファイル (`network.c`, `network_ecblobs.h`, `stai_network.c`,
-`stai_network.h`) と `network_data.xSPI2.bin`/`.hex` は
-`userspace/sample-ai/models/model1/` または `model2/` に置きます。
+`stai_network.h`) と `network_data.xSPI2.bin`/`.hex` は選択したモデルの
+ディレクトリに置かれます。
 
 ## モデル生成
 
 ```sh
-sh userspace/sample-ai/models/generate_model.sh model1 \
-  /path/to/efficientnet_v2B1_240_fft_qdq_int8.onnx
+sh userspace/sample-ai/models/generate_model.sh person \
+  /path/to/st_yolo_x_nano_480_1.0_0.25_3_st_int8.tflite
 
-sh userspace/sample-ai/models/generate_model.sh model2 \
-  /path/to/mobilenet_v1_0.25_96_tfs_int8.tflite
+sh userspace/sample-ai/models/generate_model.sh segmentation \
+  /path/to/deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8.onnx
+
+sh userspace/sample-ai/models/generate_model.sh face \
+  /path/to/blazeface_front_128_quant_pc_ff_od_wider_face.tflite
 ```
 
 生成設定は `models/user_neuralart_STM32N6570-DK.json` と、NPU RAM/XSPI2 の
 アドレスを記述した `models/my_mpools/stm32n6-app2_STM32N6570-DK.mpool` です。
+モデルごとのXSPI2重みアドレスは生成スクリプトが選択します。personは
+`0x70380000`、segmentationは`0x70600000`、faceは`0x70800000`です。
+生成時のアドレスとFlash書き込みアドレスは一致させる必要があります。
+別の配置にする場合は`AI_MODEL_NETWORK_ADDRESS=0x...`を指定してください。
 STEdgeAI と `stedgeai-lib` のバージョンは必ず一致させてください。生成 C
 ファイル自身にもランタイムバージョンのチェックがあります。
+
+STEdgeAIの主な調整項目は次の通りです。
+
+- `--optimization time|ram|balanced`：推論速度とRAM使用量のトレードオフ。
+- `--input-data-type` / `--output-data-type`：量子化I/Oの型。
+- `--inputs-ch-position` / `--outputs-ch-position`：CHW/HWCの切り替え。
+- `--memory-pool`：Activationを置くRAM領域と重みの外部メモリ領域。
+- `--c-api st-ai|legacy`：`--allocate-activations` や `--allocate-states` を使う場合は
+  `st-ai` が必要です。現在のsample-aiではActivationを静的配置するため、通常は変更しません。
+- `--split-weights`、`--address`：重みの分割や外部Flash配置を調整します。
+
+現在のsample-aiでは、入力・出力をアプリ側で所有するため、生成時の
+`--no-inputs-allocation --no-outputs-allocation` を基本設定にします。
 
 sample-ai専用リンカスクリプトは、生成されたcommand blobをXSPI2 NORの
 `0x70500000`へ配置し、アプリケーション本体だけをAXISRAM1へ置きます。
@@ -124,20 +161,22 @@ cmake -S . -B build-sample-ai \
 cmake --build build-sample-ai --target sample-ai
 ```
 
-model2 に切り替えるときは configure に
-`-DAI_MODEL=model2` を追加します。`CUBEMX_OUTPUT_DIR` は、実際に動作
-確認済みの CubeMX 出力を指定してください。
+`CUBEMX_OUTPUT_DIR` は、実際に動作確認済みの CubeMX 出力を指定してください。
 
 後で `ram-run` を使う場合は、sample-aiのスタック上限に合わせて
 `STM32_RAM_STACK=0x34100000` も指定してください。
 
 ## 重みの書き込み
 
-モデル重みはアプリケーション ELF に入らず、XSPI2 のメモリマップ領域
-`0x70380000` を参照します。従って、初回とモデル切り替え時に、生成された
-`network_data.hex` を STM32CubeProgrammer と DK 用 external loader で書き込む
-必要があります。書き込みコマンドはボード接続を変更するため、上記 build と
-同じく `sample-camera-lcd` の作業が終わってから実行してください。
+モデル重みはアプリケーション ELF に入らず、モデルごとに次のXSPI2アドレスを
+参照します。生成したモデルの`network_data.hex`を、対応するアドレスへ
+STM32CubeProgrammerとDK用external loaderで書き込んでください。
+
+- `person`: `0x70380000`
+- `segmentation`: `0x70600000`
+- `face`: `0x70800000`
+
+生成時のアドレスとFlash書き込みアドレスは一致させる必要があります。
 
 ## command blobの書き込み
 

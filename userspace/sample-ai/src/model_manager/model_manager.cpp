@@ -2,12 +2,17 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 
 /* C実装のT-Monitor APIをC++から呼び出すためのCリンケージ。 */
 extern "C" {
 #include <tm/tmonitor.h>
 }
+
+#if AI_INFERENCE_DIAGNOSTICS
+#define AI_INFERENCE_TRACE(...) tm_printf(__VA_ARGS__)
+#else
+#define AI_INFERENCE_TRACE(...) ((void)0)
+#endif
 
 namespace uai::ai {
 
@@ -17,16 +22,6 @@ using common::ErrorCode;
 namespace {
 
 using memory_allocator::BoxSet;
-
-#ifndef AI_MODEL_FORCE_FIXED_INPUT
-#define AI_MODEL_FORCE_FIXED_INPUT 0
-#endif
-
-/* The checked-in person/segmentation network sources were originally
- * generated with a fixed input in CPU RAM. Keep the runtime fallback
- * explicit until those generated sources are regenerated with
- * --no-inputs-allocation. */
-constexpr std::uintptr_t kGeneratedModelInputAddress = 0x34100000UL;
 
 #if !defined(AI_MODEL_SEGMENTATION)
 constexpr std::size_t kInputSize = 480U;
@@ -236,7 +231,7 @@ void LogOutputObjectness(const stai_network_info &info, stai_ptr *outputs)
         const std::int32_t zero_point = info.outputs[slot].zeropoint.data[0];
         const float threshold_raw =
             static_cast<float>(zero_point) + kConfidenceLogit / scale;
-        tm_printf(reinterpret_cast<const UB *>(
+        AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                       "ai: output level=%c slot=%u bytes=%u min=%d max=%d "
                       "obj_raw_max=%d obj_cell=%u threshold_raw_x1000=%u "
                       "scale_x100000=%u zp=%d\n"),
@@ -262,7 +257,7 @@ std::uint32_t ConfidenceMilli(float confidence)
 
 void LogBoxes(const char *stage, const BoxSet &boxes)
 {
-    tm_printf(reinterpret_cast<const UB *>(
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: boxes stage=%s model=%u capture=%u count=%u\n"),
               stage, static_cast<unsigned int>(boxes.model_sequence),
               static_cast<unsigned int>(boxes.capture_sequence),
@@ -272,7 +267,7 @@ void LogBoxes(const char *stage, const BoxSet &boxes)
                                     : memory_allocator::kMaxBoxes;
     for (std::uint32_t i = 0U; i < count; ++i) {
         const memory_allocator::Box &box = boxes.boxes[i];
-        tm_printf(reinterpret_cast<const UB *>(
+        AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                       "ai: box stage=%s index=%u x=%d y=%d w=%d h=%d conf_milli=%u\n"),
                   stage, static_cast<unsigned int>(i),
                   static_cast<int>(box.x), static_cast<int>(box.y),
@@ -350,6 +345,22 @@ Error ModelManager::Initialize(memory_allocator::MemoryAllocator &memory,
         last_error_ = npu_status.error.detail;
         return {ErrorCode::kModel, last_error_, "ai.model_outputs"};
     }
+
+    /* Neural-ART uses STAI_FLAG_OVERRIDE for both compiler-owned and
+     * user-owned outputs. The reliable indication of --no-outputs-allocation
+     * is the pointer returned before the application supplies buffers: a
+     * user-owned output is still NULL at this point. Do not infer ownership
+     * from STAI flags, otherwise allocator-provided buffers are never bound
+     * and the NPU receives NULL output addresses. */
+    dynamic_outputs_ = false;
+    for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
+        const bool output_is_user_owned = outputs_[i] == nullptr;
+        if (i == 0U) {
+            dynamic_outputs_ = output_is_user_owned;
+        } else if (dynamic_outputs_ != output_is_user_owned) {
+            return {ErrorCode::kModel, i, "ai.mixed_output_ownership"};
+        }
+    }
 #if defined(AI_MODEL_SEGMENTATION)
     if (info_.inputs[0].size_bytes !=
             kSegmentationInputWidth * kSegmentationInputHeight * 3U ||
@@ -393,7 +404,7 @@ Error ModelManager::TryInfer(
     result->mask_address = 0U;
     result->mask_width = 0U;
     result->mask_height = 0U;
-    tm_printf(reinterpret_cast<const UB *>(
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: input direct begin sequence=%u source=%x size=%u pipe2=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence),
               static_cast<unsigned int>(frame.buffer.address),
@@ -408,7 +419,7 @@ Error ModelManager::TryInfer(
     const memory_allocator::Buffer input_buffer{
         frame.buffer.address, info_.inputs[0].size_bytes, frame.buffer.index,
         memory_allocator::Region::kInference};
-    tm_printf(reinterpret_cast<const UB *>(
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: input cache begin sequence=%u size=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence),
               static_cast<unsigned int>(input_buffer.size));
@@ -419,47 +430,57 @@ Error ModelManager::TryInfer(
     if (!status.Ok()) {
         return status;
     }
-    tm_printf(reinterpret_cast<const UB *>(
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
               "ai: input cache end sequence=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence));
 
-    std::uintptr_t model_input_address = frame.buffer.address;
-#if AI_MODEL_FORCE_FIXED_INPUT
-    const memory_allocator::Buffer model_input_buffer{
-        kGeneratedModelInputAddress, info_.inputs[0].size_bytes, 0U,
-        memory_allocator::Region::kInference};
-    std::memcpy(reinterpret_cast<void *>(model_input_buffer.address),
-                reinterpret_cast<const void *>(frame.buffer.address),
-                info_.inputs[0].size_bytes);
-    status = cache_->PrepareForPeripheralRead(model_input_buffer);
-    if (!status.Ok()) {
-        return status;
-    }
-    model_input_address = model_input_buffer.address;
-    tm_printf(reinterpret_cast<const UB *>(
-                  "ai: input fixed copy sequence=%u source=%x destination=%x size=%u\n"),
-              static_cast<unsigned int>(frame.capture_sequence),
-              static_cast<unsigned int>(frame.buffer.address),
-              static_cast<unsigned int>(model_input_address),
-              static_cast<unsigned int>(info_.inputs[0].size_bytes));
-#endif
     const stai_return_code set_input = model_.SetInput(
-        reinterpret_cast<stai_ptr>(model_input_address),
+        reinterpret_cast<stai_ptr>(frame.buffer.address),
         info_.inputs[0].size_bytes);
     if (set_input != STAI_SUCCESS) {
         return {ErrorCode::kModel, static_cast<std::uint32_t>(set_input),
                 "ai.set_user_input"};
     }
-    tm_printf(reinterpret_cast<const UB *>(
-                  "ai: input direct end sequence=%u source=%x\n"),
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
+                  "ai: input allocator end sequence=%u source=%x\n"),
               static_cast<unsigned int>(frame.capture_sequence),
               static_cast<unsigned int>(frame.buffer.address));
 
-    tm_printf(reinterpret_cast<const UB *>(
+    if (dynamic_outputs_) {
+        if (frame.output_count != info_.n_outputs) {
+            return {ErrorCode::kInvalidArgument, frame.output_count,
+                    "ai.dynamic_output_count"};
+        }
+        stai_ptr dynamic_output_ptrs[3]{};
+        for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
+            const memory_allocator::Buffer &output = frame.outputs[i];
+            if (!output || output.size < info_.outputs[i].size_bytes ||
+                output.alignment == 0U ||
+                (output.address % output.alignment) != 0U) {
+                return {ErrorCode::kInvalidArgument,
+                        static_cast<std::uint32_t>(i),
+                        "ai.dynamic_output_buffer"};
+            }
+            dynamic_output_ptrs[i] =
+                reinterpret_cast<stai_ptr>(output.address);
+        }
+        const npu::Status set_outputs =
+            npu_.SetOutputs(dynamic_output_ptrs, info_.n_outputs);
+        last_npu_status_ = set_outputs;
+        last_error_ = set_outputs.error.detail;
+        if (!set_outputs.Ok()) {
+            return set_outputs.error;
+        }
+        for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
+            outputs_[i] = dynamic_output_ptrs[i];
+        }
+    }
+
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu run call sequence=%u\n"),
               static_cast<unsigned int>(frame.capture_sequence));
     status = RunNetwork();
-    tm_printf(reinterpret_cast<const UB *>(
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu run return sequence=%u code=%u detail=%x\n"),
               static_cast<unsigned int>(frame.capture_sequence),
               static_cast<unsigned int>(status.code),
@@ -468,10 +489,13 @@ Error ModelManager::TryInfer(
         return status;
     }
     for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
-        const memory_allocator::Buffer output_buffer{
-            reinterpret_cast<std::uintptr_t>(outputs_[i]),
-            info_.outputs[i].size_bytes, 0U,
-            memory_allocator::Region::kInference};
+        const memory_allocator::Buffer output_buffer =
+            dynamic_outputs_
+                ? frame.outputs[i]
+                : memory_allocator::Buffer{
+                      reinterpret_cast<std::uintptr_t>(outputs_[i]),
+                      info_.outputs[i].size_bytes, 0U,
+                      memory_allocator::Region::kInference};
         status = cache_->PrepareForCpuRead(output_buffer);
         if (!status.Ok()) {
             return status;
@@ -483,11 +507,15 @@ Error ModelManager::TryInfer(
     }
     mask_buffer_index_ ^= 1U;
 #else
+#if AI_INFERENCE_DIAGNOSTICS
     LogOutputObjectness(info_, outputs_);
+#endif
     if (!ConvertDetections(outputs_, result)) {
         return {ErrorCode::kModel, 0U, "ai.postprocess"};
     }
+#if AI_INFERENCE_DIAGNOSTICS
     LogBoxes("postprocess", *result);
+#endif
 #endif
 
     const npu::Status npu_status = npu_.NewInference();

@@ -49,6 +49,36 @@ namespace {
 
 constexpr std::uint32_t kTimeoutTicks = 5000U;
 
+#if AI_INFERENCE_DIAGNOSTICS
+#define AI_INFERENCE_TRACE(...) tm_printf(__VA_ARGS__)
+#else
+#define AI_INFERENCE_TRACE(...) ((void)0)
+#endif
+
+#if AI_INFERENCE_DIAGNOSTICS
+void EnableCycleCounter()
+{
+    /* DWT gives a sub-millisecond wall-clock measurement for the asynchronous
+     * NPU run. It is enabled only for instrumentation; the counter does not
+     * affect the NPU protocol or the task scheduler. */
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0U;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+#endif
+
+#if AI_INFERENCE_DIAGNOSTICS
+std::uint32_t CyclesToMicroseconds(std::uint32_t cycles)
+{
+    if (SystemCoreClock == 0U) {
+        return 0U;
+    }
+    return static_cast<std::uint32_t>(
+        (static_cast<std::uint64_t>(cycles) * 1000000ULL) /
+        static_cast<std::uint32_t>(SystemCoreClock));
+}
+#endif
+
 void EnableNpuMemory()
 {
     __HAL_RCC_NPU_CLK_ENABLE();
@@ -109,6 +139,9 @@ common::Error NpuDriver::InitializeMemory()
                 "npu.memory_initialize"};
     }
     EnableNpuMemory();
+#if AI_INFERENCE_DIAGNOSTICS
+    EnableCycleCounter();
+#endif
     initialized = true;
     return {common::ErrorCode::kOk, 0U, "npu.memory_initialize"};
 }
@@ -164,7 +197,7 @@ Status NpuDriver::Initialize(model_manager::Model &model)
     }
 #endif
 
-    tm_printf(reinterpret_cast<const UB *>(
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu init begin irq_en=%u irq_pending=%u\n"),
               static_cast<unsigned int>(NVIC_GetEnableIRQ(NPU0_IRQn)),
               static_cast<unsigned int>(NVIC_GetPendingIRQ(NPU0_IRQn)));
@@ -172,9 +205,10 @@ Status NpuDriver::Initialize(model_manager::Model &model)
     HAL_NVIC_EnableIRQ(NPU0_IRQn);
 
     const stai_return_code runtime_code = stai_runtime_init();
+#if AI_INFERENCE_DIAGNOSTICS
     const registers::NpuRegisterSnapshot runtime_hardware =
         registers_.ReadSnapshot();
-    tm_printf(reinterpret_cast<const UB *>(
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu runtime init code=%x irq_en=%u pending=%u epoch=%x int=%x bus=%x\n"),
               static_cast<unsigned int>(runtime_code),
               static_cast<unsigned int>(NVIC_GetEnableIRQ(NPU0_IRQn)),
@@ -182,6 +216,7 @@ Status NpuDriver::Initialize(model_manager::Model &model)
               static_cast<unsigned int>(runtime_hardware.epoch_control),
               static_cast<unsigned int>(runtime_hardware.interrupt_status),
               static_cast<unsigned int>(runtime_hardware.busif0_error));
+#endif
     last_error_ = static_cast<std::uint32_t>(runtime_code);
     if (IsError(runtime_code)) {
         last_execution_.state = ExecutionState::kFaulted;
@@ -192,9 +227,10 @@ Status NpuDriver::Initialize(model_manager::Model &model)
     }
 
     const stai_return_code model_code = model_->Initialize();
+#if AI_INFERENCE_DIAGNOSTICS
     const registers::NpuRegisterSnapshot model_hardware =
         registers_.ReadSnapshot();
-    tm_printf(reinterpret_cast<const UB *>(
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu model init code=%x irq_en=%u pending=%u epoch=%x int=%x bus=%x\n"),
               static_cast<unsigned int>(model_code),
               static_cast<unsigned int>(NVIC_GetEnableIRQ(NPU0_IRQn)),
@@ -202,6 +238,7 @@ Status NpuDriver::Initialize(model_manager::Model &model)
               static_cast<unsigned int>(model_hardware.epoch_control),
               static_cast<unsigned int>(model_hardware.interrupt_status),
               static_cast<unsigned int>(model_hardware.busif0_error));
+#endif
     last_error_ = static_cast<std::uint32_t>(model_code);
     if (IsError(model_code)) {
         last_execution_.state = ExecutionState::kFaulted;
@@ -269,6 +306,22 @@ Status NpuDriver::GetOutputs(stai_ptr *outputs, stai_size *count) const
                         last_execution_};
 }
 
+Status NpuDriver::SetOutputs(const stai_ptr *outputs, stai_size count) const
+{
+    if (!initialized_ || model_ == nullptr || outputs == nullptr) {
+        return InvalidState("npu.set_outputs");
+    }
+    const stai_return_code code = model_->SetOutputs(outputs, count);
+    return IsError(code)
+               ? Status{common::Error{common::ErrorCode::kModel,
+                                      static_cast<std::uint32_t>(code),
+                                      "npu.set_outputs"},
+                        last_execution_}
+               : Status{common::Error{common::ErrorCode::kOk, 0U,
+                                      "npu.set_outputs"},
+                        last_execution_};
+}
+
 Status NpuDriver::Run()
 {
     if (!initialized_ || model_ == nullptr) {
@@ -283,8 +336,10 @@ Status NpuDriver::Run()
      * segmentation, the NPU IRQ wakes this task through a kernel event flag;
      * run_continue() then consumes the Neural-ART event state and starts the
      * next epoch. */
+#if AI_INFERENCE_DIAGNOSTICS
     const registers::NpuRegisterSnapshot before_run =
         registers_.ReadSnapshot();
+#endif
 #if defined(AI_MODEL_SEGMENTATION)
     const ER clear_event_status = tk_clr_flg(g_npu_irq_event_flag, 0U);
     if (clear_event_status != E_OK) {
@@ -297,7 +352,7 @@ Status NpuDriver::Run()
                 last_execution_};
     }
 #endif
-    tm_printf(reinterpret_cast<const UB *>(
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu run begin irq_en=%u pending=%u priority=%u count=%u last=%x csi=%x/%x epoch=%x int=%x bus=%x\n"),
               static_cast<unsigned int>(NVIC_GetEnableIRQ(NPU0_IRQn)),
               static_cast<unsigned int>(NVIC_GetPendingIRQ(NPU0_IRQn)),
@@ -308,6 +363,9 @@ Status NpuDriver::Run()
               static_cast<unsigned int>(before_run.epoch_control),
               static_cast<unsigned int>(before_run.interrupt_status),
               static_cast<unsigned int>(before_run.busif0_error));
+#if AI_INFERENCE_DIAGNOSTICS
+    const std::uint32_t npu_start_cycles = DWT->CYCCNT;
+#endif
     stai_return_code code = model_->Run(STAI_MODE_ASYNC);
     last_error_ = static_cast<std::uint32_t>(code);
     last_execution_.state = ExecutionState::kSubmitted;
@@ -342,10 +400,11 @@ Status NpuDriver::Run()
                     last_execution_};
         }
 
+ #if AI_INFERENCE_DIAGNOSTICS
         if ((tick % 100U) == 0U) {
             const registers::NpuRegisterSnapshot waiting =
                 registers_.ReadSnapshot();
-            tm_printf(reinterpret_cast<const UB *>(
+            AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                           "ai: npu wait tick=%u status=%x irq=%u last=%x epoch=%x int=%x bus=%x\n"),
                       static_cast<unsigned int>(tick),
                       static_cast<unsigned int>(code), g_aton_irq_count,
@@ -354,34 +413,14 @@ Status NpuDriver::Run()
                       static_cast<unsigned int>(waiting.interrupt_status),
                       static_cast<unsigned int>(waiting.busif0_error));
         }
+ #endif
 
-        /* WFE is a bare-metal wait and does not make this inference task
-         * block in µT-Kernel. Wait on an event flag signaled by the NPU IRQ so
-         * other tasks run, but retain a one-tick timeout for the run timeout. */
-        if (code == STAI_RUNNING_WFE) {
-#if defined(AI_MODEL_SEGMENTATION)
-            UINT observed_events = 0U;
-            const ER wait_status =
-                tk_wai_flg(g_npu_irq_event_flag, kNpuIrqEvent,
-                           TWF_ANDW | TWF_BITCLR, &observed_events, 1);
-            if (wait_status == E_TMOUT) {
-                continue;
-            }
-            if (wait_status != E_OK) {
-                last_execution_.state = ExecutionState::kFaulted;
-                last_execution_.stai_status =
-                    static_cast<std::uint32_t>(wait_status);
-                return {common::Error{common::ErrorCode::kNpu,
-                                      static_cast<std::uint32_t>(wait_status),
-                                      "npu.wait_irq"},
-                        last_execution_};
-            }
-#else
-            model_->WaitForEvent();
-#endif
-        } else {
-            tk_dly_tsk(1);
-        }
+        /* stai_ext_wfe() is a bare-metal WFE. Calling it from a µT-Kernel
+         * task can suspend the scheduler indefinitely when the NPU does not
+         * raise its IRQ (for example after a bad buffer binding). Always give
+         * the kernel a tick here instead; ContinueRun() performs the same
+         * Neural-ART state transition without monopolising the CPU. */
+        tk_dly_tsk(1);
         code = model_->ContinueRun();
         last_error_ = static_cast<std::uint32_t>(code);
         if (IsError(code)) {
@@ -422,13 +461,21 @@ Status NpuDriver::Run()
                 last_execution_};
     }
 
-    tm_printf(reinterpret_cast<const UB *>(
+    AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                   "ai: npu done code=%x irq=%u last=%x pending=%u csi=%x/%x\n"),
               static_cast<unsigned int>(STAI_SUCCESS), g_aton_irq_count,
               g_aton_last_irqs,
               static_cast<unsigned int>(NVIC_GetPendingIRQ(NPU0_IRQn)),
               static_cast<unsigned int>(CSI->SR0),
               static_cast<unsigned int>(CSI->SR1));
+#if AI_INFERENCE_DIAGNOSTICS
+    const std::uint32_t npu_cycles = DWT->CYCCNT - npu_start_cycles;
+    tm_printf(reinterpret_cast<const UB *>(
+                  "ai: npu timing cycles=%u us=%u core_hz=%u\n"),
+              static_cast<unsigned int>(npu_cycles),
+              static_cast<unsigned int>(CyclesToMicroseconds(npu_cycles)),
+              static_cast<unsigned int>(SystemCoreClock));
+#endif
     last_execution_.state = ExecutionState::kCompleted;
     last_execution_.stai_status = STAI_DONE;
     return {common::Error{common::ErrorCode::kOk, 0U, "npu.run"},

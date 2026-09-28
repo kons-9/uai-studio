@@ -74,6 +74,12 @@ stai_return_code person_model_get_outputs(stai_ptr *outputs, stai_size *count)
     return person_stai_network_get_outputs(person_context, outputs, count);
 }
 
+stai_return_code person_model_set_outputs(const stai_ptr *outputs,
+                                          stai_size count)
+{
+    return person_stai_network_set_outputs(person_context, outputs, count);
+}
+
 stai_return_code person_model_run(stai_run_mode mode)
 {
     return person_stai_network_run(person_context, mode);

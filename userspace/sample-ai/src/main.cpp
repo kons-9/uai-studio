@@ -169,10 +169,20 @@ bool DrainLatestBoxes(BoxSet *active)
             break;
         }
         if (size == static_cast<INT>(sizeof(message))) {
-            *active = message.boxes;
-            received = true;
+            /* A single empty NPU result is common when the confidence score
+             * briefly crosses the threshold. Keep the last valid detection
+             * until the camera task's lifetime timer expires instead of
+             * blinking the box on every miss. */
+            if (message.boxes.count > 0U) {
+                *active = message.boxes;
+                received = true;
+            }
         }
     }
+    /* UART output is synchronous on the target. Do not put per-box logging in
+     * the camera/LCD task during a normal run: it can delay the next display
+     * composition at 115200 baud. */
+#if AI_INFERENCE_DIAGNOSTICS
     if (received) {
         tm_printf(reinterpret_cast<const UB *>(
                       "lcd: box source=ai sequence=%u capture=%u count=%u\n"),
@@ -199,6 +209,7 @@ bool DrainLatestBoxes(BoxSet *active)
                       static_cast<unsigned int>(confidence_milli));
         }
     }
+#endif
     return received;
 }
 

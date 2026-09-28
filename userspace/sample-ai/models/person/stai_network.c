@@ -628,9 +628,9 @@ static const stai_network_info __stai_network_network_info = {
     .n_weights = STAI_NETWORK_WEIGHTS_NUM,
     .n_states = STAI_NETWORK_STATES_NUM,
 
-    .c_model_datetime = "2026-03-17 15:44:13",
+    .c_model_datetime = "2026-09-28 13:59:06",
 
-    .n_nodes = 809,
+    .n_nodes = 812,
 
     .inputs = (stai_tensor[STAI_NETWORK_IN_NUM]) {
       STAI_INIT_TENSOR(

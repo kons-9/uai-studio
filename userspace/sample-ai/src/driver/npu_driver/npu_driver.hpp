@@ -46,6 +46,7 @@ public:
     Status GetInfo(stai_network_info *info) const;
     Status GetInputs(stai_ptr *inputs, stai_size *count) const;
     Status GetOutputs(stai_ptr *outputs, stai_size *count) const;
+    Status SetOutputs(const stai_ptr *outputs, stai_size count) const;
 
     Status Run();
     Status NewInference();

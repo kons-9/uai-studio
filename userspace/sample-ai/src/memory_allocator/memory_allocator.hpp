@@ -21,10 +21,35 @@ constexpr std::uint32_t kInferenceHeight = 480U;
 #endif
 constexpr std::size_t kInferenceFrameBytes =
     static_cast<std::size_t>(kInferenceWidth) * kInferenceHeight * 3U;
-/* Keep the legacy copy-only path safe while Pipe2 uses the smaller RGB888
- * model buffer. The hardware only writes kInferenceFrameBytes bytes. */
-constexpr std::size_t kInferenceBufferBytes =
-    kFrameBytes > kInferenceFrameBytes ? kFrameBytes : kInferenceFrameBytes;
+constexpr std::size_t kBufferAlignment = 32U;
+constexpr std::size_t AlignUp(std::size_t value, std::size_t alignment)
+{
+    return (value + alignment - 1U) / alignment * alignment;
+}
+
+constexpr std::size_t kMaxModelOutputs = 3U;
+#if defined(AI_MODEL_SEGMENTATION)
+constexpr std::size_t kModelOutputCount = 1U;
+constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
+    320U * 320U * 2U, 0U, 0U};
+#else
+constexpr std::size_t kModelOutputCount = 3U;
+constexpr std::size_t kModelOutputBytes[kMaxModelOutputs] = {
+    15U * 15U * 18U, 60U * 60U * 18U, 30U * 30U * 18U};
+#endif
+
+/* One slot contains the camera input followed by the user-replaceable model
+ * outputs.  Keeping them in the same allocator slot preserves ownership
+ * across the asynchronous Pipe2 -> NPU handoff. */
+constexpr std::size_t kInferenceOutputsOffset =
+    AlignUp(kInferenceFrameBytes, kBufferAlignment);
+constexpr std::size_t kInferenceOutputStorageBytes =
+    AlignUp(kModelOutputBytes[0], kBufferAlignment) +
+    AlignUp(kModelOutputBytes[1], kBufferAlignment) +
+    AlignUp(kModelOutputBytes[2], kBufferAlignment);
+constexpr std::size_t kInferenceBufferBytes = AlignUp(
+    kInferenceOutputsOffset + kInferenceOutputStorageBytes,
+    kBufferAlignment);
 constexpr std::size_t kMaxBoxes = 16U;
 
 enum class Region : std::uint8_t {
@@ -47,6 +72,7 @@ struct Buffer {
     std::size_t size = 0U;
     std::uint8_t index = 0U;
     Region region = Region::kCapture;
+    std::size_t alignment = kBufferAlignment;
 
     explicit operator bool() const { return address != 0U && size != 0U; }
 };
@@ -66,6 +92,8 @@ struct DisplayBuffer {
 
 struct InferenceFrame {
     Buffer buffer{};
+    Buffer outputs[kMaxModelOutputs]{};
+    std::uint8_t output_count = 0U;
     std::uint32_t capture_sequence = 0U;
     bool from_pipe2 = false;
 
@@ -125,6 +153,10 @@ private:
     static common::Error Make(common::ErrorCode code, std::uint32_t detail,
                               const char *operation);
     static bool SameBuffer(const Buffer &lhs, const Buffer &rhs);
+    void PopulateInferenceFrame(std::uint8_t index,
+                                std::uint32_t sequence,
+                                bool from_pipe2,
+                                InferenceFrame *frame) const;
 
     Slot display_[2]{};
     Slot inference_[2]{};

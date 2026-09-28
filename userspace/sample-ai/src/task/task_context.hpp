@@ -64,11 +64,15 @@ using BoxSet = uai::ai::memory_allocator::BoxSet;
 using InferenceFrame = uai::ai::memory_allocator::InferenceFrame;
 using MemoryAllocator = uai::ai::memory_allocator::MemoryAllocator;
 inline constexpr UINT kExternalMemoryReady = 0x01U;
-inline constexpr std::uint32_t kInferencePeriod = 5000U;
+/* The NPU is asynchronous, so inference is scheduled independently from
+ * Pipe1 rendering.  The measured model time is well below 100 ms, so use a
+ * 20 ms submission period while retaining headroom for the camera and LCD
+ * tasks. Pipe2's frame-rate divider remains the upper bound in practice. */
+inline constexpr std::uint32_t kInferencePeriod = 20U;
 #if defined(AI_MODEL_SEGMENTATION)
-inline constexpr std::uint32_t kBoxLifetimeMs = 7000U;
+inline constexpr std::uint32_t kBoxLifetimeMs = 1000U;
 #else
-inline constexpr std::uint32_t kBoxLifetimeMs = 3000U;
+inline constexpr std::uint32_t kBoxLifetimeMs = 1000U;
 #endif
 
 enum class InferenceMode : std::uint8_t {

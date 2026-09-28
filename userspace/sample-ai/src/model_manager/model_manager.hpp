@@ -42,6 +42,7 @@ private:
 #endif
     stai_network_info info_{};
     stai_ptr outputs_[3]{};
+    bool dynamic_outputs_ = false;
     npu::Status last_npu_status_{};
     bool initialized_ = false;
     std::uint32_t model_sequence_ = 0U;

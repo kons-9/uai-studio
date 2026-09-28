@@ -2,6 +2,12 @@
 
 #include "model_manager/model_manager.hpp"
 
+#if AI_INFERENCE_DIAGNOSTICS
+#define AI_INFERENCE_TRACE(...) tm_printf(__VA_ARGS__)
+#else
+#define AI_INFERENCE_TRACE(...) ((void)0)
+#endif
+
 namespace uai::ai::task {
 
 void inference_task(void)
@@ -31,6 +37,7 @@ void inference_task(void)
             "ai: model load failed; inference disabled\n")));
     }
 
+    bool inference_enabled = model_status.Ok();
     for (;;) {
         InferenceMessage message{};
         const INT size = tk_rcv_mbf(g_frame_queue, &message, TMO_FEVR);
@@ -45,22 +52,37 @@ void inference_task(void)
         }
 
         BoxSet boxes{};
-        if (model_status.Ok()) {
-            tm_printf(reinterpret_cast<const UB *>(
+        if (inference_enabled) {
+            AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                           "ai: inference begin sequence=%u\n"),
                       static_cast<unsigned int>(message.frame.capture_sequence));
+#if AI_INFERENCE_DIAGNOSTICS
             /* Inspect the exact Pipe2 buffer immediately before handing it to
              * the NPU. This confirms that the inference path consumes live
              * camera data, rather than only proving that Pipe2 generated a
              * frame event. */
             LogInferenceInput(message.frame);
-            tm_printf(reinterpret_cast<const UB *>(
+#endif
+            AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                           "ai: inference run begin sequence=%u input=%x irq=%u last=%x\n"),
                       static_cast<unsigned int>(message.frame.capture_sequence),
                       static_cast<unsigned int>(message.frame.buffer.address),
                       g_aton_irq_count, g_aton_last_irqs);
+            const std::uint32_t inference_start = Now();
             status = model.TryInfer(message.frame, &boxes);
-            tm_printf(reinterpret_cast<const UB *>(
+            const std::uint32_t inference_elapsed = Now() - inference_start;
+#if AI_INFERENCE_DIAGNOSTICS
+            if ((message.frame.capture_sequence % 10U) == 0U) {
+                tm_printf(reinterpret_cast<const UB *>(
+                              "ai: inference elapsed_ms=%u sequence=%u\n"),
+                          static_cast<unsigned int>(inference_elapsed),
+                          static_cast<unsigned int>(
+                              message.frame.capture_sequence));
+            }
+#else
+            (void)inference_elapsed;
+#endif
+            AI_INFERENCE_TRACE(reinterpret_cast<const UB *>(
                           "ai: inference run end sequence=%u code=%u detail=%x irq=%u last=%x\n"),
                       static_cast<unsigned int>(message.frame.capture_sequence),
                       static_cast<unsigned int>(status.code),
@@ -74,14 +96,24 @@ void inference_task(void)
         LogStatus("memory", release_status);
         if (status.Ok()) {
             SendLatestBoxes(boxes);
-            tm_printf(reinterpret_cast<const UB *>(
-                          "ai: inference sequence=%u capture=%u count=%u\n"),
-                      static_cast<unsigned int>(boxes.model_sequence),
-                      static_cast<unsigned int>(boxes.capture_sequence),
-                      static_cast<unsigned int>(boxes.count));
+#if AI_INFERENCE_DIAGNOSTICS
+            if ((boxes.model_sequence % 10U) == 0U) {
+                tm_printf(reinterpret_cast<const UB *>(
+                              "ai: inference sequence=%u capture=%u count=%u\n"),
+                          static_cast<unsigned int>(boxes.model_sequence),
+                          static_cast<unsigned int>(boxes.capture_sequence),
+                          static_cast<unsigned int>(boxes.count));
+            }
+#endif
         } else if (model_status.Ok()) {
             LogStatus("ai", status);
             LogNpuStatus(model.LastNpuStatus());
+            /* A failed/timed-out NPU execution must not make the camera task
+             * wait for a buffer forever. Keep Pipe1 live and leave inference
+             * disabled until the next firmware restart. */
+            inference_enabled = false;
+            tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
+                "ai: inference disabled after NPU error; camera remains live\n")));
         }
 #if defined(AI_MODEL_SEGMENTATION) && defined(AI_SEGMENTATION_DIAG)
         /* The diagnostic build is deliberately limited to one NPU attempt. */

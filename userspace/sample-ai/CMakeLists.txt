@@ -34,9 +34,13 @@ option(AI_SEGMENTATION_DIAGNOSTICS
     "Enable one-shot NPU epoch diagnostics for the segmentation model" OFF)
 option(AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC
     "Display live Pipe2 inference input on the LCD while inference continues" OFF)
-option(AI_MODEL_FORCE_FIXED_INPUT
-    "Copy the Pipe2 frame to the generated model's fixed input address" ON)
-
+option(AI_INFERENCE_DIAGNOSTICS
+    "Keep verbose UART and tensor inspections in the inference hot path" OFF)
+set(AI_DCMIPP_PIPE2_FRAME_RATE "DCMIPP_FRAME_RATE_1_OVER_2" CACHE STRING
+    "Pipe2 frame-rate selector (DCMIPP_FRAME_RATE_1_OVER_4, DCMIPP_FRAME_RATE_1_OVER_2, or DCMIPP_FRAME_RATE_ALL)")
+set_property(CACHE AI_DCMIPP_PIPE2_FRAME_RATE PROPERTY STRINGS
+    DCMIPP_FRAME_RATE_1_OVER_4 DCMIPP_FRAME_RATE_1_OVER_2
+    DCMIPP_FRAME_RATE_ALL)
 set(AI_MODEL "person" CACHE STRING "Inference model: person or segmentation")
 set_property(CACHE AI_MODEL PROPERTY STRINGS person segmentation)
 if(AI_MODEL STREQUAL "person")
@@ -165,8 +169,9 @@ target_compile_definitions(sample-ai.elf PRIVATE
     AI_DCMIPP_RAW_DUMP=$<BOOL:${AI_DCMIPP_RAW_DUMP}>
     AI_DCMIPP_DISABLE_DEMOSAIC=$<BOOL:${AI_DCMIPP_DISABLE_DEMOSAIC}>
     AI_DCMIPP_DEMOSAIC_LINEAR=$<BOOL:${AI_DCMIPP_DEMOSAIC_LINEAR}>
+    AI_DCMIPP_PIPE2_FRAME_RATE=${AI_DCMIPP_PIPE2_FRAME_RATE}
     AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC=$<BOOL:${AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC}>
-    AI_MODEL_FORCE_FIXED_INPUT=$<BOOL:${AI_MODEL_FORCE_FIXED_INPUT}>)
+    AI_INFERENCE_DIAGNOSTICS=$<BOOL:${AI_INFERENCE_DIAGNOSTICS}>)
 if(AI_MODEL STREQUAL "segmentation")
     target_compile_definitions(sample-ai.elf PRIVATE AI_MODEL_SEGMENTATION=1)
     if(AI_SEGMENTATION_DIAGNOSTICS)

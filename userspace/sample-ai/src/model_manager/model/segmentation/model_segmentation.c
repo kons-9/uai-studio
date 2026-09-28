@@ -87,6 +87,13 @@ stai_return_code segmentation_model_get_outputs(stai_ptr *outputs,
                                                  outputs, count);
 }
 
+stai_return_code segmentation_model_set_outputs(const stai_ptr *outputs,
+                                                stai_size count)
+{
+    return segmentation_stai_network_set_outputs(segmentation_context, outputs,
+                                                 count);
+}
+
 stai_return_code segmentation_model_run(stai_run_mode mode)
 {
     return segmentation_stai_network_run(segmentation_context, mode);

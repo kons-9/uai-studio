@@ -207,10 +207,9 @@ Error ConfigureInferencePipe()
     }
 
     DCMIPP_PipeConfTypeDef pipe{};
-    /* Pipe2 is consumed by the NPU once every few seconds.  Capturing every
-     * CSI frame needlessly adds a 480x480 RGB888 write to external PSRAM at
-     * 20 fps and can starve Pipe1 while the NPU reads the same memory bus. */
-    pipe.FrameRate = DCMIPP_FRAME_RATE_1_OVER_4;
+    /* Keep this selectable: 1/4 reduces PSRAM traffic, while 1/2 or ALL can
+     * make the bounding-box refresh visibly more responsive. */
+    pipe.FrameRate = AI_DCMIPP_PIPE2_FRAME_RATE;
     pipe.PixelPipePitch = kInferenceWidth * 3U;
     pipe.PixelPackerFormat = DCMIPP_PIXEL_PACKER_FORMAT_RGB888_YUV444_1;
     if (HAL_DCMIPP_PIPE_SetConfig(&hcamera_dcmipp, DCMIPP_PIPE2, &pipe) !=

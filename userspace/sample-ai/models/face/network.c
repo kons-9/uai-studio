@@ -18,26 +18,26 @@
   */
 
 /*
- * GIT_SHA         "7cc654104236b2ac726c804c5d7f201e2afd1c79"
+ * GIT_SHA         "6770925d2803cfc24528c45bb3ba8b791b2a83e4"
  * GIT_BRANCH      "STAI-4.0"
- * GIT_DESCRIPTION "STAI-3.0.0-254-g7cc65410"
+ * GIT_DESCRIPTION "atonn-v1.1.3-275-g6770925d"
  *
  * Command Line options:
- * --load-mdesc-file = "/opt/ST/STEdgeAI/Utilities/configs/stm32n6"
- * --load-cdesc-file = "/opt/ST/STEdgeAI/Utilities/configs/cortex-m55"
- * --load-mpool-file = "/home/jenkins/agent/workspace/tarted_FaceDetection_ModelZoo_fd/Model/my_mpools/stm32n6-app2_STM32N6570-DK"
+ * --load-mdesc-file = "/opt/ST/STEdgeAI/4.0/Utilities/configs/stm32n6"
+ * --load-cdesc-file = "/opt/ST/STEdgeAI/4.0/Utilities/configs/cortex-m55"
+ * --load-mpool-file = "/tmp/sample-ai-face.s3J1MV/model"
  * --cache-maintenance = true
  * --enable-virtual-mem-pools = true
  * --native-float = true
- * --json-quant-file = "/home/jenkins/agent/workspace/tarted_FaceDetection_ModelZoo_fd/Model/st_ai_output/blazeface_front_128_quant_pc_ff_od_wider_face_OE_3_3_1_Q.json"
+ * --json-quant-file = "/tmp/sample-ai-face.s3J1MV/st_ai_output/blazeface_front_128_quant_pc_ff_od_wider_face_OE_3_3_1_Q.json"
  * --optimization = 3
  * --Os = true
  * --Omax-ca-pipe = 4
  * --Ocache-opt = true
  * --enable-epoch-controller = true
  * --output-info-file = "c_info"
- * --onnx-input = "/home/jenkins/agent/workspace/tarted_FaceDetection_ModelZoo_fd/Model/st_ai_output/blazeface_front_128_quant_pc_ff_od_wider_face_OE_3_3_1.onnx"
- * --out-dir-prefix = "/home/jenkins/agent/workspace/tarted_FaceDetection_ModelZoo_fd/Model/st_ai_ws/neural_art__network/"
+ * --onnx-input = "/tmp/sample-ai-face.s3J1MV/st_ai_output/blazeface_front_128_quant_pc_ff_od_wider_face_OE_3_3_1.onnx"
+ * --out-dir-prefix = "/tmp/sample-ai-face.s3J1MV/st_ai_ws/neural_art__network/"
  * --network-name = "network"
  * --all-buffers-info = true
  * --generate-stai = true
@@ -55,7 +55,7 @@
 #include "ecloader.h"
 #include "ll_aton_cipher.h"
 
-#if LL_ATON_VERSION_MAJOR != 1 || LL_ATON_VERSION_MINOR != 1 || LL_ATON_VERSION_MICRO != 3 || LL_ATON_VERSION_DEV != 262
+#if LL_ATON_VERSION_MAJOR != 1 || LL_ATON_VERSION_MINOR != 1 || LL_ATON_VERSION_MICRO != 3 || LL_ATON_VERSION_DEV != 275
 #  error "Possible mismatch in ll_aton library used"
 #endif
 
@@ -64,7 +64,7 @@
 #endif
 
 /* global pool 8 is 105.98 KB */
-/* index=8 file postfix=xSPI2 name=octoFlash offset=0x70380000  absolute_mode size=16777208 READ_ONLY THROUGHPUT=MID LATENCY=HIGH byte width=1 freq ratio=6 burst max length=MAXINT burst penalty=0 pipelined=ON cacheable=ON read_power=110 write_power=400 use4initializers=YES score=50  */
+/* index=8 file postfix=xSPI2 name=octoFlash offset=0x70800000  absolute_mode size=16777208 READ_ONLY THROUGHPUT=MID LATENCY=HIGH byte width=1 freq ratio=6 burst max length=MAXINT burst penalty=0 pipelined=ON cacheable=ON read_power=110 write_power=400 use4initializers=YES score=50  */
 /* global pool 7 is ? */
 /* index=7 file postfix=xSPI1 name=hyperRAM offset=0x90000000  absolute_mode size=16777208 READ_WRITE THROUGHPUT=MID LATENCY=HIGH byte width=2 freq ratio=5 burst max length=MAXINT burst penalty=0 pipelined=ON cacheable=ON read_power=380 write_power=340 use4initializers=YES score=82  */
 /* global pool 1 is 416.00 KB */
@@ -103,12 +103,35 @@ const LL_Streng_EncryptionTypedef *LL_ATON_BlobEncryption_Info_network()
   return &LL_Streng_EncryptionStruct;
 }
 
+/* User Input allocated buffer (mempool 12) size 49152 */
+static unsigned char *_mem_pool__user_io_input_0_network = NULL; /* tensor name Input_0_out_0 */
+
+/* User Output allocated buffer (mempool 13) size 8192 */
+static unsigned char *_mem_pool__user_io_output_0_network = NULL; /* tensor name Transpose_246_out_0 */
+
+/* User Output allocated buffer (mempool 14) size 512 */
+static unsigned char *_mem_pool__user_io_output_1_network = NULL; /* tensor name Transpose_254_out_0 */
+
+/* User Output allocated buffer (mempool 15) size 384 */
+static unsigned char *_mem_pool__user_io_output_2_network = NULL; /* tensor name Transpose_238_out_0 */
+
+/* User Output allocated buffer (mempool 16) size 6144 */
+static unsigned char *_mem_pool__user_io_output_3_network = NULL; /* tensor name Transpose_230_out_0 */
+
 LL_ATON_User_IO_Result_t LL_ATON_Set_User_Input_Buffer_network(uint32_t num, void* buffer, uint32_t size)
 {
   LL_ATON_LIB_UNUSED(num);
   LL_ATON_LIB_UNUSED(buffer);
   LL_ATON_LIB_UNUSED(size);
 
+  if (num == 0) {
+    if (((uintptr_t)buffer % 32) != 0)
+      return LL_ATON_User_IO_WRONG_ALIGN; /* enforce MCU cacheline alignment */
+    if (size < 49152)
+      return LL_ATON_User_IO_WRONG_SIZE; /* enforce size needed */
+    _mem_pool__user_io_input_0_network = buffer;
+    return LL_ATON_User_IO_NOERROR;
+  } else
   { 
     return LL_ATON_User_IO_WRONG_INDEX;
   }
@@ -118,6 +141,9 @@ void *LL_ATON_Get_User_Input_Buffer_network(uint32_t num)
 {
   LL_ATON_LIB_UNUSED(num);
 
+  if (num == 0) {
+    return _mem_pool__user_io_input_0_network;
+  } else
   { 
     return NULL;
   }
@@ -129,6 +155,38 @@ LL_ATON_User_IO_Result_t LL_ATON_Set_User_Output_Buffer_network(uint32_t num, vo
   LL_ATON_LIB_UNUSED(buffer);
   LL_ATON_LIB_UNUSED(size);
 
+  if (num == 0) {
+    if (((uintptr_t)buffer % 32) != 0)
+      return LL_ATON_User_IO_WRONG_ALIGN; /* enforce MCU cacheline alignment */
+    if (size < 8192)
+      return LL_ATON_User_IO_WRONG_SIZE; /* enforce size needed */
+    _mem_pool__user_io_output_0_network = buffer;
+    return LL_ATON_User_IO_NOERROR;
+  } else
+  if (num == 1) {
+    if (((uintptr_t)buffer % 32) != 0)
+      return LL_ATON_User_IO_WRONG_ALIGN; /* enforce MCU cacheline alignment */
+    if (size < 512)
+      return LL_ATON_User_IO_WRONG_SIZE; /* enforce size needed */
+    _mem_pool__user_io_output_1_network = buffer;
+    return LL_ATON_User_IO_NOERROR;
+  } else
+  if (num == 2) {
+    if (((uintptr_t)buffer % 32) != 0)
+      return LL_ATON_User_IO_WRONG_ALIGN; /* enforce MCU cacheline alignment */
+    if (size < 384)
+      return LL_ATON_User_IO_WRONG_SIZE; /* enforce size needed */
+    _mem_pool__user_io_output_2_network = buffer;
+    return LL_ATON_User_IO_NOERROR;
+  } else
+  if (num == 3) {
+    if (((uintptr_t)buffer % 32) != 0)
+      return LL_ATON_User_IO_WRONG_ALIGN; /* enforce MCU cacheline alignment */
+    if (size < 6144)
+      return LL_ATON_User_IO_WRONG_SIZE; /* enforce size needed */
+    _mem_pool__user_io_output_3_network = buffer;
+    return LL_ATON_User_IO_NOERROR;
+  } else
   { 
     return LL_ATON_User_IO_WRONG_INDEX;
   }
@@ -138,6 +196,18 @@ void *LL_ATON_Get_User_Output_Buffer_network(uint32_t num)
 {
   LL_ATON_LIB_UNUSED(num);
 
+  if (num == 0) {
+    return _mem_pool__user_io_output_0_network;
+  } else
+  if (num == 1) {
+    return _mem_pool__user_io_output_1_network;
+  } else
+  if (num == 2) {
+    return _mem_pool__user_io_output_2_network;
+  } else
+  if (num == 3) {
+    return _mem_pool__user_io_output_3_network;
+  } else
   { 
     return NULL;
   }
@@ -1904,10 +1974,10 @@ static void _ec_blob_cache_start_func_61(const LL_ATON_RT_EpochBlockItem_t *epoc
   LL_ATON_Cache_MCU_Invalidate_Range(((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 16384))) /* Equivalent hex address = 0x342e4000UL */, 6144);
 
   /* *** MCU cache invalidate (only) operation (HW, whole range) *** */
-  /*     memory pool: 1 */
-  /*     start: ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 73216))) */
-  /*     end:   ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 73728))) */
-  LL_ATON_Cache_MCU_Invalidate_Range(((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 73216))) /* Equivalent hex address = 0x342f1e00UL */, 512);
+  /*     memory pool: 14 */
+  /*     start: (((uintptr_t)(_mem_pool__user_io_output_1_network)) + 0) */
+  /*     end:   (((uintptr_t)(_mem_pool__user_io_output_1_network)) + 512) */
+  LL_ATON_Cache_MCU_Invalidate_Range((((uintptr_t)(_mem_pool__user_io_output_1_network)) + 0) /* Equivalent hex offset = 0x0 */, 512);
 
 };
 
@@ -1987,16 +2057,22 @@ static void _ec_blob_cache_start_func_65(const LL_ATON_RT_EpochBlockItem_t *epoc
   LL_ATON_LIB_UNUSED(nn_instance);
 
   /* *** MCU cache invalidate (only) operation (HW, whole range) *** */
-  /*     memory pool: 1 */
-  /*     start: ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 0))) */
-  /*     end:   ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 14336))) */
-  LL_ATON_Cache_MCU_Invalidate_Range(((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 0))) /* Equivalent hex address = 0x342e0000UL */, 14336);
+  /*     memory pool: 13 */
+  /*     start: (((uintptr_t)(_mem_pool__user_io_output_0_network)) + 0) */
+  /*     end:   (((uintptr_t)(_mem_pool__user_io_output_0_network)) + 8192) */
+  LL_ATON_Cache_MCU_Invalidate_Range((((uintptr_t)(_mem_pool__user_io_output_0_network)) + 0) /* Equivalent hex offset = 0x0 */, 8192);
 
   /* *** MCU cache invalidate (only) operation (HW, whole range) *** */
-  /*     memory pool: 1 */
-  /*     start: ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 26624))) */
-  /*     end:   ((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 27008))) */
-  LL_ATON_Cache_MCU_Invalidate_Range(((uintptr_t)(ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(0x342e0000UL + 26624))) /* Equivalent hex address = 0x342e6800UL */, 384);
+  /*     memory pool: 15 */
+  /*     start: (((uintptr_t)(_mem_pool__user_io_output_2_network)) + 0) */
+  /*     end:   (((uintptr_t)(_mem_pool__user_io_output_2_network)) + 384) */
+  LL_ATON_Cache_MCU_Invalidate_Range((((uintptr_t)(_mem_pool__user_io_output_2_network)) + 0) /* Equivalent hex offset = 0x0 */, 384);
+
+  /* *** MCU cache invalidate (only) operation (HW, whole range) *** */
+  /*     memory pool: 16 */
+  /*     start: (((uintptr_t)(_mem_pool__user_io_output_3_network)) + 0) */
+  /*     end:   (((uintptr_t)(_mem_pool__user_io_output_3_network)) + 6144) */
+  LL_ATON_Cache_MCU_Invalidate_Range((((uintptr_t)(_mem_pool__user_io_output_3_network)) + 0) /* Equivalent hex offset = 0x0 */, 6144);
 
 };
 
@@ -2610,7 +2686,7 @@ const LL_ATON_RT_EpochBlockItem_t *LL_ATON_EpochBlockItems_network(void) {
       .epoch_num = 65,
       .last_epoch_num = 79,
       .estimated_npu_cycles = 85760,
-      .estimated_tot_cycles = 399104,
+      .estimated_tot_cycles = 383424,
 #endif // LL_ATON_EB_DBG_INFO
     },
     {
@@ -2778,11 +2854,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
   static const LL_Buffer_InfoTypeDef buff_info[] = {
     {
       .name = "Input_0_out_0",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_input_0_network)},
       .offset_start = 0,
       .offset_end = 49152,
-      .offset_limit = 49216,
-      .is_user_allocated = 0,
+      .offset_limit = 49160,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 0,
       .batch = 1,
@@ -2803,7 +2879,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
 #if LL_ATON_DBG_BUFFER_INFO_EXCLUDED == 0
     {
       .name = "Conv2D_15_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 106928,
       .offset_end = 107504,
       .offset_limit = 107568,
@@ -2827,7 +2903,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_29_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 106256,
       .offset_end = 106928,
       .offset_limit = 106992,
@@ -2851,7 +2927,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_40_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 98688,
       .offset_end = 99584,
       .offset_limit = 99648,
@@ -2875,7 +2951,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_58_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 93280,
       .offset_end = 94432,
       .offset_limit = 94496,
@@ -2899,7 +2975,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_72_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 86576,
       .offset_end = 88088,
       .offset_limit = 88152,
@@ -2923,7 +2999,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_83_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 81024,
       .offset_end = 83040,
       .offset_limit = 83104,
@@ -2947,7 +3023,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_101_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 78336,
       .offset_end = 81024,
       .offset_limit = 81088,
@@ -2971,7 +3047,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_115_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 71936,
       .offset_end = 75520,
       .offset_limit = 75584,
@@ -2995,7 +3071,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_129_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 67328,
       .offset_end = 71936,
       .offset_limit = 72000,
@@ -3019,7 +3095,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_143_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 61568,
       .offset_end = 67328,
       .offset_limit = 67392,
@@ -3043,7 +3119,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_157_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 54528,
       .offset_end = 61568,
       .offset_limit = 61632,
@@ -3067,7 +3143,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_168_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 46080,
       .offset_end = 54528,
       .offset_limit = 54592,
@@ -3091,7 +3167,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_180_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 101312,
       .offset_end = 102176,
       .offset_limit = 102240,
@@ -3115,7 +3191,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_183_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 0,
       .offset_end = 9216,
       .offset_limit = 9280,
@@ -3139,7 +3215,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_191_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 102176,
       .offset_end = 103040,
       .offset_limit = 103104,
@@ -3163,7 +3239,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_194_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 9216,
       .offset_end = 18432,
       .offset_limit = 18496,
@@ -3187,7 +3263,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_202_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 103040,
       .offset_end = 103904,
       .offset_limit = 103968,
@@ -3211,7 +3287,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_205_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 18432,
       .offset_end = 27648,
       .offset_limit = 27712,
@@ -3235,7 +3311,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_213_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 103904,
       .offset_end = 104768,
       .offset_limit = 104832,
@@ -3259,7 +3335,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_216_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 27648,
       .offset_end = 36864,
       .offset_limit = 36928,
@@ -3283,7 +3359,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_223_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 36864,
       .offset_end = 46080,
       .offset_limit = 46144,
@@ -3307,7 +3383,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_231_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 107504,
       .offset_end = 108080,
       .offset_limit = 108144,
@@ -3331,7 +3407,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_239_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 75520,
       .offset_end = 78336,
       .offset_limit = 78400,
@@ -3355,7 +3431,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_247_weights",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108080,
       .offset_end = 108256,
       .offset_limit = 108320,
@@ -3379,7 +3455,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_12_weights_inflated_331",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 99584,
       .offset_end = 100448,
       .offset_limit = 100512,
@@ -3403,7 +3479,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_26_weights_inflated_333",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 100448,
       .offset_end = 101312,
       .offset_limit = 101376,
@@ -3427,7 +3503,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_37_weights_inflated_335",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 96672,
       .offset_end = 97680,
       .offset_limit = 97744,
@@ -3451,7 +3527,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_55_weights_inflated_337",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 92128,
       .offset_end = 93280,
       .offset_limit = 93344,
@@ -3475,7 +3551,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_69_weights_inflated_339",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 89536,
       .offset_end = 90832,
       .offset_limit = 90896,
@@ -3499,7 +3575,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_80_weights_inflated_341",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 104768,
       .offset_end = 105524,
       .offset_limit = 105592,
@@ -3523,7 +3599,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_98_weights_inflated_343",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 90832,
       .offset_end = 92128,
       .offset_limit = 92192,
@@ -3547,7 +3623,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_112_weights_inflated_345",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 97680,
       .offset_end = 98688,
       .offset_limit = 98752,
@@ -3571,7 +3647,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_126_weights_inflated_347",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 94432,
       .offset_end = 95584,
       .offset_limit = 95648,
@@ -3595,7 +3671,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_140_weights_inflated_349",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 83040,
       .offset_end = 84984,
       .offset_limit = 85048,
@@ -3619,7 +3695,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_154_weights_inflated_351",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 88096,
       .offset_end = 89536,
       .offset_limit = 89600,
@@ -3643,7 +3719,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_165_weights_inflated_353",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 84992,
       .offset_end = 86576,
       .offset_limit = 86640,
@@ -3667,7 +3743,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_7_weights_submask_0_0_0_0_24_3_3_5_358",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 95584,
       .offset_end = 96664,
       .offset_limit = 96728,
@@ -3691,7 +3767,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_7_weights_submask_0_0_3_0_24_3_2_5_359",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 105536,
       .offset_end = 106256,
       .offset_limit = 106320,
@@ -3715,7 +3791,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Pad_23_pad_kern_92",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108256,
       .offset_end = 108320,
       .offset_limit = 108384,
@@ -3736,7 +3812,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Pad_45_pad_kern_172",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108320,
       .offset_end = 108352,
       .offset_limit = 108416,
@@ -3757,7 +3833,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Pad_52_pad_kern_186",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108352,
       .offset_end = 108384,
       .offset_limit = 108448,
@@ -3778,7 +3854,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Pad_66_pad_kern_232",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108384,
       .offset_end = 108416,
       .offset_limit = 108480,
@@ -3799,7 +3875,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Pad_88_pad_kern_312",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108416,
       .offset_end = 108432,
       .offset_limit = 108496,
@@ -3820,7 +3896,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Pad_95_pad_kern_326",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108432,
       .offset_end = 108448,
       .offset_limit = 108512,
@@ -3841,7 +3917,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Pad_109_pad_kern_368",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108448,
       .offset_end = 108464,
       .offset_limit = 108528,
@@ -3862,7 +3938,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Pad_123_pad_kern_414",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108464,
       .offset_end = 108480,
       .offset_limit = 108544,
@@ -3883,7 +3959,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Pad_137_pad_kern_460",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108480,
       .offset_end = 108496,
       .offset_limit = 108560,
@@ -3904,7 +3980,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Pad_151_pad_kern_506",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108496,
       .offset_end = 108512,
       .offset_limit = 108576,
@@ -3925,7 +4001,7 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Input_Buffers_Info_network(void)
     },
     {
       .name = "Pad_173_pad_kern_586",
-      .addr_base = {(unsigned char *)(0x70380000UL) /* Equivalent hex address = 0x70380000UL */},
+      .addr_base = {(unsigned char *)(0x70800000UL) /* Equivalent hex address = 0x70800000UL */},
       .offset_start = 108512,
       .offset_end = 108520,
       .offset_limit = 108584,
@@ -3974,11 +4050,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Output_Buffers_Info_network(void)
   static const LL_Buffer_InfoTypeDef buff_info[] = {
     {
       .name = "Transpose_246_out_0",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_0_network)},
       .offset_start = 0,
       .offset_end = 8192,
-      .offset_limit = 8256,
-      .is_user_allocated = 0,
+      .offset_limit = 8200,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 68,
       .batch = 1,
@@ -3998,11 +4074,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Output_Buffers_Info_network(void)
     },
     {
       .name = "Transpose_254_out_0",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 73216,
-      .offset_end = 73728,
-      .offset_limit = 73792,
-      .is_user_allocated = 0,
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_1_network)},
+      .offset_start = 0,
+      .offset_end = 512,
+      .offset_limit = 520,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 61,
       .batch = 1,
@@ -4022,11 +4098,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Output_Buffers_Info_network(void)
     },
     {
       .name = "Transpose_238_out_0",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 26624,
-      .offset_end = 27008,
-      .offset_limit = 27072,
-      .is_user_allocated = 0,
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_2_network)},
+      .offset_start = 0,
+      .offset_end = 384,
+      .offset_limit = 392,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 75,
       .batch = 1,
@@ -4046,11 +4122,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Output_Buffers_Info_network(void)
     },
     {
       .name = "Transpose_230_out_0",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 8192,
-      .offset_end = 14336,
-      .offset_limit = 14400,
-      .is_user_allocated = 0,
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_3_network)},
+      .offset_start = 0,
+      .offset_end = 6144,
+      .offset_limit = 6152,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 78,
       .batch = 1,
@@ -4449,11 +4525,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
   static const LL_Buffer_InfoTypeDef buff_info[] = {
     {
       .name = "Transpose_1_out_0",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_input_0_network)},
       .offset_start = 0,
       .offset_end = 49152,
-      .offset_limit = 49216,
-      .is_user_allocated = 0,
+      .offset_limit = 49160,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 1,
       .batch = 3,
@@ -6699,11 +6775,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_247_off_bias_out_328",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 73216,
-      .offset_end = 73728,
-      .offset_limit = 73792,
-      .is_user_allocated = 0,
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_1_network)},
+      .offset_start = 0,
+      .offset_end = 512,
+      .offset_limit = 520,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 61,
       .batch = 2,
@@ -6723,11 +6799,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     },
     {
       .name = "Transpose_250_out_0",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 73216,
-      .offset_end = 73728,
-      .offset_limit = 73792,
-      .is_user_allocated = 0,
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_1_network)},
+      .offset_start = 0,
+      .offset_end = 512,
+      .offset_limit = 520,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 61,
       .batch = 1,
@@ -6958,9 +7034,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_180_zero_off_out_223",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 43008,
-      .offset_end = 49152,
-      .offset_limit = 49216,
+      .offset_start = 8192,
+      .offset_end = 14336,
+      .offset_limit = 14400,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 66,
@@ -6982,9 +7058,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Reshape_243_out_0_inserted_out1006_inserted_out1010",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 8192,
-      .offset_end = 16384,
-      .offset_limit = 16448,
+      .offset_start = 0,
+      .offset_end = 8192,
+      .offset_limit = 8256,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 66,
@@ -7006,9 +7082,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Transpose_244_out_0",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 8192,
-      .offset_end = 16384,
-      .offset_limit = 16448,
+      .offset_start = 0,
+      .offset_end = 8192,
+      .offset_limit = 8256,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 66,
@@ -7030,9 +7106,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Transpose_244_out_0_cp_in_144_inserted_out1014",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 8192,
-      .offset_end = 16384,
-      .offset_limit = 16448,
+      .offset_start = 0,
+      .offset_end = 8192,
+      .offset_limit = 8256,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 66,
@@ -7054,9 +7130,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_180_off_bias_out_229",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 16384,
-      .offset_end = 22528,
-      .offset_limit = 22592,
+      .offset_start = 14336,
+      .offset_end = 20480,
+      .offset_limit = 20544,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 67,
@@ -7077,11 +7153,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     },
     {
       .name = "Transpose_244_out_0_cp_in_144_inserted_out1014_inserted_out1018",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_0_network)},
       .offset_start = 0,
       .offset_end = 8192,
-      .offset_limit = 8256,
-      .is_user_allocated = 0,
+      .offset_limit = 8200,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 67,
       .batch = 16,
@@ -7102,9 +7178,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Add_186_out_0",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 8192,
-      .offset_end = 14336,
-      .offset_limit = 14400,
+      .offset_start = 0,
+      .offset_end = 6144,
+      .offset_limit = 6208,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 68,
@@ -7126,9 +7202,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_191_zero_off_out_241",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 30720,
-      .offset_end = 36864,
-      .offset_limit = 36928,
+      .offset_start = 6144,
+      .offset_end = 12288,
+      .offset_limit = 12352,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 68,
@@ -7149,11 +7225,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     },
     {
       .name = "Transpose_246_out_0_cp_in_145",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_0_network)},
       .offset_start = 0,
       .offset_end = 8192,
-      .offset_limit = 8256,
-      .is_user_allocated = 0,
+      .offset_limit = 8200,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 68,
       .batch = 1,
@@ -7174,9 +7250,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_191_off_bias_out_247",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 20480,
-      .offset_end = 26624,
-      .offset_limit = 26688,
+      .offset_start = 12288,
+      .offset_end = 18432,
+      .offset_limit = 18496,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 69,
@@ -7198,9 +7274,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Add_197_out_0",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 14336,
-      .offset_end = 20480,
-      .offset_limit = 20544,
+      .offset_start = 6144,
+      .offset_end = 12288,
+      .offset_limit = 12352,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 70,
@@ -7222,9 +7298,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_202_zero_off_out_259",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 26624,
-      .offset_end = 32768,
-      .offset_limit = 32832,
+      .offset_start = 18432,
+      .offset_end = 24576,
+      .offset_limit = 24640,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 70,
@@ -7246,9 +7322,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_202_off_bias_out_265",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 20480,
-      .offset_end = 26624,
-      .offset_limit = 26688,
+      .offset_start = 12288,
+      .offset_end = 18432,
+      .offset_limit = 18496,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 71,
@@ -7270,9 +7346,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Add_208_out_0",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 8192,
-      .offset_end = 14336,
-      .offset_limit = 14400,
+      .offset_start = 0,
+      .offset_end = 6144,
+      .offset_limit = 6208,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 72,
@@ -7294,9 +7370,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_213_zero_off_out_277",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 26624,
-      .offset_end = 32768,
-      .offset_limit = 32832,
+      .offset_start = 18432,
+      .offset_end = 24576,
+      .offset_limit = 24640,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 72,
@@ -7318,9 +7394,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_213_off_bias_out_283",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 32768,
-      .offset_end = 38912,
-      .offset_limit = 38976,
+      .offset_start = 24576,
+      .offset_end = 30720,
+      .offset_limit = 30784,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 73,
@@ -7342,9 +7418,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_231_zero_off_out_304",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 14336,
-      .offset_end = 20480,
-      .offset_limit = 20544,
+      .offset_start = 6144,
+      .offset_end = 12288,
+      .offset_limit = 12352,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 74,
@@ -7366,9 +7442,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_223_zero_off_out_295",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 20480,
-      .offset_end = 26624,
-      .offset_limit = 26688,
+      .offset_start = 12288,
+      .offset_end = 18432,
+      .offset_limit = 18496,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 74,
@@ -7389,11 +7465,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     },
     {
       .name = "Conv2D_231_off_bias_out_310",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 26624,
-      .offset_end = 27008,
-      .offset_limit = 27072,
-      .is_user_allocated = 0,
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_2_network)},
+      .offset_start = 0,
+      .offset_end = 384,
+      .offset_limit = 392,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 75,
       .batch = 6,
@@ -7413,11 +7489,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     },
     {
       .name = "Transpose_234_out_0",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 26624,
-      .offset_end = 27008,
-      .offset_limit = 27072,
-      .is_user_allocated = 0,
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_2_network)},
+      .offset_start = 0,
+      .offset_end = 384,
+      .offset_limit = 392,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 75,
       .batch = 1,
@@ -7438,9 +7514,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Conv2D_223_off_bias_out_301",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 8192,
-      .offset_end = 14336,
-      .offset_limit = 14400,
+      .offset_start = 0,
+      .offset_end = 6144,
+      .offset_limit = 6208,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 76,
@@ -7462,9 +7538,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Transpose_226_out_0",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 8192,
-      .offset_end = 14336,
-      .offset_limit = 14400,
+      .offset_start = 0,
+      .offset_end = 6144,
+      .offset_limit = 6208,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 76,
@@ -7486,9 +7562,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Reshape_227_out_0_inserted_out1050",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 8192,
-      .offset_end = 14336,
-      .offset_limit = 14400,
+      .offset_start = 0,
+      .offset_end = 6144,
+      .offset_limit = 6208,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 76,
@@ -7510,9 +7586,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Reshape_227_out_0_inserted_out1050_inserted_out1054",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 14336,
-      .offset_end = 20480,
-      .offset_limit = 20544,
+      .offset_start = 6144,
+      .offset_end = 12288,
+      .offset_limit = 12352,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 77,
@@ -7534,9 +7610,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Transpose_228_out_0",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 14336,
-      .offset_end = 20480,
-      .offset_limit = 20544,
+      .offset_start = 6144,
+      .offset_end = 12288,
+      .offset_limit = 12352,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 77,
@@ -7558,9 +7634,9 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     {
       .name = "Transpose_228_out_0_cp_in_161_inserted_out1056",
       .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 14336,
-      .offset_end = 20480,
-      .offset_limit = 20544,
+      .offset_start = 6144,
+      .offset_end = 12288,
+      .offset_limit = 12352,
       .is_user_allocated = 0,
       .is_param = 0,
       .epoch = 77,
@@ -7581,11 +7657,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     },
     {
       .name = "Transpose_228_out_0_cp_in_161_inserted_out1056_inserted_out1060",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 8192,
-      .offset_end = 14336,
-      .offset_limit = 14400,
-      .is_user_allocated = 0,
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_3_network)},
+      .offset_start = 0,
+      .offset_end = 6144,
+      .offset_limit = 6152,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 78,
       .batch = 16,
@@ -7605,11 +7681,11 @@ const LL_Buffer_InfoTypeDef *LL_ATON_Internal_Buffers_Info_network(void)
     },
     {
       .name = "Transpose_230_out_0_cp_in_162",
-      .addr_base = {(unsigned char *)(0x342e0000UL) /* Equivalent hex address = 0x342e0000UL */},
-      .offset_start = 8192,
-      .offset_end = 14336,
-      .offset_limit = 14400,
-      .is_user_allocated = 0,
+      .addr_base = {((unsigned char *)&_mem_pool__user_io_output_3_network)},
+      .offset_start = 0,
+      .offset_end = 6144,
+      .offset_limit = 6152,
+      .is_user_allocated = 1,
       .is_param = 0,
       .epoch = 78,
       .batch = 1,

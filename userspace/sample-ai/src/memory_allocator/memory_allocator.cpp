@@ -27,6 +27,27 @@ bool MemoryAllocator::SameBuffer(const Buffer &lhs, const Buffer &rhs)
            lhs.index == rhs.index && lhs.region == rhs.region;
 }
 
+void MemoryAllocator::PopulateInferenceFrame(std::uint8_t index,
+                                             std::uint32_t sequence,
+                                             bool from_pipe2,
+                                             InferenceFrame *frame) const
+{
+    frame->buffer = inference_[index].buffer;
+    frame->output_count = static_cast<std::uint8_t>(kModelOutputCount);
+    frame->capture_sequence = sequence;
+    frame->from_pipe2 = from_pipe2;
+
+    std::uintptr_t output_address =
+        frame->buffer.address + kInferenceOutputsOffset;
+    for (std::size_t output = 0U; output < kMaxModelOutputs; ++output) {
+        const std::size_t output_size = kModelOutputBytes[output];
+        frame->outputs[output] = {
+            output_address, output_size, index, Region::kInference,
+            kBufferAlignment};
+        output_address += AlignUp(output_size, kBufferAlignment);
+    }
+}
+
 Error MemoryAllocator::Initialize()
 {
     if (initialized_) {
@@ -274,9 +295,7 @@ Error MemoryAllocator::AcquireInferenceBuffer(const CaptureFrame &capture,
         if (inference_[i].state == BufferState::kFree) {
             inference_[i].state = BufferState::kReadyForAi;
             inference_capture_sequence_[i] = capture.sequence;
-            frame->buffer = inference_[i].buffer;
-            frame->capture_sequence = capture.sequence;
-            frame->from_pipe2 = false;
+            PopulateInferenceFrame(i, capture.sequence, false, frame);
             return Make(ErrorCode::kOk, i, "memory.inference.acquire");
         }
     }
@@ -314,9 +333,7 @@ Error MemoryAllocator::ImportCompletedInference(std::uintptr_t address,
     }
     slot.state = BufferState::kReadyForAi;
     inference_capture_sequence_[index] = sequence;
-    frame->buffer = slot.buffer;
-    frame->capture_sequence = sequence;
-    frame->from_pipe2 = true;
+    PopulateInferenceFrame(index, sequence, true, frame);
     return Make(ErrorCode::kOk, index, "memory.inference.import");
 }
 

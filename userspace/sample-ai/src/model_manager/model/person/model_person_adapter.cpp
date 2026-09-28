@@ -7,6 +7,8 @@ stai_return_code person_model_get_info(stai_network_info *info);
 stai_return_code person_model_get_inputs(stai_ptr *inputs, stai_size *count);
 stai_return_code person_model_set_input(stai_ptr input, stai_size size);
 stai_return_code person_model_get_outputs(stai_ptr *outputs, stai_size *count);
+stai_return_code person_model_set_outputs(const stai_ptr *outputs,
+                                           stai_size count);
 stai_return_code person_model_run(stai_run_mode mode);
 stai_return_code person_model_continue_run(void);
 stai_return_code person_model_wait_for_event(void);
@@ -44,6 +46,12 @@ stai_return_code PersonModelAdapter::SetInput(stai_ptr input, stai_size size)
 stai_return_code PersonModelAdapter::GetOutputs(stai_ptr *outputs, stai_size *count)
 {
     return person_model_get_outputs(outputs, count);
+}
+
+stai_return_code PersonModelAdapter::SetOutputs(const stai_ptr *outputs,
+                                                 stai_size count)
+{
+    return person_model_set_outputs(outputs, count);
 }
 
 stai_return_code PersonModelAdapter::Run(stai_run_mode mode)

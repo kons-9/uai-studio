@@ -13,6 +13,8 @@ public:
     stai_return_code GetInputs(stai_ptr *inputs, stai_size *count) override;
     stai_return_code SetInput(stai_ptr input, stai_size size) override;
     stai_return_code GetOutputs(stai_ptr *outputs, stai_size *count) override;
+    stai_return_code SetOutputs(const stai_ptr *outputs,
+                                stai_size count) override;
     stai_return_code Run(stai_run_mode mode) override;
     stai_return_code ContinueRun() override;
     stai_return_code WaitForEvent() override;

@@ -9,6 +9,8 @@ stai_return_code segmentation_model_get_inputs(stai_ptr *inputs,
 stai_return_code segmentation_model_set_input(stai_ptr input, stai_size size);
 stai_return_code segmentation_model_get_outputs(stai_ptr *outputs,
                                                  stai_size *count);
+stai_return_code segmentation_model_set_outputs(const stai_ptr *outputs,
+                                                 stai_size count);
 stai_return_code segmentation_model_run(stai_run_mode mode);
 stai_return_code segmentation_model_continue_run(void);
 stai_return_code segmentation_model_wait_for_event(void);
@@ -49,6 +51,12 @@ stai_return_code SegmentationModelAdapter::GetOutputs(stai_ptr *outputs,
                                                       stai_size *count)
 {
     return segmentation_model_get_outputs(outputs, count);
+}
+
+stai_return_code SegmentationModelAdapter::SetOutputs(
+    const stai_ptr *outputs, stai_size count)
+{
+    return segmentation_model_set_outputs(outputs, count);
 }
 
 stai_return_code SegmentationModelAdapter::Run(stai_run_mode mode)
