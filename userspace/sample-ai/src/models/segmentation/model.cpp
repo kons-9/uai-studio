@@ -23,14 +23,18 @@ namespace uai::ai::models::segmentation {
 const ModelDescriptor &Model::Descriptor()
 {
     static constexpr ModelDescriptor kDescriptor{
-        ModelKind::kSegmentation, "segmentation", 320U, 320U, 1U,
-        {320U * 320U * 2U, 0U, 0U, 0U}, true};
+        ModelKind::kSegmentation, "segmentation", 320U, 320U};
     return kDescriptor;
 }
 
 const ModelDescriptor &Model::GetDescriptor() const
 {
     return Descriptor();
+}
+
+::uai::ai::models::ModelRuntime &Runtime(Model &model)
+{
+    return model;
 }
 
 stai_return_code Model::Initialize()

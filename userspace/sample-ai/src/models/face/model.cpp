@@ -1,5 +1,7 @@
 #include "models/face/model.hpp"
 
+#include "models/face/face_decoder.hpp"
+
 extern "C" {
 stai_return_code face_model_initialize(void);
 stai_return_code face_model_shutdown(void);
@@ -18,17 +20,57 @@ stai_return_code face_model_new_inference(void);
 
 namespace uai::ai::models::face {
 
+namespace {
+
+Decoder &FaceDecoderInstance()
+{
+    static Decoder decoder;
+    return decoder;
+}
+
+common::Error ConfigureFaceDecoder(const ModelOutputSpec &spec,
+                                   void *user_data)
+{
+    if (user_data == nullptr) {
+        return {common::ErrorCode::kInvalidArgument, 0U,
+                "face.decoder.context"};
+    }
+    return static_cast<Decoder *>(user_data)->Initialize(spec);
+}
+
+common::Error CompleteFaceInference(const InferenceCompletionContext &context,
+                                    ModelResult *result, void *user_data)
+{
+    if (user_data == nullptr) {
+        return {common::ErrorCode::kInvalidArgument, 0U,
+                "face.decoder.context"};
+    }
+    return static_cast<const Decoder *>(user_data)->Decode(context, result);
+}
+
+} // namespace
+
 const ModelDescriptor &Model::Descriptor()
 {
     static constexpr ModelDescriptor kDescriptor{
-        ModelKind::kFace, "face", 128U, 128U, 4U,
-        {512U * 16U, 512U, 384U, 384U * 16U}, true};
+        ModelKind::kFace, "face", 128U, 128U};
     return kDescriptor;
 }
 
 const ModelDescriptor &Model::GetDescriptor() const
 {
     return Descriptor();
+}
+
+ModelCallbacks Model::GetCallbacks() const
+{
+    return {ConfigureFaceDecoder, CompleteFaceInference,
+            &FaceDecoderInstance()};
+}
+
+::uai::ai::models::ModelRuntime &Runtime(Model &model)
+{
+    return model;
 }
 
 stai_return_code Model::Initialize()

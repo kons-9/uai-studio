@@ -12,7 +12,8 @@ const ModelBinding *NpuScheduler::Find(ModelKind kind) const
         return nullptr;
     }
     for (std::size_t i = 0U; i < binding_count_; ++i) {
-        if (bindings_[i].kind == kind && bindings_[i].model != nullptr) {
+        if (bindings_[i].kind == kind && bindings_[i].model != nullptr &&
+            bindings_[i].runtime != nullptr) {
             return &bindings_[i];
         }
     }
@@ -46,7 +47,7 @@ Error NpuScheduler::Initialize(const ModelBinding *bindings,
                 "npu_scheduler.initial_model"};
     }
 
-    last_status_ = npu_.Initialize(*active_->model);
+    last_status_ = npu_.Initialize(*active_->runtime);
     if (!last_status_.Ok()) {
         return last_status_.error;
     }
@@ -57,12 +58,12 @@ Error NpuScheduler::Initialize(const ModelBinding *bindings,
         if (&bindings_[i] == active_) {
             continue;
         }
-        if (bindings_[i].model == nullptr) {
+        if (bindings_[i].model == nullptr || bindings_[i].runtime == nullptr) {
             return {ErrorCode::kInvalidArgument,
                     static_cast<std::uint32_t>(i),
                     "npu_scheduler.null_model"};
         }
-        last_status_ = npu_.Preload(*bindings_[i].model);
+        last_status_ = npu_.Preload(*bindings_[i].runtime);
         if (!last_status_.Ok()) {
             return last_status_.error;
         }
@@ -86,7 +87,7 @@ Error NpuScheduler::SelectModel(ModelKind kind)
                 static_cast<std::uint32_t>(kind),
                 "npu_scheduler.model_not_registered"};
     }
-    last_status_ = npu_.SelectModel(*binding->model);
+    last_status_ = npu_.SelectModel(*binding->runtime);
     if (!last_status_.Ok()) {
         return last_status_.error;
     }
@@ -105,6 +106,14 @@ const models::ModelDescriptor *NpuScheduler::GetDescriptor() const
         return nullptr;
     }
     return &active_->model->GetDescriptor();
+}
+
+models::ModelCallbacks NpuScheduler::GetCallbacks() const
+{
+    if (!initialized_ || active_ == nullptr || active_->model == nullptr) {
+        return {};
+    }
+    return active_->model->GetCallbacks();
 }
 
 Error NpuScheduler::GetInfo(stai_network_info *info) const
@@ -128,7 +137,7 @@ Error NpuScheduler::SetInput(stai_ptr input, stai_size size) const
     if (!initialized_ || active_ == nullptr) {
         return InvalidState("npu_scheduler.set_input");
     }
-    const stai_return_code code = active_->model->SetInput(input, size);
+    const stai_return_code code = active_->runtime->SetInput(input, size);
     return code >= STAI_ERROR_GENERIC
                ? Error{ErrorCode::kModel, static_cast<std::uint32_t>(code),
                        "npu_scheduler.set_input"}

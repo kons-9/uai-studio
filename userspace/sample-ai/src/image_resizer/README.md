@@ -70,10 +70,12 @@ Pipe1の表示用フレームをCPUで縮小して推論入力にする経路と
 そのまま推論入力になります。そのため、枠の位置を変更する場合は、Pipe2のcropと
 `model_manager`のPipe2からPipe1への座標変換を同時に確認してください。
 
-性能を測るときは、`AI_DCMIPP_PIPE2_FRAME_RATE` と
-`AI_INFERENCE_DIAGNOSTICS` を記録してください。前者が
+性能を測るときは、`AI_DCMIPP_PIPE2_FRAME_RATE` と TaskContext の
+`diagnostics.inference_fps` を記録してください。前者が
 `DCMIPP_FRAME_RATE_1_OVER_2` なら、20 fpsのカメラに対してPipe2の入力上限は約10 fps
-です。また、後者を有効にすると推論経路でUARTログが増えます。T-Monitorの
+です。推論の詳細を一時的に確認する場合は `TaskContext::diagnostics` の
+`inference_trace`、`inference_input`、`camera_brightness` など必要な項目だけを
+`true` にします。T-Monitorの
 `tm_printf()`は1文字ずつ送信するため、診断ログを有効にしたままではカメラタスクや
 推論タスクの実測値が悪化する可能性があります。
 

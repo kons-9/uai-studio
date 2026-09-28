@@ -21,14 +21,18 @@ namespace uai::ai::models::person {
 const ModelDescriptor &Model::Descriptor()
 {
     static constexpr ModelDescriptor kDescriptor{
-        ModelKind::kPerson, "person", 480U, 480U, 3U,
-        {15U * 15U * 18U, 60U * 60U * 18U, 30U * 30U * 18U, 0U}, true};
+        ModelKind::kPerson, "person", 480U, 480U};
     return kDescriptor;
 }
 
 const ModelDescriptor &Model::GetDescriptor() const
 {
     return Descriptor();
+}
+
+::uai::ai::models::ModelRuntime &Runtime(Model &model)
+{
+    return model;
 }
 
 stai_return_code Model::Initialize()

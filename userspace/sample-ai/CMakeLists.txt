@@ -30,14 +30,8 @@ if(NOT DEFINED AI_DCMIPP_DEMOSAIC_LINEAR)
     option(AI_DCMIPP_DEMOSAIC_LINEAR
         "Use linear Pipe1 Bayer demosaicing for a diagnostic capture" OFF)
 endif()
-option(AI_SEGMENTATION_DIAGNOSTICS
-    "Enable one-shot NPU epoch diagnostics for the segmentation model" OFF)
 option(AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC
     "Display live Pipe2 inference input on the LCD while inference continues" OFF)
-option(AI_INFERENCE_DIAGNOSTICS
-    "Keep verbose UART and tensor inspections in the inference hot path" OFF)
-option(AI_INFERENCE_FPS_DIAGNOSTICS
-    "Emit one lightweight inference FPS summary per second" OFF)
 option(AI_DISPLAY_TIMING_DIAGNOSTICS
     "Emit one lightweight LCD copy timing summary per second" OFF)
 set(AI_DCMIPP_PIPE2_FRAME_RATE "DCMIPP_FRAME_RATE_1_OVER_2" CACHE STRING
@@ -55,24 +49,18 @@ set(AI_MODEL_C_API_SOURCES
     "${AI_SRC_DIR}/models/segmentation/model_segmentation.c"
     "${AI_SRC_DIR}/models/face/model_face.c")
 set(AI_MODEL_SOURCES
-    "${AI_SRC_DIR}/models/model_catalog.cpp"
     "${AI_SRC_DIR}/models/person/model.cpp"
     "${AI_SRC_DIR}/models/segmentation/model.cpp"
-    "${AI_SRC_DIR}/models/face/model.cpp")
+    "${AI_SRC_DIR}/models/face/model.cpp"
+    "${AI_SRC_DIR}/models/face/face_decoder.cpp")
 set(AI_MODEL_EXTRA_SOURCES
     "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/od_pp_st_yolox.c"
     "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/fd_pp_blazeface.c"
     "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp_maxi_is8.c"
-    "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp.c"
-    "${AI_SRC_DIR}/models/face/model_face_postprocess.c")
+    "${AI_THIRDPARTY_DIR}/vision_models_pp/Src/vision_models_pp.c")
 set(AI_MODEL_EXTRA_LIBRARIES
     "${AI_THIRDPARTY_DIR}/Lib/GCC/ARMCortexM55/NetworkRuntime1200_CM55_GCC.a")
 set(AI_MODEL_NOR_PROBE_OFFSET 0x00380000U)
-
-if(AI_SEGMENTATION_DIAGNOSTICS)
-    list(APPEND AI_MODEL_EXTRA_SOURCES
-        "${AI_SRC_DIR}/models/segmentation/model_segmentation_diagnostics.c")
-endif()
 
 set(AI_CAMERA_BSP_SOURCE
     "${AI_SRC_DIR}/driver/camera_driver/board_driver/stm32n6570_discovery_camera.c")
@@ -85,6 +73,7 @@ add_executable(sample-ai.elf
     src/task/application_initialize_task.cpp
     src/task/camera_render_task.cpp
     src/task/inference_task.cpp
+    src/task/task_context.cpp
     src/task/task_diagnostics.cpp
     src/driver/camera_driver/sensor_driver/registers/imx335_registers.cpp
     src/driver/camera_driver/camera_driver.cpp
@@ -166,12 +155,7 @@ target_compile_definitions(sample-ai.elf PRIVATE
     AI_DCMIPP_DEMOSAIC_LINEAR=$<BOOL:${AI_DCMIPP_DEMOSAIC_LINEAR}>
     AI_DCMIPP_PIPE2_FRAME_RATE=${AI_DCMIPP_PIPE2_FRAME_RATE}
     AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC=$<BOOL:${AI_INFERENCE_INPUT_DISPLAY_DIAGNOSTIC}>
-    AI_INFERENCE_DIAGNOSTICS=$<BOOL:${AI_INFERENCE_DIAGNOSTICS}>
-    AI_INFERENCE_FPS_DIAGNOSTICS=$<BOOL:${AI_INFERENCE_FPS_DIAGNOSTICS}>
     AI_DISPLAY_TIMING_DIAGNOSTICS=$<BOOL:${AI_DISPLAY_TIMING_DIAGNOSTICS}>)
-if(AI_SEGMENTATION_DIAGNOSTICS)
-    target_compile_definitions(sample-ai.elf PRIVATE AI_SEGMENTATION_DIAG=1)
-endif()
 target_compile_options(sample-ai.elf PRIVATE
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
 target_link_libraries(sample-ai.elf PRIVATE
@@ -275,11 +259,6 @@ target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
     LL_ATON_SW_FALLBACK
     LL_ATON_DBG_BUFFER_INFO_EXCLUDED=1
     NPU_CACHE_EXTERNAL_HAL_MSP)
-if(AI_SEGMENTATION_DIAGNOSTICS)
-    target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
-        AI_SEGMENTATION_DIAG=1
-        LL_ATON_EB_DBG_INFO)
-endif()
 # Export the vendor NPU handler under a private name for every model. The
 # application wrapper calls it first, then wakes the inference task through a
 # T-Kernel event flag. This avoids a fixed polling delay between epoch blocks.

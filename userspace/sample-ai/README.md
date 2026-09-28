@@ -25,9 +25,10 @@ UARTには `pipe2 frame queued`、`pipe2` イベント数、ドロップ数を�
 合わせて確認してください。
 
 推論の投入周期は20 msです。実機でのpersonモデルは初回ウォームアップ後、NPU実行が
-おおむね10〜12 msでした。詳細UART・入力テンソル走査を有効にして測定する場合は
-`-DAI_INFERENCE_DIAGNOSTICS=ON`を指定してください。通常はUARTが推論を妨げないよう
-`OFF`（デフォルト）にします。
+おおむね10〜12 msでした。詳細UART・入力テンソル走査を一時的に有効にする場合は、
+`TaskContext::diagnostics` の `inference_trace` と `inference_input` を設定します。
+FPSだけを測る場合は `inference_fps` のみを設定してください。通常はUARTが推論を
+妨げないよう、すべてfalse（ゼロ初期値）にします。
 
 ### CSIエラー／カメラ再起動の切り分け結果（2026-09-25）
 
@@ -102,18 +103,22 @@ ST公式のモデル取得元、モデルファイル名、ライセンスと利
 - `src/models/`：共通の `Model` インターフェースと、`person/`・`segmentation/`・
   `face/`ごとのモデル実装を配置します。STEdgeAIが生成した `*_model_*` C関数名は
   各モデルnamespaceに閉じ込めます。具体的な型は
-  `uai::ai::models::<model>::Model` です。
+  `uai::ai::models::<model>::Model` です。Faceのanchor/dequant/NMSと座標変換も
+  `face/face_decoder.cpp`に閉じています。
 - `src/npu_scheduler/`：`NpuDriver`の初期化、command blobのpreload、モデル選択、
   入出力バインド、NPU実行と完了待ちを管理します。動的切り替え時もここで
   `SelectModel()`を呼ぶだけで、`ModelManager::Initialize()`をやり直しません。
-- `src/model_manager/`：モデルの入力変換、出力所有権、person/face/segmentationの
-  後処理と表示用結果への変換を担当します。
+- `src/model_manager/`：モデルの入力変換、出力所有権、person/segmentationの出力処理と
+  共通`BoxSet`への変換を担当します。Face固有のC後処理APIは直接参照せず、decoder結果
+  だけを共通結果へ詰め替えます。
 
 `ModelManager`に残す責務は、アプリケーションから見た推論のライフサイクル、現在の
 モデル状態、allocator/cacheとの入出力バインド、モデル固有出力の共通`BoxSet`への
-変換です。`ModelKind`と`ModelDescriptor`の共通型は`models/model.hpp`に置き、具体的な
-descriptor値は各モデルの`model.cpp`が所有します。`models/model_catalog.cpp`は、モデル
-インスタンス生成前に`ModelKind`から各モデルのdescriptorを取得するための薄い検索層です。
+変換です。`ModelKind`と入力形状だけを持つ`ModelDescriptor`の共通型は
+`models/model.hpp`に置き、具体的なdescriptor値は各モデルの`model.cpp`が所有します。
+出力数・出力サイズ・量子化値は生成STAIの`stai_network_info`から実行時に取得し、公開
+モデルI/Fには持ち込みません。descriptorは生成モデルの実体を所有する
+`ModelManager`から現在のモデルに対して取得します。
 
 そのため、モデル切り替えやNPUの実行順序に関する条件分岐はschedulerのbinding表へ
 集約しています。モデル選択用のCMakeオプションや`AI_MODEL_*`のビルド分岐はなく、

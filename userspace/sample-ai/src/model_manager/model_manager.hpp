@@ -31,6 +31,7 @@ public:
     }
 
     ModelKind CurrentModel() const { return model_kind_; }
+    const models::ModelDescriptor *CurrentDescriptor() const;
 
 private:
     common::Error ConfigureCurrentModel();

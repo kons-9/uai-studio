@@ -59,11 +59,10 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  /* Reserve a fixed gap after .rodata and before the RAM entry at 0x34050000
-   * for the C runtime callback tables. The dynamic model dispatcher and its
-   * CPU letterbox path enlarged .rodata beyond the previous 0x34049000 slot.
-   * Keep the launch entry address unchanged while moving only these tables. */
-  .preinit_array 0x3404A000 :
+  /* Keep the C runtime callback tables immediately after .rodata. They must
+   * not use a fixed address: adding a model callback can legitimately grow
+   * .rodata. The RAM launch entry below remains at its fixed address. */
+  .preinit_array :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__preinit_array_start = .);
@@ -72,7 +71,7 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  .init_array 0x3404A000 :
+  .init_array :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__init_array_start = .);
@@ -82,7 +81,7 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  .fini_array 0x3404A010 :
+  .fini_array :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN(__fini_array_start = .);

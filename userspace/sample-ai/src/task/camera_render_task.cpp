@@ -5,17 +5,57 @@
 
 #include "driver/camera_driver/camera_driver.hpp"
 #include "driver/lcd_driver/lcd_driver.hpp"
+#include "driver/npu_driver/debug.h"
+#include "task/camera_render_task.hpp"
 #include "task/task_context.hpp"
+#include "task/task_diagnostics.hpp"
+
+extern "C" {
+#include <tm/tmonitor.h>
+#include "stm32n6xx_hal.h"
+}
 
 namespace uai::ai::task {
 
-void camera_render_task(void)
+void CameraRenderTask::Entry()
 {
+    CameraRenderTask{}.Run();
+}
+
+void CameraRenderTask::Run()
+{
+    TaskContext &context = GetTaskContext();
     Error status{};
 
-    auto &lcd = g_lcd;
-    auto &camera = g_camera;
-    const BoxSet initial = EmptyBoxes();
+    auto &lcd = context.lcd;
+    auto &camera = context.camera;
+    auto camera_diag = camera.GetDiagnostics();
+    auto &g_camera_vsync_event_count = camera_diag.vsync_event_count;
+    auto &g_camera_frame_event_count = camera_diag.frame_event_count;
+    auto &g_camera_recovery_count = camera_diag.recovery_count;
+    auto &g_camera_recovery_error_count = camera_diag.recovery_error_count;
+    auto &g_camera_isp_error_count = camera_diag.isp_error_count;
+    auto &g_camera_dcmipp_last_status = camera_diag.dcmipp_last_status;
+    auto &g_camera_dcmipp_error_count = camera_diag.dcmipp_error_count;
+    auto &g_camera_camera_error_count = camera_diag.camera_error_count;
+    auto &g_camera_pipe2_frame_event_count =
+        camera_diag.pipe2_frame_event_count;
+    auto &g_camera_pipe2_drop_count = camera_diag.pipe2_drop_count;
+    auto &g_camera_csi_last_status = camera_diag.csi_last_status;
+    auto &g_camera_csi_last_status1 = camera_diag.csi_last_status1;
+    auto &g_camera_csi_last_pending_status =
+        camera_diag.csi_last_pending_status;
+    auto &g_camera_csi_last_pending_status1 =
+        camera_diag.csi_last_pending_status1;
+    auto &g_camera_csi_error_count = camera_diag.csi_error_count;
+    auto &g_camera_csi_last_error_code = camera_diag.csi_last_error_code;
+    auto &g_camera_csi_sot_sync_dl0_count =
+        camera_diag.csi_sot_sync_dl0_count;
+    auto &g_camera_csi_sot_sync_dl1_count =
+        camera_diag.csi_sot_sync_dl1_count;
+    auto &g_camera_csi_sot_dl0_count = camera_diag.csi_sot_dl0_count;
+    auto &g_camera_csi_sot_dl1_count = camera_diag.csi_sot_dl1_count;
+    const BoxSet initial{};
 
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
         "lcd: driver ready\n")));
@@ -25,7 +65,7 @@ void camera_render_task(void)
                                   kDisplayCoordinatePatternDiagnostic);
     if (!status.Ok()) {
         LogStatus("lcd", status);
-        Halt("ai: initial frame failed\n");
+        context.Halt("ai: initial frame failed\n");
     }
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
         "lcd: initial buffer ready box_count=0\n")));
@@ -34,7 +74,7 @@ void camera_render_task(void)
         status = lcd.SynchronizeCurrentFrame();
         if (!status.Ok()) {
             LogStatus("lcd", status);
-            Halt("ai: diagnostic frame did not latch\n");
+            context.Halt("ai: diagnostic frame did not latch\n");
         }
         tm_printf(reinterpret_cast<const UB *>(
                       "lcd: diagnostic readback fb=%x cr=%x pfcr=%x cfblr=%x cfblnr=%x awcr=%x twcr=%x isr=%x\n"),
@@ -57,39 +97,39 @@ void camera_render_task(void)
         status = lcd.SynchronizeCurrentFrame();
         if (!status.Ok()) {
             LogStatus("lcd", status);
-            Halt("ai: initial diagnostic frame did not latch\n");
+            context.Halt("ai: initial diagnostic frame did not latch\n");
         }
 
         std::uintptr_t capture0 = 0U;
         std::uintptr_t capture1 = 0U;
-        status = g_memory.CaptureBuffers(&capture0, &capture1);
+        status = context.memory.CaptureBuffers(&capture0, &capture1);
         if (!status.Ok()) {
             LogStatus("memory", status);
-            Halt("ai: diagnostic capture buffers unavailable\n");
+            context.Halt("ai: diagnostic capture buffers unavailable\n");
         }
         const uai::ai::memory_allocator::Buffer source_buffer{
             capture0, uai::ai::memory_allocator::kFrameBytes, 0U,
             uai::ai::memory_allocator::Region::kCapture};
-        status = g_cache.PrepareForDmaWrite(source_buffer);
+        status = context.cache.PrepareForDmaWrite(source_buffer);
         if (!status.Ok()) {
             LogStatus("memory", status);
-            Halt("ai: diagnostic source cache prepare failed\n");
+            context.Halt("ai: diagnostic source cache prepare failed\n");
         }
         status = lcd.GenerateCoordinatePattern(source_buffer);
         if (!status.Ok()) {
             LogStatus("lcd", status);
-            Halt("ai: diagnostic pattern generation failed\n");
+            context.Halt("ai: diagnostic pattern generation failed\n");
         }
         SCB_CleanDCache_by_Addr(
             reinterpret_cast<std::uint32_t *>(source_buffer.address),
             static_cast<std::int32_t>(source_buffer.size));
 
         uai::ai::memory_allocator::CaptureFrame synthetic_capture{};
-        status = g_memory.ImportCompletedCapture(source_buffer.address,
-                                                  &synthetic_capture);
+        status = context.memory.ImportCompletedCapture(source_buffer.address,
+                                                        &synthetic_capture);
         if (!status.Ok()) {
             LogStatus("memory", status);
-            Halt("ai: diagnostic capture import failed\n");
+            context.Halt("ai: diagnostic capture import failed\n");
         }
         tm_printf(reinterpret_cast<const UB *>(
                       "lcd: synthetic compose begin sequence=%u source=%x bytes=%u\n"),
@@ -99,7 +139,7 @@ void camera_render_task(void)
         status = lcd.ComposeAndPresent(synthetic_capture, initial, true);
         if (!status.Ok()) {
             LogStatus("lcd", status);
-            Halt("ai: synthetic compose failed\n");
+            context.Halt("ai: synthetic compose failed\n");
         }
         tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
             "lcd: synthetic compose presented; camera remains stopped\n")));
@@ -113,19 +153,20 @@ void camera_render_task(void)
     status = camera.Start();
     if (!status.Ok()) {
         LogStatus("camera", status);
-        Halt("ai: camera start failed\n");
+        context.Halt("ai: camera start failed\n");
     }
     tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
         "camera: start result=ok detail=0\n")));
     if constexpr (kLiveCaptureFreezeDiagnostic) {
         uai::ai::memory_allocator::CaptureFrame first_capture{};
-        const std::uint32_t wait_start = Now();
+        const std::uint32_t wait_start = context.Now();
         for (;;) {
             status = camera.Process();
             if (!status.Ok()) {
                 LogStatus("camera", status);
-                Halt("ai: frozen capture process failed\n");
+                context.Halt("ai: frozen capture process failed\n");
             }
+            camera_diag = camera.GetDiagnostics();
             uai::ai::memory_allocator::CaptureFrame candidate{};
             status = camera.TakeCompletedCapture(&candidate);
             if (status.Ok()) {
@@ -145,10 +186,10 @@ void camera_render_task(void)
             }
             if (status.code != ErrorCode::kNoFrame) {
                 LogStatus("camera", status);
-                Halt("ai: frozen capture acquire failed\n");
+                context.Halt("ai: frozen capture acquire failed\n");
             }
-            if (static_cast<std::uint32_t>(Now() - wait_start) >= 3000U) {
-                Halt("ai: frozen capture timed out\n");
+            if (static_cast<std::uint32_t>(context.Now() - wait_start) >= 3000U) {
+                context.Halt("ai: frozen capture timed out\n");
             }
             tk_dly_tsk(1);
         }
@@ -161,7 +202,7 @@ void camera_render_task(void)
         status = camera.Stop();
         if (!status.Ok()) {
             LogStatus("camera", status);
-            Halt("ai: camera stop failed; capture not inspected\n");
+            context.Halt("ai: camera stop failed; capture not inspected\n");
         }
 
         uai::ai::memory_allocator::CaptureFrame latest_capture{};
@@ -171,12 +212,12 @@ void camera_render_task(void)
             first_capture = latest_capture;
         } else if (latest_status.code != ErrorCode::kNoFrame) {
             LogStatus("camera", latest_status);
-            Halt("ai: stopped capture acquire failed\n");
+            context.Halt("ai: stopped capture acquire failed\n");
         }
-        status = g_cache.PrepareForCpuRead(first_capture.buffer);
+        status = context.cache.PrepareForCpuRead(first_capture.buffer);
         if (!status.Ok()) {
             LogStatus("memory", status);
-            Halt("ai: frozen capture cache invalidate failed\n");
+            context.Halt("ai: frozen capture cache invalidate failed\n");
         }
         tm_printf(reinterpret_cast<const UB *>(
                       "camera: freeze complete events_before=%u events_after=%u selected_sequence=%u selected_address=%x\n"),
@@ -188,12 +229,12 @@ void camera_render_task(void)
         status = lcd.ComposeAndPresent(first_capture, initial, true);
         if (!status.Ok()) {
             LogStatus("lcd", status);
-            Halt("ai: frozen live capture compose failed\n");
+            context.Halt("ai: frozen live capture compose failed\n");
         }
         status = lcd.SynchronizeCurrentFrame();
         if (!status.Ok()) {
             LogStatus("lcd", status);
-            Halt("ai: frozen live capture display did not latch\n");
+            context.Halt("ai: frozen live capture display did not latch\n");
         }
         tm_printf(reinterpret_cast<const UB *>(
                       "lcd: frozen capture readback fb=%x cr=%x pfcr=%x cfblr=%x cfblnr=%x awcr=%x twcr=%x isr=%x\n"),
@@ -219,7 +260,7 @@ void camera_render_task(void)
               static_cast<unsigned int>(NVIC_GetPendingIRQ(CSI_IRQn)));
 
     BoxSet active_boxes = initial;
-    std::uint32_t next_inference = Now() + kInferencePeriod;
+    std::uint32_t next_inference = context.Now() + kInferencePeriod;
 
     std::uint32_t loop_count = 0U;
     unsigned int reported_pipe_errors = 0U;
@@ -228,33 +269,15 @@ void camera_render_task(void)
     unsigned int reported_recoveries = 0U;
     unsigned int reported_recovery_errors = 0U;
     unsigned int reported_isp_errors = 0U;
-    std::uint32_t last_async_error_log_tick = Now();
+    std::uint32_t last_async_error_log_tick = context.Now();
     for (;;) {
         ++loop_count;
-        /* Pipe2 belongs to this task.  Reconfiguring it from the inference
-         * task races with Process()/TakeCompletedInference() and can leave
-         * DCMIPP in a state where the camera recovery path is triggered.
-         * Complete the request here, before the next camera poll. */
-        if (g_camera_reconfigure_complete !=
-            g_camera_reconfigure_request) {
-            const std::uint32_t request = g_camera_reconfigure_request;
-            const auto requested_kind = static_cast<
-                uai::ai::models::ModelKind>(
-                g_camera_reconfigure_kind);
-            const Error reconfigure_status = camera.ReconfigureInference(
-                uai::ai::models::DescriptorFor(requested_kind));
-            g_camera_reconfigure_code =
-                static_cast<std::uint32_t>(reconfigure_status.code);
-            g_camera_reconfigure_detail = reconfigure_status.detail;
-            /* Publish completion last so the inference task never observes
-             * a request as complete before its result fields are written. */
-            g_camera_reconfigure_complete = request;
-        }
         status = camera.Process();
         if (!status.Ok()) {
             LogStatus("camera", status);
-            Halt("ai: camera process failed\n");
+            context.Halt("ai: camera process failed\n");
         }
+        camera_diag = camera.GetDiagnostics();
         const bool async_error_changed =
             reported_pipe_errors != g_camera_dcmipp_error_count ||
             reported_camera_errors != g_camera_camera_error_count ||
@@ -264,12 +287,12 @@ void camera_render_task(void)
             ((reported_pipe_errors == 0U &&
               reported_camera_errors == 0U && reported_csi_errors == 0U &&
               reported_isp_errors == 0U) ||
-             Now() - last_async_error_log_tick >= 1000U)) {
+             context.Now() - last_async_error_log_tick >= 1000U)) {
             reported_pipe_errors = g_camera_dcmipp_error_count;
             reported_camera_errors = g_camera_camera_error_count;
             reported_csi_errors = g_camera_csi_error_count;
             reported_isp_errors = g_camera_isp_error_count;
-            last_async_error_log_tick = Now();
+            last_async_error_log_tick = context.Now();
             tm_printf(reinterpret_cast<const UB *>(
                           "camera: async errors pipe=%u sensor=%u csi=%u isp=%u dcmipp=%x csi0=%x csi1=%x pend0=%x pend1=%x code=%x sot_sync_dl0=%u sot_sync_dl1=%u sot_dl0=%u sot_dl1=%u\n"),
                       reported_pipe_errors, reported_camera_errors,
@@ -297,10 +320,10 @@ void camera_render_task(void)
                       g_camera_pipe2_drop_count);
         }
 
-        const std::uint32_t now = Now();
+        const std::uint32_t now = context.Now();
         const bool inference_due = kCopyInferenceFrames &&
                                     (kInferenceMode == InferenceMode::kCopyOnly ||
-                                     g_external_nor_ready) &&
+                                     context.external_nor_ready) &&
                                     static_cast<std::int32_t>(now -
                                                               next_inference) >=
                                         0;
@@ -310,23 +333,17 @@ void camera_render_task(void)
          * inference period is intentionally slow. */
         InferenceFrame pipe2_frame{};
         const Error pipe2_status = camera.TakeCompletedInference(&pipe2_frame);
-        if (pipe2_status.Ok() && g_model_switch_in_progress) {
-            /* Do not queue frames in the old tensor format while the model
-             * and Pipe2 are being switched. */
-            status = g_memory.ReleaseInferenceBuffer(pipe2_frame);
-            if (!status.Ok()) {
-                LogStatus("memory", status);
-            }
-        } else if (pipe2_status.Ok()) {
+        if (pipe2_status.Ok()) {
             if constexpr (kInferenceInputDisplayDiagnostic) {
-                status = g_memory.ClaimInferenceBuffer(pipe2_frame);
+                status = context.memory.ClaimInferenceBuffer(pipe2_frame);
                 if (!status.Ok()) {
                     LogStatus("memory", status);
-                    Halt("ai: inference input display claim failed\n");
+                    context.Halt("ai: inference input display claim failed\n");
                 }
                 const bool log_input =
-                    pipe2_frame.capture_sequence <= 3U ||
-                    (pipe2_frame.capture_sequence % 30U) == 0U;
+                    context.diagnostics.inference_input &&
+                    (pipe2_frame.capture_sequence <= 3U ||
+                     (pipe2_frame.capture_sequence % 30U) == 0U);
                 if (log_input) {
                     tm_printf(reinterpret_cast<const UB *>(
                                   "ai: input display live sequence=%u buffer=%x\n"),
@@ -338,30 +355,30 @@ void camera_render_task(void)
                 }
                 status = lcd.ComposeInferenceAndPresent(pipe2_frame);
                 if (!status.Ok() &&
-                    (!IsBestEffort(status.code) || log_input)) {
+                    (!context.IsBestEffort(status.code) || log_input)) {
                     LogStatus("lcd", status);
                 }
                 const Error release_status =
-                    g_memory.ReleaseInferenceBuffer(pipe2_frame);
+                    context.memory.ReleaseInferenceBuffer(pipe2_frame);
                 if (!release_status.Ok()) {
                     LogStatus("memory", release_status);
-                    Halt("ai: diagnostic inference release failed\n");
+                    context.Halt("ai: diagnostic inference release failed\n");
                 }
             } else if (inference_due &&
                 kInferenceMode == InferenceMode::kNpu) {
-#if AI_INFERENCE_DIAGNOSTICS
-                tm_printf(reinterpret_cast<const UB *>(
-                              "ai: pipe2 frame queued sequence=%u buffer=%x events=%u drops=%u\n"),
-                          static_cast<unsigned int>(pipe2_frame.capture_sequence),
-                          static_cast<unsigned int>(pipe2_frame.buffer.address),
-                          g_camera_pipe2_frame_event_count,
-                          g_camera_pipe2_drop_count);
-#endif
-                SendInferenceFrame(pipe2_frame);
+                if (context.diagnostics.inference_trace) {
+                    tm_printf(reinterpret_cast<const UB *>(
+                                  "ai: pipe2 frame queued sequence=%u buffer=%x events=%u drops=%u\n"),
+                              static_cast<unsigned int>(pipe2_frame.capture_sequence),
+                              static_cast<unsigned int>(pipe2_frame.buffer.address),
+                              g_camera_pipe2_frame_event_count,
+                              g_camera_pipe2_drop_count);
+                }
+                context.SendInferenceFrame(pipe2_frame);
                 next_inference = now + kInferencePeriod;
             } else {
                 const Error release_status =
-                    g_memory.ReleaseInferenceBuffer(pipe2_frame);
+                    context.memory.ReleaseInferenceBuffer(pipe2_frame);
                 if (!release_status.Ok()) {
                     LogStatus("memory", release_status);
                 }
@@ -370,7 +387,7 @@ void camera_render_task(void)
                    pipe2_status.code != ErrorCode::kNoBuffer) {
             LogStatus("camera", pipe2_status);
         }
-        if (DrainLatestBoxes(&active_boxes)) {
+        if (context.DrainLatestBoxes(&active_boxes)) {
             /* The latest inference result is authoritative. Until it arrives,
              * keep presenting the previous result so model switching does not
              * create a blank frame. */
@@ -385,60 +402,59 @@ void camera_render_task(void)
             continue;
         }
 
-#if AI_INFERENCE_DIAGNOSTICS
-        if (capture.sequence <= 3U ||
-            (capture.sequence % 10U) == 0U) {
-            tm_printf(reinterpret_cast<const UB *>(
-                          "camera: frame captured sequence=%u buffer=%x event=%u aton_irq=%u last=%x\n"),
-                      static_cast<unsigned int>(capture.sequence),
-                      static_cast<unsigned int>(capture.buffer.address),
-                      g_camera_frame_event_count, g_aton_irq_count,
-                      g_aton_last_irqs);
+        if (context.diagnostics.camera_frame_trace) {
+            if (capture.sequence <= 3U ||
+                (capture.sequence % 10U) == 0U) {
+                tm_printf(reinterpret_cast<const UB *>(
+                              "camera: frame captured sequence=%u buffer=%x event=%u aton_irq=%u last=%x\n"),
+                          static_cast<unsigned int>(capture.sequence),
+                          static_cast<unsigned int>(capture.buffer.address),
+                          g_camera_frame_event_count, g_aton_irq_count,
+                          g_aton_last_irqs);
+            }
         }
-        LogFrameBrightness(capture);
-#endif
+        if (context.diagnostics.camera_brightness) {
+            LogFrameBrightness(capture);
+        }
 
         /* In the live Pipe2 diagnostic mode, the LCD is reserved for the
          * actual inference input. Capture buffers are still drained below. */
         const bool display_due = !kInferenceInputDisplayDiagnostic;
         if (display_due) {
-#if AI_INFERENCE_DIAGNOSTICS
-            if (capture.sequence <= 3U ||
-                (capture.sequence % 10U) == 0U) {
+            if (context.diagnostics.display_trace &&
+                (capture.sequence <= 3U ||
+                 (capture.sequence % 10U) == 0U)) {
                 tm_printf(reinterpret_cast<const UB *>(
                               "lcd: compose begin sequence=%u\n"),
                           static_cast<unsigned int>(capture.sequence));
             }
-#endif
             status = lcd.ComposeAndPresent(capture, active_boxes);
             if (!status.Ok()) {
                 LogStatus("lcd", status);
-                if (!IsBestEffort(status.code)) {
-                    Halt("ai: lcd compose failed\n");
+                if (!context.IsBestEffort(status.code)) {
+                    context.Halt("ai: lcd compose failed\n");
                 }
             }
-#if AI_INFERENCE_DIAGNOSTICS
-            else if (capture.sequence <= 3U ||
-                       (capture.sequence % 10U) == 0U) {
+            else if (context.diagnostics.display_trace &&
+                     (capture.sequence <= 3U ||
+                      (capture.sequence % 10U) == 0U)) {
                 tm_printf(reinterpret_cast<const UB *>(
                               "lcd: frame presented sequence=%u buffer=%x\n"),
                           static_cast<unsigned int>(capture.sequence),
                           static_cast<unsigned int>(capture.buffer.address));
             }
-#endif
-#if AI_INFERENCE_DIAGNOSTICS
-            if (capture.sequence <= 3U ||
-                (capture.sequence % 10U) == 0U) {
+            if (context.diagnostics.display_trace &&
+                (capture.sequence <= 3U ||
+                 (capture.sequence % 10U) == 0U)) {
                 tm_printf(reinterpret_cast<const UB *>(
                               "lcd: compose end sequence=%u aton_irq=%u last=%x\n"),
                           static_cast<unsigned int>(capture.sequence),
                           g_aton_irq_count, g_aton_last_irqs);
             }
-#endif
         }
 
-#if AI_INFERENCE_DIAGNOSTICS
-        if ((loop_count % 1000U) == 0U) {
+        if (context.diagnostics.camera_frame_trace &&
+            (loop_count % 1000U) == 0U) {
             tm_printf(reinterpret_cast<const UB *>(
                           "camera: heartbeat loop=%u sequence=%u pipe2=%u drops=%u aton_irq=%u last=%x\n"),
                       static_cast<unsigned int>(loop_count),
@@ -447,7 +463,6 @@ void camera_render_task(void)
                       g_camera_pipe2_drop_count,
                       g_aton_irq_count, g_aton_last_irqs);
         }
-#endif
         tk_dly_tsk(1);
     }
 }

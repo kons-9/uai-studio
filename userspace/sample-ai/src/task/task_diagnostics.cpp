@@ -1,5 +1,21 @@
 #include "task/task_context.hpp"
+#include "task/task_diagnostics.hpp"
+#include "driver/npu_driver/debug.h"
+#include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/registers/npu_registers.hpp"
+
+extern "C" {
+#include <tm/tmonitor.h>
+#include "stm32n6xx_hal.h"
+
+extern DCMIPP_HandleTypeDef hcamera_dcmipp;
+extern volatile unsigned int g_ai_last_exposure_request_us;
+extern volatile unsigned int g_ai_last_exposure_lines;
+int32_t AiGetSensorGainMdB(void);
+int32_t AiReadSensorRegisters(std::uint32_t *vmax,
+                              std::uint32_t *shutter,
+                              std::uint32_t *gain);
+}
 
 namespace uai::ai::task {
 
@@ -18,17 +34,18 @@ void LogStatus(const char *component, const Error &error)
 void LogFrameBrightness(
     const uai::ai::memory_allocator::CaptureFrame &capture)
 {
+    TaskContext &context = GetTaskContext();
     if ((capture.sequence % 30U) != 0U) {
         return;
     }
 
-    const Error ownership_status = g_memory.ValidateCaptureFrame(capture);
+    const Error ownership_status = context.memory.ValidateCaptureFrame(capture);
     if (!ownership_status.Ok()) {
         LogStatus("camera-luminance", ownership_status);
         return;
     }
     const Error cache_status =
-        g_cache.PrepareForCpuRead(capture.buffer);
+        context.cache.PrepareForCpuRead(capture.buffer);
     if (!cache_status.Ok()) {
         LogStatus("camera-luminance", cache_status);
         return;
@@ -78,6 +95,7 @@ void LogFrameBrightness(
 void LogInferenceInput(
     const uai::ai::memory_allocator::InferenceFrame &frame)
 {
+    TaskContext &context = GetTaskContext();
     if (!frame || !frame.from_pipe2 ||
         frame.buffer.size < uai::ai::memory_allocator::kInferenceFrameBytes) {
         tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
@@ -89,8 +107,8 @@ void LogInferenceInput(
         frame.buffer.address, uai::ai::memory_allocator::kInferenceFrameBytes,
         frame.buffer.index, uai::ai::memory_allocator::Region::kInference};
     const Error cache_status = frame.from_pipe2
-                                   ? g_cache.PrepareForCpuRead(input_buffer)
-                                   : g_cache.PrepareForPeripheralRead(input_buffer);
+                                   ? context.cache.PrepareForCpuRead(input_buffer)
+                                   : context.cache.PrepareForPeripheralRead(input_buffer);
     if (!cache_status.Ok()) {
         LogStatus("ai-input", cache_status);
         return;
@@ -360,6 +378,7 @@ std::uint32_t Crc32Bytes(const std::uint8_t *bytes, std::size_t size)
 
 void DumpFrozenCapture(const uai::ai::memory_allocator::CaptureFrame &frame)
 {
+    const auto camera_diagnostics = GetTaskContext().camera.GetDiagnostics();
     const auto *pixels = reinterpret_cast<const std::uint16_t *>(
         frame.buffer.address);
     const std::uint32_t full_crc = Crc32Bytes(
@@ -370,7 +389,7 @@ void DumpFrozenCapture(const uai::ai::memory_allocator::CaptureFrame &frame)
               static_cast<unsigned int>(frame.sequence),
               static_cast<unsigned int>(frame.buffer.address),
               static_cast<unsigned int>(frame.buffer.size), full_crc,
-              g_camera_frame_event_count,
+              camera_diagnostics.frame_event_count,
               static_cast<unsigned int>(
                   DCMIPP->CMSR1 & DCMIPP_CMSR1_P1CPTACT),
               static_cast<unsigned int>(HAL_DCMIPP_PIPE_GetMemoryAddress(
@@ -391,13 +410,13 @@ void DumpFrozenCapture(const uai::ai::memory_allocator::CaptureFrame &frame)
               static_cast<unsigned int>(DCMIPP->P1PPM0AR2),
               static_cast<unsigned int>(CSI->SR0),
               static_cast<unsigned int>(CSI->SR1),
-              g_camera_csi_error_count,
-              g_camera_csi_sot_sync_dl0_count,
-              g_camera_csi_sot_sync_dl1_count,
-              g_camera_csi_sot_dl0_count,
-              g_camera_csi_sot_dl1_count,
-              g_camera_csi_last_pending_status,
-              g_camera_csi_last_pending_status1);
+              camera_diagnostics.csi_error_count,
+              camera_diagnostics.csi_sot_sync_dl0_count,
+              camera_diagnostics.csi_sot_sync_dl1_count,
+              camera_diagnostics.csi_sot_dl0_count,
+              camera_diagnostics.csi_sot_dl1_count,
+              camera_diagnostics.csi_last_pending_status,
+              camera_diagnostics.csi_last_pending_status1);
     tm_printf(reinterpret_cast<const UB *>(
                   "camera: P1 detail cfscr=%x cfctcr=%x decr=%x dmcr=%x "
                   "cdccr=%x cdscr=%x cdsrtior=%x cdsszr=%x "

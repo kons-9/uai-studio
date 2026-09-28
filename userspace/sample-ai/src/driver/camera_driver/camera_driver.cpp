@@ -30,8 +30,6 @@ constexpr std::uint32_t kSensorWidth = 2592U;
 constexpr std::uint32_t kSensorHeight = 1944U;
 constexpr std::uint32_t kOutputWidth = 800U;
 constexpr std::uint32_t kOutputHeight = 480U;
-constexpr auto kInitialInferenceModel =
-    uai::ai::models::ModelKind::kPerson;
 constexpr std::uint32_t kInferenceWidth = 480U;
 constexpr std::uint32_t kInferenceHeight = 480U;
 constexpr std::uint32_t kFrameTimeoutMs = 2000U;
@@ -233,8 +231,8 @@ Error ConfigurePipe()
     return {ErrorCode::kOk, 0U, "camera.pipe.configure"};
 }
 
-Error ConfigureInferencePipe(
-    const uai::ai::models::ModelDescriptor &model)
+Error ConfigureInferencePipe(std::uint32_t inference_width,
+                             std::uint32_t inference_height)
 {
     /* Pipe2 is the ancillary NN output. It consumes the same RAW10 CSI
      * stream as Pipe1, then performs the crop/scale and RGB888 packing in
@@ -251,8 +249,6 @@ Error ConfigureInferencePipe(
      * DCMIPP produces an aspect-preserving image with a shorter content height
      * and writes it into the center of the square tensor. This is letterbox,
      * not a center crop and not a non-uniform stretch. */
-    const std::uint32_t inference_width = model.input_width;
-    const std::uint32_t inference_height = model.input_height;
     const std::uint32_t content_height =
         (inference_width * kOutputHeight + kOutputWidth - 1U) / kOutputWidth;
     if (content_height == 0U || content_height > inference_height) {
@@ -478,6 +474,31 @@ namespace uai::ai::camera {
 using common::Error;
 using common::ErrorCode;
 
+Diagnostics CameraDriver::GetDiagnostics() const
+{
+    return {
+        g_camera_vsync_event_count,
+        g_camera_frame_event_count,
+        g_camera_recovery_count,
+        g_camera_recovery_error_count,
+        g_camera_isp_error_count,
+        g_camera_dcmipp_last_status,
+        g_camera_dcmipp_error_count,
+        g_camera_camera_error_count,
+        g_camera_pipe2_frame_event_count,
+        g_camera_pipe2_drop_count,
+        g_camera_csi_last_status,
+        g_camera_csi_last_status1,
+        g_camera_csi_last_pending_status,
+        g_camera_csi_last_pending_status1,
+        g_camera_csi_error_count,
+        g_camera_csi_last_error_code,
+        g_camera_csi_sot_sync_dl0_count,
+        g_camera_csi_sot_sync_dl1_count,
+        g_camera_csi_sot_dl0_count,
+        g_camera_csi_sot_dl1_count};
+}
+
 namespace {
 
 void LogCameraLinkState(
@@ -522,10 +543,8 @@ Error CameraDriver::Initialize(memory_allocator::MemoryAllocator &memory,
     Imx335RegisterLayer registers;
     if (!ConfigureSensor(registers).Ok()) return Hardware("camera.sensor.configure");
     InstallExposureWorkaround();
-    inference_model_ = kInitialInferenceModel;
     if (!ConfigurePipe().Ok() ||
-        !ConfigureInferencePipe(uai::ai::models::DescriptorFor(
-                                    kInitialInferenceModel)).Ok() ||
+        !ConfigureInferencePipe(kInferenceWidth, kInferenceHeight).Ok() ||
         !ConfigureRawDumpPipe().Ok()) {
         return Hardware("camera.configure");
     }
@@ -617,103 +636,6 @@ Error CameraDriver::Stop()
     return {ErrorCode::kOk, 0U, "camera.stop"};
 }
 
-Error CameraDriver::ReconfigureInference(
-    const models::ModelDescriptor &model)
-{
-    if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
-        return {ErrorCode::kNotInitialized, 0U,
-                "camera.reconfigure_inference"};
-    }
-    if (!started_) {
-        inference_model_ = model.kind;
-        return {ErrorCode::kOk, 0U, "camera.reconfigure_inference"};
-    }
-
-    /* Pipe1 and Pipe2 share CSI virtual channel 0 on this board. The HAL's
-     * CSI_PIPE_Stop(Pipe2, VC0) also stops VC0, so calling it while Pipe1 is
-     * active waits for a timeout and leaves the camera in recovery. Put the
-     * sensor in standby first, then stop the two pipes as one transaction.
-     * This keeps the VC0 stop short and avoids the timeout on every switch. */
-    Imx335RegisterLayer registers;
-    const Error standby_status = registers.SetStreaming(false);
-    if (!standby_status.Ok()) {
-        return standby_status;
-    }
-    HAL_Delay(20U);
-    const HAL_StatusTypeDef pipe2_first_stop =
-        HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE2,
-                                 DCMIPP_VIRTUAL_CHANNEL0);
-    const HAL_StatusTypeDef pipe1_stop =
-        HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE1,
-                                 DCMIPP_VIRTUAL_CHANNEL0);
-    HAL_StatusTypeDef pipe2_stop = HAL_OK;
-    if (pipe2_first_stop != HAL_OK) {
-        /* If the first stop still raced the last CSI transaction, Pipe2's
-         * DCMIPP block is already disabled. Retry after Pipe1 has released
-         * VC0 so the HAL state becomes READY. */
-        pipe2_stop = HAL_DCMIPP_CSI_PIPE_Stop(
-            &hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0);
-    }
-    if (pipe1_stop != HAL_OK || pipe2_stop != HAL_OK) {
-        return Hardware("camera.reconfigure.stop",
-                        (static_cast<std::uint32_t>(pipe2_first_stop) << 16U) |
-                            (static_cast<std::uint32_t>(pipe1_stop) << 8U) |
-                            static_cast<std::uint32_t>(pipe2_stop));
-    }
-    g_completed_inference = 0U;
-    g_inference_sequence = 0U;
-    Error status = ConfigureInferencePipe(model);
-    if (!status.Ok()) {
-        return status;
-    }
-    std::uintptr_t first = 0U;
-    std::uintptr_t second = 0U;
-    status = memory_->InferenceBuffers(&first, &second);
-    if (!status.Ok()) {
-        return status;
-    }
-    ClearInferenceInput(first);
-    ClearInferenceInput(second);
-    status = cache_->PrepareForDmaWrite({
-        first, memory_allocator::kInferenceBufferBytes, 0U,
-        memory_allocator::Region::kInference});
-    if (!status.Ok()) {
-        return status;
-    }
-    status = cache_->PrepareForDmaWrite({
-        second, memory_allocator::kInferenceBufferBytes, 1U,
-        memory_allocator::Region::kInference});
-    if (!status.Ok()) {
-        return status;
-    }
-    g_active_inference = first;
-    g_next_inference = second;
-    /* Pipe1 was stopped together with Pipe2 because both use CSI VC0. Its
-     * configuration is unchanged; restart it with the next capture buffer
-     * before restarting the newly configured Pipe2. */
-    if (HAL_DCMIPP_CSI_PIPE_Start(
-            &hcamera_dcmipp, DCMIPP_PIPE1, DCMIPP_VIRTUAL_CHANNEL0,
-            static_cast<std::uint32_t>(g_active_frame),
-            DCMIPP_MODE_CONTINUOUS) != HAL_OK) {
-        return Hardware("camera.pipe1.reconfigure.start");
-    }
-    if (HAL_DCMIPP_CSI_PIPE_Start(
-            &hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0,
-            static_cast<std::uint32_t>(InferenceDmaAddress(g_active_inference)),
-            DCMIPP_MODE_CONTINUOUS) != HAL_OK) {
-        return Hardware("camera.pipe2.reconfigure.start");
-    }
-    Error stream_status = StartStream(registers);
-    if (!stream_status.Ok()) {
-        return stream_status;
-    }
-    inference_model_ = model.kind;
-    tm_printf(reinterpret_cast<const UB *>(
-                  "camera: pipe2 model switched to %s\n"),
-              reinterpret_cast<const UB *>(model.name));
-    return {ErrorCode::kOk, 0U, "camera.reconfigure_inference"};
-}
-
 Error CameraDriver::Process()
 {
     if (!initialized_ || !started_) return {ErrorCode::kNotInitialized, 0U, "camera.process"};
@@ -762,8 +684,8 @@ Error CameraDriver::Process()
         if (recovery_ok) {
             InstallExposureWorkaround();
             recovery_ok = ConfigurePipe().Ok() &&
-                          ConfigureInferencePipe(uai::ai::models::DescriptorFor(
-                              inference_model_)).Ok() &&
+                          ConfigureInferencePipe(kInferenceWidth,
+                                                 kInferenceHeight).Ok() &&
                           ConfigureRawDumpPipe().Ok();
         }
         if (!recovery_ok ||

@@ -1,7 +1,5 @@
 #define ECBLOB_CONST_SECTION __attribute__((section(".network_blobs_segmentation")))
 
-#include "models/segmentation/model_segmentation_diagnostics.h"
-
 #define stai_network_init segmentation_stai_network_init
 #define stai_network_deinit segmentation_stai_network_deinit
 #define stai_network_run segmentation_stai_network_run
@@ -45,16 +43,7 @@ STAI_NETWORK_CONTEXT_DECLARE(segmentation_context, STAI_NETWORK_CONTEXT_SIZE)
 
 stai_return_code segmentation_model_initialize(void)
 {
-    const stai_return_code code =
-        segmentation_stai_network_init(segmentation_context);
-#if defined(AI_SEGMENTATION_DIAG)
-    if (code == STAI_SUCCESS) {
-        return segmentation_stai_network_set_callback(
-            segmentation_context, ai_segmentation_diag_epoch_callback,
-            NULL);
-    }
-#endif
-    return code;
+    return segmentation_stai_network_init(segmentation_context);
 }
 
 stai_return_code segmentation_model_shutdown(void)

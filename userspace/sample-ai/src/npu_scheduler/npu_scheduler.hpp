@@ -13,6 +13,7 @@ namespace uai::ai::npu_scheduler {
 struct ModelBinding {
     models::ModelKind kind{};
     models::Model *model = nullptr;
+    models::ModelRuntime *runtime = nullptr;
 };
 
 /* Owns the Neural-ART runtime lifecycle and the currently selected generated
@@ -35,6 +36,7 @@ public:
     bool Initialized() const { return initialized_; }
     models::ModelKind CurrentModel() const;
     const models::ModelDescriptor *GetDescriptor() const;
+    models::ModelCallbacks GetCallbacks() const;
     const npu::Status &LastStatus() const { return last_status_; }
 
 private:
