@@ -146,17 +146,19 @@ void TaskContext::CreateKernelObjects()
         Halt("ai: box queue create failed\n");
     }
 
+#ifndef UAI_PERSON_PIPELINE_APP
     T_CMBF inference_completion_queue_config = {};
     inference_completion_queue_config.mbfatr = TA_TFIFO;
     inference_completion_queue_config.bufsz =
         sizeof(inference_completion_queue_storage);
     inference_completion_queue_config.maxmsz =
-        sizeof(npu_runtime::InferenceCompletion);
+        sizeof(ai_runtime::InferenceCompletion);
     inference_completion_queue_config.bufptr = inference_completion_queue_storage;
     inference_completion_queue = tk_cre_mbf(&inference_completion_queue_config);
     if (inference_completion_queue < E_OK) {
         Halt("ai: inference completion queue create failed\n");
     }
+#endif
 
     T_CMBF inference_postprocess_done_queue_config = {};
     inference_postprocess_done_queue_config.mbfatr = TA_TFIFO;
@@ -204,6 +206,14 @@ void TaskContext::StartInferencePostprocessTask(FP entry)
     StartTask(entry, inference_postprocess_task_stack,
               kInferencePostprocessTaskStackSize, 6, "inference_postprocess");
 }
+
+#ifdef UAI_PERSON_PIPELINE_APP
+void TaskContext::StartPersonNpuTask(FP entry)
+{
+    StartTask(entry, person_npu_task_stack, kInferenceTaskStackSize, 4,
+              "person_npu");
+}
+#endif
 
 void TaskContext::StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
                             const char *name)

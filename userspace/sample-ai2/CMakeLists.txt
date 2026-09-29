@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.16)
 set(AI_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(AI_APP_NAME sample-ai2)
 set(AI_APP_TARGET ${AI_APP_NAME}.elf)
+option(UAI_PERSON_PIPELINE_APP
+    "Use the new three-lane AI runtime with only the person model" ON)
 
 # STEdgeAI's Neural-ART runtime is distributed separately from this sample.
 # Do not silently depend on the old, ignored copy under third_party: that made
@@ -80,11 +82,14 @@ endforeach()
 
 set(_ai_required_postprocess_paths
     "${AI_VISION_MODELS_PP_DIR}/Inc/od_st_yolox_pp_if.h"
-    "${AI_VISION_MODELS_PP_DIR}/Inc/fd_blazeface_pp_if.h"
     "${AI_VISION_MODELS_PP_DIR}/Src/od_pp_st_yolox.c"
-    "${AI_VISION_MODELS_PP_DIR}/Src/fd_pp_blazeface.c"
     "${AI_VISION_MODELS_PP_DIR}/Src/vision_models_pp.c"
     "${AI_VISION_MODELS_PP_DIR}/Src/vision_models_pp_maxi_is8.c")
+if(NOT UAI_PERSON_PIPELINE_APP)
+    list(APPEND _ai_required_postprocess_paths
+        "${AI_VISION_MODELS_PP_DIR}/Inc/fd_blazeface_pp_if.h"
+        "${AI_VISION_MODELS_PP_DIR}/Src/fd_pp_blazeface.c")
+endif()
 foreach(_ai_postprocess_path IN LISTS _ai_required_postprocess_paths)
     if(NOT EXISTS "${_ai_postprocess_path}")
         message(FATAL_ERROR
@@ -110,6 +115,9 @@ set(_ai_generated_model_files
     "${CMAKE_CURRENT_SOURCE_DIR}/models/face/network_ecblobs.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/models/face/stai_network.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/models/face/stai_network.h")
+if(UAI_PERSON_PIPELINE_APP)
+    list(SUBLIST _ai_generated_model_files 0 4 _ai_generated_model_files)
+endif()
 foreach(_ai_generated_model_file IN LISTS _ai_generated_model_files)
     if(NOT EXISTS "${_ai_generated_model_file}")
         message(FATAL_ERROR
@@ -182,6 +190,29 @@ set(AI_MODEL_EXTRA_SOURCES
     "${AI_VISION_MODELS_PP_DIR}/Src/vision_models_pp.c")
 set(AI_MODEL_EXTRA_LIBRARIES
     "${AI_STEDGEAI_RUNTIME_LIBRARY}")
+if(UAI_PERSON_PIPELINE_APP)
+    set(AI_MODEL_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/models/person")
+    set(AI_MODEL_C_API_SOURCES "${AI_SRC_DIR}/models/person/model_person.c")
+    set(AI_MODEL_SOURCES
+        "${AI_SRC_DIR}/models/model.cpp"
+        "${AI_SRC_DIR}/models/person/model.cpp"
+        "${AI_SRC_DIR}/models/person/person_decoder.cpp")
+    set(AI_MODEL_EXTRA_SOURCES
+        "${AI_VISION_MODELS_PP_DIR}/Src/od_pp_st_yolox.c"
+        "${AI_VISION_MODELS_PP_DIR}/Src/vision_models_pp_maxi_is8.c"
+        "${AI_VISION_MODELS_PP_DIR}/Src/vision_models_pp.c")
+    set(AI_INFERENCE_TASK_SOURCES
+        src/task/person_pipeline_task.cpp
+        src/middleware/ai_runtime/pipeline.cpp)
+else()
+    set(AI_INFERENCE_TASK_SOURCES
+        src/task/inference_task.cpp
+        src/task/inference_postprocess_task.cpp
+        src/npu_runtime/npu_runtime.cpp
+        src/npu_runtime/scheduler/scheduler.cpp
+        src/npu_runtime/inference_dispatcher/inference_dispatcher.cpp
+        src/npu_runtime/thread_monitor/thread_monitor.cpp)
+endif()
 set(AI_NPU_CACHE_SOURCE
     "${AI_STEDGEAI_DIR}/Npu/Devices/STM32N6xx/npu_cache.c")
 # CubeMX already supplies the strong HAL cache MSP hooks. Some STEdgeAI
@@ -200,8 +231,7 @@ add_executable(${AI_APP_TARGET}
     src/main.cpp
     src/task/application_initialize_task.cpp
     src/task/camera_render_task.cpp
-    src/task/inference_task.cpp
-    src/task/inference_postprocess_task.cpp
+    ${AI_INFERENCE_TASK_SOURCES}
     src/task/task_context.cpp
     src/task/task_diagnostics.cpp
     src/driver/camera_driver/sensor_driver/registers/imx335_registers.cpp
@@ -220,10 +250,6 @@ add_executable(${AI_APP_TARGET}
     src/driver/npu_driver/registers/npu_registers.cpp
     src/driver/npu_driver/npu_driver.cpp
     src/driver/npu_driver/debug.cpp
-    src/npu_runtime/npu_runtime.cpp
-    src/npu_runtime/scheduler/scheduler.cpp
-    src/npu_runtime/inference_dispatcher/inference_dispatcher.cpp
-    src/npu_runtime/thread_monitor/thread_monitor.cpp
     ${AI_MODEL_SOURCES}
     # Project-owned ref-compatible BSP with a reset fallback for NOR left in
     # OPI-DTR by the external loader.
@@ -278,6 +304,9 @@ target_compile_definitions(${AI_APP_TARGET} PRIVATE
     LL_ATON_SW_FALLBACK
     LL_ATON_DBG_BUFFER_INFO_EXCLUDED=1
     NPU_CACHE_EXTERNAL_HAL_MSP)
+if(UAI_PERSON_PIPELINE_APP)
+    target_compile_definitions(${AI_APP_TARGET} PRIVATE UAI_PERSON_PIPELINE_APP=1)
+endif()
 target_compile_options(${AI_APP_TARGET} PRIVATE
     ${AI_PERFORMANCE_COMPILE_OPTIONS}
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
@@ -317,24 +346,29 @@ add_custom_command(TARGET ${AI_APP_TARGET} POST_BUILD
             --only-section=.network_blobs_person
             "$<TARGET_FILE:${AI_APP_TARGET}>"
             "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_person.hex"
-    COMMAND ${CMAKE_OBJCOPY} -O binary
+    COMMAND ${CMAKE_SIZE} "$<TARGET_FILE:${AI_APP_TARGET}>"
+    VERBATIM)
+
+    if(NOT UAI_PERSON_PIPELINE_APP)
+        add_custom_command(TARGET ${AI_APP_TARGET} POST_BUILD
+        COMMAND ${CMAKE_OBJCOPY} -O binary
             --only-section=.network_blobs_segmentation
             "$<TARGET_FILE:${AI_APP_TARGET}>"
             "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_segmentation.bin"
-    COMMAND ${CMAKE_OBJCOPY} -O ihex
+        COMMAND ${CMAKE_OBJCOPY} -O ihex
             --only-section=.network_blobs_segmentation
             "$<TARGET_FILE:${AI_APP_TARGET}>"
             "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_segmentation.hex"
-    COMMAND ${CMAKE_OBJCOPY} -O binary
+        COMMAND ${CMAKE_OBJCOPY} -O binary
             --only-section=.network_blobs_face
             "$<TARGET_FILE:${AI_APP_TARGET}>"
             "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_face.bin"
-    COMMAND ${CMAKE_OBJCOPY} -O ihex
+        COMMAND ${CMAKE_OBJCOPY} -O ihex
             --only-section=.network_blobs_face
             "$<TARGET_FILE:${AI_APP_TARGET}>"
             "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_face.hex"
-    COMMAND ${CMAKE_SIZE} "$<TARGET_FILE:${AI_APP_TARGET}>"
-    VERBATIM)
+        VERBATIM)
+    endif()
 
 add_custom_target(${AI_APP_NAME} DEPENDS ${AI_APP_TARGET})
 

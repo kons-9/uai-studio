@@ -113,7 +113,7 @@ void InferenceTask::Run()
     models::person::Model person_model{};
     models::segmentation::Model segmentation_model{};
     models::face::Model face_model{};
-    npu_runtime::NpuRuntime runtime{};
+    ai_runtime::AiRuntime runtime{};
     common::Error model_status{common::ErrorCode::kNotInitialized, 0U,
                                "ai.external_nor_unavailable"};
     if (context.external_nor_ready) {
@@ -233,7 +233,7 @@ void InferenceTask::Run()
         }
 
         PrefetchContext prefetch{&context};
-        npu_runtime::InferenceCompletion completion{};
+        ai_runtime::InferenceCompletion completion{};
         bool completion_queued = false;
         if (inference_enabled) {
             if (context.diagnostics.inference_trace) {

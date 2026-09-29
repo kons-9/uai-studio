@@ -12,7 +12,7 @@ namespace uai::ai::task {
 namespace {
 
 common::Error CompleteInference(TaskContext &context,
-                                 const npu_runtime::InferenceCompletion &completion,
+                                 const ai_runtime::InferenceCompletion &completion,
                                  memory_allocator::BoxSet *boxes)
 {
     if (!completion.valid || completion.model == nullptr || boxes == nullptr ||
@@ -64,7 +64,7 @@ void InferencePostprocessTask::Run()
     TaskContext &context = GetTaskContext();
     memory_allocator::BoxSet integrated_boxes{};
     for (;;) {
-        npu_runtime::InferenceCompletion completion{};
+        ai_runtime::InferenceCompletion completion{};
         const std::uint32_t queue_wait_start = context.Now();
         const INT size = tk_rcv_mbf(context.inference_completion_queue,
                                     &completion, TMO_FEVR);

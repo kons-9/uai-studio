@@ -13,7 +13,9 @@
 #include "driver/psram_driver/psram_driver.hpp"
 #include "driver/rif_driver/rif_driver.hpp"
 #include "memory_allocator/memory_allocator.hpp"
+#ifndef UAI_PERSON_PIPELINE_APP
 #include "npu_runtime/inference_dispatcher/inference_dispatcher.hpp"
+#endif
 
 namespace uai::ai::task {
 
@@ -125,6 +127,9 @@ public:
     void StartApplicationTask(FP entry);
     void StartCameraTask(FP entry);
     void StartInferenceTask(FP entry);
+#ifdef UAI_PERSON_PIPELINE_APP
+    void StartPersonNpuTask(FP entry);
+#endif
     void StartInferencePostprocessTask(FP entry);
 
     bool DrainLatestBoxes(memory_allocator::BoxSet *active);
@@ -146,7 +151,9 @@ public:
     ID external_memory_ready;
     ID frame_queue;
     ID box_queue;
+#ifndef UAI_PERSON_PIPELINE_APP
     ID inference_completion_queue;
+#endif
     ID inference_postprocess_done_queue;
     DiagnosticsConfig diagnostics;
     InferenceRuntimeMetrics inference_metrics{};
@@ -158,9 +165,11 @@ private:
     alignas(8) UB frame_queue_storage[
         sizeof(InferenceMessage) * kFrameQueueDepth];
     alignas(8) UB box_queue_storage[sizeof(BoxMessage) * kBoxQueueDepth];
+#ifndef UAI_PERSON_PIPELINE_APP
     alignas(8) UB inference_completion_queue_storage[
-        sizeof(npu_runtime::InferenceCompletion) *
+        sizeof(ai_runtime::InferenceCompletion) *
         kInferenceCompletionQueueDepth];
+#endif
     alignas(8) UB inference_postprocess_done_queue_storage[
         sizeof(InferencePostprocessDoneMessage) *
         kInferencePostprocessDoneQueueDepth];
@@ -168,6 +177,9 @@ private:
         kInitializationTaskStackSize / sizeof(INT)];
     INT camera_task_stack[kCameraTaskStackSize / sizeof(INT)];
     INT inference_task_stack[kInferenceTaskStackSize / sizeof(INT)];
+#ifdef UAI_PERSON_PIPELINE_APP
+    INT person_npu_task_stack[kInferenceTaskStackSize / sizeof(INT)];
+#endif
     INT inference_postprocess_task_stack[
         kInferencePostprocessTaskStackSize / sizeof(INT)];
 };
