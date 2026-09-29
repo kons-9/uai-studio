@@ -15,7 +15,7 @@ namespace uai::ai::npu_runtime {
  * from the linker-reserved internal RAM with a debugger and decoded without
  * running the firmware. */
 inline constexpr std::uint32_t kThreadMonitorTraceMagic = 0x544D4F4EU;
-inline constexpr std::uint16_t kThreadMonitorTraceVersion = 3U;
+inline constexpr std::uint16_t kThreadMonitorTraceVersion = 4U;
 inline constexpr std::uint32_t kThreadMonitorTraceCommitMagic = 0x434D4954U;
 inline constexpr std::uint32_t kUnknownModelKindId = 0xFFFFFFFFU;
 
@@ -24,6 +24,8 @@ enum class TraceRecordType : std::uint8_t {
     kFault = 2U,
     kNpuExecution = 3U,
     kInferencePhase = 4U,
+    kNpuEpoch = 5U,
+    kPipelineStage = 6U,
 };
 
 enum class TraceFaultCode : std::uint32_t {
@@ -35,6 +37,7 @@ enum class TraceFaultCode : std::uint32_t {
 inline constexpr std::uint8_t kTraceFlagOperationActive = 1U << 0U;
 inline constexpr std::uint8_t kTraceFlagFaulted = 1U << 1U;
 inline constexpr std::uint8_t kTraceFlagNpuTimingValid = 1U << 2U;
+inline constexpr std::uint8_t kTraceFlagNpuCycleValid = 1U << 3U;
 
 struct alignas(32) ThreadMonitorTraceHeader {
     std::uint32_t magic = kThreadMonitorTraceMagic;
@@ -97,14 +100,42 @@ public:
     void ObserveNpuExecution(std::uint32_t end_ms,
                              std::uint32_t elapsed_ms,
                              std::uint32_t model_kind_id);
+    void ObserveNpuEpoch(std::uint32_t end_ms,
+                         std::uint32_t end_cycles,
+                         std::uint32_t elapsed_cycles,
+                         std::uint32_t model_kind_id,
+                         std::uint32_t epoch_index,
+                         std::uint32_t epoch_flags,
+                         std::uint32_t epoch_address,
+                         std::uint32_t callback_type);
     void ObserveInferencePhase(std::uint32_t end_ms,
                                std::uint32_t elapsed_ms,
                                InferencePhase phase,
                                std::uint32_t model_kind_id);
+    void ObservePipelineStage(std::uint32_t end_ms,
+                              std::uint32_t end_cycles,
+                              std::uint32_t elapsed_cycles,
+                              std::uint32_t stage_id,
+                              std::uint32_t model_kind_id);
 
     bool Faulted() const { return faulted_; }
 
 private:
+    struct PendingTraceEvent {
+        std::uint32_t end_ms = 0U;
+        std::uint32_t elapsed_ms = 0U;
+        std::uint32_t model_kind_id = kUnknownModelKindId;
+        std::uint32_t epoch_index = 0xFFFFFFFFU;
+        std::uint32_t epoch_flags = 0U;
+        std::uint32_t epoch_address = 0U;
+        std::uint32_t epoch_end_cycles = 0U;
+        std::uint32_t epoch_elapsed_cycles = 0U;
+        std::uint32_t callback_type = 0U;
+        std::uint8_t record_type =
+            static_cast<std::uint8_t>(TraceRecordType::kInferencePhase);
+        std::uint16_t phase_id = 0U;
+    };
+
     static void Entry(INT stacd, void *exinf);
     void Run();
     void ReportFault(std::uint32_t now, const T_RTSK *task_status,
@@ -112,13 +143,15 @@ private:
     bool InitializeTraceBuffer();
     bool TraceHeaderValid() const;
     void RecordSample(std::uint32_t now, const T_RTSK &task_status);
-    void FlushPendingNpuExecutions();
+    bool QueueTraceEvent(const PendingTraceEvent &event);
+    void FlushPendingTraceEvents();
     void WriteRecord(std::uint32_t now, TraceRecordType type,
                      const T_RTSK *task_status, ER reference_status,
                      TraceFaultCode fault_code, bool has_npu_timing = false,
                      std::uint32_t npu_elapsed_ms = 0U,
                      std::uint32_t model_kind_id = kUnknownModelKindId,
-                     std::uint16_t phase_id = 0U);
+                     std::uint16_t phase_id = 0U,
+                     const PendingTraceEvent *event = nullptr);
     void FlushTrace(const void *address, std::size_t size) const;
     std::uint32_t Now() const;
 
@@ -132,17 +165,8 @@ private:
     volatile std::uint32_t last_model_kind_id_ = kUnknownModelKindId;
     volatile bool npu_timing_valid_ = false;
 
-    struct PendingNpuExecution {
-        std::uint32_t end_ms = 0U;
-        std::uint32_t elapsed_ms = 0U;
-        std::uint32_t model_kind_id = kUnknownModelKindId;
-        std::uint8_t record_type =
-            static_cast<std::uint8_t>(TraceRecordType::kInferencePhase);
-        std::uint16_t phase_id = 0U;
-    };
-
-    static constexpr std::uint32_t kPendingNpuExecutionCapacity = 64U;
-    PendingNpuExecution pending_npu_executions_[kPendingNpuExecutionCapacity]{};
+    static constexpr std::uint32_t kPendingTraceEventCapacity = 512U;
+    static PendingTraceEvent pending_trace_events_[kPendingTraceEventCapacity];
     std::uint32_t pending_write_index_ = 0U;
     std::uint32_t pending_read_index_ = 0U;
     std::uint32_t pending_dropped_count_ = 0U;

@@ -37,6 +37,82 @@
 #include "../../../models/person/network.c"
 #include "../../../models/person/stai_network.c"
 
+#include <stdint.h>
+
+typedef void (*person_epoch_trace_callback)(void *context,
+                                             uint32_t callback_type,
+                                             uint32_t epoch_index,
+                                             uint32_t epoch_flags,
+                                             uintptr_t epoch_address);
+
+typedef struct {
+  person_epoch_trace_callback callback;
+  void *context;
+} person_epoch_trace_binding;
+
+static person_epoch_trace_binding g_person_epoch_trace = {0};
+
+static uint32_t person_epoch_count(void)
+{
+  static uint32_t count = 0U;
+  if (count == 0U)
+  {
+    const LL_ATON_RT_EpochBlockItem_t *items =
+        person_LL_ATON_EpochBlockItems_network();
+    if (items == NULL)
+    {
+      return 0U;
+    }
+    for (count = 1U; count < 4096U; ++count)
+    {
+      if (EpochBlock_IsLastEpochBlock(&items[count - 1U]))
+      {
+        break;
+      }
+    }
+  }
+  return count;
+}
+
+static uint32_t person_epoch_index(const LL_ATON_RT_EpochBlockItem_t *epoch)
+{
+  const LL_ATON_RT_EpochBlockItem_t *items =
+      person_LL_ATON_EpochBlockItems_network();
+  if (epoch == NULL || items == NULL)
+  {
+    return UINT32_MAX;
+  }
+
+  const uintptr_t base = (uintptr_t)items;
+  const uintptr_t address = (uintptr_t)epoch;
+  const uintptr_t end =
+      base + (uintptr_t)person_epoch_count() * sizeof(*items);
+  if (address >= base && address < end &&
+      ((address - base) % sizeof(*items)) == 0U)
+  {
+    return (uint32_t)((address - base) / sizeof(*items));
+  }
+  return UINT32_MAX;
+}
+
+static void person_epoch_trace_adapter(void *cookie,
+                                       const stai_event_type event_type,
+                                       const void *event_payload)
+{
+  person_epoch_trace_binding *binding =
+      (person_epoch_trace_binding *)cookie;
+  if (binding == NULL || binding->callback == NULL)
+  {
+    return;
+  }
+
+  const LL_ATON_RT_EpochBlockItem_t *epoch =
+      (const LL_ATON_RT_EpochBlockItem_t *)event_payload;
+  binding->callback(binding->context, (uint32_t)event_type,
+                    person_epoch_index(epoch), epoch == NULL ? 0U : epoch->flags,
+                    (uintptr_t)epoch);
+}
+
 /* ST AIランタイムが提供する待機関数。ここでは宣言し、実装はリンク対象の
  * ST AIランタイム側から解決する。 */
 extern stai_return_code stai_ext_wfe(void);
@@ -46,6 +122,16 @@ STAI_NETWORK_CONTEXT_DECLARE(person_context, STAI_NETWORK_CONTEXT_SIZE)
 stai_return_code person_model_initialize(void)
 {
     return person_stai_network_init(person_context);
+}
+
+stai_return_code person_model_set_epoch_trace_callback(
+    person_epoch_trace_callback callback, void *context)
+{
+    g_person_epoch_trace.callback = callback;
+    g_person_epoch_trace.context = context;
+    return person_stai_network_set_callback(
+        person_context, callback == NULL ? NULL : person_epoch_trace_adapter,
+        &g_person_epoch_trace);
 }
 
 stai_return_code person_model_shutdown(void)

@@ -8,6 +8,7 @@
 extern "C" {
 #include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
+#include "ll_aton_NN_interface.h"
 void LL_ATON_NPU0_IRQHandler(void);
 
 stai_return_code stai_runtime_init(void);
@@ -40,6 +41,17 @@ std::uint32_t NowMs()
 {
     SYSTIM time = {};
     return tk_get_otm(&time) == E_OK ? time.lo : 0U;
+}
+
+void EnableCycleCounter()
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
+std::uint32_t NowCycles()
+{
+    return DWT->CYCCNT;
 }
 
 void BeginExecutionTiming(ExecutionSnapshot &execution)
@@ -138,6 +150,66 @@ bool NpuDriver::IsError(stai_return_code code)
     return code >= STAI_ERROR_GENERIC;
 }
 
+void NpuDriver::EpochTraceThunk(void *context, std::uint32_t callback_type,
+                                std::uint32_t epoch_index,
+                                std::uint32_t epoch_flags,
+                                std::uintptr_t epoch_address)
+{
+    auto *driver = static_cast<NpuDriver *>(context);
+    if (driver != nullptr) {
+        driver->ObserveEpochTrace(callback_type, epoch_index, epoch_flags,
+                                  epoch_address);
+    }
+}
+
+void NpuDriver::ObserveEpochTrace(std::uint32_t callback_type,
+                                  std::uint32_t epoch_index,
+                                  std::uint32_t epoch_flags,
+                                  std::uintptr_t epoch_address)
+{
+    const std::uint32_t pre_start =
+        static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_PRE_START);
+    const std::uint32_t post_start =
+        static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_POST_START);
+    const std::uint32_t pre_end =
+        static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_PRE_END);
+    const std::uint32_t post_end =
+        static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_POST_END);
+
+    if (callback_type == pre_start) {
+        epoch_trace_active_ = true;
+        epoch_trace_start_cycles_ = NowCycles();
+        epoch_trace_last_cycles_ = epoch_trace_start_cycles_;
+        epoch_trace_start_epoch_index_ = epoch_index;
+        epoch_trace_start_epoch_flags_ = epoch_flags;
+        epoch_trace_start_epoch_address_ = epoch_address;
+        return;
+    }
+    if (!epoch_trace_active_ || callback_type < post_start ||
+        callback_type > post_end) {
+        return;
+    }
+
+    const std::uint32_t end_cycles = NowCycles();
+    if (epoch_trace_observer_ != nullptr) {
+        epoch_trace_observer_(
+            epoch_trace_context_, epoch_trace_model_kind_id_, NowMs(),
+            end_cycles, end_cycles - epoch_trace_last_cycles_,
+            epoch_trace_start_epoch_index_, epoch_trace_start_epoch_flags_,
+            epoch_trace_start_epoch_address_, callback_type);
+    }
+    epoch_trace_last_cycles_ = end_cycles;
+    if (callback_type == pre_end) {
+        /* PRE_END is the boundary after the NPU/ATON wait interval. Keep the
+         * epoch active until POST_END so the CPU cleanup interval is emitted
+         * as a separate record. */
+        return;
+    }
+    if (callback_type == post_end) {
+        epoch_trace_active_ = false;
+    }
+}
+
 Status NpuDriver::InvalidState(const char *operation) const
 {
     return {common::Error{common::ErrorCode::kNotInitialized, 0U, operation},
@@ -162,6 +234,7 @@ Status NpuDriver::Initialize(models::ModelRuntime &model)
     }
 
     model_ = &model;
+    EnableCycleCounter();
 
     if (g_npu_irq_event_flag == 0) {
         T_CFLG event_flag{};
@@ -188,6 +261,17 @@ Status NpuDriver::Initialize(models::ModelRuntime &model)
         last_execution_.stai_status = last_error_;
         return {common::Error{common::ErrorCode::kNpu, last_error_,
                               "npu.runtime_initialize"},
+                last_execution_};
+    }
+
+    const stai_return_code trace_code = model.SetEpochTraceCallback(
+        &NpuDriver::EpochTraceThunk, this);
+    last_error_ = static_cast<std::uint32_t>(trace_code);
+    if (IsError(trace_code)) {
+        last_execution_.state = ExecutionState::kFaulted;
+        last_execution_.stai_status = last_error_;
+        return {common::Error{common::ErrorCode::kModel, last_error_,
+                              "npu.model_trace_callback"},
                 last_execution_};
     }
 
@@ -228,6 +312,17 @@ Status NpuDriver::Preload(models::ModelRuntime &model)
                                    sizeof(loaded_models_[0]))) {
         return {common::Error{common::ErrorCode::kInvalidState,
                               loaded_model_count_, "npu.preload.full"},
+                last_execution_};
+    }
+
+    const stai_return_code trace_code = model.SetEpochTraceCallback(
+        &NpuDriver::EpochTraceThunk, this);
+    last_error_ = static_cast<std::uint32_t>(trace_code);
+    if (IsError(trace_code)) {
+        last_execution_.state = ExecutionState::kFaulted;
+        last_execution_.stai_status = last_error_;
+        return {common::Error{common::ErrorCode::kModel, last_error_,
+                              "npu.preload_trace_callback"},
                 last_execution_};
     }
 
@@ -383,6 +478,8 @@ Status NpuDriver::StartRun()
                 last_execution_};
     }
     ++last_execution_.run_id;
+    epoch_trace_active_ = false;
+    epoch_trace_last_cycles_ = 0U;
     BeginExecutionTiming(last_execution_);
     const std::uint32_t submit_start_ms = NowMs();
     stai_return_code code = model_->Run(STAI_MODE_ASYNC);
@@ -403,145 +500,192 @@ Status NpuDriver::StartRun()
             last_execution_};
 }
 
+Status NpuDriver::PollRun(RunProgressCallback progress,
+                          void *progress_context)
+{
+    if (!initialized_ || model_ == nullptr) {
+        return InvalidState("npu.poll_run");
+    }
+    if (last_execution_.state != ExecutionState::kSubmitted &&
+        last_execution_.state != ExecutionState::kRunning) {
+        return InvalidState("npu.poll_run.not_active");
+    }
+
+    ++last_execution_.status_poll_count;
+    const stai_return_code code = model_->GetRunStatus();
+    last_error_ = static_cast<std::uint32_t>(code);
+    if (code == STAI_DONE) {
+        FinishExecutionTiming(last_execution_);
+        last_execution_.state = ExecutionState::kCompleted;
+        last_execution_.stai_status = STAI_DONE;
+        return {common::Error{common::ErrorCode::kOk, 0U,
+                              "npu.poll_run.done"},
+                last_execution_, RunAction::kCompleted};
+    }
+    if (IsError(code)) {
+        FinishExecutionTiming(last_execution_);
+        last_execution_.state = ExecutionState::kFaulted;
+        last_execution_.stai_status = last_error_;
+        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
+                          "ai: npu status error=%x irq=%u last=%x\n"),
+                      static_cast<unsigned int>(code), g_aton_irq_count,
+                      g_aton_last_irqs);
+        return {common::Error{common::ErrorCode::kNpu, last_error_,
+                              "npu.poll_run"},
+                last_execution_};
+    }
+
+    /* Progress is deliberately called from task context. It may prepare a
+     * next frame while this run is active, but it is never called by IRQ. */
+    if (progress != nullptr) {
+        const std::uint32_t progress_start_ms = NowMs();
+        ++last_execution_.progress_count;
+        progress(progress_context);
+        const std::uint32_t progress_elapsed_ms =
+            NowMs() - progress_start_ms;
+        last_execution_.progress_elapsed_ms += progress_elapsed_ms;
+        if (progress_elapsed_ms > last_execution_.progress_max_elapsed_ms) {
+            last_execution_.progress_max_elapsed_ms = progress_elapsed_ms;
+        }
+    }
+
+    const RunAction action = code == STAI_RUNNING_WFE
+                                 ? RunAction::kWaitForIrq
+                                 : RunAction::kContinueEpoch;
+    return {common::Error{common::ErrorCode::kOk, 0U, "npu.poll_run"},
+            last_execution_, action};
+}
+
+Status NpuDriver::WaitForIrq()
+{
+    if (!initialized_ || model_ == nullptr) {
+        return InvalidState("npu.wait_irq");
+    }
+    if (last_execution_.state != ExecutionState::kSubmitted &&
+        last_execution_.state != ExecutionState::kRunning) {
+        return InvalidState("npu.wait_irq.not_active");
+    }
+
+    UINT pattern = 0U;
+    const std::uint32_t wait_start_ms = NowMs();
+    ++last_execution_.irq_wait_count;
+    const ER wait_status = tk_wai_flg(
+        g_npu_irq_event_flag, kNpuIrqEvent, TWF_ANDW | TWF_BITCLR, &pattern,
+        static_cast<TMO>(kTimeoutTicks));
+    const std::uint32_t elapsed_ms = NowMs() - wait_start_ms;
+    last_execution_.irq_wait_elapsed_ms += elapsed_ms;
+    if (elapsed_ms > last_execution_.irq_wait_max_elapsed_ms) {
+        last_execution_.irq_wait_max_elapsed_ms = elapsed_ms;
+    }
+    if (wait_status == E_TMOUT) {
+        FinishExecutionTiming(last_execution_);
+        last_execution_.state = ExecutionState::kTimedOut;
+        last_execution_.stai_status = static_cast<std::uint32_t>(wait_status);
+        return {common::Error{common::ErrorCode::kTimeout,
+                              static_cast<std::uint32_t>(wait_status),
+                              "npu.wait_irq"},
+                last_execution_};
+    }
+    if (wait_status != E_OK) {
+        FinishExecutionTiming(last_execution_);
+        last_execution_.state = ExecutionState::kFaulted;
+        last_execution_.stai_status = static_cast<std::uint32_t>(wait_status);
+        return {common::Error{common::ErrorCode::kNpu,
+                              static_cast<std::uint32_t>(wait_status),
+                              "npu.wait_irq"},
+                last_execution_};
+    }
+    return {common::Error{common::ErrorCode::kOk, 0U, "npu.wait_irq"},
+            last_execution_, RunAction::kContinueEpoch};
+}
+
+Status NpuDriver::ContinueRun()
+{
+    if (!initialized_ || model_ == nullptr) {
+        return InvalidState("npu.continue_run");
+    }
+    if (last_execution_.state != ExecutionState::kSubmitted &&
+        last_execution_.state != ExecutionState::kRunning) {
+        return InvalidState("npu.continue_run.not_active");
+    }
+
+    const std::uint32_t continue_start_ms = NowMs();
+    ++last_execution_.continue_count;
+    const stai_return_code code = model_->ContinueRun();
+    const std::uint32_t elapsed_ms = NowMs() - continue_start_ms;
+    last_execution_.continue_elapsed_ms += elapsed_ms;
+    if (elapsed_ms > last_execution_.continue_max_elapsed_ms) {
+        last_execution_.continue_max_elapsed_ms = elapsed_ms;
+    }
+    if (elapsed_ms >= 10U) {
+        ++last_execution_.continue_slow_count;
+    }
+    last_error_ = static_cast<std::uint32_t>(code);
+    if (IsError(code)) {
+        FinishExecutionTiming(last_execution_);
+        last_execution_.state = ExecutionState::kFaulted;
+        last_execution_.stai_status = last_error_;
+        return {common::Error{common::ErrorCode::kNpu, last_error_,
+                              "npu.run_continue"},
+                last_execution_};
+    }
+    last_execution_.state = ExecutionState::kRunning;
+    return {common::Error{common::ErrorCode::kOk, 0U,
+                          "npu.continue_run"},
+            last_execution_};
+}
+
 Status NpuDriver::WaitRun(RunProgressCallback progress,
                           void *progress_context)
 {
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.wait_run");
     }
-    if (last_execution_.state != ExecutionState::kSubmitted &&
-        last_execution_.state != ExecutionState::kRunning) {
-        return InvalidState("npu.wait_run.not_active");
-    }
-
-    bool completed = false;
     for (std::uint32_t tick = 0U; tick < kTimeoutTicks; ++tick) {
-        ++last_execution_.status_poll_count;
-        stai_return_code code = model_->GetRunStatus();
-        last_error_ = static_cast<std::uint32_t>(code);
-        if (code == STAI_DONE) {
-            completed = true;
-            break;
+        Status status = PollRun(progress, progress_context);
+        if (!status.Ok()) {
+            return status;
         }
-        if (IsError(code)) {
-            FinishExecutionTiming(last_execution_);
-            last_execution_.state = ExecutionState::kFaulted;
-            last_execution_.stai_status = last_error_;
-            UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                              "ai: npu done error=%x irq=%u last=%x\n"),
-                          static_cast<unsigned int>(code), g_aton_irq_count,
-                          g_aton_last_irqs);
-            return {common::Error{common::ErrorCode::kNpu, last_error_,
-                                  "npu.run"},
-                    last_execution_};
+        if (status.action == RunAction::kCompleted) {
+            return status;
         }
-
-        /* Give the caller a chance to prepare the next frame only while the
-         * current NPU run is still active. */
-        if (progress != nullptr) {
-            const std::uint32_t progress_start_ms = NowMs();
-            ++last_execution_.progress_count;
-            progress(progress_context);
-            const std::uint32_t progress_elapsed_ms =
-                NowMs() - progress_start_ms;
-            last_execution_.progress_elapsed_ms += progress_elapsed_ms;
-            if (progress_elapsed_ms >
-                last_execution_.progress_max_elapsed_ms) {
-                last_execution_.progress_max_elapsed_ms = progress_elapsed_ms;
+        if (status.action == RunAction::kWaitForIrq) {
+            status = WaitForIrq();
+            if (!status.Ok()) {
+                return status;
             }
         }
-
-        /* The generated ST.AI runtime distinguishes two kinds of wait:
-         * STAI_RUNNING_NO_WFE means that the next epoch can be continued
-         * immediately, while STAI_RUNNING_WFE means that an NPU IRQ must
-         * arrive first.  Do not add a fixed 1-tick delay here.  A face model
-         * has many epoch blocks, so that delay accumulates into seconds. */
-        if (code == STAI_RUNNING_WFE) {
-            UINT pattern = 0U;
-            const std::uint32_t wait_start_ms = NowMs();
-            ++last_execution_.irq_wait_count;
-            const ER wait_status = tk_wai_flg(
-                g_npu_irq_event_flag, kNpuIrqEvent,
-                TWF_ANDW | TWF_BITCLR, &pattern,
-                static_cast<TMO>(kTimeoutTicks));
-            const std::uint32_t irq_wait_elapsed_ms =
-                NowMs() - wait_start_ms;
-            last_execution_.irq_wait_elapsed_ms += irq_wait_elapsed_ms;
-            if (irq_wait_elapsed_ms >
-                last_execution_.irq_wait_max_elapsed_ms) {
-                last_execution_.irq_wait_max_elapsed_ms = irq_wait_elapsed_ms;
-            }
-            if (wait_status == E_TMOUT) {
-                break;
-            }
-            if (wait_status != E_OK) {
-                FinishExecutionTiming(last_execution_);
-                last_execution_.state = ExecutionState::kFaulted;
-                last_execution_.stai_status =
-                    static_cast<std::uint32_t>(wait_status);
-                return {common::Error{common::ErrorCode::kNpu,
-                                      static_cast<std::uint32_t>(wait_status),
-                                      "npu.wait_irq"},
-                        last_execution_};
-            }
+        status = ContinueRun();
+        if (!status.Ok()) {
+            return status;
         }
-        const std::uint32_t continue_start_ms = NowMs();
-        ++last_execution_.continue_count;
-        code = model_->ContinueRun();
-        const std::uint32_t continue_elapsed_ms =
-            NowMs() - continue_start_ms;
-        last_execution_.continue_elapsed_ms += continue_elapsed_ms;
-        if (continue_elapsed_ms > last_execution_.continue_max_elapsed_ms) {
-            last_execution_.continue_max_elapsed_ms = continue_elapsed_ms;
-        }
-        if (continue_elapsed_ms >= 10U) {
-            ++last_execution_.continue_slow_count;
-        }
-        last_error_ = static_cast<std::uint32_t>(code);
-        if (IsError(code)) {
-            FinishExecutionTiming(last_execution_);
-            last_execution_.state = ExecutionState::kFaulted;
-            last_execution_.stai_status = last_error_;
-            return {common::Error{common::ErrorCode::kNpu, last_error_,
-                                  "npu.run_continue"},
-                    last_execution_};
-        }
-    }
-
-    if (!completed) {
-        FinishExecutionTiming(last_execution_);
-        last_execution_.state = ExecutionState::kTimedOut;
-        last_execution_.stai_status = last_error_;
-        const registers::NpuRegisterSnapshot timeout_hardware =
-            registers_.ReadSnapshot();
-        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                          "ai: npu done timeout status=%x irq=%u last=%x epoch=%x/%x bc=%x int=%x bus=%x/%x,%x/%x stream=%x/%x size=%x count=%x/%x/%x/%x\n"),
-                      static_cast<unsigned int>(last_error_), g_aton_irq_count,
-                      g_aton_last_irqs,
-                      static_cast<unsigned int>(timeout_hardware.epoch_control),
-                      static_cast<unsigned int>(timeout_hardware.epoch_address),
-                      static_cast<unsigned int>(timeout_hardware.epoch_byte_counter),
-                      static_cast<unsigned int>(timeout_hardware.interrupt_status),
-                      static_cast<unsigned int>(timeout_hardware.busif0_control),
-                      static_cast<unsigned int>(timeout_hardware.busif0_error),
-                      static_cast<unsigned int>(timeout_hardware.busif1_control),
-                      static_cast<unsigned int>(timeout_hardware.busif1_error),
-                      static_cast<unsigned int>(timeout_hardware.stream0_control),
-                      static_cast<unsigned int>(timeout_hardware.stream0_address),
-                      static_cast<unsigned int>(timeout_hardware.stream0_frame_size),
-                      static_cast<unsigned int>(timeout_hardware.stream0_depth_count),
-                      static_cast<unsigned int>(timeout_hardware.stream0_pixel_count),
-                      static_cast<unsigned int>(timeout_hardware.stream0_line_count),
-                      static_cast<unsigned int>(timeout_hardware.stream0_frame_count));
-        return {common::Error{common::ErrorCode::kTimeout, last_error_,
-                              "npu.run"},
-                last_execution_};
     }
 
     FinishExecutionTiming(last_execution_);
-    last_execution_.state = ExecutionState::kCompleted;
-    last_execution_.stai_status = STAI_DONE;
-    return {common::Error{common::ErrorCode::kOk, 0U, "npu.wait_run"},
+    last_execution_.state = ExecutionState::kTimedOut;
+    last_execution_.stai_status = last_error_;
+    const registers::NpuRegisterSnapshot timeout_hardware =
+        registers_.ReadSnapshot();
+    UAI_LOG_ERROR(reinterpret_cast<const UB *>(
+                      "ai: npu done timeout status=%x irq=%u last=%x epoch=%x/%x bc=%x int=%x bus=%x/%x,%x/%x stream=%x/%x size=%x count=%x/%x/%x/%x\n"),
+                  static_cast<unsigned int>(last_error_), g_aton_irq_count,
+                  g_aton_last_irqs,
+                  static_cast<unsigned int>(timeout_hardware.epoch_control),
+                  static_cast<unsigned int>(timeout_hardware.epoch_address),
+                  static_cast<unsigned int>(timeout_hardware.epoch_byte_counter),
+                  static_cast<unsigned int>(timeout_hardware.interrupt_status),
+                  static_cast<unsigned int>(timeout_hardware.busif0_control),
+                  static_cast<unsigned int>(timeout_hardware.busif0_error),
+                  static_cast<unsigned int>(timeout_hardware.busif1_control),
+                  static_cast<unsigned int>(timeout_hardware.busif1_error),
+                  static_cast<unsigned int>(timeout_hardware.stream0_control),
+                  static_cast<unsigned int>(timeout_hardware.stream0_address),
+                  static_cast<unsigned int>(timeout_hardware.stream0_frame_size),
+                  static_cast<unsigned int>(timeout_hardware.stream0_depth_count),
+                  static_cast<unsigned int>(timeout_hardware.stream0_pixel_count),
+                  static_cast<unsigned int>(timeout_hardware.stream0_line_count),
+                  static_cast<unsigned int>(timeout_hardware.stream0_frame_count));
+    return {common::Error{common::ErrorCode::kTimeout, last_error_, "npu.run"},
             last_execution_};
 }
 
@@ -607,6 +751,8 @@ Status NpuDriver::Shutdown()
         loaded_model = nullptr;
     }
     loaded_model_count_ = 0U;
+    epoch_trace_active_ = false;
+    epoch_trace_last_cycles_ = 0U;
     initialized_ = false;
     last_execution_.state = ExecutionState::kUninitialized;
     last_execution_.stai_status = last_error_;

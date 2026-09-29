@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Decode a raw ThreadMonitor internal APP RAM dump into JSON.
 
-The input is the 64 KiB linker-reserved region whose address is exposed by
+The input is the 128 KiB linker-reserved region whose address is exposed by
 __sample_ai_thread_monitor_start__. The format is kept independent from the
 firmware ABI so the dump can be decoded after a crash.
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 TRACE_MAGIC = 0x544D4F4E
-TRACE_VERSION = 3
+TRACE_VERSION = 4
 LEGACY_TRACE_VERSION = 2
 COMMIT_MAGIC = 0x434D4954
 HEADER = struct.Struct("<IHH14I")
@@ -32,6 +32,24 @@ MODEL_KIND_NAMES = {
     1: "segmentation",
     2: "face",
 }
+CALLBACK_STAGE_NAMES = {
+    1: "cpu_start",
+    2: "npu",
+    3: "cpu_end",
+}
+PIPELINE_STAGE_NAMES = {
+    0: "copy",
+    1: "resize",
+    2: "letterbox",
+    3: "input_cache",
+    4: "submit",
+    5: "irq_wait",
+    6: "epoch_continue",
+    7: "output_cache",
+    8: "decode",
+    9: "convert",
+    10: "finalize",
+}
 
 
 def signed32(value: int) -> int:
@@ -40,7 +58,8 @@ def signed32(value: int) -> int:
 
 def record_type_name(value: int) -> str:
     return {1: "sample", 2: "fault", 3: "npu_execution",
-            4: "inference_phase"}.get(
+            4: "inference_phase", 5: "npu_epoch",
+            6: "pipeline_stage"}.get(
         value, "unknown"
     )
 
@@ -57,7 +76,7 @@ def decode(path: Path) -> dict:
      _reserved0, _reserved1, _reserved2) = values
     if magic != TRACE_MAGIC:
         raise ValueError(f"invalid magic: 0x{magic:08x}")
-    if version not in (LEGACY_TRACE_VERSION, TRACE_VERSION):
+    if version not in (LEGACY_TRACE_VERSION, 3, TRACE_VERSION):
         raise ValueError(f"unsupported version: {version}")
     if header_size != HEADER.size or record_size != RECORD.size:
         raise ValueError(
@@ -99,20 +118,41 @@ def decode(path: Path) -> dict:
             "fault_code": fault_code,
             "type": record_type_name(record_type),
             "type_id": record_type,
-            "phase_id": (phase_id if version >= TRACE_VERSION else None),
+            "phase_id": (phase_id if version >= 3 else None),
             "phase": (PHASE_NAMES.get(phase_id)
                       if record_type in (3, 4) else None),
             "flags": flags,
             "npu_timing_valid": bool(flags & (1 << 2)),
+            "npu_cycle_valid": bool(flags & (1 << 3)),
             "npu_elapsed_ms": npu_elapsed_ms,
             "elapsed_ms": (npu_elapsed_ms
                            if record_type in (3, 4) else None),
+            "stage_timing_valid": (record_type == 6 and
+                                    bool(flags & (1 << 3))),
+            "stage_cycle_end": (progress_tick if record_type == 6 else None),
+            "stage_cycle_elapsed": (npu_elapsed_ms
+                                     if record_type == 6 else None),
             "model_kind": (MODEL_KIND_NAMES.get(kind_or_status)
-                            if version >= TRACE_VERSION else None),
-            "model_kind_id": (kind_or_status if version >= TRACE_VERSION
+                            if version >= 3 else None),
+            "model_kind_id": (kind_or_status if version >= 3
                                else None),
-            "npu_status": (kind_or_status if version < TRACE_VERSION
+            "npu_status": (kind_or_status if version < 3
                             else None),
+            "epoch_index": (wait_factor if record_type == 5 else None),
+            "epoch_flags": (task_state if record_type == 5 else None),
+            "epoch_address": (wait_object_id if record_type == 5 else None),
+            "callback_type": (signed32(reference_status)
+                              if record_type == 5 else None),
+            "callback_stage": (CALLBACK_STAGE_NAMES.get(
+                signed32(reference_status), "legacy_post_end")
+                               if record_type == 5 else None),
+            "pipeline_stage_id": (phase_id if record_type == 6 else None),
+            "pipeline_stage": (PIPELINE_STAGE_NAMES.get(
+                phase_id, f"stage={phase_id}") if record_type == 6 else None),
+            "cycle_end": (progress_tick if record_type == 5 else None),
+            "cycle_elapsed": (npu_elapsed_ms if record_type == 5 else None),
+            "cycle_start": ((progress_tick - npu_elapsed_ms) & 0xFFFFFFFF
+                            if record_type == 5 else None),
         })
 
     return {
@@ -137,7 +177,7 @@ def decode(path: Path) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("dump", type=Path, help="raw 64 KiB trace dump")
+    parser.add_argument("dump", type=Path, help="raw 128 KiB trace dump")
     parser.add_argument("-o", "--output", type=Path,
                         help="write JSON to this file instead of stdout")
     parser.add_argument("--pretty", action="store_true",

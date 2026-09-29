@@ -22,6 +22,9 @@ alignas(8) INT g_monitor_stack[kMonitorStackSize / sizeof(INT)];
 
 } // namespace
 
+ThreadMonitor::PendingTraceEvent
+    ThreadMonitor::pending_trace_events_[ThreadMonitor::kPendingTraceEventCapacity];
+
 bool ThreadMonitor::InitializeTraceBuffer()
 {
     const auto &region = static_memory_layout::kLayout.Get(
@@ -59,6 +62,12 @@ bool ThreadMonitor::InitializeTraceBuffer()
         static_cast<std::uint32_t>(monitored_task_id_);
     trace_header_->monitor_task_id = 0U;
     FlushTrace(trace_header_, sizeof(*trace_header_));
+    UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                     "ai: trace buffer addr=%x bytes=%u records=%u version=%u\n"),
+                 static_cast<unsigned int>(region.address()),
+                 static_cast<unsigned int>(region.size()),
+                 static_cast<unsigned int>(trace_capacity_),
+                 static_cast<unsigned int>(trace_header_->version));
     return true;
 }
 
@@ -155,7 +164,7 @@ common::Error ThreadMonitor::Stop()
     if (terminate_status == E_OK) {
         /* Once the monitor task is terminated, it is the only remaining trace
          * writer, so it is safe to drain an event reported just before Stop. */
-        FlushPendingNpuExecutions();
+        FlushPendingTraceEvents();
     }
     if (trace_header_ != nullptr) {
         trace_header_->monitor_task_id = 0U;
@@ -208,6 +217,33 @@ void ThreadMonitor::ObserveNpuExecution(std::uint32_t end_ms,
                           model_kind_id);
 }
 
+void ThreadMonitor::ObserveNpuEpoch(std::uint32_t end_ms,
+                                    std::uint32_t end_cycles,
+                                    std::uint32_t elapsed_cycles,
+                                    std::uint32_t model_kind_id,
+                                    std::uint32_t epoch_index,
+                                    std::uint32_t epoch_flags,
+                                    std::uint32_t epoch_address,
+                                    std::uint32_t callback_type)
+{
+    if (monitor_task_id_ == 0 || !trace_header_) {
+        return;
+    }
+    (void)QueueTraceEvent({
+        end_ms,
+        0U,
+        model_kind_id,
+        epoch_index,
+        epoch_flags,
+        epoch_address,
+        end_cycles,
+        elapsed_cycles,
+        callback_type,
+        static_cast<std::uint8_t>(TraceRecordType::kNpuEpoch),
+        0U,
+    });
+}
+
 void ThreadMonitor::ObserveInferencePhase(std::uint32_t end_ms,
                                           std::uint32_t elapsed_ms,
                                           InferencePhase phase,
@@ -223,27 +259,72 @@ void ThreadMonitor::ObserveInferencePhase(std::uint32_t end_ms,
     }
 
     /* The inference task reports the event, while the monitor task owns the
-     * trace ring.  Keep this SPSC queue so the two tasks never write a trace
-     * slot concurrently.  The record timestamp is the phase end time; the
+     * trace ring. Keep this SPSC queue so the two tasks never write a trace
+     * slot concurrently. The record timestamp is the phase end time; the
      * host can reconstruct the start from end_ms - elapsed_ms. */
+    (void)QueueTraceEvent({
+        end_ms,
+        elapsed_ms,
+        model_kind_id,
+        0xFFFFFFFFU,
+        0U,
+        0U,
+        0U,
+        0U,
+        0U,
+        static_cast<std::uint8_t>(phase == InferencePhase::kNpuExecution
+                                      ? TraceRecordType::kNpuExecution
+                                      : TraceRecordType::kInferencePhase),
+        static_cast<std::uint16_t>(phase),
+    });
+}
+
+void ThreadMonitor::ObservePipelineStage(std::uint32_t end_ms,
+                                         std::uint32_t end_cycles,
+                                         std::uint32_t elapsed_cycles,
+                                         std::uint32_t stage_id,
+                                         std::uint32_t model_kind_id)
+{
+    if (monitor_task_id_ == 0 || !trace_header_) {
+        return;
+    }
+
+    /* Pipeline records reuse the phase_id field to keep the 64-byte raw
+     * format stable. Their record type distinguishes them from legacy phase
+     * records, so the host can decode the value as a ModelStageId. The
+     * progress_tick and npu_elapsed_ms fields carry the DWT end/duration
+     * cycles for sub-millisecond CPU stages. */
+    (void)QueueTraceEvent({
+        end_ms,
+        0U,
+        model_kind_id,
+        0xFFFFFFFFU,
+        0U,
+        0U,
+        end_cycles,
+        elapsed_cycles,
+        0U,
+        static_cast<std::uint8_t>(TraceRecordType::kPipelineStage),
+        static_cast<std::uint16_t>(stage_id),
+    });
+}
+
+bool ThreadMonitor::QueueTraceEvent(const PendingTraceEvent &event)
+{
     const std::uint32_t write =
         __atomic_load_n(&pending_write_index_, __ATOMIC_RELAXED);
     const std::uint32_t read =
         __atomic_load_n(&pending_read_index_, __ATOMIC_ACQUIRE);
     const std::uint32_t next =
-        (write + 1U) % kPendingNpuExecutionCapacity;
+        (write + 1U) % kPendingTraceEventCapacity;
     if (next == read) {
         __atomic_fetch_add(&pending_dropped_count_, 1U, __ATOMIC_RELAXED);
-        return;
+        return false;
     }
 
-    pending_npu_executions_[write] = {
-        end_ms, elapsed_ms, model_kind_id,
-        static_cast<std::uint8_t>(phase == InferencePhase::kNpuExecution
-                                      ? TraceRecordType::kNpuExecution
-                                      : TraceRecordType::kInferencePhase),
-        static_cast<std::uint16_t>(phase)};
+    pending_trace_events_[write] = event;
     __atomic_store_n(&pending_write_index_, next, __ATOMIC_RELEASE);
+    return true;
 }
 
 void ThreadMonitor::RecordSample(std::uint32_t now,
@@ -260,7 +341,8 @@ void ThreadMonitor::WriteRecord(std::uint32_t now, TraceRecordType type,
                                 bool has_npu_timing,
                                 std::uint32_t npu_elapsed_ms,
                                 std::uint32_t model_kind_id,
-                                std::uint16_t phase_id)
+                                std::uint16_t phase_id,
+                                const PendingTraceEvent *event)
 {
     if (trace_header_ == nullptr || trace_records_ == nullptr ||
         trace_capacity_ == 0U) {
@@ -298,6 +380,29 @@ void ThreadMonitor::WriteRecord(std::uint32_t now, TraceRecordType type,
         record.base_priority =
             static_cast<std::int32_t>(task_status->tskbpri);
     }
+    if (event != nullptr && type == TraceRecordType::kNpuEpoch) {
+        /* Keep the raw format at 64 bytes. For epoch records these existing
+         * sample fields carry the dense NPU payload; the decoder interprets
+         * them according to the record type. */
+        record.task_state = event->epoch_flags;
+        record.wait_factor = event->epoch_index;
+        record.wait_object_id = event->epoch_address;
+        record.current_priority =
+            static_cast<std::int32_t>(event->epoch_end_cycles);
+        record.base_priority =
+            static_cast<std::int32_t>(event->epoch_elapsed_cycles);
+        record.progress_tick = event->epoch_end_cycles;
+        record.reference_status =
+            static_cast<std::int32_t>(event->callback_type);
+        record.npu_elapsed_ms = event->epoch_elapsed_cycles;
+        record.model_kind_id = event->model_kind_id;
+        record.flags |= kTraceFlagNpuCycleValid;
+    } else if (event != nullptr && type == TraceRecordType::kPipelineStage) {
+        record.progress_tick = event->epoch_end_cycles;
+        record.npu_elapsed_ms = event->epoch_elapsed_cycles;
+        record.model_kind_id = event->model_kind_id;
+        record.flags |= kTraceFlagNpuCycleValid;
+    }
     record.commit_marker = kThreadMonitorTraceCommitMagic ^ sequence;
 
     ThreadMonitorTraceRecord &slot = trace_records_[trace_header_->write_index];
@@ -320,7 +425,7 @@ void ThreadMonitor::WriteRecord(std::uint32_t now, TraceRecordType type,
     FlushTrace(trace_header_, sizeof(*trace_header_));
 }
 
-void ThreadMonitor::FlushPendingNpuExecutions()
+void ThreadMonitor::FlushPendingTraceEvents()
 {
     if (trace_header_ == nullptr || trace_records_ == nullptr) {
         return;
@@ -339,12 +444,12 @@ void ThreadMonitor::FlushPendingNpuExecutions()
             break;
         }
 
-        const PendingNpuExecution event = pending_npu_executions_[read];
+        const PendingTraceEvent event = pending_trace_events_[read];
         WriteRecord(event.end_ms,
                     static_cast<TraceRecordType>(event.record_type), nullptr,
                     E_OK, TraceFaultCode::kNone, true, event.elapsed_ms,
-                    event.model_kind_id, event.phase_id);
-        read = (read + 1U) % kPendingNpuExecutionCapacity;
+                    event.model_kind_id, event.phase_id, &event);
+        read = (read + 1U) % kPendingTraceEventCapacity;
         __atomic_store_n(&pending_read_index_, read, __ATOMIC_RELEASE);
     }
 
@@ -387,7 +492,7 @@ void ThreadMonitor::Run()
         const ER reference_status =
             tk_ref_tsk(monitored_task_id_, &task_status);
         const std::uint32_t now = Now();
-        FlushPendingNpuExecutions();
+        FlushPendingTraceEvents();
         if (reference_status != E_OK) {
             ReportFault(now, nullptr, reference_status,
                         TraceFaultCode::kTaskReference);

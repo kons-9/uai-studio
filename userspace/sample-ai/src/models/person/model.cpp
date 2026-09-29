@@ -18,11 +18,37 @@ stai_return_code person_model_continue_run(void);
 stai_return_code person_model_wait_for_event(void);
 stai_return_code person_model_get_run_status(void);
 stai_return_code person_model_new_inference(void);
+stai_return_code person_model_set_epoch_trace_callback(
+    ::uai::ai::models::EpochTraceCallback callback, void *context);
 }
 
 namespace uai::ai::models::person {
 
 namespace {
+
+constexpr ModelStageDescriptor kPersonStages[] = {
+    {ModelStageId::kInputCache, "input_cache",
+     ModelStageLocation::kInferenceTaskCpu, ModelStageOverlap::kSerial,
+     "prepare the direct Pipe2 input for the NPU"},
+    {ModelStageId::kSubmit, "submit", ModelStageLocation::kInferenceTaskCpu,
+     ModelStageOverlap::kSerial, "start the asynchronous ST.AI run"},
+    {ModelStageId::kIrqWait, "irq_wait",
+     ModelStageLocation::kInferenceTaskCpu, ModelStageOverlap::kSerial,
+     "wait for the NPU event and inspect ST.AI status"},
+    {ModelStageId::kEpochContinue, "epoch_continue",
+     ModelStageLocation::kInferenceTaskCpu, ModelStageOverlap::kSerial,
+     "continue the next ST.AI epoch after an IRQ"},
+    {ModelStageId::kOutputCache, "output_cache",
+     ModelStageLocation::kInferenceTaskCpu, ModelStageOverlap::kSerial,
+     "make NPU output tensors visible to the CPU"},
+    {ModelStageId::kDecode, "decode", ModelStageLocation::kInferenceTaskCpu,
+     ModelStageOverlap::kSerial, "decode person tensors"},
+    {ModelStageId::kConvert, "convert", ModelStageLocation::kInferenceTaskCpu,
+     ModelStageOverlap::kSerial, "convert detections to application boxes"},
+    {ModelStageId::kFinalize, "finalize",
+     ModelStageLocation::kInferenceTaskCpu, ModelStageOverlap::kSerial,
+     "reset the generated runtime for the next inference"},
+};
 
 Decoder &PersonDecoderInstance()
 {
@@ -62,6 +88,22 @@ const ModelDescriptor &Model::Descriptor()
 const ModelDescriptor &Model::GetDescriptor() const
 {
     return Descriptor();
+}
+
+const ModelPipeline &Model::GetPipeline() const
+{
+    static constexpr ModelPipeline kPipeline{
+        kPersonStages, sizeof(kPersonStages) / sizeof(kPersonStages[0])};
+    return kPipeline;
+}
+
+common::Error Model::ExecuteStage(ModelStageId stage,
+                                  ModelStageContext &context) const
+{
+    (void)context;
+    return {common::ErrorCode::kInvalidArgument,
+            static_cast<std::uint32_t>(stage),
+            "person.model.unsupported_stage"};
 }
 
 ModelCallbacks Model::GetCallbacks() const
@@ -196,6 +238,12 @@ stai_return_code Model::GetRunStatus()
 stai_return_code Model::NewInference()
 {
     return person_model_new_inference();
+}
+
+stai_return_code Model::SetEpochTraceCallback(EpochTraceCallback callback,
+                                              void *context)
+{
+    return person_model_set_epoch_trace_callback(callback, context);
 }
 
 } // namespace uai::ai::models::person

@@ -2,39 +2,9 @@
 
 #include "common/log.hpp"
 
-#include <tk/tkernel.h>
-
 namespace uai::ai::npu_runtime {
 
 namespace {
-
-std::uint32_t NowMs()
-{
-    SYSTIM time = {};
-    return tk_get_otm(&time) == E_OK ? time.lo : 0U;
-}
-
-class PhaseTimingScope final {
-public:
-    explicit PhaseTimingScope(InferencePhaseTiming &timing)
-        : timing_(timing)
-    {
-        timing_.start_ms = NowMs();
-        timing_.end_ms = timing_.start_ms;
-        timing_.elapsed_ms = 0U;
-        timing_.valid = false;
-    }
-
-    ~PhaseTimingScope()
-    {
-        timing_.end_ms = NowMs();
-        timing_.elapsed_ms = timing_.end_ms - timing_.start_ms;
-        timing_.valid = true;
-    }
-
-private:
-    InferencePhaseTiming &timing_;
-};
 
 void MergeTiming(InferenceTiming &destination,
                  const InferenceTiming &source)
@@ -81,6 +51,35 @@ common::Error ThreadMonitorTimeout()
             "ai.npu_runtime.thread_monitor"};
 }
 
+void ObserveNpuEpoch(void *context, std::uint32_t model_kind_id,
+                     std::uint32_t end_ms, std::uint32_t end_cycles,
+                     std::uint32_t elapsed_cycles,
+                     std::uint32_t epoch_index, std::uint32_t epoch_flags,
+                     std::uintptr_t epoch_address,
+                     std::uint32_t callback_type)
+{
+    auto *monitor = static_cast<ThreadMonitor *>(context);
+    if (monitor != nullptr) {
+        monitor->ObserveNpuEpoch(
+            end_ms, end_cycles, elapsed_cycles, model_kind_id, epoch_index,
+            epoch_flags, static_cast<std::uint32_t>(epoch_address),
+            callback_type);
+    }
+}
+
+void ObservePipelineStage(void *context, std::uint32_t end_ms,
+                          std::uint32_t end_cycles,
+                          std::uint32_t elapsed_cycles,
+                          std::uint32_t model_kind_id,
+                          std::uint32_t stage_id)
+{
+    auto *monitor = static_cast<ThreadMonitor *>(context);
+    if (monitor != nullptr) {
+        monitor->ObservePipelineStage(end_ms, end_cycles, elapsed_cycles,
+                                      stage_id, model_kind_id);
+    }
+}
+
 } // namespace
 
 common::Error NpuRuntime::RegisterModel(const models::ModelBinding &binding)
@@ -110,6 +109,8 @@ common::Error NpuRuntime::Initialize(cache::CacheDriver &cache)
         return {common::ErrorCode::kInvalidArgument, 0U,
                 "ai.npu_runtime.active_model"};
     }
+    npu_.SetEpochTraceObserver(&ObserveNpuEpoch, &thread_monitor_);
+    npu_.SetEpochTraceModelKindId(static_cast<std::uint32_t>(active->kind));
     last_npu_status_ = npu_.Initialize(*active->runtime);
     if (!last_npu_status_.Ok()) {
         (void)scheduler_.Shutdown();
@@ -143,6 +144,9 @@ common::Error NpuRuntime::Initialize(cache::CacheDriver &cache)
         return status;
     }
 
+    dispatcher_.SetPipelineStageObserver(&ObservePipelineStage,
+                                         &thread_monitor_);
+
     status = thread_monitor_.Start();
     if (!status.Ok()) {
         (void)dispatcher_.Shutdown();
@@ -173,57 +177,13 @@ common::Error NpuRuntime::Run(memory_allocator::InferenceFrame &frame,
     MonitoredOperation monitor_operation(thread_monitor_);
     last_inference_timing_.Reset();
 
-    if (inference_started_ || frame.input_prepared) {
-        PhaseTimingScope phase(
-            last_inference_timing_.At(InferencePhase::kModelSelection));
-        common::Error status;
-        if (frame.input_prepared) {
-            const models::ModelBinding *prepared_binding = nullptr;
-            for (std::size_t i = 0U; i < scheduler_.BindingCount(); ++i) {
-                const models::ModelBinding *binding = scheduler_.BindingAt(i);
-                if (binding != nullptr &&
-                    static_cast<std::uint8_t>(binding->kind) ==
-                        frame.prepared_model_kind_id) {
-                    prepared_binding = binding;
-                    break;
-                }
-            }
-            if (prepared_binding == nullptr) {
-                return {common::ErrorCode::kModel,
-                        frame.prepared_model_kind_id,
-                        "ai.npu_runtime.prepared_model"};
-            }
-            status = scheduler_.Select(prepared_binding->kind);
-        } else {
-            status = scheduler_.SelectNext();
-        }
-        if (!status.Ok()) {
-            return status;
-        }
-        const models::ModelBinding *active = scheduler_.CurrentBinding();
-        if (active == nullptr || active->runtime == nullptr) {
-            return {common::ErrorCode::kInvalidArgument, 0U,
-                    "ai.npu_runtime.active_model"};
-        }
-        last_npu_status_ = npu_.SelectModel(*active->runtime);
-        if (!last_npu_status_.Ok()) {
-            return last_npu_status_.error;
-        }
-        status = dispatcher_.RefreshSelectedModel();
-        if (!status.Ok()) {
-            return status;
-        }
-        const models::ModelDescriptor *descriptor = scheduler_.GetDescriptor();
-        if (descriptor != nullptr) {
-            UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                             "ai: model switched to %s\n"),
-                         reinterpret_cast<const UB *>(descriptor->name));
-        }
-        thread_monitor_.Progress();
-    }
+    const bool select_model = inference_started_ || frame.input_prepared;
+    /* The pipeline owns model selection now. Keep the monitor alive while the
+     * first CPU stage configures the selected runtime. */
+    thread_monitor_.Progress();
 
     const common::Error status = dispatcher_.TryInfer(
-        frame, result, prefetch_provider, prefetch_context);
+        frame, result, prefetch_provider, prefetch_context, select_model);
     last_npu_status_ = dispatcher_.LastNpuStatus();
     MergeTiming(last_inference_timing_, dispatcher_.LastTiming());
     const models::ModelDescriptor *descriptor = scheduler_.GetDescriptor();
@@ -293,6 +253,8 @@ common::Error NpuRuntime::Shutdown()
     }
 
     const common::Error monitor_status = thread_monitor_.Stop();
+    npu_.SetEpochTraceObserver(nullptr, nullptr);
+    dispatcher_.SetPipelineStageObserver(nullptr, nullptr);
     const common::Error dispatcher_status = dispatcher_.Shutdown();
     last_npu_status_ = npu_.Shutdown();
     const common::Error scheduler_status = scheduler_.Shutdown();

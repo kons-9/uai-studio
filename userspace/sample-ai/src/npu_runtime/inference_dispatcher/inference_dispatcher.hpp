@@ -1,6 +1,7 @@
 #ifndef UAI_AI_NPU_RUNTIME_INFERENCE_DISPATCHER_HPP
 #define UAI_AI_NPU_RUNTIME_INFERENCE_DISPATCHER_HPP
 
+#include <cstddef>
 #include <cstdint>
 
 #include "common/error.hpp"
@@ -23,6 +24,11 @@ using PrefetchProvider = memory_allocator::InferenceFrame *(*)(void *context);
  */
 class InferenceDispatcher final {
 public:
+    using PipelineStageObserver = void (*)(
+        void *context, std::uint32_t end_ms, std::uint32_t end_cycles,
+        std::uint32_t elapsed_cycles, std::uint32_t model_kind_id,
+        std::uint32_t stage_id);
+
     common::Error Initialize(scheduler::Scheduler &scheduler,
                              npu::NpuDriver &npu,
                              cache::CacheDriver &cache);
@@ -30,10 +36,18 @@ public:
     common::Error TryInfer(memory_allocator::InferenceFrame &frame,
                            memory_allocator::BoxSet *result,
                            PrefetchProvider prefetch_provider = nullptr,
-                           void *prefetch_context = nullptr);
+                           void *prefetch_context = nullptr,
+                           bool select_model = false);
     common::Error PrepareInputFor(const models::ModelBinding &binding,
                                   memory_allocator::InferenceFrame &frame);
     common::Error Shutdown();
+
+    void SetPipelineStageObserver(PipelineStageObserver observer,
+                                  void *context)
+    {
+        pipeline_stage_observer_ = observer;
+        pipeline_stage_context_ = context;
+    }
 
     bool Initialized() const { return initialized_; }
     const npu::Status &LastNpuStatus() const { return last_npu_status_; }
@@ -49,7 +63,38 @@ private:
         bool prepared = false;
     };
 
+    struct PipelineState {
+        InferenceDispatcher *dispatcher = nullptr;
+        memory_allocator::InferenceFrame *frame = nullptr;
+        memory_allocator::BoxSet *result = nullptr;
+        PrefetchProvider prefetch_provider = nullptr;
+        void *prefetch_context = nullptr;
+        bool select_model = false;
+        const models::ModelPipeline *pipeline = nullptr;
+        std::size_t stage_index = 0U;
+        models::ModelStageId stage = models::ModelStageId::kInputCache;
+        bool npu_completed = false;
+        std::uint32_t input_preparation_start_ms = 0U;
+        std::uint32_t input_preparation_end_ms = 0U;
+        std::uint32_t input_preparation_elapsed_ms = 0U;
+        models::ModelOutputView output_view{};
+        models::InferenceGeometry geometry{};
+        models::ModelResult decoded_result{};
+        PrefetchState prefetch{};
+    };
+
     static void PreparePrefetch(void *context);
+    static common::Error ExecuteModelSelection(void *context);
+    static common::Error ExecuteModelCpuStage(void *context);
+    static common::Error ExecuteInputHandoff(void *context);
+    static common::Error ExecuteNpuSubmit(void *context);
+    static common::Error ExecuteNpuIrqWait(void *context);
+    static common::Error ExecuteNpuEpochContinue(void *context);
+    static common::Error ExecuteOutputPreparation(void *context);
+    static common::Error ExecuteOutputDecoding(void *context);
+    static common::Error ExecuteResultConversion(void *context);
+    static common::Error ExecuteInferenceFinalize(void *context);
+    static common::Error ExecutePipeline(PipelineState &state);
     common::Error ConfigureCurrentModel();
 
     scheduler::Scheduler *scheduler_ = nullptr;
@@ -63,6 +108,8 @@ private:
     std::uint32_t last_error_ = 0U;
     npu::Status last_npu_status_{};
     InferenceTiming last_timing_{};
+    PipelineStageObserver pipeline_stage_observer_ = nullptr;
+    void *pipeline_stage_context_ = nullptr;
 };
 
 } // namespace uai::ai::npu_runtime

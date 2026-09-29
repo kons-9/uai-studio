@@ -107,7 +107,7 @@ SECTIONS
 
   /* Keep the launch entry away from the normal code range so the first fetch
    * cannot be satisfied by an instruction-cache line from the old image. */
-  .text.uai_ram_entry 0x34050000 :
+  .text.uai_ram_entry 0x34050400 :
   {
     . = ALIGN(4);
     KEEP(*(.text.uai_ram_entry))
@@ -217,7 +217,7 @@ SECTIONS
   {
     . = ALIGN(32);
     __sample_ai_thread_monitor_start__ = .;
-    . = . + 0x00010000;
+    . = . + 0x00020000;
     __sample_ai_thread_monitor_end__ = .;
   } >APP
 

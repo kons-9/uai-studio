@@ -10,6 +10,9 @@ class Model final : public ::uai::ai::models::Model,
 public:
     static const ModelDescriptor &Descriptor();
     const ModelDescriptor &GetDescriptor() const override;
+    const ModelPipeline &GetPipeline() const override;
+    common::Error ExecuteStage(ModelStageId stage,
+                               ModelStageContext &context) const override;
     ModelCallbacks GetCallbacks() const override;
     common::Error PrepareInput(memory_allocator::InferenceFrame &frame,
                                cache::CacheDriver &cache) const override;
@@ -31,6 +34,8 @@ private:
     stai_return_code WaitForEvent() override;
     stai_return_code GetRunStatus() override;
     stai_return_code NewInference() override;
+    stai_return_code SetEpochTraceCallback(EpochTraceCallback callback,
+                                            void *context) override;
 
     friend ::uai::ai::models::ModelRuntime &Runtime(Model &model);
 };

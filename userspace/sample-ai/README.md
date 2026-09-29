@@ -24,8 +24,10 @@ UARTには `pipe2 frame queued`、`pipe2` イベント数、ドロップ数を�
 エラーが発生してもPipe1のフレームsequenceが継続するか、`recovery` が増えないかを
 合わせて確認してください。
 
-推論の投入周期は20 msです。実機でのpersonモデルは初回ウォームアップ後、NPU実行が
-おおむね10〜12 msでした。詳細UART・入力テンソル走査を一時的に有効にする場合は、
+推論の投入周期は20 msです。personモデルは480x480で約10億MACのため、NPU=1 GHzで
+初回ウォームアップ後のNPU実行は実機でおおむね30 msです（Thread Monitor平均約30.2 ms、
+STEdgeAI生成時のCPU込み推定約28.7 ms）。以前の10〜12 msという記載は現モデル／入力形状と
+一致しないため更新しています。詳細UART・入力テンソル走査を一時的に有効にする場合は、
 `TaskContext::diagnostics` の `inference_trace` と `inference_input` を設定します。
 FPSだけを測る場合は `inference_fps` のみを設定してください。通常はUARTが推論を
 妨げないよう、すべてfalse（ゼロ初期値）にします。

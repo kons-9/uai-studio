@@ -161,7 +161,12 @@ void TaskContext::StartCameraTask(FP entry)
 
 void TaskContext::StartInferenceTask(FP entry)
 {
-    StartTask(entry, inference_task_stack, kInferenceTaskStackSize, 6,
+    /* NPU completion wakes this task from an event wait.  Keep it above the
+     * camera/LCD task so a ready NPU epoch is continued immediately instead
+     * of waiting behind a display composition period.  The task blocks while
+     * the NPU is running, so the camera task still owns the CPU between IRQs.
+     */
+    StartTask(entry, inference_task_stack, kInferenceTaskStackSize, 4,
               "inference");
 }
 

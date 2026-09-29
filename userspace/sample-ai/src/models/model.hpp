@@ -28,6 +28,47 @@ enum class ModelKind : std::uint8_t {
     kFace,
 };
 
+/* A model pipeline names operations at the granularity that matters for
+ * profiling.  The NPU protocol stages are present in the same description as
+ * CPU stages, but their implementation belongs to the runtime/driver. */
+enum class ModelStageId : std::uint8_t {
+    kCopy,
+    kResize,
+    kLetterbox,
+    kInputCache,
+    kSubmit,
+    kIrqWait,
+    kEpochContinue,
+    kOutputCache,
+    kDecode,
+    kConvert,
+    kFinalize,
+};
+
+enum class ModelStageLocation : std::uint8_t {
+    kInferenceTaskCpu,
+    kNpuHardware,
+    kNpuIrq,
+};
+
+enum class ModelStageOverlap : std::uint8_t {
+    kSerial,
+    kMayOverlap,
+};
+
+struct ModelStageDescriptor {
+    ModelStageId id = ModelStageId::kCopy;
+    const char *name = "";
+    ModelStageLocation location = ModelStageLocation::kInferenceTaskCpu;
+    ModelStageOverlap overlap = ModelStageOverlap::kSerial;
+    const char *processing = "";
+};
+
+struct ModelPipeline {
+    const ModelStageDescriptor *stages = nullptr;
+    std::size_t count = 0U;
+};
+
 /* Public model metadata shared by camera setup and input preparation. Output
  * tensor shapes, quantization, command blobs, and runtime buffers stay in the
  * runtime/decoder layers. Each concrete model owns and returns its descriptor. */
@@ -104,6 +145,17 @@ struct ModelResult {
     SegmentationResult segmentation{};
 };
 
+/* Scratch context passed to a model-owned stage. Runtime protocol stages do
+ * not need this interface; they operate through NpuDriver. */
+struct ModelStageContext {
+    memory_allocator::InferenceFrame *frame = nullptr;
+    cache::CacheDriver *cache = nullptr;
+    ModelOutputView *outputs = nullptr;
+    InferenceGeometry *geometry = nullptr;
+    ModelResult *decoded_result = nullptr;
+    memory_allocator::BoxSet *destination = nullptr;
+};
+
 struct InferenceCompletionContext {
     const ModelOutputView &outputs;
     const InferenceGeometry &geometry;
@@ -120,6 +172,14 @@ struct ModelCallbacks {
     ModelCompletionCallback on_inference_complete = nullptr;
     void *user_data = nullptr;
 };
+
+/* Raw epoch timing events are kept at the generated-runtime boundary.  The
+ * callback is intentionally model-neutral so the scheduler can profile every
+ * generated network without exposing an ST Edge AI context to application
+ * code. */
+using EpochTraceCallback = void (*) (
+    void *context, std::uint32_t callback_type, std::uint32_t epoch_index,
+    std::uint32_t epoch_flags, std::uintptr_t epoch_address);
 
 /* Internal STAI bridge used only by the NPU driver/scheduler. Application
  * code should depend on Model, not on these generated-runtime operations. */
@@ -139,6 +199,8 @@ public:
     virtual stai_return_code WaitForEvent() = 0;
     virtual stai_return_code GetRunStatus() = 0;
     virtual stai_return_code NewInference() = 0;
+    virtual stai_return_code SetEpochTraceCallback(EpochTraceCallback callback,
+                                                   void *context) = 0;
 
 protected:
     virtual ~ModelRuntime() = default;
@@ -149,6 +211,12 @@ class Model {
 public:
     /* Returns the static contract owned by this concrete model. */
     virtual const ModelDescriptor &GetDescriptor() const = 0;
+    /* Returns the concrete operation-level pipeline for this model. */
+    virtual const ModelPipeline &GetPipeline() const = 0;
+    /* Executes a model-owned CPU stage. Runtime/NPU stages are dispatched by
+     * InferenceDispatcher and must not be implemented here. */
+    virtual common::Error ExecuteStage(ModelStageId stage,
+                                       ModelStageContext &context) const = 0;
     /* Returns optional model-specific output lifecycle hooks. */
     virtual ModelCallbacks GetCallbacks() const
     {
@@ -162,6 +230,10 @@ public:
         const ModelResult &source, memory_allocator::BoxSet *destination) const = 0;
 
 protected:
+    static common::Error ExecutePipe2InputStage(ModelStageId stage,
+                                                ModelStageContext &context,
+                                                std::uint32_t model_width,
+                                                std::uint32_t model_height);
     /* Shared implementation for models whose input is a letterboxed view of
      * the camera's Pipe2 frame. This is intentionally not public model API. */
     static common::Error PreparePipe2LetterboxedInput(

@@ -60,7 +60,9 @@ static void board_system_clock_config(void)
 
 #if defined(UAI_CAMERA_LCD_CLOCKS)
     /* STM32Cube's STM32N6570-DK camera configuration uses PLL1=1200 MHz,
-     * then IC17/4 for DCMIPP (300 MHz) and IC18/60 for CSI (20 MHz). */
+     * then IC17/4 for DCMIPP (300 MHz) and IC18/60 for CSI (20 MHz).
+     * Keep the camera clocks on PLL1, but give the NPU and its RAM dedicated
+     * PLLs so camera traffic does not force the NPU down to 300/400 MHz. */
     oscillator.PLL1.PLLState = RCC_PLL_ON;
     oscillator.PLL1.PLLSource = RCC_PLLSOURCE_HSI;
     oscillator.PLL1.PLLM = 4U;
@@ -69,8 +71,21 @@ static void board_system_clock_config(void)
     oscillator.PLL1.PLLP1 = 1U;
     oscillator.PLL1.PLLP2 = 1U;
 
-    oscillator.PLL2.PLLState = RCC_PLL_NONE;
-    oscillator.PLL3.PLLState = RCC_PLL_NONE;
+    oscillator.PLL2.PLLState = RCC_PLL_ON;
+    oscillator.PLL2.PLLSource = RCC_PLLSOURCE_HSI;
+    oscillator.PLL2.PLLM = 8U;
+    oscillator.PLL2.PLLN = 125U;
+    oscillator.PLL2.PLLFractional = 0U;
+    oscillator.PLL2.PLLP1 = 1U;
+    oscillator.PLL2.PLLP2 = 1U;
+
+    oscillator.PLL3.PLLState = RCC_PLL_ON;
+    oscillator.PLL3.PLLSource = RCC_PLLSOURCE_HSI;
+    oscillator.PLL3.PLLM = 8U;
+    oscillator.PLL3.PLLN = 225U;
+    oscillator.PLL3.PLLFractional = 0U;
+    oscillator.PLL3.PLLP1 = 1U;
+    oscillator.PLL3.PLLP2 = 2U;
     oscillator.PLL4.PLLState = RCC_PLL_NONE;
 #else
     oscillator.PLL1.PLLState = RCC_PLL_ON;
@@ -126,10 +141,10 @@ static void board_system_clock_config(void)
     clocks.IC1Selection.ClockDivider = 2U;
     clocks.IC2Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
     clocks.IC2Selection.ClockDivider = 3U;
-    clocks.IC6Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
-    clocks.IC6Selection.ClockDivider = 4U;
-    clocks.IC11Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
-    clocks.IC11Selection.ClockDivider = 3U;
+    clocks.IC6Selection.ClockSelection = RCC_ICCLKSOURCE_PLL2;
+    clocks.IC6Selection.ClockDivider = 1U;
+    clocks.IC11Selection.ClockSelection = RCC_ICCLKSOURCE_PLL3;
+    clocks.IC11Selection.ClockDivider = 1U;
 #else
     clocks.IC1Selection.ClockSelection = RCC_ICCLKSOURCE_PLL1;
     clocks.IC1Selection.ClockDivider = 1U;

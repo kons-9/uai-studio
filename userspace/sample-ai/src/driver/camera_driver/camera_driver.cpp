@@ -53,6 +53,7 @@ std::uintptr_t g_next_frame = 0U;
 std::uintptr_t g_frame_buffer0 = 0U;
 std::uintptr_t g_frame_buffer1 = 0U;
 volatile std::uintptr_t g_completed_inference = 0U;
+volatile std::uint32_t g_completed_inference_sequence = 0U;
 std::uintptr_t g_active_inference = 0U;
 std::uintptr_t g_next_inference = 0U;
 std::uintptr_t g_inference_buffer0 = 0U;
@@ -498,6 +499,7 @@ Diagnostics CameraDriver::GetDiagnostics() const
         g_camera_camera_error_count,
         g_camera_pipe2_frame_event_count,
         g_camera_pipe2_drop_count,
+        g_inference_sequence,
         g_camera_csi_last_status,
         g_camera_csi_last_status1,
         g_camera_csi_last_pending_status,
@@ -654,6 +656,8 @@ uai::ai::common::Error CameraDriver::Start()
                                   DCMIPP_MODE_CONTINUOUS) != HAL_OK) {
         return Hardware("camera.pipe2.start");
     }
+    UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                     "camera: pipe1=started pipe2=started\n"));
     status = ApplyDemosaicDiagnostic();
     if (!status.Ok()) return status;
     uai::ai::camera::sensor::registers::Imx335RegisterLayer registers;
@@ -797,8 +801,9 @@ uai::ai::common::Error CameraDriver::TakeCompletedInference(
         }
     }
     const std::uintptr_t address = g_completed_inference;
-    const std::uint32_t sequence = g_inference_sequence;
+    const std::uint32_t sequence = g_completed_inference_sequence;
     g_completed_inference = 0U;
+    g_completed_inference_sequence = 0U;
     if (address == 0U) {
         return {uai::ai::common::ErrorCode::kNoFrame, 0U, "camera.take_inference"};
     }
@@ -830,12 +835,16 @@ extern "C" void BSP_CAMERA_ErrorCallback(uint32_t Instance) { (void)Instance; ++
 extern "C" void AiCameraPipe2FrameEventCallback(void)
 {
     ++g_camera_pipe2_frame_event_count;
+    /* This is the sequence of every Pipe2 completion, including frames sent
+     * to the drop sink. It is intentionally separate from the sequence of a
+     * frame handed to inference so lag can expose dropped intermediate frames. */
+    const std::uint32_t capture_sequence = ++g_inference_sequence;
     const std::uintptr_t completed = g_active_inference;
     const bool completed_is_real_buffer =
         completed != 0U && completed != g_inference_drop_buffer;
     if (completed_is_real_buffer) {
         g_completed_inference = completed;
-        ++g_inference_sequence;
+        g_completed_inference_sequence = capture_sequence;
         __DMB();
         if (g_pipe2_frame_event_flag > 0) {
             (void)tk_set_flg(g_pipe2_frame_event_flag, kPipe2FrameReadyEvent);

@@ -30,8 +30,11 @@ sh userspace/sample-ai/models/generate_model.sh face \
 ```
 
 If the model is placed under `models/source/<name>/` with the filename shown
-above, the second argument can be omitted. The source model files are ignored
-by git because they are large and may have separate model licenses.
+above, the second argument can be omitted. If that default file is missing,
+`generate_model.sh` downloads it from the corresponding official
+STMicroelectronics repository. The source model files are ignored by git
+because they are large and may have separate model licenses. Use
+`AI_MODEL_DOWNLOAD_URL` to override the download URL when needed.
 
 The generator uses `--no-inputs-allocation` and `--no-outputs-allocation` so
 the application can provide the Pipe2 input buffer. Use the same STEdgeAI

@@ -14,6 +14,7 @@ case "$model_name" in
     person)
         model_dir="$models_dir/person"
         default_source="$models_dir/source/person/st_yolo_x_nano_480_1.0_0.25_3_st_int8.tflite"
+        default_download_url="https://raw.githubusercontent.com/STMicroelectronics/STM32N6-GettingStarted-ObjectDetection/main/Model/st_yolo_x_nano_480_1.0_0.25_3_st_int8.tflite"
         network_address=0x70380000
         default_outputs_ch_position=chlast
         official_source="STMicroelectronics/STM32N6-GettingStarted-ObjectDetection/Model"
@@ -21,6 +22,7 @@ case "$model_name" in
     segmentation)
         model_dir="$models_dir/segmentation"
         default_source="$models_dir/source/segmentation/deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8.onnx"
+        default_download_url="https://raw.githubusercontent.com/STMicroelectronics/STM32N6-GettingStarted-SemanticSegmentation/main/Model/deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8.onnx"
         network_address=0x70600000
         default_outputs_ch_position=chlast
         default_cut_output_tensors='model/conv2d_6/BiasAdd:0_QuantizeLinear_Output'
@@ -29,6 +31,7 @@ case "$model_name" in
     face)
         model_dir="$models_dir/face"
         default_source="$models_dir/source/face/blazeface_front_128_quant_pc_ff_od_wider_face.tflite"
+        default_download_url="https://raw.githubusercontent.com/STMicroelectronics/STM32N6-GettingStarted-FaceDetection/main/Model/blazeface_front_128_quant_pc_ff_od_wider_face.tflite"
         network_address=0x70800000
         default_outputs_ch_position=chfirst
         official_source="STMicroelectronics/STM32N6-GettingStarted-FaceDetection/Model"
@@ -54,18 +57,58 @@ outputs_ch_position=${AI_MODEL_OUTPUTS_CH_POSITION:-$default_outputs_ch_position
 optimization=${AI_MODEL_OPTIMIZATION:-balanced}
 c_api=${AI_MODEL_C_API:-st-ai}
 cut_output_tensors=${AI_MODEL_CUT_OUTPUT_TENSORS:-$default_cut_output_tensors}
+download_url=${AI_MODEL_DOWNLOAD_URL:-$default_download_url}
 
-model_source=${2:-${AI_MODEL_SOURCE:-$default_source}}
+model_source_arg=${2:-${AI_MODEL_SOURCE:-}}
+if [ -n "$model_source_arg" ]; then
+    model_source="$model_source_arg"
+    model_source_is_default=0
+else
+    model_source="$default_source"
+    model_source_is_default=1
+fi
 case "$model_source" in
     /*) ;;
     *) model_source="$PWD/$model_source" ;;
 esac
 
+download_model() {
+    download_url_arg=$1
+    download_path=$2
+    download_dir=$(dirname "$download_path")
+    mkdir -p "$download_dir"
+    download_tmp=$(mktemp "$download_dir/.$(basename "$download_path").XXXXXX")
+
+    remove_partial_download() {
+        rm -f "$download_tmp"
+    }
+    trap remove_partial_download EXIT HUP INT TERM
+
+    echo "Downloading model: $download_url_arg"
+    if command -v curl >/dev/null 2>&1; then
+        curl --fail --location --retry 3 --retry-delay 1 \
+            --output "$download_tmp" "$download_url_arg"
+    elif command -v wget >/dev/null 2>&1; then
+        wget --quiet --show-progress --output-document="$download_tmp" \
+            "$download_url_arg"
+    else
+        echo "Neither curl nor wget was found; cannot download the model." >&2
+        exit 1
+    fi
+    mv "$download_tmp" "$download_path"
+    trap - EXIT HUP INT TERM
+    echo "Downloaded model: $download_path"
+}
+
 if [ ! -f "$model_source" ]; then
-    echo "model source does not exist: $model_source" >&2
-    echo "Obtain the official model from $official_source" >&2
-    echo "or pass its path as the second argument / set AI_MODEL_SOURCE." >&2
-    exit 1
+    if [ "$model_source_is_default" -eq 1 ]; then
+        download_model "$download_url" "$model_source"
+    else
+        echo "model source does not exist: $model_source" >&2
+        echo "Obtain the official model from $official_source" >&2
+        echo "or pass a valid path as the second argument / set AI_MODEL_SOURCE." >&2
+        exit 1
+    fi
 fi
 
 if ! command -v stedgeai >/dev/null 2>&1; then

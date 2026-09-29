@@ -28,7 +28,7 @@ inline constexpr CameraConfig kCamera{
     false,
     false,
     false,
-    PipeFrameRate::kOneOverTwo,
+    PipeFrameRate::kAll,
 };
 
 inline constexpr std::uintptr_t kModelNorProbeOffset = 0x00380000UL;

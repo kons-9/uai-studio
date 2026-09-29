@@ -36,6 +36,9 @@ cp config/local.mk.example config/local.mk
 MakefileはCMakeを呼び出す入口です。CubeMX/CubeProgrammerの設定、ツール検出、
 引数検証、実行コマンドはCMake側で管理します。
 
+sample-aiでは、モデルの取得・生成からAIデータの外部Flash書き込み、RAM実行までを
+Makefileから実行できます。
+
 ## ビルドとRAM実行
 
 ```sh
@@ -43,6 +46,17 @@ make generate       # 初回またはIOC変更後
 make build
 make attach
 ```
+
+sample-aiを初めて構築する場合は、次の一連の初期化を実行します。
+
+```sh
+make setup          # 依存関係、3モデル取得/生成、CubeMX、CMake
+make build
+```
+
+`make setup` はCubeMXのコード生成も行うため、CubeMXを起動できるGUI環境で実行してください。
+ヘッドレス環境では、CubeMX生成済みの状態で`make sample-ai-deps`、`make ai-models`、
+`make configure`、`make build`を個別に実行できます。
 
 端末を先に開きます。`UART_DEVICE`と`UART_BAUD`は`config/local.mk`で変更できます。
 デフォルト設定は115200 bps、8N1、フロー制御なしです。
@@ -56,6 +70,19 @@ make monitor
 ```sh
 make ram-run
 ```
+
+sample-aiのモデル重みとcommand blobを外部Flashへ書き込む場合は、RAM実行前に
+`make ai-load`を実行します。UARTモニタは別端末で先に起動してください。
+
+```sh
+make monitor        # 別端末
+make ai-load        # AI重み + command blob
+make ram-load       # RAMへアプリをロードして実行
+```
+
+`make ai-run`は`ai-load`と`ram-load`を連続して実行します。AIモデルの取得だけを
+行う場合は`make ai-models`、通常のアプリケーションビルドだけなら`make build`を
+使用します。
 
 成功すると、T-Monitorの起動メッセージに続いて次の出力が表示されます。
 

@@ -47,19 +47,21 @@ inline constexpr bool kLiveCaptureFreezeDiagnostic =
 inline constexpr bool kCopyInferenceFrames =
     kInferenceMode != InferenceMode::kDisabled;
 
-/* Runtime diagnostics.  Keep these disabled in normal operation: the fields
- * are checked with ordinary if statements at the task boundary, so disabled
- * diagnostics do not calculate frame statistics or format UART messages. */
+/* Runtime diagnostics. Per-frame diagnostics remain disabled in normal
+ * operation; the low-rate inference_fps aggregate is enabled to expose
+ * Pipe2 drops and inference freshness without per-frame UART traffic. */
 struct DiagnosticsConfig {
-    bool register_dump;
-    bool camera_frame_trace;
-    bool camera_brightness;
-    bool inference_input;
-    bool inference_input_display;
-    bool inference_trace;
-    bool inference_fps;
-    bool display_trace;
-    bool display_timing;
+    bool register_dump = false;
+    bool camera_frame_trace = false;
+    bool camera_brightness = false;
+    bool inference_input = false;
+    bool inference_input_display = false;
+    bool inference_trace = false;
+    /* Keep the low-rate aggregate enabled while measuring Pipe2/NPU
+     * freshness. Per-frame trace remains opt-in because UART is intrusive. */
+    bool inference_fps = true;
+    bool display_trace = false;
+    bool display_timing = false;
 };
 
 inline constexpr std::size_t kFrameQueueDepth = 4U;

@@ -83,6 +83,17 @@ common::Error ResizeRgb888Letterbox(
     std::uint32_t content_width, std::uint32_t content_height,
     std::uint8_t pad_value = 0U);
 
+/* The two primitives below are the split form of ResizeRgb888Letterbox().
+ * They are kept separate so the model pipeline can measure the resize and
+ * padding work independently.  ResizeRgb888() writes only the content area;
+ * FillRgb888LetterboxPadding() never touches that area. */
+common::Error ResizeRgb888(const Rgb888Source &source,
+                           const Rgb888Destination &destination);
+
+common::Error FillRgb888LetterboxPadding(
+    const Rgb888Destination &destination, std::uint32_t content_width,
+    std::uint32_t content_height, std::uint8_t pad_value = 0U);
+
 } // namespace uai::ai::image_resizer
 
 #endif // UAI_AI_IMAGE_RESIZER_HPP

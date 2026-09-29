@@ -242,7 +242,9 @@ int32_t BSP_XSPI_NOR_Init(uint32_t Instance, BSP_XSPI_NOR_Init_t *Init)
       (void)MX66UW1G45G_GetFlashInfo(&pInfo);
 
       /* Fill config structure */
-      xspi_init.ClockPrescaler = 0x00; /* IC3 supplies the NOR clock directly at 50 MHz. */
+      /* Match the STM32N6570-DK BSP: initialize the NOR at 50 MHz, then
+       * switch to the full 200 MHz IC3 clock after its protocol is set up. */
+      xspi_init.ClockPrescaler = 0x03;
       xspi_init.MemorySize     = (uint32_t)POSITION_VAL((uint32_t)pInfo.FlashSize) - 1U;
       xspi_init.SampleShifting = HAL_XSPI_SAMPLE_SHIFT_NONE;
       /* Keep the controller in the requested transfer mode while resetting
@@ -267,7 +269,8 @@ int32_t BSP_XSPI_NOR_Init(uint32_t Instance, BSP_XSPI_NOR_Init_t *Init)
         clock.PeriphClockSelection = RCC_PERIPHCLK_XSPI2;
         clock.Xspi2ClockSelection = RCC_XSPI2CLKSOURCE_IC3;
         clock.ICSelection[RCC_IC3].ClockSelection = RCC_ICCLKSOURCE_PLL1;
-        clock.ICSelection[RCC_IC3].ClockDivider = 16U;
+        /* PLL1 is 1200 MHz in the camera clock profile: /6 = 200 MHz. */
+        clock.ICSelection[RCC_IC3].ClockDivider = 6U;
         if (HAL_RCCEx_PeriphCLKConfig(&clock) != HAL_OK)
         {
           ret = BSP_ERROR_PERIPH_FAILURE;

@@ -20,6 +20,8 @@ struct Diagnostics {
     std::uint32_t camera_error_count = 0U;
     std::uint32_t pipe2_frame_event_count = 0U;
     std::uint32_t pipe2_drop_count = 0U;
+    /* Sequence of every Pipe2 completion, including dropped frames. */
+    std::uint32_t pipe2_latest_capture_sequence = 0U;
     std::uint32_t csi_last_status = 0U;
     std::uint32_t csi_last_status1 = 0U;
     std::uint32_t csi_last_pending_status = 0U;

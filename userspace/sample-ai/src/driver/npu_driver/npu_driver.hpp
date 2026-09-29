@@ -19,6 +19,15 @@ enum class ExecutionState : std::uint8_t {
     kTimedOut,
 };
 
+/* Action selected by the non-blocking ST.AI protocol step.  The inference
+ * task turns this into an explicit switch/case transition. */
+enum class RunAction : std::uint8_t {
+    kNone,
+    kWaitForIrq,
+    kContinueEpoch,
+    kCompleted,
+};
+
 struct ExecutionSnapshot {
     ExecutionState state = ExecutionState::kUninitialized;
     std::uint32_t stai_status = 0U;
@@ -47,6 +56,7 @@ struct ExecutionSnapshot {
 struct Status {
     common::Error error{};
     ExecutionSnapshot execution{};
+    RunAction action = RunAction::kNone;
 
     bool Ok() const { return error.Ok(); }
 };
@@ -59,6 +69,11 @@ struct Status {
 class NpuDriver final {
 public:
     using RunProgressCallback = void (*)(void *context);
+    using EpochTraceObserver = void (*)(
+        void *context, std::uint32_t model_kind_id, std::uint32_t end_ms,
+        std::uint32_t end_cycles, std::uint32_t elapsed_cycles,
+        std::uint32_t epoch_index, std::uint32_t epoch_flags,
+        std::uintptr_t epoch_address, std::uint32_t callback_type);
 
     static common::Error InitializeMemory();
     static void KeepMemoryClocksOnSleep();
@@ -81,15 +96,43 @@ public:
      * executing. WaitRun completes the same submission. Run remains the
      * blocking convenience operation for callers without prefetching. */
     Status StartRun();
+    /* Poll only. It never blocks and never calls ContinueRun(). */
+    Status PollRun(RunProgressCallback progress = nullptr,
+                   void *progress_context = nullptr);
+    /* Wait only for the IRQ event. The ISR remains responsible for setting
+     * the event; all ST.AI decisions stay in task context. */
+    Status WaitForIrq();
+    /* Continue one generated epoch from task context. */
+    Status ContinueRun();
     Status WaitRun(RunProgressCallback progress = nullptr,
                    void *progress_context = nullptr);
     Status Run();
     Status NewInference();
     Status Shutdown();
 
+    /* Install the low-overhead sink used by ThreadMonitor.  The generated
+     * model callback is registered internally for every loaded model. */
+    void SetEpochTraceObserver(EpochTraceObserver observer, void *context)
+    {
+        epoch_trace_observer_ = observer;
+        epoch_trace_context_ = context;
+    }
+    void SetEpochTraceModelKindId(std::uint32_t model_kind_id)
+    {
+        epoch_trace_model_kind_id_ = model_kind_id;
+    }
+
     bool Initialized() const { return initialized_; }
     const ExecutionSnapshot &LastExecution() const { return last_execution_; }
 private:
+    static void EpochTraceThunk(void *context, std::uint32_t callback_type,
+                                std::uint32_t epoch_index,
+                                std::uint32_t epoch_flags,
+                                std::uintptr_t epoch_address);
+    void ObserveEpochTrace(std::uint32_t callback_type,
+                           std::uint32_t epoch_index,
+                           std::uint32_t epoch_flags,
+                           std::uintptr_t epoch_address);
     static bool IsError(stai_return_code code);
     Status InvalidState(const char *operation) const;
 
@@ -100,6 +143,15 @@ private:
     ExecutionSnapshot last_execution_{};
     std::uint32_t last_error_ = 0U;
     bool initialized_ = false;
+    EpochTraceObserver epoch_trace_observer_ = nullptr;
+    void *epoch_trace_context_ = nullptr;
+    std::uint32_t epoch_trace_model_kind_id_ = 0xFFFFFFFFU;
+    bool epoch_trace_active_ = false;
+    std::uint32_t epoch_trace_start_cycles_ = 0U;
+    std::uint32_t epoch_trace_last_cycles_ = 0U;
+    std::uint32_t epoch_trace_start_epoch_index_ = 0xFFFFFFFFU;
+    std::uint32_t epoch_trace_start_epoch_flags_ = 0U;
+    std::uintptr_t epoch_trace_start_epoch_address_ = 0U;
 };
 
 } // namespace uai::ai::npu

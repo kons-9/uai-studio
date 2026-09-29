@@ -108,6 +108,10 @@ void InferenceTask::Run()
     std::uint32_t fps_completed = 0U;
     std::uint32_t fps_inference_total_ms = 0U;
     std::uint32_t fps_inference_max_ms = 0U;
+    std::uint32_t fps_capture_lag_start_total = 0U;
+    std::uint32_t fps_capture_lag_start_max = 0U;
+    std::uint32_t fps_capture_lag_end_total = 0U;
+    std::uint32_t fps_capture_lag_end_max = 0U;
     if (context.diagnostics.inference_fps) {
         fps_window_start = context.Now();
     }
@@ -163,8 +167,22 @@ void InferenceTask::Run()
                                            context.diagnostics.inference_trace;
             const std::uint32_t inference_start =
                 measure_inference ? context.Now() : 0U;
+            const auto camera_before = context.camera.GetDiagnostics();
+            const std::uint32_t capture_lag_start =
+                camera_before.pipe2_latest_capture_sequence >=
+                        message.frame.capture_sequence
+                    ? camera_before.pipe2_latest_capture_sequence -
+                          message.frame.capture_sequence
+                    : 0U;
             status = runtime.Run(message.frame, &boxes, ProvidePrefetch,
                                  &prefetch);
+            const auto camera_after = context.camera.GetDiagnostics();
+            const std::uint32_t capture_lag_end =
+                camera_after.pipe2_latest_capture_sequence >=
+                        message.frame.capture_sequence
+                    ? camera_after.pipe2_latest_capture_sequence -
+                          message.frame.capture_sequence
+                    : 0U;
             const std::uint32_t inference_elapsed = measure_inference
                                                         ? context.Now() -
                                                               inference_start
@@ -174,19 +192,32 @@ void InferenceTask::Run()
                 if (inference_elapsed > fps_inference_max_ms) {
                     fps_inference_max_ms = inference_elapsed;
                 }
+                fps_capture_lag_start_total += capture_lag_start;
+                if (capture_lag_start > fps_capture_lag_start_max) {
+                    fps_capture_lag_start_max = capture_lag_start;
+                }
+                fps_capture_lag_end_total += capture_lag_end;
+                if (capture_lag_end > fps_capture_lag_end_max) {
+                    fps_capture_lag_end_max = capture_lag_end;
+                }
             }
             if (context.diagnostics.inference_trace &&
                 (message.frame.capture_sequence % 10U) == 0U) {
                 const auto &npu_execution =
                     runtime.LastNpuStatus().execution;
                 UAI_LOG_TRACE(reinterpret_cast<const UB *>(
-                                  "ai: inference elapsed_ms=%u npu_elapsed_ms=%u "
-                                  "sequence=%u\n"),
+                        "ai: inference elapsed_ms=%u npu_elapsed_ms=%u "
+                                  "sequence=%u latest=%u lag_start=%u "
+                                  "lag_end=%u\n"),
                               static_cast<unsigned int>(inference_elapsed),
                               static_cast<unsigned int>(
                                   npu_execution.elapsed_ms),
                               static_cast<unsigned int>(
-                                  message.frame.capture_sequence));
+                                  message.frame.capture_sequence),
+                              static_cast<unsigned int>(
+                                  camera_after.pipe2_latest_capture_sequence),
+                              static_cast<unsigned int>(capture_lag_start),
+                              static_cast<unsigned int>(capture_lag_end));
             }
             if (context.diagnostics.inference_trace) {
                 UAI_LOG_TRACE(reinterpret_cast<const UB *>(
@@ -254,13 +285,14 @@ void InferenceTask::Run()
             const std::uint32_t fps_now = context.Now();
             const std::uint32_t fps_window_ms = fps_now - fps_window_start;
             if (fps_window_ms >= 1000U) {
-                UB line[192] = {};
+                UB line[256] = {};
                 (void)tm_sprintf(
                     line,
                     reinterpret_cast<const UB *>(
                         "ai: inference fps submitted=%u completed=%u "
                         "window_ms=%u infer_total_ms=%u infer_max_ms=%u "
-                        "pipe2=%u drops=%u capture=%u\n"),
+                        "pipe2=%u drops=%u latest=%u capture=%u "
+                        "lag_start_sum=%u/max=%u lag_end_sum=%u/max=%u\n"),
                     static_cast<unsigned int>(fps_submitted),
                     static_cast<unsigned int>(fps_completed),
                     static_cast<unsigned int>(fps_window_ms),
@@ -268,13 +300,23 @@ void InferenceTask::Run()
                     static_cast<unsigned int>(fps_inference_max_ms),
                     camera_diag.pipe2_frame_event_count,
                     camera_diag.pipe2_drop_count,
-                    static_cast<unsigned int>(message.frame.capture_sequence));
-                UAI_LOG_TEXT(uai::ai::common::LogLevel::kDebug, line);
+                    static_cast<unsigned int>(
+                        camera_diag.pipe2_latest_capture_sequence),
+                    static_cast<unsigned int>(message.frame.capture_sequence),
+                    static_cast<unsigned int>(fps_capture_lag_start_total),
+                    static_cast<unsigned int>(fps_capture_lag_start_max),
+                    static_cast<unsigned int>(fps_capture_lag_end_total),
+                    static_cast<unsigned int>(fps_capture_lag_end_max));
+                UAI_LOG_TEXT(uai::ai::common::LogLevel::kInfo, line);
                 fps_window_start = fps_now;
                 fps_submitted = 0U;
                 fps_completed = 0U;
                 fps_inference_total_ms = 0U;
                 fps_inference_max_ms = 0U;
+                fps_capture_lag_start_total = 0U;
+                fps_capture_lag_start_max = 0U;
+                fps_capture_lag_end_total = 0U;
+                fps_capture_lag_end_max = 0U;
             }
         }
     }
