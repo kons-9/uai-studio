@@ -105,13 +105,17 @@ set(_ai_generated_model_files
     "${CMAKE_CURRENT_SOURCE_DIR}/models/face/network.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/models/face/network_ecblobs.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/models/face/stai_network.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/models/face/stai_network.h")
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/face/stai_network.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation/network.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation/network_ecblobs.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation/stai_network.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation/stai_network.h")
 foreach(_ai_generated_model_file IN LISTS _ai_generated_model_files)
     if(NOT EXISTS "${_ai_generated_model_file}")
         message(FATAL_ERROR
             "Generated model file is missing: ${_ai_generated_model_file}. "
-            "Run userspace/sample-ai2/models/generate_model.sh for person and "
-            "face before configuring sample-ai2.")
+            "Run userspace/sample-ai2/models/generate_model.sh for person, "
+            "segmentation, and face before configuring sample-ai2.")
     endif()
 endforeach()
 
@@ -157,15 +161,19 @@ set(AI_PERFORMANCE_COMPILE_OPTIONS
 set(AI_MODEL_TARGET sample-ai2_models)
 set(AI_MODEL_INCLUDE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/models/person"
-    "${CMAKE_CURRENT_SOURCE_DIR}/models/face")
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/face"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation")
 set(AI_MODEL_C_API_SOURCES
     "${AI_SRC_DIR}/models/person/person_model_runtime.c"
-    "${AI_SRC_DIR}/models/face/face_model_runtime.c")
+    "${AI_SRC_DIR}/models/face/face_model_runtime.c"
+    "${AI_SRC_DIR}/models/segmentation/segmentation_model_runtime.c")
 set(AI_MODEL_SOURCES
     "${AI_SRC_DIR}/models/person/npu_model.cpp"
     "${AI_SRC_DIR}/models/person/future.cpp"
     "${AI_SRC_DIR}/models/face/npu_model.cpp"
-    "${AI_SRC_DIR}/models/face/future.cpp")
+    "${AI_SRC_DIR}/models/face/future.cpp"
+    "${AI_SRC_DIR}/models/segmentation/npu_model.cpp"
+    "${AI_SRC_DIR}/models/segmentation/future.cpp")
 set(AI_MODEL_EXTRA_SOURCES
     "${AI_VISION_MODELS_PP_DIR}/Src/od_pp_st_yolox.c"
     "${AI_VISION_MODELS_PP_DIR}/Src/fd_pp_blazeface.c"
@@ -288,12 +296,15 @@ target_link_options(${AI_APP_TARGET} PRIVATE
     "-Wl,--section-start=.network_blobs_person=0x70500000")
 target_link_options(${AI_APP_TARGET} PRIVATE
     "-Wl,--section-start=.network_blobs_face=0x70580000")
+target_link_options(${AI_APP_TARGET} PRIVATE
+    "-Wl,--section-start=.network_blobs_segmentation=0x70560000")
 set_target_properties(${AI_APP_TARGET} PROPERTIES
     LINK_DEPENDS "${AI_LINKER_SCRIPT}")
 
 add_custom_command(TARGET ${AI_APP_TARGET} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary
             --remove-section=.network_blobs_person
+            --remove-section=.network_blobs_segmentation
             --remove-section=.network_blobs_face
             "$<TARGET_FILE:${AI_APP_TARGET}>"
             "${CMAKE_CURRENT_BINARY_DIR}/${AI_APP_NAME}.bin"
@@ -305,6 +316,14 @@ add_custom_command(TARGET ${AI_APP_TARGET} POST_BUILD
             --only-section=.network_blobs_person
             "$<TARGET_FILE:${AI_APP_TARGET}>"
             "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_person.hex"
+    COMMAND ${CMAKE_OBJCOPY} -O binary
+            --only-section=.network_blobs_segmentation
+            "$<TARGET_FILE:${AI_APP_TARGET}>"
+            "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_segmentation.bin"
+    COMMAND ${CMAKE_OBJCOPY} -O ihex
+            --only-section=.network_blobs_segmentation
+            "$<TARGET_FILE:${AI_APP_TARGET}>"
+            "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_segmentation.hex"
     COMMAND ${CMAKE_OBJCOPY} -O binary
             --only-section=.network_blobs_face
             "$<TARGET_FILE:${AI_APP_TARGET}>"

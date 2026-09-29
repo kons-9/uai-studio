@@ -11,6 +11,8 @@
 #include "models/face/npu_model.hpp"
 #include "models/person/future.hpp"
 #include "models/person/npu_model.hpp"
+#include "models/segmentation/future.hpp"
+#include "models/segmentation/npu_model.hpp"
 #include "task/task_context.hpp"
 #include "task/task_diagnostics.hpp"
 
@@ -36,7 +38,8 @@ struct RegisteredModel {
 
 constexpr std::size_t kPersonModel = 0U;
 constexpr std::size_t kFaceModel = 1U;
-constexpr std::size_t kRegisteredModelCount = 2U;
+constexpr std::size_t kSegmentationModel = 2U;
+constexpr std::size_t kRegisteredModelCount = 3U;
 
 common::Error ReadModelInfo(npu::NpuDriver &npu_driver,
                             RegisteredModel &model,
@@ -74,15 +77,19 @@ common::Error ReadModelInfo(npu::NpuDriver &npu_driver,
 struct PipelineApplication {
     models::person::NpuModel person_model{};
     models::face::NpuModel face_model{};
+    models::segmentation::NpuModel segmentation_model{};
     RegisteredModel registered_models[kRegisteredModelCount]{
         {"person", 0U, &person_model, {}},
         {"face", 2U, &face_model, {}},
+        {"segmentation", 1U, &segmentation_model, {}},
     };
     npu::NpuDriver npu{};
     ai_runtime::PipelineRuntime pipeline{};
     ai_runtime::Scheduler scheduler{pipeline};
     models::person::Future person_futures[memory_allocator::kInferenceBufferCount]{};
     models::face::Future face_futures[memory_allocator::kInferenceBufferCount]{};
+    models::segmentation::Future
+        segmentation_futures[memory_allocator::kInferenceBufferCount]{};
     std::uint32_t model_sequence = 0U;
     std::uint32_t submitted_count[kRegisteredModelCount]{};
     std::uint32_t completed_count[kRegisteredModelCount]{};
@@ -94,10 +101,12 @@ struct PipelineApplication {
     std::uint32_t report_completed = 0U;
     std::uint32_t report_face_submitted = 0U;
     std::uint32_t report_face_completed = 0U;
+    std::uint32_t report_segmentation_submitted = 0U;
+    std::uint32_t report_segmentation_completed = 0U;
     std::uint32_t report_postprocess = 0U;
-    // Start with face so the first visible result is available immediately;
-    // the scheduler alternates to person after the first completed run.
-    bool next_face = true;
+    // Start with face so the first visible result is available immediately,
+    // then run person and segmentation in a round-robin order.
+    std::size_t next_model = kFaceModel;
     memory_allocator::BoxSet latest_boxes{};
     std::atomic<bool> enabled{false};
     // The two models share one NPU context.  Keep only one inference in the
@@ -117,7 +126,8 @@ struct PipelineApplication {
         const auto camera = context.camera.GetDiagnostics();
         UAI_LOG_INFO(reinterpret_cast<const UB *>(
                          "ai: model stats person=%u/%u face=%u/%u "
-                         "post=%u boxes=%u capture=%u pipe2=%u drops=%u csi=%u\n"),
+                         "seg=%u/%u post=%u boxes=%u capture=%u pipe2=%u "
+                         "drops=%u csi=%u\n"),
                      static_cast<unsigned int>(submitted_count[kPersonModel] -
                                                report_submitted),
                      static_cast<unsigned int>(completed_count[kPersonModel] -
@@ -126,6 +136,12 @@ struct PipelineApplication {
                                                report_face_submitted),
                      static_cast<unsigned int>(completed_count[kFaceModel] -
                                                report_face_completed),
+                     static_cast<unsigned int>(
+                         submitted_count[kSegmentationModel] -
+                         report_segmentation_submitted),
+                     static_cast<unsigned int>(
+                         completed_count[kSegmentationModel] -
+                         report_segmentation_completed),
                      static_cast<unsigned int>(postprocess_count -
                                                report_postprocess),
                      static_cast<unsigned int>(last_detection_count),
@@ -138,6 +154,10 @@ struct PipelineApplication {
         report_completed = completed_count[kPersonModel];
         report_face_submitted = submitted_count[kFaceModel];
         report_face_completed = completed_count[kFaceModel];
+        report_segmentation_submitted =
+            submitted_count[kSegmentationModel];
+        report_segmentation_completed =
+            completed_count[kSegmentationModel];
         report_postprocess = postprocess_count;
     }
 
@@ -163,6 +183,18 @@ struct PipelineApplication {
         if (!status.Ok()) return status;
         status = models::face::Future::ConfigureDecoder(
             registered_models[kFaceModel].info);
+        if (!status.Ok()) return status;
+
+        result = npu.Preload(*registered_models[kSegmentationModel].network);
+        if (!result.Ok()) return result.error;
+        result = npu.SelectModel(*registered_models[kSegmentationModel].network);
+        if (!result.Ok()) return result.error;
+        status = ReadModelInfo(
+            npu, registered_models[kSegmentationModel],
+            models::segmentation::Future::InputBytes());
+        if (!status.Ok()) return status;
+        status = models::segmentation::Future::ConfigureDecoder(
+            registered_models[kSegmentationModel].info);
         if (!status.Ok()) return status;
 
         result = npu.SelectModel(*registered_models[kPersonModel].network);
@@ -193,10 +225,12 @@ struct PipelineApplication {
     {
         auto &task = *static_cast<TaskContext *>(context);
         if (task.diagnostics.inference_trace) {
-            const UB *name = trace.model_id ==
-                                     static_cast<ai_runtime::AiModelId>(2U)
-                                 ? reinterpret_cast<const UB *>("face")
-                                 : reinterpret_cast<const UB *>("person");
+            const UB *name =
+                trace.model_id == static_cast<ai_runtime::AiModelId>(2U)
+                    ? reinterpret_cast<const UB *>("face")
+                    : trace.model_id == static_cast<ai_runtime::AiModelId>(1U)
+                          ? reinterpret_cast<const UB *>("segmentation")
+                          : reinterpret_cast<const UB *>("person");
             UAI_LOG_TRACE(reinterpret_cast<const UB *>(
                 "ai: %s inference=%u model=%u step=%u lane=%u time=%u begin=%u\n"),
                 name,
@@ -213,18 +247,32 @@ struct PipelineApplication {
     {
         auto &task = *static_cast<TaskContext *>(context);
         auto &application = App();
+        const auto model_id = base.model_id();
         const bool is_face =
-            base.model_id() == static_cast<ai_runtime::AiModelId>(2U);
-        const std::size_t model_index = is_face ? kFaceModel : kPersonModel;
+            model_id == static_cast<ai_runtime::AiModelId>(2U);
+        const bool is_segmentation =
+            model_id == static_cast<ai_runtime::AiModelId>(1U);
+        const std::size_t model_index =
+            is_face ? kFaceModel
+                    : is_segmentation ? kSegmentationModel : kPersonModel;
         ++application.completed_count[model_index];
         if (!error.Ok()) {
-            LogStatus(is_face ? "face_pipeline" : "person_pipeline", error);
+            LogStatus(is_face ? "face_pipeline"
+                              : is_segmentation ? "segmentation_pipeline"
+                                                : "person_pipeline",
+                      error);
             application.enabled.store(false);
             UAI_LOG_WARN(reinterpret_cast<const UB *>(
                 "ai: model pipeline disabled; camera remains live\n"));
         }
         if (is_face) {
             auto &future = static_cast<models::face::Future &>(base);
+            const common::Error released =
+                task.memory.ReleaseInferenceBuffer(future.frame());
+            LogStatus("memory", released);
+            future.ReleaseClaim();
+        } else if (is_segmentation) {
+            auto &future = static_cast<models::segmentation::Future &>(base);
             const common::Error released =
                 task.memory.ReleaseInferenceBuffer(future.frame());
             LogStatus("memory", released);
@@ -258,7 +306,10 @@ void PublishBoxes(void *context, const memory_allocator::BoxSet &source)
         boxes.face = source.face;
         boxes.face_valid = true;
     }
-    boxes.segmentation_valid = false;
+    if (source.segmentation_valid) {
+        boxes.segmentation = source.segmentation;
+        boxes.segmentation_valid = true;
+    }
     boxes.model_sequence = ++application.model_sequence;
     boxes.capture_sequence = source.capture_sequence;
     ++application.postprocess_count;
@@ -302,7 +353,7 @@ void PipelineTask::FrameEntry()
             LogStatus("model_pipeline.init", status);
         } else {
             UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                "ai: 2-model pipeline enabled (person/face)\n"));
+                "ai: 3-model pipeline enabled (person/face/segmentation)\n"));
             task.StartPreprocessTask(
                 reinterpret_cast<FP>(PipelineTask::PreprocessEntry));
             task.StartNpuTask(reinterpret_cast<FP>(PipelineTask::NpuEntry));
@@ -323,11 +374,22 @@ void PipelineTask::FrameEntry()
             bool expected = false;
             if (g_app.inference_in_flight.compare_exchange_strong(
                     expected, true, std::memory_order_acq_rel)) {
-                const bool is_face = g_app.next_face;
+                const std::size_t model_index = g_app.next_model;
                 auto *person_available = &g_app.person_futures[0];
                 auto *face_available = &g_app.face_futures[0];
-                if (is_face) {
+                auto *segmentation_available =
+                    &g_app.segmentation_futures[0];
+                if (model_index == kFaceModel) {
                     if (!face_available->TryClaim()) {
+                        g_app.inference_in_flight.store(
+                            false, std::memory_order_release);
+                        const common::Error released =
+                            task.memory.ReleaseInferenceBuffer(message.frame);
+                        LogStatus("memory", released);
+                        continue;
+                    }
+                } else if (model_index == kSegmentationModel) {
+                    if (!segmentation_available->TryClaim()) {
                         g_app.inference_in_flight.store(
                             false, std::memory_order_release);
                         const common::Error released =
@@ -343,8 +405,7 @@ void PipelineTask::FrameEntry()
                     LogStatus("memory", released);
                     continue;
                 }
-                g_app.next_face = !is_face;
-                if (is_face) {
+                if (model_index == kFaceModel) {
                     models::face::FutureContext future_context{};
                     future_context.npu = &g_app.npu;
                     future_context.model =
@@ -358,6 +419,22 @@ void PipelineTask::FrameEntry()
                     future_context.publish_context = &task;
                     face_available->Reset(future_context, message.frame);
                     status = g_app.scheduler.Submit(*face_available);
+                } else if (model_index == kSegmentationModel) {
+                    models::segmentation::FutureContext future_context{};
+                    future_context.npu = &g_app.npu;
+                    future_context.model =
+                        g_app.registered_models[kSegmentationModel].network;
+                    future_context.model_kind_id =
+                        g_app.registered_models[kSegmentationModel].kind_id;
+                    future_context.cache = &task.cache;
+                    future_context.info =
+                        &g_app.registered_models[kSegmentationModel].info;
+                    future_context.publish = &PublishBoxes;
+                    future_context.publish_context = &task;
+                    segmentation_available->Reset(future_context,
+                                                  message.frame);
+                    status =
+                        g_app.scheduler.Submit(*segmentation_available);
                 } else {
                     models::person::FutureContext future_context{};
                     future_context.npu = &g_app.npu;
@@ -374,22 +451,29 @@ void PipelineTask::FrameEntry()
                     status = g_app.scheduler.Submit(*person_available);
                 }
                 if (status.Ok()) {
-                    const std::size_t model_index =
-                        is_face ? kFaceModel : kPersonModel;
                     ++g_app.submitted_count[model_index];
                     if (g_app.submitted_count[model_index] == 1U) {
                         UAI_LOG_INFO(reinterpret_cast<const UB *>(
                                          "ai: %s submit ok seq=%u\n"),
                                      reinterpret_cast<const UB *>(
-                                         is_face ? "face" : "person"),
+                                         model_index == kFaceModel
+                                             ? "face"
+                                             : model_index ==
+                                                       kSegmentationModel
+                                                   ? "segmentation"
+                                                   : "person"),
                                      static_cast<unsigned int>(
                                          message.frame.capture_sequence));
                     }
                     g_app.Report(task);
+                    g_app.next_model =
+                        (model_index + 1U) % kRegisteredModelCount;
                     continue;
                 }
-                if (is_face) {
+                if (model_index == kFaceModel) {
                     face_available->ReleaseClaim();
+                } else if (model_index == kSegmentationModel) {
+                    segmentation_available->ReleaseClaim();
                 } else {
                     person_available->ReleaseClaim();
                 }
