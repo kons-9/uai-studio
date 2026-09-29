@@ -154,7 +154,12 @@ endif()
 set(STM32_RAM_STACK "$ENV{STM32_RAM_STACK}" CACHE STRING
     "Initial main stack pointer" FORCE)
 if(NOT STM32_RAM_STACK)
-    set(STM32_RAM_STACK "0x34200000" CACHE STRING
+    if(APP_TARGET STREQUAL "sample-ai2")
+        set(_stm32_default_ram_stack "0x34100000")
+    else()
+        set(_stm32_default_ram_stack "0x34200000")
+    endif()
+    set(STM32_RAM_STACK "${_stm32_default_ram_stack}" CACHE STRING
         "Initial main stack pointer" FORCE)
 endif()
 set(STM32_RAM_XPSR "$ENV{STM32_RAM_XPSR}" CACHE STRING

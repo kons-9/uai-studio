@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 
 set(AI_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
-set(AI_APP_TARGET sample-ai2.elf)
 set(AI_APP_NAME sample-ai2)
+set(AI_APP_TARGET ${AI_APP_NAME}.elf)
 
 # STEdgeAI's Neural-ART runtime is distributed separately from this sample.
 # Do not silently depend on the old, ignored copy under third_party: that made
@@ -196,25 +196,17 @@ set_source_files_properties(${AI_CAMERA_BSP_SOURCE} PROPERTIES
     COMPILE_DEFINITIONS
     "HAL_DCMIPP_PIPE_VsyncEventCallback=sample_ai_HAL_DCMIPP_PIPE_VsyncEventCallback;HAL_DCMIPP_PIPE_FrameEventCallback=sample_ai_HAL_DCMIPP_PIPE_FrameEventCallback")
 
-add_library(sample-ai2_middleware STATIC
-    src/middleware/image_resizer/image_resizer.cpp)
-target_include_directories(sample-ai2_middleware PUBLIC
-    "${AI_SRC_DIR}/middleware")
-target_compile_options(sample-ai2_middleware PRIVATE
-    ${AI_PERFORMANCE_COMPILE_OPTIONS})
-
 add_executable(${AI_APP_TARGET}
     src/main.cpp
     src/task/application_initialize_task.cpp
     src/task/camera_render_task.cpp
     src/task/inference_task.cpp
-    src/task/input_preparation_task.cpp
     src/task/inference_postprocess_task.cpp
     src/task/task_context.cpp
     src/task/task_diagnostics.cpp
     src/driver/camera_driver/sensor_driver/registers/imx335_registers.cpp
-    src/driver/camera_driver/dcmipp_resize.cpp
     src/driver/camera_driver/camera_driver.cpp
+    src/image_resizer/image_resizer.cpp
     src/driver/board/hal_time.c
     src/driver/cache_driver/cache_driver.cpp
     src/driver/nor_driver/registers/nor_registers.cpp
@@ -255,7 +247,6 @@ add_executable(${AI_APP_TARGET}
 
 target_include_directories(${AI_APP_TARGET} PRIVATE
     "${AI_SRC_DIR}"
-    "${AI_SRC_DIR}/middleware"
     "${AI_SRC_DIR}/driver/board/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/config"
     ${AI_MODEL_INCLUDE_DIRS}
@@ -291,7 +282,6 @@ target_compile_options(${AI_APP_TARGET} PRIVATE
     ${AI_PERFORMANCE_COMPILE_OPTIONS}
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
 target_link_libraries(${AI_APP_TARGET} PRIVATE
-    sample-ai2_middleware
     uai::utkernel
     uai::stm32n6570_dk
     "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/evision/Lib/libn6-evision-awb_gcc.a"
@@ -357,23 +347,23 @@ set(AI_FLASH_FSBL_IMAGE
     "${CMAKE_CURRENT_SOURCE_DIR}/fsbl/stm32n6570-dk-ai_fsbl.hex")
 if(NOT EXISTS "${AI_FLASH_FSBL_IMAGE}")
     message(FATAL_ERROR
-        "The official sample-ai FSBL is missing: ${AI_FLASH_FSBL_IMAGE}")
+        "The official sample-ai2 FSBL is missing: ${AI_FLASH_FSBL_IMAGE}")
 endif()
 if(STM32_SIGNING_TOOL_CLI)
     add_custom_command(
         OUTPUT "${AI_FLASH_APP_IMAGE}"
         COMMAND "${STM32_SIGNING_TOOL_CLI}"
-                -bin "${CMAKE_CURRENT_BINARY_DIR}/${AI_APP_NAME}.bin"
+            -bin "${CMAKE_CURRENT_BINARY_DIR}/${AI_APP_NAME}.bin"
                 -nk -of 0x80000000 -t fsbl -o "${AI_FLASH_APP_IMAGE}"
                 -hv 2.3 -align -s -dump "${AI_FLASH_APP_IMAGE}"
         DEPENDS ${AI_APP_TARGET}
         VERBATIM)
-    add_custom_target(sample-ai2-flash-images
+        add_custom_target(${AI_APP_NAME}-flash-images
         DEPENDS "${AI_FLASH_APP_IMAGE}")
 else()
-    add_custom_target(sample-ai2-flash-images
+        add_custom_target(${AI_APP_NAME}-flash-images
         COMMAND ${CMAKE_COMMAND} -E echo
-                "sample-ai2-flash-images requires STM32_SigningTool_CLI"
+            "sample-ai2-flash-images requires STM32_SigningTool_CLI"
         COMMAND ${CMAKE_COMMAND} -E false)
 endif()
 
@@ -396,7 +386,6 @@ add_library(${AI_MODEL_TARGET} STATIC
 
 target_include_directories(${AI_MODEL_TARGET} PRIVATE
     "${AI_SRC_DIR}"
-    "${AI_SRC_DIR}/middleware"
     "${CMAKE_CURRENT_SOURCE_DIR}/config"
     ${AI_MODEL_INCLUDE_DIRS}
     "${AI_STEDGEAI_DIR}/Inc"
@@ -437,4 +426,4 @@ target_link_libraries(${AI_MODEL_TARGET} PRIVATE
 target_link_libraries(${AI_APP_TARGET} PRIVATE
     ${AI_MODEL_TARGET}
     ${AI_MODEL_EXTRA_LIBRARIES})
-add_custom_target(sample-ai2-models DEPENDS ${AI_MODEL_TARGET})
+add_custom_target(${AI_APP_NAME}-models DEPENDS ${AI_MODEL_TARGET})

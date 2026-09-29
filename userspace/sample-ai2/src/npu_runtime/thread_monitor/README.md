@@ -61,14 +61,12 @@ result_conversion
 ```
 
 Trace type pipeline_stage (type 6) records the operation-level runtime
-stages. Its phase_id field is interpreted as the internal pipeline::Stage ID:
+stages. Its phase_id field is interpreted as the ModelStageId:
 
 ```text
 copy, resize, letterbox, input_cache, submit,
 irq_wait, epoch_continue, output_cache, decode, convert, finalize
 ```
-
-`irq_wait` は NPU 所有タスクのステータス確認・必要時の IRQ 待機を含みます。別の CPU 入力タスクが `copy` / `resize` / `letterbox` を実行する間も NPU 所有タスクは待機できるため、可視化では `irq_wait` 全体を CPU 稼働時間として合算しません。これらの CPU 前処理は現在 stage 単位のトレースを出さず、`input_preparation` phase で計測します。`epoch_continue` は未完了時のみ実行する NPU 所有タスクの `ContinueRun` 呼び出しです。後処理の ID は旧トレース互換として残りますが、現行計画には含めません。
 
 Pipeline stages also carry DWT end and elapsed cycles in the existing raw
 record fields. This keeps CPU work below one millisecond visible; the host

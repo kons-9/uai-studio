@@ -20,10 +20,6 @@ extern std::uint8_t __sample_ai_inference1_start__[];
 extern std::uint8_t __sample_ai_inference1_end__[];
 extern std::uint8_t __sample_ai_inference2_start__[];
 extern std::uint8_t __sample_ai_inference2_end__[];
-extern std::uint8_t __sample_ai_inference3_start__[];
-extern std::uint8_t __sample_ai_inference3_end__[];
-extern std::uint8_t __sample_ai_inference4_start__[];
-extern std::uint8_t __sample_ai_inference4_end__[];
 extern std::uint8_t __sample_ai_inference_scratch_start__[];
 extern std::uint8_t __sample_ai_inference_scratch_end__[];
 extern std::uint8_t __sample_ai_inference_source0_start__[];
@@ -32,10 +28,6 @@ extern std::uint8_t __sample_ai_inference_source1_start__[];
 extern std::uint8_t __sample_ai_inference_source1_end__[];
 extern std::uint8_t __sample_ai_inference_source2_start__[];
 extern std::uint8_t __sample_ai_inference_source2_end__[];
-extern std::uint8_t __sample_ai_inference_source3_start__[];
-extern std::uint8_t __sample_ai_inference_source3_end__[];
-extern std::uint8_t __sample_ai_inference_source4_start__[];
-extern std::uint8_t __sample_ai_inference_source4_end__[];
 extern std::uint8_t __sample_ai_raw_dump_start__[];
 extern std::uint8_t __sample_ai_raw_dump_end__[];
 extern std::uint8_t __sample_ai_segmentation_mask0_start__[];
@@ -58,14 +50,10 @@ enum class Key : std::uint8_t {
     kInference0,
     kInference1,
     kInference2,
-    kInference3,
-    kInference4,
     kInferenceScratch,
     kInferenceSource0,
     kInferenceSource1,
     kInferenceSource2,
-    kInferenceSource3,
-    kInferenceSource4,
     kRawDump,
     kSegmentationMask0,
     kSegmentationMask1,
@@ -90,7 +78,7 @@ struct Region {
 };
 
 /* Addresses and capacities of memory which is reserved by the linker script.
- * This is deliberately separate from the allocator's kConfig: changing the
+ * This is deliberately separate from MemoryAllocatorConfig: changing the
  * allocator's sizing policy must not silently change the physical memory
  * map. */
 struct Layout {
@@ -111,8 +99,6 @@ inline constexpr Layout kLayout = {
         {__sample_ai_inference0_start__, __sample_ai_inference0_end__},
         {__sample_ai_inference1_start__, __sample_ai_inference1_end__},
         {__sample_ai_inference2_start__, __sample_ai_inference2_end__},
-        {__sample_ai_inference3_start__, __sample_ai_inference3_end__},
-        {__sample_ai_inference4_start__, __sample_ai_inference4_end__},
         {__sample_ai_inference_scratch_start__,
          __sample_ai_inference_scratch_end__},
         {__sample_ai_inference_source0_start__,
@@ -121,10 +107,6 @@ inline constexpr Layout kLayout = {
          __sample_ai_inference_source1_end__},
         {__sample_ai_inference_source2_start__,
          __sample_ai_inference_source2_end__},
-        {__sample_ai_inference_source3_start__,
-         __sample_ai_inference_source3_end__},
-        {__sample_ai_inference_source4_start__,
-         __sample_ai_inference_source4_end__},
         {__sample_ai_raw_dump_start__, __sample_ai_raw_dump_end__},
         {__sample_ai_segmentation_mask0_start__,
          __sample_ai_segmentation_mask0_end__},

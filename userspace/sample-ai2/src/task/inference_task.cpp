@@ -9,7 +9,6 @@
 #include "npu_runtime/npu_runtime.hpp"
 #include "task/inference_task.hpp"
 #include "task/inference_postprocess_task.hpp"
-#include "task/input_preparation_task.hpp"
 #include "task/task_diagnostics.hpp"
 
 extern "C" {
@@ -18,26 +17,42 @@ extern "C" {
 
 namespace uai::ai::task {
 
-namespace {
+struct PrefetchContext {
+    TaskContext *task = nullptr;
+    InferenceMessage message{};
+    bool claimed = false;
+};
 
-common::Error RequestCpuInput(TaskContext &context,
-                              npu_runtime::PreparationTarget target,
-                              std::uint64_t request_id)
+memory_allocator::InferenceFrame *ProvidePrefetch(void *context)
 {
-    if (!target || request_id == 0U) {
-        return {common::ErrorCode::kModel, 0U, "ai.cpu_input.model"};
+    auto *prefetch = static_cast<PrefetchContext *>(context);
+    if (prefetch == nullptr || prefetch->task == nullptr ||
+        prefetch->claimed) {
+        return nullptr;
     }
-    const InputPreparationRequest request{
-        {pipeline::ExecutionContext::kNpuTask,
-         pipeline::ExecutionContext::kCpuInputTask, request_id, 0U},
-        target.model, target.kind};
-    const ER error = tk_snd_mbf(context.input_preparation_request_queue,
-                                 &request, sizeof(request), TMO_POL);
-    return error == E_OK
-        ? common::Error{common::ErrorCode::kOk, 0U, "ai.cpu_input.request"}
-        : common::Error{common::ErrorCode::kInvalidState,
-                        static_cast<std::uint32_t>(error),
-                        "ai.cpu_input.request_queue"};
+
+    ++prefetch->task->inference_metrics.prefetch_attempts;
+
+    const INT size = tk_rcv_mbf(prefetch->task->frame_queue,
+                                &prefetch->message, TMO_POL);
+    if (size != static_cast<INT>(sizeof(prefetch->message))) {
+        ++prefetch->task->inference_metrics.prefetch_queue_empty;
+        return nullptr;
+    }
+    const common::Error status =
+        prefetch->task->memory.ClaimInferenceBuffer(prefetch->message.frame);
+    if (!status.Ok()) {
+        if (status.code == common::ErrorCode::kNoBuffer) {
+            ++prefetch->task->inference_metrics.prefetch_buffer_busy;
+        } else {
+            ++prefetch->task->inference_metrics.prefetch_claim_errors;
+        }
+        LogStatus("memory", status);
+        return nullptr;
+    }
+    prefetch->claimed = true;
+    ++prefetch->task->inference_metrics.prefetch_successes;
+    return &prefetch->message.frame;
 }
 
 void ReleaseReusableFrame(TaskContext &context,
@@ -74,8 +89,6 @@ void DrainPostprocessDone(TaskContext &context,
         *held = true;
     }
 }
-
-} // namespace
 
 void InferenceTask::Entry()
 {
@@ -129,9 +142,6 @@ void InferenceTask::Run()
                          "ai: model loaded; inference execution enabled\n"));
         context.StartInferencePostprocessTask(
             reinterpret_cast<FP>(InferencePostprocessTask::Entry));
-        context.input_preparation_enabled = true;
-        context.StartInputPreparationTask(
-            reinterpret_cast<FP>(InputPreparationTask::Entry));
     } else {
         LogStatus("ai", model_status);
         UAI_LOG_WARN(reinterpret_cast<const UB *>(
@@ -163,88 +173,68 @@ void InferenceTask::Run()
         fps_window_start = context.Now();
     }
     InferenceMessage message{};
-    std::uint64_t next_request_id = 1U;
-    npu_runtime::PreparationTarget requested_target{};
-    if (inference_enabled) {
-        requested_target = runtime.InputTarget(false);
-        model_status = RequestCpuInput(context, requested_target,
-                                       next_request_id);
-        inference_enabled = model_status.Ok();
-        context.input_preparation_enabled = inference_enabled;
-    }
+    bool have_message = false;
     memory_allocator::InferenceFrame reusable_frame{};
     bool reusable_held = false;
     for (;;) {
-        DrainPostprocessDone(context, &reusable_frame, &reusable_held);
-        ReleaseReusableFrame(context, &reusable_frame, &reusable_held);
-        if (!inference_enabled) {
-            /* On any NPU fault keep freeing raw and prepared frames; camera
-             * DMA cannot progress if all five leases remain occupied. */
-            InputPreparationResult orphan{};
-            if (tk_rcv_mbf(context.input_preparation_result_queue, &orphan,
-                           TMO_POL) == static_cast<INT>(sizeof(orphan)) &&
-                orphan.frame) {
-                LogStatus("memory", context.memory.ReleaseInferenceBuffer(
-                                        orphan.frame));
-            }
-            InferenceMessage raw{};
-            if (tk_rcv_mbf(context.frame_queue, &raw, TMO_POL) ==
-                static_cast<INT>(sizeof(raw))) {
-                LogStatus("memory", context.memory.ReleaseInferenceBuffer(
-                                        raw.frame));
-            }
-            tk_dly_tsk(1U);
-            continue;
-        }
-
-        const std::uint32_t frame_queue_wait_start = context.Now();
-        InputPreparationResult prepared{};
-        INT size = 0;
-        do {
-            DrainPostprocessDone(context, &reusable_frame, &reusable_held);
-            ReleaseReusableFrame(context, &reusable_frame, &reusable_held);
-            size = tk_rcv_mbf(context.input_preparation_result_queue,
-                              &prepared, TMO_POL);
-            if (size != static_cast<INT>(sizeof(prepared))) {
+        bool message_already_claimed = false;
+        if (!have_message) {
+            const std::uint32_t frame_queue_wait_start = context.Now();
+            INT size = 0;
+            for (;;) {
+                DrainPostprocessDone(context, &reusable_frame, &reusable_held);
+                size = tk_rcv_mbf(context.frame_queue, &message, TMO_POL);
+                if (size == static_cast<INT>(sizeof(message))) {
+                    ReleaseReusableFrame(context, &reusable_frame,
+                                         &reusable_held);
+                    break;
+                }
+                /* A completed frame is no longer reused as a new input.  It
+                 * is already older than the live Pipe2 stream, so reusing it
+                 * keeps the NPU busy but makes the boxes belong to a past
+                 * image.  Release it and wait for the next fresh frame;
+                 * SendInferenceFrame() keeps that queue latest-wins. */
+                if (reusable_held) {
+                    ReleaseReusableFrame(context, &reusable_frame,
+                                         &reusable_held);
+                }
                 tk_dly_tsk(1U);
             }
-        } while (size != static_cast<INT>(sizeof(prepared)));
-        const std::uint32_t frame_queue_wait =
-            context.Now() - frame_queue_wait_start;
-        ++context.inference_metrics.frame_queue_wait_calls;
-        context.inference_metrics.frame_queue_wait_total_ms += frame_queue_wait;
-        if (frame_queue_wait > context.inference_metrics.frame_queue_wait_max_ms) {
-            context.inference_metrics.frame_queue_wait_max_ms = frame_queue_wait;
-        }
-        const bool valid_prepared = prepared.status.Ok() &&
-            prepared.frame &&
-            pipeline::IsPreparedFor(prepared.handoff, next_request_id,
-                                    prepared.frame.lease_token) &&
-            prepared.frame.input_prepared &&
-            prepared.frame.prepared_model_kind_id ==
-                static_cast<std::uint8_t>(requested_target.kind);
-        if (!valid_prepared) {
-            if (prepared.frame) {
-                LogStatus("memory", context.memory.ReleaseInferenceBuffer(
-                                        prepared.frame));
+            const std::uint32_t frame_queue_wait =
+                context.Now() - frame_queue_wait_start;
+            ++context.inference_metrics.frame_queue_wait_calls;
+            context.inference_metrics.frame_queue_wait_total_ms +=
+                frame_queue_wait;
+            if (frame_queue_wait > context.inference_metrics.frame_queue_wait_max_ms) {
+                context.inference_metrics.frame_queue_wait_max_ms =
+                    frame_queue_wait;
             }
-            LogStatus("ai.cpu_input", prepared.status.Ok()
-                ? common::Error{common::ErrorCode::kOwnership, 0U,
-                                "ai.cpu_input.invalid_handoff"}
-                : prepared.status);
-            inference_enabled = false;
-            context.input_preparation_enabled = false;
-            continue;
+            if (size != static_cast<INT>(sizeof(message)) &&
+                !message_already_claimed) {
+                continue;
+            }
+        } else {
+            have_message = false;
+            message_already_claimed = true;
+            DrainPostprocessDone(context, &reusable_frame, &reusable_held);
+            ReleaseReusableFrame(context, &reusable_frame, &reusable_held);
         }
-        message.frame = prepared.frame;
         if (context.diagnostics.inference_fps) {
             ++fps_submitted;
         }
 
         common::Error status{};
+        if (!message_already_claimed) {
+            status = context.memory.ClaimInferenceBuffer(message.frame);
+        }
+        if (!status.Ok()) {
+            LogStatus("memory", status);
+            continue;
+        }
+
+        PrefetchContext prefetch{&context};
         npu_runtime::InferenceCompletion completion{};
         bool completion_queued = false;
-        const std::uint64_t current_request_id = next_request_id;
         if (inference_enabled) {
             if (context.diagnostics.inference_trace) {
                 UAI_LOG_TRACE(reinterpret_cast<const UB *>(
@@ -276,21 +266,9 @@ void InferenceTask::Run()
                     ? camera_before.pipe2_latest_capture_sequence -
                           message.frame.capture_sequence
                     : 0U;
-            status = runtime.Begin(message.frame);
+            status = runtime.Begin(message.frame, ProvidePrefetch, &prefetch);
             if (status.Ok()) {
-                /* NPU is active: request CPU preparation of the next model
-                 * on another task before blocking for the current IRQs. */
-                ++next_request_id;
-                if (next_request_id == 0U) {
-                    ++next_request_id;
-                }
-                requested_target = runtime.InputTarget(true);
-                const common::Error request_status = RequestCpuInput(
-                    context, requested_target, next_request_id);
                 status = runtime.Wait(&completion);
-                if (status.Ok() && !request_status.Ok()) {
-                    status = request_status;
-                }
             }
             const auto camera_after = context.camera.GetDiagnostics();
             const std::uint32_t capture_lag_end =
@@ -346,10 +324,6 @@ void InferenceTask::Run()
             status = {common::ErrorCode::kNotInitialized, 0U, "ai.infer_disabled"};
         }
         if (status.Ok()) {
-            completion.handoff = {
-                pipeline::ExecutionContext::kNpuTask,
-                pipeline::ExecutionContext::kCpuPostprocessTask,
-                current_request_id, completion.frame.lease_token};
             const ER queue_status = tk_snd_mbf(
                 context.inference_completion_queue, &completion,
                 sizeof(completion), TMO_POL);
@@ -362,12 +336,21 @@ void InferenceTask::Run()
                 if (context.diagnostics.inference_fps) {
                     ++fps_completed;
                 }
+                if (prefetch.claimed) {
+                    message = prefetch.message;
+                    have_message = true;
+                }
             }
         }
         if (!completion_queued) {
             const common::Error release_status =
                 context.memory.ReleaseInferenceBuffer(message.frame);
             LogStatus("memory", release_status);
+        }
+        if (prefetch.claimed && !completion_queued) {
+            const common::Error prefetch_release =
+                context.memory.ReleaseInferenceBuffer(prefetch.message.frame);
+            LogStatus("memory", prefetch_release);
         }
         if (!status.Ok() && model_status.Ok() && inference_enabled &&
             !context.IsBestEffort(status.code)) {
@@ -377,7 +360,6 @@ void InferenceTask::Run()
              * wait for a buffer forever. Keep Pipe1 live and leave inference
              * disabled until the next firmware restart. */
             inference_enabled = false;
-            context.input_preparation_enabled = false;
             UAI_LOG_WARN(reinterpret_cast<const UB *>(
                              "ai: inference disabled after NPU error; camera remains live\n"));
             ReleaseReusableFrame(context, &reusable_frame, &reusable_held);

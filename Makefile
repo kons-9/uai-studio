@@ -4,6 +4,9 @@ ENV_FILE ?= env.mk
 -include $(ENV_FILE)
 
 APP_TARGET ?= sample-hello-world
+ifeq ($(APP_TARGET),sample-ai2)
+BUILD_DIR ?= build-sample-ai2
+endif
 BUILD_DIR ?= build
 CMAKE ?= cmake
 
@@ -140,8 +143,13 @@ ifneq (,$(filter sample-ai sample-ai2,$(APP_TARGET)))
 	+$(MAKE) sample-ai-deps
 	+$(MAKE) ai-models
 endif
+ifeq ($(APP_TARGET),sample-ai2)
+	sh tools/cubemx-generate.sh
+endif
 	+$(MAKE) configure
+ifneq ($(APP_TARGET),sample-ai2)
 	+$(MAKE) cubemx-generate
+endif
 
 init: setup
 

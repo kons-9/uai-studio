@@ -2,8 +2,6 @@
 # committed.  The small, redistributable post-processing sources used by this
 # application are kept in the repository so a clean checkout has no hidden
 # source dependency.
-/build/
-__pycache__/
 /third_party/*
 !/third_party/README.md
 !/third_party/vision_models_pp/

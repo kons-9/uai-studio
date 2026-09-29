@@ -1,7 +1,7 @@
 #include "driver/camera_driver/camera_driver.hpp"
 #include "common/log.hpp"
 #include "sample_ai_config.hpp"
-#include "driver/camera_driver/dcmipp_resize.hpp"
+#include "image_resizer/image_resizer.hpp"
 #include "static_memory_layout/static_memory_layout.hpp"
 
 #include "driver/camera_driver/sensor_driver/registers/imx335_registers.hpp"
@@ -28,7 +28,6 @@ void AiResetImx335ControlState(void);
 namespace {
 
 using StaticMemoryKey = uai::ai::static_memory_layout::Key;
-namespace resize = uai::ai::camera::dcmipp_resize;
 
 constexpr std::uint32_t kSensorWidth = 2592U;
 constexpr std::uint32_t kSensorHeight = 1944U;
@@ -95,9 +94,13 @@ void ClearInferenceInput(std::uintptr_t buffer)
 }
 
 uai::ai::common::Error ApplyDcmippDecimation(std::uint32_t pipe,
-                                             const resize::Selection &selection)
+                            const uai::ai::image_resizer::Selection &selection)
 {
-    if (selection.decimation == 1U) {
+    if (selection.hardware != uai::ai::image_resizer::Hardware::kDcmipp) {
+        return Hardware("camera.resizer.backend");
+    }
+
+    if (selection.dcmipp_decimation == 1U) {
         return HAL_DCMIPP_PIPE_DisableDecimation(&hcamera_dcmipp, pipe) ==
                        HAL_OK
                    ? uai::ai::common::Error{uai::ai::common::ErrorCode::kOk, 0U, "camera.resizer.decimation"}
@@ -105,7 +108,7 @@ uai::ai::common::Error ApplyDcmippDecimation(std::uint32_t pipe,
     }
 
     DCMIPP_DecimationConfTypeDef decimation{};
-    switch (selection.decimation) {
+    switch (selection.dcmipp_decimation) {
     case 2U:
         decimation.HRatio = DCMIPP_HDEC_1_OUT_2;
         decimation.VRatio = DCMIPP_VDEC_1_OUT_2;
@@ -119,15 +122,30 @@ uai::ai::common::Error ApplyDcmippDecimation(std::uint32_t pipe,
         decimation.VRatio = DCMIPP_VDEC_1_OUT_8;
         break;
     default:
-        return Hardware("camera.resizer.decimation", selection.decimation);
+        return Hardware("camera.resizer.decimation", selection.dcmipp_decimation);
     }
     if (HAL_DCMIPP_PIPE_SetDecimationConfig(&hcamera_dcmipp, pipe,
                                             &decimation) != HAL_OK ||
         HAL_DCMIPP_PIPE_EnableDecimation(&hcamera_dcmipp, pipe) != HAL_OK) {
         return Hardware("camera.resizer.decimation");
     }
-    return {uai::ai::common::ErrorCode::kOk, selection.decimation,
+    return {uai::ai::common::ErrorCode::kOk, selection.dcmipp_decimation,
             "camera.resizer.decimation"};
+}
+
+uai::ai::common::Error SelectDcmippResize(std::uint32_t input_width,
+                         std::uint32_t input_height,
+                         std::uint32_t output_width,
+                         std::uint32_t output_height,
+                         uai::ai::image_resizer::Selection *selection)
+{
+    uai::ai::image_resizer::Request request{};
+    request.input = uai::ai::image_resizer::InputKind::kCameraPipe;
+    request.input_width = input_width;
+    request.input_height = input_height;
+    request.output_width = output_width;
+    request.output_height = output_height;
+    return uai::ai::image_resizer::Select(request, selection);
 }
 
 uai::ai::common::Error ConfigureSensor(uai::ai::camera::sensor::registers::Imx335RegisterLayer &registers)
@@ -149,9 +167,9 @@ uai::ai::common::Error ConfigurePipe()
     crop.HStart = ((kSensorWidth - crop.HSize) / 2U) & ~1U;
     crop.VStart = ((kSensorHeight - crop.VSize) / 2U) & ~1U;
     crop.PipeArea = DCMIPP_POSITIVE_AREA;
-    resize::Selection selection{};
-    uai::ai::common::Error resize_status = resize::Select(
-        crop.HSize, crop.VSize, kOutputWidth, kOutputHeight, &selection);
+    uai::ai::image_resizer::Selection resize{};
+    uai::ai::common::Error resize_status = SelectDcmippResize(
+        crop.HSize, crop.VSize, kOutputWidth, kOutputHeight, &resize);
     if (!resize_status.Ok()) {
         return resize_status;
     }
@@ -161,15 +179,15 @@ uai::ai::common::Error ConfigurePipe()
         HAL_DCMIPP_PIPE_DisableGammaConversion(&hcamera_dcmipp, DCMIPP_PIPE1) != HAL_OK) {
         return Hardware("camera.pipe.crop");
     }
-    resize_status = ApplyDcmippDecimation(DCMIPP_PIPE1, selection);
+    resize_status = ApplyDcmippDecimation(DCMIPP_PIPE1, resize);
     if (!resize_status.Ok()) {
         return resize_status;
     }
     DCMIPP_DownsizeTypeDef downsize{};
     downsize.HRatio = static_cast<std::uint32_t>(
-        8192.0F * selection.input_width / kOutputWidth);
+        8192.0F * resize.dcmipp_input_width / kOutputWidth);
     downsize.VRatio = static_cast<std::uint32_t>(
-        8192.0F * selection.input_height / kOutputHeight);
+        8192.0F * resize.dcmipp_input_height / kOutputHeight);
     downsize.HDivFactor = (1024U * 8192U - 1U) / downsize.HRatio;
     downsize.VDivFactor = (1024U * 8192U - 1U) / downsize.VRatio;
     downsize.HSize = kOutputWidth;
@@ -194,10 +212,10 @@ uai::ai::common::Error ConfigurePipe()
     }
     UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
                   "image_resizer: pipe=1 hw=%s decimation=%u input=%ux%u output=%ux%u\n"),
-              "dcmipp",
-              static_cast<unsigned int>(selection.decimation),
-              static_cast<unsigned int>(selection.input_width),
-              static_cast<unsigned int>(selection.input_height),
+              uai::ai::image_resizer::HardwareName(resize.hardware),
+              static_cast<unsigned int>(resize.dcmipp_decimation),
+              static_cast<unsigned int>(resize.dcmipp_input_width),
+              static_cast<unsigned int>(resize.dcmipp_input_height),
               static_cast<unsigned int>(kOutputWidth),
               static_cast<unsigned int>(kOutputHeight));
     return {uai::ai::common::ErrorCode::kOk, 0U, "camera.pipe.configure"};
@@ -252,22 +270,22 @@ uai::ai::common::Error ConfigureInferencePipe(std::uint32_t inference_width,
         return Hardware("camera.pipe2.crop");
     }
 
-    resize::Selection selection{};
-    uai::ai::common::Error resize_status = resize::Select(
-        crop.HSize, crop.VSize, inference_width, content_height, &selection);
+    uai::ai::image_resizer::Selection resize{};
+    uai::ai::common::Error resize_status = SelectDcmippResize(
+        crop.HSize, crop.VSize, inference_width, content_height, &resize);
     if (!resize_status.Ok()) {
         return resize_status;
     }
-    resize_status = ApplyDcmippDecimation(DCMIPP_PIPE2, selection);
+    resize_status = ApplyDcmippDecimation(DCMIPP_PIPE2, resize);
     if (!resize_status.Ok()) {
         return resize_status;
     }
 
     DCMIPP_DownsizeTypeDef downsize{};
     downsize.HRatio = static_cast<std::uint32_t>(
-        8192.0F * selection.input_width / inference_width);
+        8192.0F * resize.dcmipp_input_width / inference_width);
     downsize.VRatio = static_cast<std::uint32_t>(
-        8192.0F * selection.input_height / content_height);
+        8192.0F * resize.dcmipp_input_height / content_height);
     downsize.HDivFactor = (1024U * 8192U - 1U) / downsize.HRatio;
     downsize.VDivFactor = (1024U * 8192U - 1U) / downsize.VRatio;
     downsize.HSize = inference_width;
@@ -313,10 +331,10 @@ uai::ai::common::Error ConfigureInferencePipe(std::uint32_t inference_width,
               static_cast<unsigned int>(content_height));
     UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
                   "image_resizer: pipe=2 hw=%s decimation=%u input=%ux%u output=%ux%u pad_top=%u model=%ux%u\n"),
-              "dcmipp",
-              static_cast<unsigned int>(selection.decimation),
-              static_cast<unsigned int>(selection.input_width),
-              static_cast<unsigned int>(selection.input_height),
+              uai::ai::image_resizer::HardwareName(resize.hardware),
+              static_cast<unsigned int>(resize.dcmipp_decimation),
+              static_cast<unsigned int>(resize.dcmipp_input_width),
+              static_cast<unsigned int>(resize.dcmipp_input_height),
               static_cast<unsigned int>(inference_width),
               static_cast<unsigned int>(content_height),
               static_cast<unsigned int>((inference_height - content_height) / 2U),
@@ -889,11 +907,7 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
     /* This is the sequence of every Pipe2 completion, including frames sent
      * to the drop sink. It is intentionally separate from the sequence of a
      * frame handed to inference so lag can expose dropped intermediate frames. */
-    ++g_inference_sequence;
-    if (g_inference_sequence == 0U) {
-        ++g_inference_sequence;
-    }
-    const std::uint32_t capture_sequence = g_inference_sequence;
+    const std::uint32_t capture_sequence = ++g_inference_sequence;
     const std::uintptr_t completed = g_active_inference;
     const bool completed_is_real_buffer =
         completed != 0U && completed != g_inference_drop_buffer;
@@ -932,19 +946,13 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
     }
 
     std::uintptr_t selected = 0U;
-    std::size_t first_index = 0U;
-    for (std::size_t i = 0U;
-         i < uai::ai::memory_allocator::kInferenceBufferCount; ++i) {
-        if (g_next_inference == g_inference_buffers[i]) {
-            first_index = i;
-            break;
-        }
-    }
-    for (std::size_t offset = 0U;
-         offset < uai::ai::memory_allocator::kInferenceBufferCount; ++offset) {
-        const std::uintptr_t candidate = g_inference_buffers[
-            (first_index + offset) %
-            uai::ai::memory_allocator::kInferenceBufferCount];
+    const std::uintptr_t candidates[] = {
+        g_next_inference,
+        g_inference_buffers[0],
+        g_inference_buffers[1],
+        g_inference_buffers[2],
+    };
+    for (const std::uintptr_t candidate : candidates) {
         if (candidate == 0U || candidate == completed ||
             candidate == g_inference_drop_buffer ||
             g_pipe2_memory == nullptr ||

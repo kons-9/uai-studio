@@ -166,6 +166,7 @@ for generated_file in network.c network_ecblobs.h stai_network.c stai_network.h 
     fi
 done
 
+mkdir -p "$model_dir"
 cp "$work_dir/st_ai_output/network.c" "$model_dir/"
 cp "$work_dir/st_ai_output/network_ecblobs.h" "$model_dir/"
 cp "$work_dir/st_ai_output/stai_network.c" "$model_dir/"
@@ -186,4 +187,4 @@ cp "$model_dir/network_data.hex" "$model_dir/network_data_flash.hex"
 
 echo "Generated $model_name in $model_dir"
 echo "Model data address: $network_address"
-echo "Program $model_dir/network_data.hex to the DK XSPI2 model area before running sample-ai."
+echo "Program $model_dir/network_data.hex to the DK XSPI2 model area before running sample-ai2."

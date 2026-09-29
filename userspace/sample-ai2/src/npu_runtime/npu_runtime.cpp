@@ -63,17 +63,6 @@ common::Error NpuRuntime::RegisterModel(const models::ModelBinding &binding)
     return scheduler_.RegisterModel(binding);
 }
 
-PreparationTarget NpuRuntime::InputTarget(bool following_current) const
-{
-    if (!initialized_) {
-        return {};
-    }
-    const models::ModelBinding *binding = following_current
-        ? scheduler_.NextBinding() : scheduler_.CurrentBinding();
-    return binding == nullptr ? PreparationTarget{}
-                              : PreparationTarget{binding->model, binding->kind};
-}
-
 common::Error NpuRuntime::Initialize(cache::CacheDriver &cache)
 {
     if (initialized_) {
@@ -145,7 +134,8 @@ common::Error NpuRuntime::Initialize(cache::CacheDriver &cache)
 }
 
 common::Error NpuRuntime::Begin(memory_allocator::InferenceFrame &frame,
-                                bool select_model)
+                                PrefetchProvider prefetch_provider,
+                                void *prefetch_context, bool select_model)
 {
     if (!initialized_) {
         return {common::ErrorCode::kNotInitialized, 0U,
@@ -167,7 +157,7 @@ common::Error NpuRuntime::Begin(memory_allocator::InferenceFrame &frame,
     const bool should_select_model =
         select_model || inference_started_ || frame.input_prepared;
     const common::Error status = dispatcher_.BeginInference(
-        frame, should_select_model);
+        frame, prefetch_provider, prefetch_context, should_select_model);
     if (!status.Ok()) {
         monitor_operation_active_ = false;
         if (thread_monitor_.EndOperation()) {
@@ -262,7 +252,9 @@ common::Error NpuRuntime::Complete(const InferenceCompletion &completion,
 }
 
 common::Error NpuRuntime::Run(memory_allocator::InferenceFrame &frame,
-                              memory_allocator::BoxSet *result)
+                              memory_allocator::BoxSet *result,
+                              PrefetchProvider prefetch_provider,
+                              void *prefetch_context)
 {
     if (!initialized_ || result == nullptr) {
         return {initialized_ ? common::ErrorCode::kInvalidArgument
@@ -270,7 +262,8 @@ common::Error NpuRuntime::Run(memory_allocator::InferenceFrame &frame,
                 0U, "ai.npu_runtime.run"};
     }
     const bool select_model = inference_started_ || frame.input_prepared;
-    common::Error status = Begin(frame, select_model);
+    common::Error status = Begin(frame, prefetch_provider, prefetch_context,
+                                 select_model);
     if (!status.Ok()) {
         return status;
     }

@@ -62,7 +62,7 @@ for required_path in \
     "$postprocess_dir/Src/vision_models_pp_maxi_is8.c"
 do
     if [ ! -f "$required_path" ]; then
-        echo "Missing sample-ai post-processing file: $required_path" >&2
+        echo "Missing sample-ai2 post-processing file: $required_path" >&2
         exit 1
     fi
 done
@@ -81,13 +81,13 @@ if [ -n "$model_dev" ] && [ -n "$runtime_dev" ] && [ "$model_dev" != "$runtime_d
     exit 1
 fi
 
-echo "sample-ai dependencies are ready."
+echo "sample-ai2 dependencies are ready."
 echo "  STEdgeAI:       $runtime_dir"
 echo "  runtime archive: $runtime_archive"
 echo "  post-processing: $postprocess_dir"
 echo
 echo "Configure from the repository root with:"
-echo "  cmake -S \"$project_dir\" -B build-sample-ai \\"
-echo "    -DAPP_TARGET=sample-ai \\"
+echo "  cmake -S \"$project_dir\" -B build-sample-ai2 \\"
+echo "    -DAPP_TARGET=sample-ai2 \\"
 echo "    -DSTEDGEAI_LIB_DIR=\"$runtime_dir\" \\"
 echo "    -DAI_VISION_MODELS_PP_DIR=\"$postprocess_dir\""

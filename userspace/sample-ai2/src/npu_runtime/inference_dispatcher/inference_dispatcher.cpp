@@ -207,6 +207,91 @@ common::Error InferenceDispatcher::ConfigureCurrentModel()
     return {common::ErrorCode::kOk, 0U, "ai.dispatcher.configure"};
 }
 
+common::Error InferenceDispatcher::PrepareInputFor(
+    const models::ModelBinding &binding,
+    memory_allocator::InferenceFrame &frame)
+{
+    if (!initialized_ || scheduler_ == nullptr || cache_ == nullptr) {
+        return {common::ErrorCode::kNotInitialized,
+                0U, "ai.dispatcher.prepare_input"};
+    }
+    if (!frame || binding.model == nullptr) {
+        return {common::ErrorCode::kInvalidArgument,
+                0U, "ai.dispatcher.prepare_input"};
+    }
+
+    const std::uint32_t start_ms = NowMs();
+    models::ModelStageContext context{&frame, cache_};
+    bool has_cpu_input_stage = false;
+    common::Error status{};
+    const models::ModelPipeline &pipeline = binding.model->GetPipeline();
+    for (std::size_t i = 0U; i < pipeline.count; ++i) {
+        const models::ModelStageId stage = pipeline.stages[i].id;
+        if (stage != models::ModelStageId::kCopy &&
+            stage != models::ModelStageId::kResize &&
+            stage != models::ModelStageId::kLetterbox) {
+            continue;
+        }
+        has_cpu_input_stage = true;
+        const std::uint32_t stage_start_cycles = NowCycles();
+        status = binding.model->ExecuteStage(stage, context);
+        const std::uint32_t stage_end_ms = NowMs();
+        const std::uint32_t stage_end_cycles = NowCycles();
+        if (pipeline_stage_observer_ != nullptr) {
+            pipeline_stage_observer_(
+                pipeline_stage_context_, stage_end_ms,
+                stage_end_cycles,
+                stage_end_cycles - stage_start_cycles,
+                static_cast<std::uint32_t>(binding.kind),
+                static_cast<std::uint32_t>(stage));
+        }
+        if (!status.Ok()) {
+            break;
+        }
+    }
+    if (!has_cpu_input_stage && status.Ok()) {
+        status = binding.model->PrepareInput(frame, *cache_);
+    }
+    const std::uint32_t end_ms = NowMs();
+    if (!status.Ok()) {
+        return status;
+    }
+
+    frame.input_prepared_by_cpu = has_cpu_input_stage;
+    frame.input_prepared = true;
+    frame.prepared_model_kind_id = static_cast<std::uint8_t>(binding.kind);
+    frame.input_preparation_start_ms = start_ms;
+    frame.input_preparation_end_ms = end_ms;
+    frame.input_preparation_elapsed_ms = end_ms - start_ms;
+    return {common::ErrorCode::kOk, 0U, "ai.dispatcher.prepare_input"};
+}
+
+void InferenceDispatcher::PreparePrefetch(void *context)
+{
+    auto *prefetch = static_cast<PrefetchState *>(context);
+    if (prefetch == nullptr || prefetch->dispatcher == nullptr ||
+        prefetch->provider == nullptr || prefetch->prepared ||
+        !prefetch->error.Ok()) {
+        return;
+    }
+
+    memory_allocator::InferenceFrame *frame =
+        prefetch->provider(prefetch->provider_context);
+    if (frame == nullptr) {
+        return;
+    }
+    prefetch->frame = frame;
+    const models::ModelBinding *binding =
+        prefetch->dispatcher->scheduler_->NextBinding();
+    if (binding == nullptr) {
+        prefetch->error = {common::ErrorCode::kModel, 0U,
+                           "ai.prefetch.next_model"};
+        return;
+    }
+    prefetch->error = prefetch->dispatcher->PrepareInputFor(*binding, *frame);
+    prefetch->prepared = prefetch->error.Ok();
+}
+
 common::Error InferenceDispatcher::ExecuteModelSelection(void *context)
 {
     auto *state = static_cast<PipelineState *>(context);
@@ -275,6 +360,71 @@ common::Error InferenceDispatcher::ExecuteModelSelection(void *context)
                      reinterpret_cast<const UB *>(descriptor->name));
     }
     return {common::ErrorCode::kOk, 0U, "ai.pipeline.model_selection"};
+}
+
+common::Error InferenceDispatcher::ExecuteModelCpuStage(void *context)
+{
+    auto *state = static_cast<PipelineState *>(context);
+    if (state == nullptr || state->dispatcher == nullptr ||
+        state->frame == nullptr || state->pipeline == nullptr) {
+        return {common::ErrorCode::kInvalidArgument, 0U,
+                "ai.pipeline.model_stage.context"};
+    }
+
+    InferenceDispatcher &dispatcher = *state->dispatcher;
+    const models::ModelBinding *binding =
+        dispatcher.scheduler_->CurrentBinding();
+    const models::ModelDescriptor *descriptor =
+        dispatcher.scheduler_->GetDescriptor();
+    if (binding == nullptr || binding->model == nullptr || descriptor == nullptr) {
+        return {common::ErrorCode::kModel, 0U,
+                "ai.pipeline.model_stage.model"};
+    }
+
+    const bool prepared_for_active_model =
+        state->frame->input_prepared &&
+        state->frame->prepared_model_kind_id ==
+            static_cast<std::uint8_t>(descriptor->kind);
+    if (state->frame->input_prepared && !prepared_for_active_model) {
+        return {common::ErrorCode::kModel,
+                state->frame->prepared_model_kind_id,
+                "ai.input.prepared_model_mismatch"};
+    }
+    if (prepared_for_active_model) {
+        state->input_preparation_start_ms =
+            state->frame->input_preparation_start_ms;
+        state->input_preparation_end_ms =
+            state->frame->input_preparation_end_ms;
+        state->input_preparation_elapsed_ms =
+            state->frame->input_preparation_elapsed_ms;
+        return {common::ErrorCode::kOk, 0U,
+                "ai.pipeline.model_stage.prefetched"};
+    }
+
+    if (state->stage == models::ModelStageId::kCopy &&
+        state->input_preparation_start_ms == 0U) {
+        state->input_preparation_start_ms = NowMs();
+    }
+    models::ModelStageContext model_context{state->frame, dispatcher.cache_};
+    const common::Error status =
+        binding->model->ExecuteStage(state->stage, model_context);
+    if (!status.Ok()) {
+        return status;
+    }
+    if (state->stage == models::ModelStageId::kLetterbox) {
+        state->frame->input_prepared_by_cpu = true;
+        state->input_preparation_end_ms = NowMs();
+        state->input_preparation_elapsed_ms =
+            state->input_preparation_end_ms -
+            state->input_preparation_start_ms;
+        auto &phase = dispatcher.last_timing_.At(
+            InferencePhase::kInputPreparation);
+        phase.start_ms = state->input_preparation_start_ms;
+        phase.end_ms = state->input_preparation_end_ms;
+        phase.elapsed_ms = state->input_preparation_elapsed_ms;
+        phase.valid = true;
+    }
+    return status;
 }
 
 common::Error InferenceDispatcher::ExecuteInputHandoff(void *context)
@@ -412,6 +562,9 @@ common::Error InferenceDispatcher::ExecuteNpuSubmit(void *context)
         return dispatcher.last_npu_status_.error;
     }
 
+    state->prefetch = {&dispatcher, state->prefetch_provider,
+                       state->prefetch_context};
+    PreparePrefetch(&state->prefetch);
     state->npu_completed = false;
     return {common::ErrorCode::kOk, 0U, "ai.pipeline.submit"};
 }
@@ -425,7 +578,8 @@ common::Error InferenceDispatcher::ExecuteNpuIrqWait(void *context)
     }
 
     InferenceDispatcher &dispatcher = *state->dispatcher;
-    dispatcher.last_npu_status_ = dispatcher.npu_->PollRun();
+    dispatcher.last_npu_status_ = dispatcher.npu_->PollRun(
+        &PreparePrefetch, &state->prefetch);
     if (dispatcher.last_npu_status_.action == npu::RunAction::kWaitForIrq) {
         dispatcher.last_npu_status_ = dispatcher.npu_->WaitForIrq();
     }
@@ -444,6 +598,9 @@ common::Error InferenceDispatcher::ExecuteNpuIrqWait(void *context)
     }
     state->npu_completed =
         dispatcher.last_npu_status_.action == npu::RunAction::kCompleted;
+    if (state->npu_completed && !state->prefetch.error.Ok()) {
+        return state->prefetch.error;
+    }
     return {common::ErrorCode::kOk, 0U, "ai.pipeline.irq_wait"};
 }
 
@@ -461,7 +618,92 @@ common::Error InferenceDispatcher::ExecuteNpuEpochContinue(void *context)
     if (!dispatcher.last_npu_status_.Ok()) {
         return dispatcher.last_npu_status_.error;
     }
+    if (!state->prefetch.error.Ok()) {
+        return state->prefetch.error;
+    }
     return {common::ErrorCode::kOk, 0U, "ai.pipeline.epoch_continue"};
+}
+
+common::Error InferenceDispatcher::ExecuteOutputPreparation(void *context)
+{
+    auto *state = static_cast<PipelineState *>(context);
+    if (state == nullptr || state->dispatcher == nullptr ||
+        state->frame == nullptr) {
+        return {common::ErrorCode::kInvalidArgument, 0U,
+                "ai.pipeline.output_preparation.context"};
+    }
+
+    InferenceDispatcher &dispatcher = *state->dispatcher;
+    PhaseTimingScope phase(
+        dispatcher.last_timing_.At(InferencePhase::kOutputPreparation));
+    for (std::uint16_t i = 0U; i < dispatcher.info_.n_outputs; ++i) {
+        const memory_allocator::Buffer output_buffer =
+            dispatcher.dynamic_outputs_
+                ? state->frame->outputs[i]
+                : memory_allocator::Buffer{
+                      reinterpret_cast<std::uintptr_t>(dispatcher.outputs_[i]),
+                      dispatcher.info_.outputs[i].size_bytes, 0U,
+                      memory_allocator::Region::kInference};
+        const common::Error status =
+            dispatcher.cache_->PrepareForCpuRead(output_buffer);
+        if (!status.Ok()) {
+            return status;
+        }
+    }
+
+    state->output_view.count = dispatcher.info_.n_outputs;
+    for (std::uint16_t i = 0U; i < dispatcher.info_.n_outputs; ++i) {
+        state->output_view.tensors[i].data = dispatcher.outputs_[i];
+        state->output_view.tensors[i].spec.size_bytes =
+            dispatcher.info_.outputs[i].size_bytes;
+        state->output_view.tensors[i].spec.scale =
+            dispatcher.info_.outputs[i].scale.data[0];
+        state->output_view.tensors[i].spec.zero_point =
+            dispatcher.info_.outputs[i].zeropoint.data[0];
+    }
+    const models::ModelDescriptor *descriptor =
+        dispatcher.scheduler_->GetDescriptor();
+    if (descriptor == nullptr) {
+        return {common::ErrorCode::kModel, 0U,
+                "ai.pipeline.output_preparation.model"};
+    }
+    state->geometry = BuildInferenceGeometry(*descriptor,
+                                             state->frame->from_pipe2);
+    return {common::ErrorCode::kOk, 0U,
+            "ai.pipeline.output_preparation"};
+}
+
+common::Error InferenceDispatcher::ExecuteOutputDecoding(void *context)
+{
+    auto *state = static_cast<PipelineState *>(context);
+    if (state == nullptr || state->dispatcher == nullptr) {
+        return {common::ErrorCode::kInvalidArgument, 0U,
+                "ai.pipeline.output_decoding.context"};
+    }
+
+    InferenceDispatcher &dispatcher = *state->dispatcher;
+    const models::InferenceCompletionContext completion{
+        state->output_view, state->geometry};
+    PhaseTimingScope phase(
+        dispatcher.last_timing_.At(InferencePhase::kOutputDecoding));
+    return dispatcher.scheduler_->DecodeActiveOutputs(
+        completion, &state->decoded_result);
+}
+
+common::Error InferenceDispatcher::ExecuteResultConversion(void *context)
+{
+    auto *state = static_cast<PipelineState *>(context);
+    if (state == nullptr || state->dispatcher == nullptr ||
+        state->result == nullptr) {
+        return {common::ErrorCode::kInvalidArgument, 0U,
+                "ai.pipeline.result_conversion.context"};
+    }
+
+    InferenceDispatcher &dispatcher = *state->dispatcher;
+    PhaseTimingScope phase(
+        dispatcher.last_timing_.At(InferencePhase::kResultConversion));
+    return dispatcher.scheduler_->ConvertActiveResult(state->decoded_result,
+                                                       state->result);
 }
 
 common::Error InferenceDispatcher::ExecuteInferenceFinalize(void *context)
@@ -480,7 +722,7 @@ common::Error InferenceDispatcher::ExecuteInferenceFinalize(void *context)
 }
 
 common::Error InferenceDispatcher::ExecuteStage(
-    PipelineState &state, pipeline::Stage *executed_stage_out)
+    PipelineState &state, models::ModelStageId *executed_stage_out)
 {
     if (executed_stage_out == nullptr || state.pipeline == nullptr ||
         state.stage_index >= state.pipeline->count) {
@@ -488,48 +730,59 @@ common::Error InferenceDispatcher::ExecuteStage(
                 "ai.pipeline.stage"};
     }
 
-    const pipeline::Stage executed_stage = state.stage;
+    const models::ModelStageId executed_stage = state.stage;
     *executed_stage_out = executed_stage;
+    const bool prefetched_input_stage =
+        state.frame->input_prepared &&
+        (executed_stage == models::ModelStageId::kCopy ||
+         executed_stage == models::ModelStageId::kResize ||
+         executed_stage == models::ModelStageId::kLetterbox);
     const std::uint32_t stage_start_cycles = NowCycles();
     bool repeat_stage = false;
     common::Error status{};
     switch (executed_stage) {
-    case pipeline::Stage::kInputCache:
+    case models::ModelStageId::kCopy:
+    case models::ModelStageId::kResize:
+    case models::ModelStageId::kLetterbox:
+        status = ExecuteModelCpuStage(&state);
+        break;
+    case models::ModelStageId::kInputCache:
         status = ExecuteInputHandoff(&state);
         break;
-    case pipeline::Stage::kSubmit:
+    case models::ModelStageId::kSubmit:
         status = ExecuteNpuSubmit(&state);
         break;
-    case pipeline::Stage::kIrqWait:
+    case models::ModelStageId::kIrqWait:
         status = ExecuteNpuIrqWait(&state);
         if (status.Ok() && !state.npu_completed) {
-            state.stage = pipeline::Stage::kEpochContinue;
+            state.stage = models::ModelStageId::kEpochContinue;
             repeat_stage = true;
         }
         break;
-    case pipeline::Stage::kEpochContinue:
+    case models::ModelStageId::kEpochContinue:
         status = ExecuteNpuEpochContinue(&state);
         if (status.Ok()) {
-            state.stage = pipeline::Stage::kIrqWait;
+            state.stage = models::ModelStageId::kIrqWait;
             repeat_stage = true;
         }
         break;
-    case pipeline::Stage::kCopy:
-    case pipeline::Stage::kResize:
-    case pipeline::Stage::kLetterbox:
-    case pipeline::Stage::kOutputCache:
-    case pipeline::Stage::kDecode:
-    case pipeline::Stage::kConvert:
-    case pipeline::Stage::kFinalize:
-        status = {common::ErrorCode::kInvalidArgument,
-                  static_cast<std::uint32_t>(executed_stage),
-                  "ai.pipeline.stage.not_in_npu_lane"};
+    case models::ModelStageId::kOutputCache:
+        status = ExecuteOutputPreparation(&state);
+        break;
+    case models::ModelStageId::kDecode:
+        status = ExecuteOutputDecoding(&state);
+        break;
+    case models::ModelStageId::kConvert:
+        status = ExecuteResultConversion(&state);
+        break;
+    case models::ModelStageId::kFinalize:
+        status = ExecuteInferenceFinalize(&state);
         break;
     }
 
     const std::uint32_t stage_end_ms = NowMs();
     const std::uint32_t stage_end_cycles = NowCycles();
-    if (pipeline_stage_observer_ != nullptr) {
+    if (!prefetched_input_stage && pipeline_stage_observer_ != nullptr) {
         const models::ModelDescriptor *descriptor =
             scheduler_->GetDescriptor();
         pipeline_stage_observer_(
@@ -551,10 +804,10 @@ common::Error InferenceDispatcher::ExecuteStage(
      * is still active, the continue case jumps back to irq_wait without
      * advancing the plan. */
     ++state.stage_index;
-    if (state.stage == pipeline::Stage::kIrqWait &&
+    if (state.stage == models::ModelStageId::kIrqWait &&
         state.npu_completed && state.stage_index < state.pipeline->count &&
         state.pipeline->stages[state.stage_index].id ==
-            pipeline::Stage::kEpochContinue) {
+            models::ModelStageId::kEpochContinue) {
         ++state.stage_index;
     }
     if (state.stage_index < state.pipeline->count) {
@@ -611,7 +864,8 @@ common::Error InferenceDispatcher::BuildCompletion(
 }
 
 common::Error InferenceDispatcher::BeginInference(
-    memory_allocator::InferenceFrame &frame, bool select_model)
+    memory_allocator::InferenceFrame &frame, PrefetchProvider prefetch_provider,
+    void *prefetch_context, bool select_model)
 {
     if (!initialized_ || scheduler_ == nullptr || npu_ == nullptr ||
         cache_ == nullptr) {
@@ -632,6 +886,8 @@ common::Error InferenceDispatcher::BeginInference(
     active_pipeline_ = {};
     active_pipeline_.dispatcher = this;
     active_pipeline_.frame = &frame;
+    active_pipeline_.prefetch_provider = prefetch_provider;
+    active_pipeline_.prefetch_context = prefetch_context;
     active_pipeline_.select_model = select_model;
 
     common::Error status = ExecuteModelSelection(&active_pipeline_);
@@ -645,45 +901,26 @@ common::Error InferenceDispatcher::BeginInference(
         return {common::ErrorCode::kModel, 0U,
                 "ai.infer.begin.model"};
     }
-    /* NPU task only executes NPU protocol stages. CPU input stages belong to
-     * the model and finish in the CPU task before this handoff. */
-    active_pipeline_.pipeline = &pipeline::kNpuProtocol;
-    if (!pipeline::Valid(*active_pipeline_.pipeline)) {
+    active_pipeline_.pipeline = &binding->model->GetPipeline();
+    if (active_pipeline_.pipeline->stages == nullptr ||
+        active_pipeline_.pipeline->count == 0U) {
         active_pipeline_ = {};
         return {common::ErrorCode::kModel, 0U,
                 "ai.infer.begin.pipeline"};
     }
-    if (!frame.input_prepared ||
-        frame.prepared_model_kind_id !=
-            static_cast<std::uint8_t>(binding->kind)) {
-        active_pipeline_ = {};
-        return {common::ErrorCode::kModel, frame.prepared_model_kind_id,
-                "ai.infer.begin.input_handoff"};
-    }
-    active_pipeline_.input_preparation_start_ms =
-        frame.input_preparation_start_ms;
-    active_pipeline_.input_preparation_end_ms =
-        frame.input_preparation_end_ms;
-    active_pipeline_.input_preparation_elapsed_ms =
-        frame.input_preparation_elapsed_ms;
-    auto &phase = last_timing_.At(InferencePhase::kInputPreparation);
-    phase.start_ms = frame.input_preparation_start_ms;
-    phase.end_ms = frame.input_preparation_end_ms;
-    phase.elapsed_ms = frame.input_preparation_elapsed_ms;
-    phase.valid = true;
     active_pipeline_.stage_index = 0U;
     active_pipeline_.stage = active_pipeline_.pipeline->stages[0].id;
     pipeline_active_ = true;
 
     for (;;) {
-        pipeline::Stage executed_stage = active_pipeline_.stage;
+        models::ModelStageId executed_stage = active_pipeline_.stage;
         status = ExecuteStage(active_pipeline_, &executed_stage);
         if (!status.Ok()) {
             pipeline_active_ = false;
             active_pipeline_ = {};
             return status;
         }
-        if (executed_stage == pipeline::Stage::kSubmit) {
+        if (executed_stage == models::ModelStageId::kSubmit) {
             return {common::ErrorCode::kOk, 0U, "ai.infer.begin"};
         }
         if (active_pipeline_.stage_index >= active_pipeline_.pipeline->count) {
@@ -704,14 +941,14 @@ common::Error InferenceDispatcher::WaitForInference(
     }
     common::Error status{};
     for (;;) {
-        pipeline::Stage executed_stage = active_pipeline_.stage;
+        models::ModelStageId executed_stage = active_pipeline_.stage;
         status = ExecuteStage(active_pipeline_, &executed_stage);
         if (!status.Ok()) {
             pipeline_active_ = false;
             active_pipeline_ = {};
             return status;
         }
-        if (executed_stage == pipeline::Stage::kIrqWait &&
+        if (executed_stage == models::ModelStageId::kIrqWait &&
             active_pipeline_.npu_completed) {
             break;
         }
@@ -781,9 +1018,45 @@ common::Error InferenceDispatcher::CompleteInference(
     return completion.model->ConvertResult(decoded, result);
 }
 
+common::Error InferenceDispatcher::ExecutePipeline(PipelineState &state)
+{
+    common::Error status = ExecuteModelSelection(&state);
+    if (!status.Ok()) {
+        return status;
+    }
+    if (state.pipeline == nullptr || state.pipeline->stages == nullptr ||
+        state.pipeline->count == 0U) {
+        const models::ModelBinding *binding =
+            state.dispatcher->scheduler_->CurrentBinding();
+        if (binding == nullptr || binding->model == nullptr) {
+            return {common::ErrorCode::kModel, 0U,
+                    "ai.pipeline.active_model"};
+        }
+        state.pipeline = &binding->model->GetPipeline();
+    }
+    if (state.pipeline->stages == nullptr || state.pipeline->count == 0U) {
+        return {common::ErrorCode::kModel, 0U,
+                "ai.pipeline.empty_model"};
+    }
+    state.stage_index = 0U;
+    state.stage = state.pipeline->stages[0].id;
+    for (;;) {
+        models::ModelStageId executed_stage = state.stage;
+        status = state.dispatcher->ExecuteStage(state, &executed_stage);
+        if (!status.Ok()) {
+            return status;
+        }
+        if (state.stage_index >= state.pipeline->count) {
+            return {common::ErrorCode::kOk, 0U, "ai.pipeline.complete"};
+        }
+    }
+}
+
 common::Error InferenceDispatcher::TryInfer(
     memory_allocator::InferenceFrame &frame,
     memory_allocator::BoxSet *result,
+    PrefetchProvider prefetch_provider,
+    void *prefetch_context,
     bool select_model)
 {
     if (!initialized_ || scheduler_ == nullptr || npu_ == nullptr ||
@@ -794,7 +1067,8 @@ common::Error InferenceDispatcher::TryInfer(
         return {common::ErrorCode::kInvalidArgument, 0U, "ai.infer"};
     }
 
-    common::Error status = BeginInference(frame, select_model);
+    common::Error status = BeginInference(frame, prefetch_provider,
+                                          prefetch_context, select_model);
     if (!status.Ok()) {
         return status;
     }

@@ -26,6 +26,37 @@ namespace uai::ai::models::face {
 
 namespace {
 
+constexpr ModelStageDescriptor kFaceStages[] = {
+    {ModelStageId::kCopy, "copy", ModelStageLocation::kInferenceTaskCpu,
+     ModelStageOverlap::kMayOverlap, "copy live Pipe2 rows to scratch"},
+    {ModelStageId::kResize, "resize", ModelStageLocation::kInferenceTaskCpu,
+     ModelStageOverlap::kMayOverlap, "resize RGB888 content to model size"},
+    {ModelStageId::kLetterbox, "letterbox",
+     ModelStageLocation::kInferenceTaskCpu, ModelStageOverlap::kMayOverlap,
+     "fill model input padding"},
+    {ModelStageId::kInputCache, "input_cache",
+     ModelStageLocation::kInferenceTaskCpu, ModelStageOverlap::kSerial,
+     "clean the CPU-produced input for the NPU"},
+    {ModelStageId::kSubmit, "submit", ModelStageLocation::kInferenceTaskCpu,
+     ModelStageOverlap::kSerial, "start the asynchronous ST.AI run"},
+    {ModelStageId::kIrqWait, "irq_wait",
+     ModelStageLocation::kInferenceTaskCpu, ModelStageOverlap::kSerial,
+     "wait for the NPU event and inspect ST.AI status"},
+    {ModelStageId::kEpochContinue, "epoch_continue",
+     ModelStageLocation::kInferenceTaskCpu, ModelStageOverlap::kSerial,
+     "continue the next ST.AI epoch after an IRQ"},
+    {ModelStageId::kOutputCache, "output_cache",
+     ModelStageLocation::kInferenceTaskCpu, ModelStageOverlap::kSerial,
+     "make NPU output tensors visible to the CPU"},
+    {ModelStageId::kDecode, "decode", ModelStageLocation::kInferenceTaskCpu,
+     ModelStageOverlap::kSerial, "decode face tensors"},
+    {ModelStageId::kConvert, "convert", ModelStageLocation::kInferenceTaskCpu,
+     ModelStageOverlap::kSerial, "convert detections to application boxes"},
+    {ModelStageId::kFinalize, "finalize",
+     ModelStageLocation::kInferenceTaskCpu, ModelStageOverlap::kSerial,
+     "reset the generated runtime for the next inference"},
+};
+
 Decoder &FaceDecoderInstance()
 {
     static Decoder decoder;
@@ -64,6 +95,20 @@ const ModelDescriptor &Model::Descriptor()
 const ModelDescriptor &Model::GetDescriptor() const
 {
     return Descriptor();
+}
+
+const ModelPipeline &Model::GetPipeline() const
+{
+    static constexpr ModelPipeline kPipeline{
+        kFaceStages, sizeof(kFaceStages) / sizeof(kFaceStages[0])};
+    return kPipeline;
+}
+
+common::Error Model::ExecuteStage(ModelStageId stage,
+                                  ModelStageContext &context) const
+{
+    return ExecutePipe2InputStage(stage, context, Descriptor().input_width,
+                                  Descriptor().input_height);
 }
 
 ModelCallbacks Model::GetCallbacks() const

@@ -291,7 +291,7 @@ void ThreadMonitor::ObservePipelineStage(std::uint32_t end_ms,
 
     /* Pipeline records reuse the phase_id field to keep the 64-byte raw
      * format stable. Their record type distinguishes them from legacy phase
-    * records, so the host can decode the value as an internal pipeline::Stage ID. The
+     * records, so the host can decode the value as a ModelStageId. The
      * progress_tick and npu_elapsed_ms fields carry the DWT end/duration
      * cycles for sub-millisecond CPU stages. */
     (void)QueueTraceEvent({

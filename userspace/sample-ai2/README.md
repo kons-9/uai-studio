@@ -1,20 +1,11 @@
-# sample-ai2: STM32N6570-DK Neural-ART 推論のリファクタリング版
+# sample-ai2: sample-ai から再コピーした Neural-ART 推論
 
-sample-ai を独立コピーした実験用アプリです。従来の sample-ai は変更せず、
-`APP_TARGET=sample-ai2` と**別の** `BUILD_DIR` でビルドしてください。
-`src/middleware/README.md` に HW 非依存部分とドライバ・STAI の境界を記載しています。
-追加の推論スロット、領域侵害ガード、モデルごとの共通非同期計画の制約も同文書に記載しています。
-モデル配置をバイナリから測定・可視化するホストツールは
-`tools/MODEL_LAYOUT.md` を参照してください。コピー元の説明を以下に残しており、
-以下の `sample-ai` と記されたコマンド例・パスは原則として `sample-ai2` に
-読み替えてください。生成済みモデルはコピーされないため、3 モデルの生成が必要です。
-
-```sh
-make APP_TARGET=sample-ai2 BUILD_DIR=build-sample-ai2 setup
-make APP_TARGET=sample-ai2 BUILD_DIR=build-sample-ai2 build
-```
-
-## コピー元の動作仕様（移行中）
+このアプリは sample-ai をコピーした再構築版です。以下のコピー元の実機計測値は
+sample-ai2 の検証結果ではありません。sample-ai2 のモデル生成物は同梱していません。
+リポジトリ直下で、初回は `make APP_TARGET=sample-ai2 setup`（モデル生成と
+CubeMX 生成を含む）、以降は `make APP_TARGET=sample-ai2 build` を使います。
+既定のビルド先は `build-sample-ai2` で、sample-ai の `build` と共用しません。
+ボード書き込みの前に UART を用意してください。
 
 `sample-ai` は、STM32N6570-DK の Neural-ART NPU で量子化 AI モデルを推論する
 最小構成です。一般的な意味での GPU (NeoChrom) ではなく、AI 推論専用の NPU
@@ -76,8 +67,8 @@ personモデルの推論入力は Pipe2 の 480x480 RGB888 です。実際に NP
 入力内容のUART確認も行う場合は `inference_input = true` を追加します。
 
 ```sh
-cmake -S . -B build-sample-ai -DAPP_TARGET=sample-ai
-cmake --build build-sample-ai --target sample-ai.elf
+cmake -S . -B build-sample-ai2 -DAPP_TARGET=sample-ai2
+cmake --build build-sample-ai2 --target sample-ai2.elf
 ```
 
 UARTには30フレームごとに `ai: input inspect` としてアドレス、サイズ、CRC、RGBサンプル、
@@ -165,7 +156,7 @@ STEdgeAIランタイムはSTの配布物であり、サイズ・ライセンス�
 できます。
 
 ```sh
-sh userspace/sample-ai/scripts/setup_third_party.sh \
+sh userspace/sample-ai2/scripts/setup_third_party.sh \
   /opt/ST/STEdgeAI/4.0/Middlewares/ST/AI
 ```
 
@@ -183,13 +174,13 @@ sh userspace/sample-ai/scripts/setup_third_party.sh \
 ## モデル生成
 
 ```sh
-sh userspace/sample-ai/models/generate_model.sh person \
+sh userspace/sample-ai2/models/generate_model.sh person \
   /path/to/st_yolo_x_nano_480_1.0_0.25_3_st_int8.tflite
 
-sh userspace/sample-ai/models/generate_model.sh segmentation \
+sh userspace/sample-ai2/models/generate_model.sh segmentation \
   /path/to/deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8.onnx
 
-sh userspace/sample-ai/models/generate_model.sh face \
+sh userspace/sample-ai2/models/generate_model.sh face \
   /path/to/blazeface_front_128_quant_pc_ff_od_wider_face.tflite
 ```
 
@@ -224,9 +215,9 @@ AXISRAM2-6はNPU用に残します。モデルがXSPI1を使う場合にも対�
 ### モデル切り替え
 
 ```sh
-cmake -S . -B build \
-  -DAPP_TARGET=sample-ai
-cmake --build build --target sample-ai
+cmake -S . -B build-sample-ai2 \
+  -DAPP_TARGET=sample-ai2
+cmake --build build-sample-ai2 --target sample-ai2
 ```
 
 起動時に`ai: model preloaded=segmentation`と
@@ -240,24 +231,25 @@ LCD合成します。表示色はperson=赤、face=青、segmentation=緑です�
 
 ## 後で行う configure/build
 
-既存の sample-hello-world 用 CubeMX 出力を使う場合は、次のように
-別のビルドディレクトリを使えます。
+先に `make APP_TARGET=sample-ai2 setup` でモデルと専用 CubeMX 出力を
+生成してください。手動で再設定する場合は次のように専用のビルドディレクトリを
+使えます。
 
 ```sh
-cmake -S . -B build-sample-ai \
-  -DAPP_TARGET=sample-ai \
+cmake -S . -B build-sample-ai2 \
+  -DAPP_TARGET=sample-ai2 \
   -DSTM32CUBE_N6_DIR=/path/to/STM32Cube_FW_N6_V1.3.0 \
   -DSTEDGEAI_LIB_DIR=/path/to/STEdgeAI/4.0/Middlewares/ST/AI \
-  -DCUBEMX_OUTPUT_DIR="$PWD/build/cubemx" \
-  -DCUBEMX_IOC="$PWD/userspace/sample-hello-world/config/stm32n6570-dk-fullsecure.ioc"
+  -DCUBEMX_OUTPUT_DIR="$PWD/build-sample-ai2/cubemx" \
+  -DCUBEMX_IOC="$PWD/userspace/sample-ai2/config/stm32n6570-dk-sample-ai.ioc"
 
-cmake --build build-sample-ai --target sample-ai
+cmake --build build-sample-ai2 --target sample-ai2
 ```
 
-`CUBEMX_OUTPUT_DIR` は、実際に動作確認済みの CubeMX 出力を指定してください。
+`CUBEMX_OUTPUT_DIR` は、sample-ai2 の IOC から生成した出力を指定してください。
 
-後で `ram-run` を使う場合は、sample-aiのスタック上限に合わせて
-`STM32_RAM_STACK=0x34100000` も指定してください。
+`ram-run` の既定スタック上限は sample-ai2 のリンカ配置に合わせた
+`0x34100000` です。
 
 ## 重みの書き込み
 
@@ -274,12 +266,13 @@ STM32CubeProgrammerとDK用external loaderで書き込んでください。
 ## command blobの書き込み
 
 ビルド後、command blobはアプリケーションRAMイメージとは別に生成されます。
-`build/userspace/sample-ai/network_blobs.bin`をDK用external loaderで
-`0x70500000`へ書き込んでください。ビルド成果物は次の3つに分かれます。
+`build-sample-ai2/userspace/sample-ai2/network_blobs_*.hex` をモデルごとの
+固定アドレス（person: `0x70500000`、segmentation: `0x70560000`、
+face: `0x70580000`）へ書き込んでください。主なビルド成果物は次の通りです。
 
-- `sample-ai.bin`: AXISRAM1へロードするアプリケーション本体
-- `network_blobs.bin`: XSPI2へ書き込むcommand blobのバイナリ
-- `network_blobs.hex`: 同じblobの絶対アドレス付きIntel HEX
+- `sample-ai2.bin`: AXISRAM1へロードするアプリケーション本体
+- `network_blobs_person.hex` / `network_blobs_segmentation.hex` /
+  `network_blobs_face.hex`: それぞれ絶対アドレス付きcommand blob
 
 command blobの書き込み後に`ram-run`を実行します。モデル初期化はNORの
 memory-mapped化後に行われるため、外部Flash上のblobを参照できます。
@@ -290,7 +283,7 @@ FSBL、LRUN形式のアプリケーション、モデル重み、command blobを
 書き込む場合は、プロジェクトルートで次を実行します。
 
 ```sh
-make APP_TARGET=sample-ai flash
+make APP_TARGET=sample-ai2 flash
 ```
 
 FSBLは、動作確認済みのSTM32N6570-DK公式サンプル由来のイメージを
@@ -302,14 +295,10 @@ FSBLは、動作確認済みのSTM32N6570-DK公式サンプル由来のイメー
 person/segmentation/faceの重みとcommand blobもそれぞれの絶対アドレスへ書き込みます。
 書き込み後にリセットして外部Flashから起動するには、STM32N6570-DKのブート設定を
 外部Flash起動（BOOT0: 1-2、BOOT1: 1-2）にしてください。RAM起動へ戻す場合は
-ブート設定を元に戻して`make APP_TARGET=sample-ai ram-run`を実行します。
+ブート設定を元に戻して`make APP_TARGET=sample-ai2 ram-run`を実行します。
 
-## sample-aiだけで完結している範囲
+## コピー元から継承している範囲
 
 アプリケーション、NPU初期化、NPU cache/RAM有効化、NORメモリのmemory-mapped
-設定、STEdgeAIランタイムのリンク指定はすべて `userspace/sample-ai/` に収めて
-います。既存の `sample-hello-world` CubeMX生成物は読み込みますが、sample-ai用に生成し直す
-必要はありません。
-
-詳細な依存関係と、sample-ai外を変更していないことの記録は
-[`OUTSIDE_CHANGES.md`](OUTSIDE_CHANGES.md) にあります。
+設定、STEdgeAIランタイムのリンク指定はコピー元の設計を継承しています。
+sample-ai2 用のモデル生成物と CubeMX 出力はそれぞれ別に準備します。

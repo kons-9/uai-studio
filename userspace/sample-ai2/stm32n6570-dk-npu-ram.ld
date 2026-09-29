@@ -26,11 +26,7 @@ MEMORY
   PSRAM_CAPTURE (rwx) : ORIGIN = 0x91000000, LENGTH = 0x00200000
   PSRAM_DISPLAY (rwx) : ORIGIN = 0x91200000, LENGTH = 0x00200000
   PSRAM_INFERENCE (rwx) : ORIGIN = 0x91400000, LENGTH = 0x00300000
-  /* Reuse the old raw-dump reservation for two additional, independent
-   * camera/NPU slots and their immutable Pipe2 snapshots. */
-  PSRAM_EXTRA_INFERENCE (rwx) : ORIGIN = 0x91700000, LENGTH = 0x00200000
-  PSRAM_EXTRA_SOURCE (rwx) : ORIGIN = 0x91900000, LENGTH = 0x00151840
-  PSRAM_RAW_DUMP (rwx) : ORIGIN = 0x91A51840, LENGTH = 0x000AE7C0
+  PSRAM_RAW_DUMP (rwx) : ORIGIN = 0x91700000, LENGTH = 0x00400000
   PSRAM_MASK (rwx) : ORIGIN = 0x91B00000, LENGTH = 0x00040000
   /* A DMA-only sink used when both inference buffers are owned by the AI
    * pipeline.  Pipe2 must never overwrite a buffer which CPU preprocessing or
@@ -276,31 +272,9 @@ SECTIONS
   {
     . = ALIGN(32);
     __sample_ai_raw_dump_start__ = .;
-    . = . + 0x000AE7C0;
+    . = . + 0x00400000;
     __sample_ai_raw_dump_end__ = .;
   } >PSRAM_RAW_DUMP
-
-  .sample_ai_extra_inference (NOLOAD) :
-  {
-    . = ALIGN(32);
-    __sample_ai_inference3_start__ = .;
-    . = . + 0x00100000;
-    __sample_ai_inference3_end__ = .;
-    __sample_ai_inference4_start__ = .;
-    . = . + 0x00100000;
-    __sample_ai_inference4_end__ = .;
-  } >PSRAM_EXTRA_INFERENCE
-
-  .sample_ai_extra_source (NOLOAD) :
-  {
-    . = ALIGN(32);
-    __sample_ai_inference_source3_start__ = .;
-    . = . + 0x000A8C20;
-    __sample_ai_inference_source3_end__ = .;
-    __sample_ai_inference_source4_start__ = .;
-    . = . + 0x000A8C20;
-    __sample_ai_inference_source4_end__ = .;
-  } >PSRAM_EXTRA_SOURCE
 
   .sample_ai_segmentation_mask (NOLOAD) :
   {
@@ -333,13 +307,13 @@ SECTIONS
   {
     . = ALIGN(32);
     __sample_ai_inference_source0_start__ = .;
-    . = . + 0x000A8C20;
+    . = . + 0x000A8C00;
     __sample_ai_inference_source0_end__ = .;
     __sample_ai_inference_source1_start__ = .;
-    . = . + 0x000A8C20;
+    . = . + 0x000A8C00;
     __sample_ai_inference_source1_end__ = .;
     __sample_ai_inference_source2_start__ = .;
-    . = . + 0x000A8C20;
+    . = . + 0x000A8C00;
     __sample_ai_inference_source2_end__ = .;
   } >PSRAM_INFERENCE_SOURCE
 

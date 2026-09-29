@@ -72,10 +72,6 @@ common::Error TaskContext::InitializeDrivers()
     if (!psram.Initialize()) {
         return {common::ErrorCode::kHardware, 0U, "psram.initialize"};
     }
-    status = memory.ArmInferenceGuards(cache);
-    if (!status.Ok()) {
-        return status;
-    }
 
     constexpr bool initialize_nor = kInferenceMode == InferenceMode::kNpu;
     int nor_status = -1;
@@ -140,26 +136,6 @@ void TaskContext::CreateKernelObjects()
         Halt("ai: frame queue create failed\n");
     }
 
-    T_CMBF input_request_config = {};
-    input_request_config.mbfatr = TA_TFIFO;
-    input_request_config.bufsz = sizeof(input_preparation_request_storage);
-    input_request_config.maxmsz = sizeof(InputPreparationRequest);
-    input_request_config.bufptr = input_preparation_request_storage;
-    input_preparation_request_queue = tk_cre_mbf(&input_request_config);
-    if (input_preparation_request_queue < E_OK) {
-        Halt("ai: input request queue create failed\n");
-    }
-
-    T_CMBF input_result_config = {};
-    input_result_config.mbfatr = TA_TFIFO;
-    input_result_config.bufsz = sizeof(input_preparation_result_storage);
-    input_result_config.maxmsz = sizeof(InputPreparationResult);
-    input_result_config.bufptr = input_preparation_result_storage;
-    input_preparation_result_queue = tk_cre_mbf(&input_result_config);
-    if (input_preparation_result_queue < E_OK) {
-        Halt("ai: input result queue create failed\n");
-    }
-
     T_CMBF box_queue_config = {};
     box_queue_config.mbfatr = TA_TFIFO;
     box_queue_config.bufsz = sizeof(box_queue_storage);
@@ -218,14 +194,6 @@ void TaskContext::StartInferenceTask(FP entry)
      */
     StartTask(entry, inference_task_stack, kInferenceTaskStackSize, 4,
               "inference");
-}
-
-void TaskContext::StartInputPreparationTask(FP entry)
-{
-    /* NPU task が IRQ 待ちの間に CPU 前処理を進める。モデル選択と
-     * STAI 操作は優先度 4 の NPU task だけが行う。 */
-    StartTask(entry, input_preparation_task_stack,
-              kInputPreparationTaskStackSize, 5, "input_preparation");
 }
 
 void TaskContext::StartInferencePostprocessTask(FP entry)

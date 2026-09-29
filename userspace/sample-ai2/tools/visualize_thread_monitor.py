@@ -53,16 +53,12 @@ CPU_ACTIVE_STAGE_IDS = {
     "letterbox",
     "input_cache",
     "submit",
-    "epoch_continue",
     "output_cache",
     "decode",
     "convert",
     "finalize",
 }
-# irq_wait includes polling and may invoke separately recorded CPU prefetch;
-# counting its full duration as active CPU would double-count prefetch/wait.
-# ContinueRun is a task-context call, not an IRQ sleep.
-CPU_WAIT_STAGE_IDS = {"irq_wait"}
+CPU_WAIT_STAGE_IDS = {"irq_wait", "epoch_continue"}
 PIPELINE_STAGE_ORDER = (
     "copy",
     "resize",

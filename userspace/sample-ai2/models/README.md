@@ -1,6 +1,6 @@
-# sample-ai model generation
+# sample-ai2 model generation
 
-`generate_model.sh` generates the Neural-ART files used by `sample-ai` for
+`generate_model.sh` generates the Neural-ART files used by `sample-ai2` for
 the three supported model families:
 
 | name | official application | source model | xSPI2 model address | xSPI2 command blob address |
@@ -19,13 +19,13 @@ trees into `sample-ai`.
 Example:
 
 ```sh
-sh userspace/sample-ai/models/generate_model.sh person \
+sh userspace/sample-ai2/models/generate_model.sh person \
   /path/to/st_yolo_x_nano_480_1.0_0.25_3_st_int8.tflite
 
-sh userspace/sample-ai/models/generate_model.sh segmentation \
+sh userspace/sample-ai2/models/generate_model.sh segmentation \
   /path/to/deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8.onnx
 
-sh userspace/sample-ai/models/generate_model.sh face \
+sh userspace/sample-ai2/models/generate_model.sh face \
   /path/to/blazeface_front_128_quant_pc_ff_od_wider_face.tflite
 ```
 
@@ -53,7 +53,7 @@ Generation can be tuned without editing the script:
 AI_MODEL_OPTIMIZATION=time \
 AI_MODEL_INPUT_DATA_TYPE=uint8 \
 AI_MODEL_OUTPUT_DATA_TYPE=int8 \
-sh userspace/sample-ai/models/generate_model.sh person /path/to/model.tflite
+sh userspace/sample-ai2/models/generate_model.sh person /path/to/model.tflite
 ```
 
 The corresponding variables are `AI_MODEL_OPTIMIZATION`,

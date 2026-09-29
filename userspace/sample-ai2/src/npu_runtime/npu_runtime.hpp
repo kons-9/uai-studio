@@ -13,33 +13,27 @@
 
 namespace uai::ai::npu_runtime {
 
-/* NPU owner chooses a model before a request crosses to the CPU task.
- * The worker never inspects or mutates the NPU scheduler. */
-struct PreparationTarget {
-    const models::Model *model = nullptr;
-    models::ModelKind kind = models::ModelKind::kPerson;
-    explicit operator bool() const { return model != nullptr; }
-};
-
 /*
- * NPU-owner-task facade. It owns model registration, scheduling and the STAI
- * execution protocol. CPU input preparation is delegated via task messages;
- * only InputTarget() is exposed so the owner can request the correct model.
+ * Application-facing NPU facade. It owns model registration, scheduling, and
+ * the inference protocol so application tasks do not depend on either the
+ * scheduler or the dispatcher implementation.
  */
 class NpuRuntime final {
 public:
     common::Error RegisterModel(const models::ModelBinding &binding);
     common::Error Initialize(cache::CacheDriver &cache);
     common::Error Begin(memory_allocator::InferenceFrame &frame,
+                        PrefetchProvider prefetch_provider = nullptr,
+                        void *prefetch_context = nullptr,
                         bool select_model = false);
     common::Error Wait(InferenceCompletion *completion);
     common::Error Complete(const InferenceCompletion &completion,
                            memory_allocator::BoxSet *result);
     common::Error Run(memory_allocator::InferenceFrame &frame,
-                      memory_allocator::BoxSet *result);
+                      memory_allocator::BoxSet *result,
+                      PrefetchProvider prefetch_provider = nullptr,
+                      void *prefetch_context = nullptr);
     common::Error Shutdown();
-
-    PreparationTarget InputTarget(bool following_current) const;
 
     bool Initialized() const { return initialized_; }
     const npu::Status &LastNpuStatus() const;

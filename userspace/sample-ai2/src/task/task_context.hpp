@@ -67,7 +67,6 @@ struct DiagnosticsConfig {
 };
 
 inline constexpr std::size_t kFrameQueueDepth = 4U;
-inline constexpr std::size_t kInputPreparationQueueDepth = 1U;
 inline constexpr std::size_t kBoxQueueDepth = 4U;
 inline constexpr std::size_t kInferenceCompletionQueueDepth = 4U;
 inline constexpr std::size_t kInferencePostprocessDoneQueueDepth = 4U;
@@ -75,25 +74,10 @@ inline constexpr std::size_t kInferenceModelCount = 3U;
 inline constexpr SZ kInitializationTaskStackSize = 32U * 1024U;
 inline constexpr SZ kCameraTaskStackSize = 32U * 1024U;
 inline constexpr SZ kInferenceTaskStackSize = 16U * 1024U;
-inline constexpr SZ kInputPreparationTaskStackSize = 16U * 1024U;
 inline constexpr SZ kInferencePostprocessTaskStackSize = 16U * 1024U;
 
 struct InferenceMessage {
     memory_allocator::InferenceFrame frame{};
-};
-
-/* NPU task がモデルを決定し、CPU task に次フレームの準備を依頼する。
- * model は NPU task の存続中だけ有効で、CPU task は NPU の状態を読まない。 */
-struct InputPreparationRequest {
-    pipeline::Handoff handoff{};
-    const models::Model *model = nullptr;
-    models::ModelKind kind = models::ModelKind::kPerson;
-};
-
-struct InputPreparationResult {
-    pipeline::Handoff handoff{};
-    memory_allocator::InferenceFrame frame{};
-    common::Error status{};
 };
 
 struct InferencePostprocessDoneMessage {
@@ -141,7 +125,6 @@ public:
     void StartApplicationTask(FP entry);
     void StartCameraTask(FP entry);
     void StartInferenceTask(FP entry);
-    void StartInputPreparationTask(FP entry);
     void StartInferencePostprocessTask(FP entry);
 
     bool DrainLatestBoxes(memory_allocator::BoxSet *active);
@@ -162,9 +145,6 @@ public:
     volatile bool external_nor_ready;
     ID external_memory_ready;
     ID frame_queue;
-    ID input_preparation_request_queue;
-    ID input_preparation_result_queue;
-    volatile bool input_preparation_enabled = false;
     ID box_queue;
     ID inference_completion_queue;
     ID inference_postprocess_done_queue;
@@ -177,10 +157,6 @@ private:
 
     alignas(8) UB frame_queue_storage[
         sizeof(InferenceMessage) * kFrameQueueDepth];
-    alignas(8) UB input_preparation_request_storage[
-        sizeof(InputPreparationRequest) * kInputPreparationQueueDepth];
-    alignas(8) UB input_preparation_result_storage[
-        sizeof(InputPreparationResult) * kInputPreparationQueueDepth];
     alignas(8) UB box_queue_storage[sizeof(BoxMessage) * kBoxQueueDepth];
     alignas(8) UB inference_completion_queue_storage[
         sizeof(npu_runtime::InferenceCompletion) *
@@ -192,8 +168,6 @@ private:
         kInitializationTaskStackSize / sizeof(INT)];
     INT camera_task_stack[kCameraTaskStackSize / sizeof(INT)];
     INT inference_task_stack[kInferenceTaskStackSize / sizeof(INT)];
-    INT input_preparation_task_stack[
-        kInputPreparationTaskStackSize / sizeof(INT)];
     INT inference_postprocess_task_stack[
         kInferencePostprocessTaskStackSize / sizeof(INT)];
 };

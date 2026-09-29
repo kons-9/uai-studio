@@ -71,9 +71,13 @@ target_include_directories(stm32n6570_dk
 if(NOT APP_TARGET STREQUAL "sample-camera-lcd" AND
    NOT APP_TARGET STREQUAL "sample-camera-pipe2" AND
    NOT APP_TARGET STREQUAL "sample-camera-pipe2-lab")
+    set(_ai_board_config_app sample-ai)
+    if(APP_TARGET STREQUAL "sample-ai2")
+        set(_ai_board_config_app sample-ai2)
+    endif()
     target_include_directories(stm32n6570_dk PUBLIC
-        "${CMAKE_SOURCE_DIR}/userspace/sample-ai/src/board"
-        "${CMAKE_SOURCE_DIR}/userspace/sample-ai/config")
+        "${CMAKE_SOURCE_DIR}/userspace/${_ai_board_config_app}/src/board"
+        "${CMAKE_SOURCE_DIR}/userspace/${_ai_board_config_app}/config")
 endif()
 
 target_compile_definitions(stm32n6570_dk PRIVATE
@@ -89,6 +93,7 @@ target_compile_definitions(stm32n6570_dk PRIVATE
 )
 
 if(APP_TARGET STREQUAL "sample-ai" OR
+    APP_TARGET STREQUAL "sample-ai2" OR
    APP_TARGET STREQUAL "sample-camera-lcd" OR
    APP_TARGET STREQUAL "sample-camera-pipe2" OR
    APP_TARGET STREQUAL "sample-camera-pipe2-lab")

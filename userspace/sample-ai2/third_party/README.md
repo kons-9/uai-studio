@@ -18,5 +18,5 @@ used as provided for the supported person and face models.
 For a local dependency check, run:
 
 ```sh
-sh userspace/sample-ai/scripts/setup_third_party.sh
+sh userspace/sample-ai2/scripts/setup_third_party.sh
 ```

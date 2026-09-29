@@ -16,8 +16,6 @@ common::Error CompleteInference(TaskContext &context,
                                  memory_allocator::BoxSet *boxes)
 {
     if (!completion.valid || completion.model == nullptr || boxes == nullptr ||
-        !pipeline::IsCompletionFor(completion.handoff,
-                       completion.frame.lease_token) ||
         completion.callbacks.on_inference_complete == nullptr ||
         completion.callbacks.user_data == nullptr ||
         completion.output_view.count == 0U ||

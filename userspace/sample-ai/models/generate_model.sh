@@ -166,6 +166,7 @@ for generated_file in network.c network_ecblobs.h stai_network.c stai_network.h 
     fi
 done
 
+mkdir -p "$model_dir"
 cp "$work_dir/st_ai_output/network.c" "$model_dir/"
 cp "$work_dir/st_ai_output/network_ecblobs.h" "$model_dir/"
 cp "$work_dir/st_ai_output/stai_network.c" "$model_dir/"

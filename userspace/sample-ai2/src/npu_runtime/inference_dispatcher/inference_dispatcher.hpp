@@ -8,18 +8,18 @@
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "memory_allocator/memory_allocator.hpp"
-#include "pipeline/model_pipeline.hpp"
 #include "npu_runtime/inference_timing.hpp"
 #include "npu_runtime/scheduler/scheduler.hpp"
 
 namespace uai::ai::npu_runtime {
 
-/* NPU 完了時点の引き継ぎ票。モデル、出力の参照先、デコード条件を固定して
- * 後処理タスクへ送る。バッファ本体の複製ではないため、後処理が終わるまで
- * 対応するフレームの所有権を解放してはならない。 */
+using PrefetchProvider = memory_allocator::InferenceFrame *(*)(void *context);
+
+/* Snapshot of the NPU-owned part of an inference.  The output pointers and
+ * model callbacks are copied before the shared NPU dispatcher is advanced to
+ * the next model, so CPU completion can run independently afterwards. */
 struct InferenceCompletion {
     memory_allocator::InferenceFrame frame{};
-    pipeline::Handoff handoff{};
     memory_allocator::Buffer output_buffers[models::kMaxModelOutputs]{};
     models::ModelKind model_kind = models::ModelKind::kPerson;
     const models::Model *model = nullptr;
@@ -33,11 +33,11 @@ struct InferenceCompletion {
 };
 
 /*
- * Owns the NPU task's per-inference protocol (cache handoff, dynamic outputs,
- * submit, poll/IRQ/continue). A separate CPU input task has already prepared
- * the frame before BeginInference; postprocessing belongs to another task.
- * The synchronous TryInfer/CompleteInference convenience path is not used by
- * the application's task pipeline.
+ * Bridges a selected scheduler model to the camera buffers and application
+ * result format. It owns the per-inference protocol because input cache
+ * maintenance, dynamic outputs, and decoder invocation are too low-level for
+ * Scheduler. Model-specific input preparation and result conversion are
+ * delegated through the selected Model interface.
  */
 class InferenceDispatcher final {
 public:
@@ -51,13 +51,19 @@ public:
                              cache::CacheDriver &cache);
     common::Error RefreshSelectedModel();
     common::Error BeginInference(memory_allocator::InferenceFrame &frame,
+                                 PrefetchProvider prefetch_provider = nullptr,
+                                 void *prefetch_context = nullptr,
                                  bool select_model = false);
     common::Error WaitForInference(InferenceCompletion *completion);
     common::Error CompleteInference(const InferenceCompletion &completion,
                                     memory_allocator::BoxSet *result);
     common::Error TryInfer(memory_allocator::InferenceFrame &frame,
                            memory_allocator::BoxSet *result,
+                           PrefetchProvider prefetch_provider = nullptr,
+                           void *prefetch_context = nullptr,
                            bool select_model = false);
+    common::Error PrepareInputFor(const models::ModelBinding &binding,
+                                  memory_allocator::InferenceFrame &frame);
     common::Error Shutdown();
 
     void SetPipelineStageObserver(PipelineStageObserver observer,
@@ -72,33 +78,51 @@ public:
     const InferenceTiming &LastTiming() const { return last_timing_; }
 
 private:
-    /* 1 回の推論の可変状態。Plan（不変の実行順）に対し、現在位置、
-     * 実行中 stage、完了フラグ、計測値を保持する。
-     * irq_wait と epoch_continue の反復中は stage_index を固定したまま
-     * stage を切り替えるため、両者は常に一致するとは限らない。 */
+    struct PrefetchState {
+        InferenceDispatcher *dispatcher = nullptr;
+        PrefetchProvider provider = nullptr;
+        void *provider_context = nullptr;
+        memory_allocator::InferenceFrame *frame = nullptr;
+        common::Error error{};
+        bool prepared = false;
+    };
+
     struct PipelineState {
         InferenceDispatcher *dispatcher = nullptr;
         memory_allocator::InferenceFrame *frame = nullptr;
+        memory_allocator::BoxSet *result = nullptr;
+        PrefetchProvider prefetch_provider = nullptr;
+        void *prefetch_context = nullptr;
         bool select_model = false;
-        const pipeline::Plan *pipeline = nullptr;
+        const models::ModelPipeline *pipeline = nullptr;
         std::size_t stage_index = 0U;
-        pipeline::Stage stage = pipeline::Stage::kInputCache;
+        models::ModelStageId stage = models::ModelStageId::kInputCache;
         bool npu_completed = false;
         std::uint32_t input_preparation_start_ms = 0U;
         std::uint32_t input_preparation_end_ms = 0U;
         std::uint32_t input_preparation_elapsed_ms = 0U;
+        models::ModelOutputView output_view{};
+        models::InferenceGeometry geometry{};
+        models::ModelResult decoded_result{};
+        PrefetchState prefetch{};
     };
 
+    static void PreparePrefetch(void *context);
     static common::Error ExecuteModelSelection(void *context);
+    static common::Error ExecuteModelCpuStage(void *context);
     static common::Error ExecuteInputHandoff(void *context);
     static common::Error ExecuteNpuSubmit(void *context);
     static common::Error ExecuteNpuIrqWait(void *context);
     static common::Error ExecuteNpuEpochContinue(void *context);
+    static common::Error ExecuteOutputPreparation(void *context);
+    static common::Error ExecuteOutputDecoding(void *context);
+    static common::Error ExecuteResultConversion(void *context);
     static common::Error ExecuteInferenceFinalize(void *context);
     common::Error ExecuteStage(PipelineState &state,
-                               pipeline::Stage *executed_stage);
+                               models::ModelStageId *executed_stage);
     common::Error BuildCompletion(const PipelineState &state,
                                   InferenceCompletion *completion) const;
+    static common::Error ExecutePipeline(PipelineState &state);
     common::Error ConfigureCurrentModel();
 
     scheduler::Scheduler *scheduler_ = nullptr;
