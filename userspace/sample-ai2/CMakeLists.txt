@@ -156,7 +156,8 @@ set(AI_MODEL_C_API_SOURCES
 set(AI_MODEL_SOURCES
     "${AI_SRC_DIR}/models/model.cpp"
     "${AI_SRC_DIR}/models/person/model.cpp"
-    "${AI_SRC_DIR}/models/person/person_decoder.cpp")
+    "${AI_SRC_DIR}/models/person/person_decoder.cpp"
+    "${AI_SRC_DIR}/models/person/future.cpp")
 set(AI_MODEL_EXTRA_SOURCES
     "${AI_VISION_MODELS_PP_DIR}/Src/od_pp_st_yolox.c"
     "${AI_VISION_MODELS_PP_DIR}/Src/vision_models_pp_maxi_is8.c"

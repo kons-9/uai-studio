@@ -1,12 +1,11 @@
 #include "task/person_pipeline_task.hpp"
 
-#include <atomic>
-#include <cstddef>
 #include <cstdint>
 
 #include "common/log.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "middleware/ai_runtime/pipeline.hpp"
+#include "models/person/future.hpp"
 #include "models/person/model.hpp"
 #include "task/task_context.hpp"
 #include "task/task_diagnostics.hpp"
@@ -20,43 +19,16 @@ namespace {
 
 using ai_runtime::ExecutionContext;
 using ai_runtime::DispatchResult;
-using ai_runtime::NextStep;
 
 struct PersonApplication;
 PersonApplication &App();
-
-class PersonFuture final : public ai_runtime::AiFuture {
-public:
-    enum class Phase : std::uint32_t { kPreprocess, kNpu, kPostprocess };
-
-    void Reset(PersonApplication &owner, const memory_allocator::InferenceFrame &frame)
-    {
-        owner_ = &owner;
-        frame_ = frame;
-        phase_ = Phase::kPreprocess;
-    }
-    ai_runtime::AiModelId model_id() const override
-    {
-        return static_cast<ai_runtime::AiModelId>(models::ModelKind::kPerson);
-    }
-    std::uint32_t step_id() const override { return static_cast<std::uint32_t>(phase_); }
-    bool is_ready() const override { return true; }
-    ai_runtime::AiRuntimeResult Evaluate() override;
-
-    memory_allocator::InferenceFrame frame_{};
-    std::atomic<bool> occupied_{false};
-
-private:
-    PersonApplication *owner_ = nullptr;
-    Phase phase_ = Phase::kPreprocess;
-};
 
 struct PersonApplication {
     models::person::Model model{};
     npu::NpuDriver npu{};
     ai_runtime::PipelineRuntime pipeline{};
     ai_runtime::Scheduler scheduler{pipeline};
-    PersonFuture futures[memory_allocator::kInferenceBufferCount]{};
+    models::person::Future futures[memory_allocator::kInferenceBufferCount]{};
     stai_network_info info{};
     std::uint32_t model_sequence = 0U;
     std::uint32_t submitted_count = 0U;
@@ -68,10 +40,6 @@ struct PersonApplication {
     std::uint32_t report_submitted = 0U;
     std::uint32_t report_completed = 0U;
     std::uint32_t report_postprocess = 0U;
-    bool submit_stage_logged = false;
-    bool preprocess_stage_logged = false;
-    bool infer_stage_logged = false;
-    bool postprocess_stage_logged = false;
 
     void Report(TaskContext &context)
     {
@@ -181,7 +149,7 @@ struct PersonApplication {
                        common::Error error)
     {
         auto &task = *static_cast<TaskContext *>(context);
-        auto &future = static_cast<PersonFuture &>(base);
+        auto &future = static_cast<models::person::Future &>(base);
         ++App().completed_count;
         if (!error.Ok()) {
             LogStatus("person_pipeline", error);
@@ -189,151 +157,11 @@ struct PersonApplication {
             UAI_LOG_WARN(reinterpret_cast<const UB *>(
                 "ai: person pipeline disabled; camera remains live\n"));
         }
-        const common::Error released = task.memory.ReleaseInferenceBuffer(future.frame_);
+        const common::Error released =
+            task.memory.ReleaseInferenceBuffer(future.frame());
         LogStatus("memory", released);
-        future.occupied_.store(false, std::memory_order_release);
+        future.ReleaseClaim();
         App().Report(task);
-    }
-
-    common::Error Preprocess(TaskContext &task, PersonFuture &future)
-    {
-        auto &frame = future.frame_;
-        if (!preprocess_stage_logged) {
-            UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                             "ai: person preprocess begin seq=%u buffer=%x\n"),
-                         static_cast<unsigned int>(frame.capture_sequence),
-                         static_cast<unsigned int>(frame.buffer.address));
-        }
-        if (!frame || !frame.from_pipe2 || frame.output_count < info.n_outputs ||
-            frame.buffer.size < info.inputs[0].size_bytes) {
-            return {common::ErrorCode::kInvalidArgument, 0U,
-                    "person_pipeline.frame"};
-        }
-        common::Error status = model.PrepareInput(frame, task.cache);
-        if (!status.Ok()) return status;
-        const memory_allocator::Buffer &input = frame.source_valid
-                                                    ? frame.source : frame.buffer;
-        if (!input || input.size < info.inputs[0].size_bytes) {
-            return {common::ErrorCode::kInvalidArgument, 0U,
-                    "person_pipeline.input"};
-        }
-        /* Pipe2 wrote this buffer using DMA. A CPU read/invalidate here
-         * must not overwrite the DMA image with dirty cache lines. */
-        const memory_allocator::Buffer range{input.address,
-                                              info.inputs[0].size_bytes,
-                                              input.index,
-                                              memory_allocator::Region::kInference};
-        status = frame.source_valid ? task.cache.PrepareForPeripheralRead(range)
-                                    : task.cache.PrepareForCpuRead(range);
-        if (status.Ok() && !preprocess_stage_logged) {
-            UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                             "ai: person preprocess done seq=%u\n"),
-                         static_cast<unsigned int>(frame.capture_sequence));
-            preprocess_stage_logged = true;
-        }
-        return status;
-    }
-
-    common::Error Infer(PersonFuture &future)
-    {
-        const auto &frame = future.frame_;
-        if (!infer_stage_logged) {
-            UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                             "ai: person infer begin seq=%u\n"),
-                         static_cast<unsigned int>(frame.capture_sequence));
-        }
-        const memory_allocator::Buffer &input = frame.source_valid
-                                                    ? frame.source : frame.buffer;
-        npu::Status result = npu.SetInput(
-            reinterpret_cast<stai_ptr>(input.address), info.inputs[0].size_bytes);
-        if (!result.Ok()) return result.error;
-        stai_ptr outputs[models::kMaxModelOutputs]{};
-        for (std::uint16_t i = 0U; i < info.n_outputs; ++i) {
-            const auto &output = frame.outputs[i];
-            if (!output || output.size < info.outputs[i].size_bytes ||
-                output.alignment == 0U ||
-                output.address % output.alignment != 0U) {
-                return {common::ErrorCode::kInvalidArgument, i,
-                        "person_pipeline.output_buffer"};
-            }
-            outputs[i] = reinterpret_cast<stai_ptr>(output.address);
-        }
-        result = npu.SetOutputs(outputs, info.n_outputs);
-        if (!result.Ok()) return result.error;
-        result = npu.Run(); // IRQ waits and epoch continuation happen on NPU task.
-        if (!result.Ok()) {
-            UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                             "ai: person infer failed code=%u detail=%u op=%s\n"),
-                         static_cast<unsigned int>(result.error.code),
-                         static_cast<unsigned int>(result.error.detail),
-                         result.error.operation);
-            return result.error;
-        }
-        if (!infer_stage_logged) {
-            UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                             "ai: person infer done seq=%u\n"),
-                         static_cast<unsigned int>(frame.capture_sequence));
-            infer_stage_logged = true;
-        }
-        result = npu.NewInference();
-        return result.error;
-    }
-
-    common::Error Postprocess(TaskContext &task, PersonFuture &future)
-    {
-        const auto &frame = future.frame_;
-        models::ModelOutputView view{};
-        view.count = info.n_outputs;
-        for (std::uint16_t i = 0U; i < info.n_outputs; ++i) {
-            const auto &output = frame.outputs[i];
-            const memory_allocator::Buffer range{output.address,
-                                                  info.outputs[i].size_bytes,
-                                                  output.index,
-                                                  memory_allocator::Region::kInference};
-            common::Error status = task.cache.PrepareForCpuRead(range);
-            if (!status.Ok()) return status;
-            view.tensors[i] = {reinterpret_cast<const void *>(output.address),
-                               {info.outputs[i].size_bytes,
-                                info.outputs[i].scale.data[0],
-                                info.outputs[i].zeropoint.data[0]}};
-        }
-        const auto &descriptor = model.GetDescriptor();
-        models::InferenceGeometry geometry{};
-        geometry.projection = models::InputProjection::kLetterboxed;
-        geometry.frame_width = memory_allocator::kConfig.frame_width;
-        geometry.frame_height = memory_allocator::kConfig.frame_height;
-        geometry.model_width = descriptor.input_width;
-        geometry.model_height = descriptor.input_height;
-        geometry.content_height =
-            (descriptor.input_width * memory_allocator::kConfig.inference_source_height +
-             memory_allocator::kConfig.inference_source_width - 1U) /
-            memory_allocator::kConfig.inference_source_width;
-        geometry.pad_top = (geometry.model_height - geometry.content_height) / 2U;
-        const models::InferenceCompletionContext decode_context{view, geometry};
-        const models::ModelCallbacks callbacks = model.GetCallbacks();
-        models::ModelResult decoded{};
-        common::Error status = callbacks.on_inference_complete(
-            decode_context, &decoded, callbacks.user_data);
-        if (!status.Ok()) return status;
-        memory_allocator::BoxSet boxes{};
-        boxes.capture_sequence = frame.capture_sequence;
-        boxes.model_sequence = ++model_sequence;
-        status = model.ConvertResult(decoded, &boxes);
-        if (status.Ok()) {
-            ++postprocess_count;
-            last_detection_count = boxes.person.count;
-            last_capture_sequence = boxes.capture_sequence;
-            task.SendLatestBoxes(boxes);
-            if (!postprocess_stage_logged) {
-                UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                                 "ai: person postprocess done seq=%u boxes=%u\n"),
-                             static_cast<unsigned int>(boxes.capture_sequence),
-                             static_cast<unsigned int>(boxes.person.count));
-                postprocess_stage_logged = true;
-            }
-        }
-        Report(task);
-        return status;
     }
 };
 
@@ -341,34 +169,17 @@ std::uint32_t PersonApplication::interrupt_state_ = 0U;
 PersonApplication g_app{};
 PersonApplication &App() { return g_app; }
 
-ai_runtime::AiRuntimeResult PersonFuture::Evaluate()
+void PublishBoxes(void *context, const memory_allocator::BoxSet &source)
 {
-    TaskContext &task = GetTaskContext();
-    if (!owner_->enabled.load()) {
-        return {{common::ErrorCode::kNotInitialized, 0U,
-                 "person_pipeline.disabled"}, {}, false};
-    }
-    common::Error status{};
-    switch (phase_) {
-    case Phase::kPreprocess:
-        status = owner_->Preprocess(task, *this);
-        if (status.Ok()) {
-            phase_ = Phase::kNpu;
-            return {{}, {ExecutionContext::kNpu}, false};
-        }
-        break;
-    case Phase::kNpu:
-        status = owner_->Infer(*this);
-        if (status.Ok()) {
-            phase_ = Phase::kPostprocess;
-            return {{}, {ExecutionContext::kPostprocessCpu}, false};
-        }
-        break;
-    case Phase::kPostprocess:
-        status = owner_->Postprocess(task, *this);
-        return {status, {}, true};
-    }
-    return {status, {}, false};
+    auto &task = *static_cast<TaskContext *>(context);
+    auto &application = App();
+    memory_allocator::BoxSet boxes = source;
+    boxes.model_sequence = ++application.model_sequence;
+    ++application.postprocess_count;
+    application.last_detection_count = boxes.person.count;
+    application.last_capture_sequence = boxes.capture_sequence;
+    task.SendLatestBoxes(boxes);
+    application.Report(task);
 }
 
 void RunWorker(ExecutionContext lane)
@@ -422,31 +233,36 @@ void PersonPipelineTask::FrameEntry()
             LogStatus("memory", status);
             continue;
         }
-        PersonFuture *available = nullptr;
+        models::person::Future *available = nullptr;
         if (g_app.enabled.load()) {
-            for (PersonFuture &future : g_app.futures) {
-                bool expected = false;
-                if (future.occupied_.compare_exchange_strong(expected, true)) {
+            for (models::person::Future &future : g_app.futures) {
+                if (future.TryClaim()) {
                     available = &future;
                     break;
                 }
             }
         }
         if (available != nullptr) {
-            available->Reset(g_app, message.frame);
+            const models::person::FutureContext future_context{
+                &g_app.model,
+                &g_app.npu,
+                &task.cache,
+                &g_app.info,
+                &PublishBoxes,
+                &task};
+            available->Reset(future_context, message.frame);
             status = g_app.scheduler.Submit(*available);
             if (status.Ok()) {
                 ++g_app.submitted_count;
-                if (!g_app.submit_stage_logged) {
+                if (g_app.submitted_count == 1U) {
                     UAI_LOG_INFO(reinterpret_cast<const UB *>(
                                      "ai: person submit ok seq=%u\n"),
                                  static_cast<unsigned int>(message.frame.capture_sequence));
-                    g_app.submit_stage_logged = true;
                 }
                 g_app.Report(task);
                 continue;
             }
-            available->occupied_.store(false, std::memory_order_release);
+            available->ReleaseClaim();
         }
         const common::Error released = task.memory.ReleaseInferenceBuffer(message.frame);
         LogStatus("memory", released);
