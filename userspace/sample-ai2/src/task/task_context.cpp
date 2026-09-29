@@ -160,28 +160,28 @@ void TaskContext::StartCameraTask(FP entry)
               "camera_render");
 }
 
-void TaskContext::StartPersonFrameTask(FP entry)
+void TaskContext::StartFrameTask(FP entry)
 {
-    StartTask(entry, person_frame_task_stack, kPersonTaskStackSize, 4,
-              "person_frame");
+    StartTask(entry, pipeline_frame_task_stack, kPipelineTaskStackSize, 4,
+              "pipeline_frame");
 }
 
-void TaskContext::StartPersonPreprocessTask(FP entry)
+void TaskContext::StartPreprocessTask(FP entry)
 {
-    StartTask(entry, person_preprocess_task_stack, kPersonTaskStackSize, 4,
-              "person_preprocess");
+    StartTask(entry, pipeline_preprocess_task_stack, kPipelineTaskStackSize, 4,
+              "pipeline_preprocess");
 }
 
-void TaskContext::StartPersonNpuTask(FP entry)
+void TaskContext::StartNpuTask(FP entry)
 {
-    StartTask(entry, person_npu_task_stack, kPersonTaskStackSize, 4,
-              "person_npu");
+    StartTask(entry, pipeline_npu_task_stack, kPipelineTaskStackSize, 4,
+              "pipeline_npu");
 }
 
-void TaskContext::StartPersonPostprocessTask(FP entry)
+void TaskContext::StartPostprocessTask(FP entry)
 {
-    StartTask(entry, person_postprocess_task_stack,
-              kPersonPostprocessTaskStackSize, 6, "person_postprocess");
+    StartTask(entry, pipeline_postprocess_task_stack,
+              kPipelinePostprocessTaskStackSize, 6, "pipeline_postprocess");
 }
 
 void TaskContext::StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,

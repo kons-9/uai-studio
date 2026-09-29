@@ -1,32 +1,32 @@
 # sample-ai2: sample-ai から再コピーした Neural-ART 推論
 
-## person 専用アプリ（新しい3レーンランタイム）
+## face 表示用アプリ（新しい3レーンランタイム）
 
-sample-ai2はpersonモデルだけを`src/middleware/ai_runtime/`経由で実行します。起動後は
+sample-ai2は現在faceモデルを`src/middleware/ai_runtime/`経由で実行します。起動後は
 Pipe1のLCD表示とPipe2のフレーム取得を従来どおり維持し、前処理CPUタスクが
 フレームを取り込み、NPUタスクがSTAI非同期実行（IRQ待ち・epoch継続）、
-後処理CPUタスクがperson検出結果をLCDの枠キューに渡します。モデル重みと
-command blobはpersonのみ必要です。ビルド先は`build-sample-ai2-person`です。
+後処理CPUタスクがface検出結果をLCDの青枠キューに渡します。faceのモデル重みと
+command blobが必要です。ビルド先は`build-sample-ai2-person`です。
 
-まずpersonのモデル生成物とSTEdgeAI、CubeMXソース、FSBLを準備してから
-`make APP_TARGET=sample-ai2 build`を使います。`setup`と`ai-load`もpersonだけを
+まずperson/faceのモデル生成物とSTEdgeAI、CubeMXソース、FSBLを準備してから
+`make APP_TARGET=sample-ai2 build`を使います。`setup`と`ai-load`はperson/faceを
 初期化失敗時はカメラ表示を継続し、推論のみ無効にします。UARTには
-`ai: person pipeline enabled (pre/npu/post)`が出ます。各ステップのID/時刻は
+`ai: face pipeline enabled (pre/npu/post)`が出ます。各ステップのID/時刻は
 `diagnostics.inference_trace`を有効にしたときだけ記録します。
 詳細とホストテストは[ランタイムの説明](src/middleware/ai_runtime/README.md)を参照。
-まだデバイス上での起動・Pipe1/2の確認は行っていません。
+実機では起動、Pipe1/2開始、face推論、face枠生成まで確認済みです。
 
 このアプリは sample-ai をコピーした再構築版です。以下のコピー元の実機計測値は
 sample-ai2 の検証結果ではありません。sample-ai2 のモデル生成物は同梱していません。
 リポジトリ直下で、初回は `make APP_TARGET=sample-ai2 setup`（モデル生成と
 CubeMX 生成を含む）、以降は `make APP_TARGET=sample-ai2 build` を使います。
-person専用構成の既定のビルド先は `build-sample-ai2-person` で、sample-ai の
+face表示構成の既定のビルド先は `build-sample-ai2-person` で、sample-ai の
 `build` と共用しません。以下の3モデル構成・旧ビルド先の記述は旧経路の説明です。
 ボード書き込みの前に UART を用意してください。
 
 `sample-ai` は、STM32N6570-DK の Neural-ART NPU で量子化 AI モデルを推論する
 最小構成です。一般的な意味での GPU (NeoChrom) ではなく、AI 推論専用の NPU
-を使います。person推論はカメラのPipe2 RGB888を入力にし、`sample-camera-lcd` の
+を使います。face推論はカメラのPipe2 RGB888を入力にし、`sample-camera-lcd` の
 表示と同じカメラ経路で動作します。推論結果のobjectnessと枠情報はUARTにも表示
 できます。
 
@@ -48,7 +48,8 @@ UARTには `pipe2 frame queued`、`pipe2` イベント数、ドロップ数を�
 エラーが発生してもPipe1のフレームsequenceが継続するか、`recovery` が増えないかを
 合わせて確認してください。
 
-推論の投入周期は20 msです。personモデルは480x480で約10億MACのため、NPU=1 GHzで
+推論の投入周期は20 msです。faceモデルは128x128入力のため、Pipe2の480x480画像を
+前処理CPUで縮小してからNPUへ渡します。NPU=1 GHzで
 初回ウォームアップ後のNPU実行は実機でおおむね30 msです（Thread Monitor平均約30.2 ms、
 STEdgeAI生成時のCPU込み推定約28.7 ms）。以前の10〜12 msという記載は現モデル／入力形状と
 一致しないため更新しています。詳細UART・入力テンソル走査を一時的に有効にする場合は、
@@ -78,7 +79,7 @@ allocatorはPipe2の入力とモデル出力を1つの推論スロットとし�
 
 ### 推論入力画像の確認
 
-personモデルの推論入力は Pipe2 の 480x480 RGB888 です。実際に NPU へ渡す
+faceモデルの推論元は Pipe2 の 480x480 RGB888 です。実際に NPU へ渡す
 バッファを LCD に連続表示する場合は、タスク起動前に
 `TaskContext::diagnostics.inference_input_display = true` を設定します。
 入力内容のUART確認も行う場合は `inference_input = true` を追加します。
@@ -126,14 +127,14 @@ ST公式のモデル取得元、モデルファイル名、ライセンスと利
 
 推論実行は、生成モデルのC API、NPUスケジューリング、推論実行を分離した構成です。
 
-- `src/models/`：personモデルの生成C API、入力前処理、Decoder、座標変換を配置します。
+- `src/models/`：モデルごとの生成C API、入力前処理、Decoder、座標変換を配置します。
 - `src/middleware/ai_runtime/`：Preprocess CPU、NPU、Postprocess CPUの3レーンを管理する
   `AiFuture`、Scheduler、Dispatcherを配置します。
-- `src/task/person_pipeline_task.cpp`：フレーム受信、前処理、NPU実行、後処理のタスクを
+- `src/task/pipeline_task.cpp`：フレーム受信、前処理、NPU実行、後処理のタスクを
   起動し、モデル出力をLCDの枠キューへ渡します。
 
 フレームは `FrameEntry` が受信してSchedulerへ投入します。Preprocessワーカーが入力を
-準備し、NPUワーカーがSTAI非同期実行とIRQ待ちを行い、Postprocessワーカーがperson検出
+準備し、NPUワーカーがSTAI非同期実行とIRQ待ちを行い、Postprocessワーカーがface検出
 結果を変換します。
 
 ### パイプライン設計

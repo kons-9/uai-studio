@@ -4,7 +4,7 @@
 #include "common/log.hpp"
 #include "task/task_context.hpp"
 #include "task/camera_render_task.hpp"
-#include "task/person_pipeline_task.hpp"
+#include "task/pipeline_task.hpp"
 #include "task/task_diagnostics.hpp"
 
 extern "C" {
@@ -88,8 +88,8 @@ void ApplicationInitializeTask::Run()
     context.StartCameraTask(reinterpret_cast<FP>(CameraRenderTask::Entry));
     context.app_stage = 5U;
     if constexpr (kInferenceMode == InferenceMode::kNpu) {
-        context.StartPersonFrameTask(
-            reinterpret_cast<FP>(PersonPipelineTask::FrameEntry));
+        context.StartFrameTask(
+            reinterpret_cast<FP>(PipelineTask::FrameEntry));
     } else if constexpr (kInferenceMode == InferenceMode::kCopyOnly) {
         UAI_LOG_INFO(reinterpret_cast<const UB *>(
                          "ai: copy-only snapshot mode; NPU task disabled\n"));

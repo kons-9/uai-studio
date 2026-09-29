@@ -64,9 +64,9 @@ AI_PERSON_BLOB := $(AI_BUILD_DIR)/network_blobs_person.hex
 AI_SEGMENTATION_BLOB := $(AI_BUILD_DIR)/network_blobs_segmentation.hex
 AI_FACE_BLOB := $(AI_BUILD_DIR)/network_blobs_face.hex
 ifeq ($(APP_TARGET),sample-ai2)
-AI_MODEL_BUILD_TARGETS := ai-model-person
-AI_WEIGHT_IMAGES := $(AI_PERSON_WEIGHTS)
-AI_BLOB_IMAGES := $(AI_PERSON_BLOB)
+AI_MODEL_BUILD_TARGETS := ai-model-person ai-model-face
+AI_WEIGHT_IMAGES := $(AI_PERSON_WEIGHTS) $(AI_FACE_WEIGHTS)
+AI_BLOB_IMAGES := $(AI_PERSON_BLOB) $(AI_FACE_BLOB)
 endif
 AI_MODEL_BUILD_TARGETS ?= ai-model-person ai-model-segmentation ai-model-face
 AI_WEIGHT_IMAGES ?= $(AI_PERSON_WEIGHTS) $(AI_SEGMENTATION_WEIGHTS) $(AI_FACE_WEIGHTS)

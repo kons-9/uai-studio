@@ -69,8 +69,8 @@ inline constexpr std::size_t kFrameQueueDepth = 4U;
 inline constexpr std::size_t kBoxQueueDepth = 4U;
 inline constexpr SZ kInitializationTaskStackSize = 32U * 1024U;
 inline constexpr SZ kCameraTaskStackSize = 32U * 1024U;
-inline constexpr SZ kPersonTaskStackSize = 16U * 1024U;
-inline constexpr SZ kPersonPostprocessTaskStackSize = 16U * 1024U;
+inline constexpr SZ kPipelineTaskStackSize = 16U * 1024U;
+inline constexpr SZ kPipelinePostprocessTaskStackSize = 16U * 1024U;
 
 struct InferenceMessage {
     memory_allocator::InferenceFrame frame{};
@@ -94,10 +94,10 @@ public:
     void CreateKernelObjects();
     void StartApplicationTask(FP entry);
     void StartCameraTask(FP entry);
-    void StartPersonFrameTask(FP entry);
-    void StartPersonPreprocessTask(FP entry);
-    void StartPersonNpuTask(FP entry);
-    void StartPersonPostprocessTask(FP entry);
+    void StartFrameTask(FP entry);
+    void StartPreprocessTask(FP entry);
+    void StartNpuTask(FP entry);
+    void StartPostprocessTask(FP entry);
 
     bool DrainLatestBoxes(memory_allocator::BoxSet *active);
     void SendLatestBoxes(const memory_allocator::BoxSet &boxes);
@@ -128,11 +128,11 @@ private:
     INT initialization_task_stack[
         kInitializationTaskStackSize / sizeof(INT)];
     INT camera_task_stack[kCameraTaskStackSize / sizeof(INT)];
-    INT person_frame_task_stack[kPersonTaskStackSize / sizeof(INT)];
-    INT person_preprocess_task_stack[kPersonTaskStackSize / sizeof(INT)];
-    INT person_npu_task_stack[kPersonTaskStackSize / sizeof(INT)];
-    INT person_postprocess_task_stack[
-        kPersonPostprocessTaskStackSize / sizeof(INT)];
+    INT pipeline_frame_task_stack[kPipelineTaskStackSize / sizeof(INT)];
+    INT pipeline_preprocess_task_stack[kPipelineTaskStackSize / sizeof(INT)];
+    INT pipeline_npu_task_stack[kPipelineTaskStackSize / sizeof(INT)];
+    INT pipeline_postprocess_task_stack[
+        kPipelinePostprocessTaskStackSize / sizeof(INT)];
 };
 
 /* The storage is private to task_context.cpp; this function is the only

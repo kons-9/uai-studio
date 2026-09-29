@@ -1,10 +1,10 @@
-#ifndef UAI_AI_TASK_PERSON_PIPELINE_TASK_HPP
-#define UAI_AI_TASK_PERSON_PIPELINE_TASK_HPP
+#ifndef UAI_AI_TASK_PIPELINE_TASK_HPP
+#define UAI_AI_TASK_PIPELINE_TASK_HPP
 
 namespace uai::ai::task {
 
-/* Person pipeline tasks. Each worker runs one ai_runtime lane. */
-class PersonPipelineTask final {
+/* Model pipeline tasks. Each worker runs one ai_runtime lane. */
+class PipelineTask final {
 public:
     static void FrameEntry();
     static void PreprocessEntry();

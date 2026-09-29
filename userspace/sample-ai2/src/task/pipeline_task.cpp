@@ -1,12 +1,12 @@
-#include "task/person_pipeline_task.hpp"
+#include "task/pipeline_task.hpp"
 
 #include <cstdint>
 
 #include "common/log.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "middleware/ai_runtime/pipeline_dispatcher.hpp"
-#include "models/person/future.hpp"
-#include "models/person/npu_model.hpp"
+#include "models/face/future.hpp"
+#include "models/face/npu_model.hpp"
 #include "task/task_context.hpp"
 #include "task/task_diagnostics.hpp"
 
@@ -20,15 +20,15 @@ namespace {
 using ai_runtime::ExecutionContext;
 using ai_runtime::DispatchResult;
 
-struct PersonApplication;
-PersonApplication &App();
+struct PipelineApplication;
+PipelineApplication &App();
 
-struct PersonApplication {
-    models::person::NpuModel npu_model{};
+struct PipelineApplication {
+    models::face::NpuModel npu_model{};
     npu::NpuDriver npu{};
     ai_runtime::PipelineRuntime pipeline{};
     ai_runtime::Scheduler scheduler{pipeline};
-    models::person::Future futures[memory_allocator::kInferenceBufferCount]{};
+    models::face::Future futures[memory_allocator::kInferenceBufferCount]{};
     stai_network_info info{};
     std::uint32_t model_sequence = 0U;
     std::uint32_t submitted_count = 0U;
@@ -52,7 +52,7 @@ struct PersonApplication {
         if (now - report_tick < 1000U) return;
         const auto camera = context.camera.GetDiagnostics();
         UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: person stats submitted=%u completed=%u "
+                         "ai: face stats submitted=%u completed=%u "
                          "post=%u boxes=%u capture=%u pipe2=%u drops=%u csi=%u\n"),
                      static_cast<unsigned int>(submitted_count - report_submitted),
                      static_cast<unsigned int>(completed_count - report_completed),
@@ -79,8 +79,8 @@ struct PersonApplication {
             info.n_outputs == 0U ||
             info.n_outputs > memory_allocator::kConfig.model_output_bytes.size() ||
             info.outputs == nullptr ||
-            info.inputs[0].size_bytes != models::person::Future::InputBytes()) {
-            return {common::ErrorCode::kModel, 0U, "person_pipeline.model_info"};
+            info.inputs[0].size_bytes != models::face::Future::InputBytes()) {
+            return {common::ErrorCode::kModel, 0U, "face_pipeline.model_info"};
         }
         stai_ptr outputs[memory_allocator::kConfig.model_output_bytes.size()]{};
         stai_size count = 0U;
@@ -88,7 +88,7 @@ struct PersonApplication {
         if (!result.Ok()) return result.error;
         if (count != info.n_outputs) {
             return {common::ErrorCode::kModel, count,
-                    "person_pipeline.output_count"};
+                    "face_pipeline.output_count"};
         }
         /* Concurrent postprocessing requires a distinct output per frame. */
         for (std::uint16_t i = 0U; i < count; ++i) {
@@ -96,11 +96,11 @@ struct PersonApplication {
                 info.outputs[i].size_bytes >
                     memory_allocator::kConfig.model_output_bytes[i]) {
                 return {common::ErrorCode::kModel, i,
-                        "person_pipeline.output_ownership"};
+                        "face_pipeline.output_ownership"};
             }
         }
         const common::Error status =
-            models::person::Future::ConfigureDecoder(info);
+            models::face::Future::ConfigureDecoder(info);
         if (!status.Ok()) return status;
         pipeline.SetCriticalSection(&EnterCritical, &LeaveCritical, nullptr);
         pipeline.SetObserver(&OnDone, &context);
@@ -122,7 +122,7 @@ struct PersonApplication {
         auto &task = *static_cast<TaskContext *>(context);
         if (task.diagnostics.inference_trace) {
             UAI_LOG_TRACE(reinterpret_cast<const UB *>(
-                "ai: person inference=%u model=%u step=%u lane=%u time=%u begin=%u\n"),
+                "ai: face inference=%u model=%u step=%u lane=%u time=%u begin=%u\n"),
                 static_cast<unsigned int>(trace.inference_id),
                 static_cast<unsigned int>(trace.model_id),
                 static_cast<unsigned int>(trace.step_id),
@@ -135,13 +135,13 @@ struct PersonApplication {
                        common::Error error)
     {
         auto &task = *static_cast<TaskContext *>(context);
-        auto &future = static_cast<models::person::Future &>(base);
+        auto &future = static_cast<models::face::Future &>(base);
         ++App().completed_count;
         if (!error.Ok()) {
-            LogStatus("person_pipeline", error);
+            LogStatus("face_pipeline", error);
             App().enabled.store(false);
             UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                "ai: person pipeline disabled; camera remains live\n"));
+                "ai: face pipeline disabled; camera remains live\n"));
         }
         const common::Error released =
             task.memory.ReleaseInferenceBuffer(future.frame());
@@ -151,9 +151,9 @@ struct PersonApplication {
     }
 };
 
-std::uint32_t PersonApplication::interrupt_state_ = 0U;
-PersonApplication g_app{};
-PersonApplication &App() { return g_app; }
+std::uint32_t PipelineApplication::interrupt_state_ = 0U;
+PipelineApplication g_app{};
+PipelineApplication &App() { return g_app; }
 
 void PublishBoxes(void *context, const memory_allocator::BoxSet &source)
 {
@@ -162,7 +162,7 @@ void PublishBoxes(void *context, const memory_allocator::BoxSet &source)
     memory_allocator::BoxSet boxes = source;
     boxes.model_sequence = ++application.model_sequence;
     ++application.postprocess_count;
-    application.last_detection_count = boxes.person.count;
+    application.last_detection_count = boxes.face.count;
     application.last_capture_sequence = boxes.capture_sequence;
     task.SendLatestBoxes(boxes);
     application.Report(task);
@@ -171,7 +171,7 @@ void PublishBoxes(void *context, const memory_allocator::BoxSet &source)
 void RunWorker(ExecutionContext lane)
 {
     UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "ai: person worker started lane=%u\n"),
+                     "ai: face worker started lane=%u\n"),
                  static_cast<unsigned int>(lane));
     ai_runtime::Dispatcher dispatcher(g_app.pipeline, lane);
     for (;;) {
@@ -185,29 +185,29 @@ void RunWorker(ExecutionContext lane)
 
 } // namespace
 
-void PersonPipelineTask::FrameEntry()
+void PipelineTask::FrameEntry()
 {
     TaskContext &task = GetTaskContext();
     UINT pattern = 0U;
     if (tk_wai_flg(task.external_memory_ready, kExternalMemoryReady,
                    TWF_ANDW, &pattern, TMO_FEVR) != E_OK) {
-        task.Halt("ai: person pipeline memory wait failed\n");
+        task.Halt("ai: face pipeline memory wait failed\n");
     }
     if (!task.external_nor_ready) {
         UAI_LOG_WARN(reinterpret_cast<const UB *>(
-            "ai: person model unavailable; camera remains live\n"));
+            "ai: face model unavailable; camera remains live\n"));
     } else {
         const common::Error status = g_app.Initialize(task);
         if (!status.Ok()) {
-            LogStatus("person_pipeline.init", status);
+            LogStatus("face_pipeline.init", status);
         } else {
             UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                "ai: person pipeline enabled (pre/npu/post)\n"));
-            task.StartPersonPreprocessTask(
-                reinterpret_cast<FP>(PersonPipelineTask::PreprocessEntry));
-            task.StartPersonNpuTask(reinterpret_cast<FP>(PersonPipelineTask::NpuEntry));
-            task.StartPersonPostprocessTask(
-                reinterpret_cast<FP>(PersonPipelineTask::PostprocessEntry));
+                "ai: face pipeline enabled (pre/npu/post)\n"));
+            task.StartPreprocessTask(
+                reinterpret_cast<FP>(PipelineTask::PreprocessEntry));
+            task.StartNpuTask(reinterpret_cast<FP>(PipelineTask::NpuEntry));
+            task.StartPostprocessTask(
+                reinterpret_cast<FP>(PipelineTask::PostprocessEntry));
         }
     }
     for (;;) {
@@ -219,9 +219,9 @@ void PersonPipelineTask::FrameEntry()
             LogStatus("memory", status);
             continue;
         }
-        models::person::Future *available = nullptr;
+        models::face::Future *available = nullptr;
         if (g_app.enabled.load()) {
-            for (models::person::Future &future : g_app.futures) {
+            for (models::face::Future &future : g_app.futures) {
                 if (future.TryClaim()) {
                     available = &future;
                     break;
@@ -229,7 +229,7 @@ void PersonPipelineTask::FrameEntry()
             }
         }
         if (available != nullptr) {
-            const models::person::FutureContext future_context{
+            const models::face::FutureContext future_context{
                 &g_app.npu,
                 &task.cache,
                 &g_app.info,
@@ -241,7 +241,7 @@ void PersonPipelineTask::FrameEntry()
                 ++g_app.submitted_count;
                 if (g_app.submitted_count == 1U) {
                     UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                                     "ai: person submit ok seq=%u\n"),
+                                     "ai: face submit ok seq=%u\n"),
                                  static_cast<unsigned int>(message.frame.capture_sequence));
                 }
                 g_app.Report(task);
@@ -254,13 +254,13 @@ void PersonPipelineTask::FrameEntry()
     }
 }
 
-void PersonPipelineTask::PreprocessEntry()
+void PipelineTask::PreprocessEntry()
 {
     RunWorker(ExecutionContext::kPreprocessCpu);
 }
 
-void PersonPipelineTask::NpuEntry() { RunWorker(ExecutionContext::kNpu); }
-void PersonPipelineTask::PostprocessEntry()
+void PipelineTask::NpuEntry() { RunWorker(ExecutionContext::kNpu); }
+void PipelineTask::PostprocessEntry()
 {
     RunWorker(ExecutionContext::kPostprocessCpu);
 }
