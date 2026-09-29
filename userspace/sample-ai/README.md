@@ -158,7 +158,9 @@ sh userspace/sample-ai/scripts/setup_third_party.sh \
 
 生成された4ファイル (`network.c`, `network_ecblobs.h`, `stai_network.c`,
 `stai_network.h`) と `network_data.xSPI2.bin`/`.hex` は選択したモデルの
-ディレクトリに置かれます。
+ディレクトリに置かれます。これらはSTEdgeAIのバージョンと入力モデルに依存する
+自動生成物のためGit管理対象外です。クリーンcheckoutでは、ビルド前に3モデル分の
+生成コマンドを実行してください。
 
 ## モデル生成
 

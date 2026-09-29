@@ -28,7 +28,9 @@ enum class LogLevel : std::uint8_t {
     kTrace = 4U,
 };
 
-inline constexpr LogLevel kLogLevel = LogLevel::kWarn;
+/* Temporarily enabled for NPU timing investigation.  Per-inference timing
+ * output is throttled in NpuRuntime so it does not flood the UART. */
+inline constexpr LogLevel kLogLevel = LogLevel::kInfo;
 
 constexpr bool IsLogEnabled(LogLevel level)
 {

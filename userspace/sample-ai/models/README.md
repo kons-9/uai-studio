@@ -35,8 +35,14 @@ by git because they are large and may have separate model licenses.
 
 The generator uses `--no-inputs-allocation` and `--no-outputs-allocation` so
 the application can provide the Pipe2 input buffer. Use the same STEdgeAI
-and `ll_aton` runtime generation version as the checked-in generated files;
+and `ll_aton` runtime generation version consistently when generating the
+model and building the application;
 otherwise the generated C files can fail the Neural-ART version check.
+
+The generated `network.c`, `network_ecblobs.h`, `stai_network.c`,
+`stai_network.h`, and `network_data.*` files are intentionally not tracked by
+Git. Generate `person`, `segmentation`, and `face` locally before configuring
+or building a clean checkout.
 
 Generation can be tuned without editing the script:
 
@@ -50,7 +56,11 @@ sh userspace/sample-ai/models/generate_model.sh person /path/to/model.tflite
 The corresponding variables are `AI_MODEL_OPTIMIZATION`,
 `AI_MODEL_INPUT_DATA_TYPE`, `AI_MODEL_OUTPUT_DATA_TYPE`,
 `AI_MODEL_INPUTS_CH_POSITION`, `AI_MODEL_OUTPUTS_CH_POSITION`,
-`AI_MODEL_C_API`, and `AI_MODEL_NETWORK_ADDRESS`. The latter overrides the
+`AI_MODEL_C_API`, `AI_MODEL_CUT_OUTPUT_TENSORS`, and `AI_MODEL_NETWORK_ADDRESS`.
+The segmentation generator cuts the final `Resize_202` layer by default so
+the model outputs its native `20x20x2` logits instead of performing a CPU
+`20x20 -> 320x320` resize. `AI_MODEL_CUT_OUTPUT_TENSORS` overrides that tensor
+name. The network address variable overrides the
 model-specific xSPI2 address when using a different Flash layout. The default C API is `st-ai`; it is required for the
 experimental runtime activation/state allocation options.
 

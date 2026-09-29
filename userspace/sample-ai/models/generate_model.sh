@@ -23,6 +23,7 @@ case "$model_name" in
         default_source="$models_dir/source/segmentation/deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8.onnx"
         network_address=0x70600000
         default_outputs_ch_position=chlast
+        default_cut_output_tensors='model/conv2d_6/BiasAdd:0_QuantizeLinear_Output'
         official_source="STMicroelectronics/STM32N6-GettingStarted-SemanticSegmentation/Model/STM32N6570-DK"
         ;;
     face)
@@ -38,6 +39,8 @@ case "$model_name" in
         ;;
 esac
 
+default_cut_output_tensors=${default_cut_output_tensors:-}
+
 # Keep the generated model data at a model-specific address.  This can be
 # overridden for a board-specific Flash layout, but must be used consistently
 # when generating the network and when programming network_data.xSPI2.bin.
@@ -50,6 +53,7 @@ inputs_ch_position=${AI_MODEL_INPUTS_CH_POSITION:-chlast}
 outputs_ch_position=${AI_MODEL_OUTPUTS_CH_POSITION:-$default_outputs_ch_position}
 optimization=${AI_MODEL_OPTIMIZATION:-balanced}
 c_api=${AI_MODEL_C_API:-st-ai}
+cut_output_tensors=${AI_MODEL_CUT_OUTPUT_TENSORS:-$default_cut_output_tensors}
 
 model_source=${2:-${AI_MODEL_SOURCE:-$default_source}}
 case "$model_source" in
@@ -92,7 +96,7 @@ sed "s|\"memory_pool\": \"[^\"]*\"|\"memory_pool\": \"$model_memory_pool\"|" \
 # output buffers are supplied by the application, which is required for the
 # Pipe2-to-NPU path used by sample-ai.
 cd "$models_dir"
-stedgeai generate \
+set -- \
     --no-inputs-allocation \
     --no-outputs-allocation \
     --optimization "$optimization" \
@@ -107,6 +111,10 @@ stedgeai generate \
     --outputs-ch-position "$outputs_ch_position" \
     --workspace "$work_dir/st_ai_ws" \
     --output "$work_dir/st_ai_output"
+if [ -n "$cut_output_tensors" ]; then
+    set -- "$@" --cut-output-tensors "$cut_output_tensors"
+fi
+stedgeai generate "$@"
 
 for generated_file in network.c network_ecblobs.h stai_network.c stai_network.h network_atonbuf.xSPI2.raw; do
     if [ ! -f "$work_dir/st_ai_output/$generated_file" ]; then

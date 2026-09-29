@@ -11,8 +11,8 @@ namespace {
 
 using StaticMemoryKey = static_memory_layout::Key;
 
-constexpr std::size_t kMaskWidth = 320U;
-constexpr std::size_t kMaskHeight = 320U;
+constexpr std::size_t kMaskWidth = 20U;
+constexpr std::size_t kMaskHeight = 20U;
 constexpr std::size_t kMaskBytes = kMaskWidth * kMaskHeight;
 
 common::Error Invalid(const char *operation)

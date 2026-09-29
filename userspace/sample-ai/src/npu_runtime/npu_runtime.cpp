@@ -240,6 +240,42 @@ common::Error NpuRuntime::Run(memory_allocator::InferenceFrame &frame,
             phase.end_ms, phase.elapsed_ms,
             static_cast<InferencePhase>(i + 1U), model_kind_id);
     }
+    /* Keep UART traffic low enough not to perturb the measured execution.
+     * One line every eight inferences is enough to compare the async STAI
+     * wait components with the phase trace copied from internal RAM. */
+    if (status.Ok() && (last_inference_timing_.sequence % 8U) == 0U) {
+        const auto &execution = last_npu_status_.execution;
+        const auto &input = last_inference_timing_.At(
+            InferencePhase::kInputPreparation);
+        const auto &input_wait = last_inference_timing_.At(
+            InferencePhase::kInputPreparationWait);
+        UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                         "ai: timing model=%s seq=%u input=%u wait=%u "
+                         "npu=%u submit=%u polls=%u irq=%u waits=%u/%u/%u "
+                         "continue=%u/%u max=%u slow=%u "
+                         "prefetch=%u/%u max=%u\n"),
+                     descriptor == nullptr
+                         ? reinterpret_cast<const UB *>("unknown")
+                         : reinterpret_cast<const UB *>(descriptor->name),
+                     static_cast<unsigned int>(last_inference_timing_.sequence),
+                     static_cast<unsigned int>(input.elapsed_ms),
+                     static_cast<unsigned int>(input_wait.elapsed_ms),
+                     static_cast<unsigned int>(execution.elapsed_ms),
+                     static_cast<unsigned int>(execution.submit_elapsed_ms),
+                     static_cast<unsigned int>(execution.status_poll_count),
+                     static_cast<unsigned int>(execution.irq_count_end -
+                                               execution.irq_count_start),
+                     static_cast<unsigned int>(execution.irq_wait_count),
+                     static_cast<unsigned int>(execution.irq_wait_elapsed_ms),
+                     static_cast<unsigned int>(execution.irq_wait_max_elapsed_ms),
+                     static_cast<unsigned int>(execution.continue_count),
+                     static_cast<unsigned int>(execution.continue_elapsed_ms),
+                     static_cast<unsigned int>(execution.continue_max_elapsed_ms),
+                     static_cast<unsigned int>(execution.continue_slow_count),
+                     static_cast<unsigned int>(execution.progress_count),
+                     static_cast<unsigned int>(execution.progress_elapsed_ms),
+                     static_cast<unsigned int>(execution.progress_max_elapsed_ms));
+    }
     if (monitor_operation.Finish()) {
         return ThreadMonitorTimeout();
     }

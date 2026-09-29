@@ -48,12 +48,27 @@ void BeginExecutionTiming(ExecutionSnapshot &execution)
     execution.end_ms = execution.start_ms;
     execution.elapsed_ms = 0U;
     execution.timing_valid = false;
+    execution.status_poll_count = 0U;
+    execution.irq_wait_count = 0U;
+    execution.irq_wait_elapsed_ms = 0U;
+    execution.irq_wait_max_elapsed_ms = 0U;
+    execution.continue_count = 0U;
+    execution.continue_elapsed_ms = 0U;
+    execution.continue_max_elapsed_ms = 0U;
+    execution.continue_slow_count = 0U;
+    execution.progress_count = 0U;
+    execution.progress_elapsed_ms = 0U;
+    execution.progress_max_elapsed_ms = 0U;
+    execution.submit_elapsed_ms = 0U;
+    execution.irq_count_start = g_aton_irq_count;
+    execution.irq_count_end = execution.irq_count_start;
 }
 
 void FinishExecutionTiming(ExecutionSnapshot &execution)
 {
     execution.end_ms = NowMs();
     execution.elapsed_ms = execution.end_ms - execution.start_ms;
+    execution.irq_count_end = g_aton_irq_count;
     execution.timing_valid = true;
 }
 
@@ -97,6 +112,10 @@ common::Error NpuDriver::InitializeMemory()
                 "npu.memory_initialize"};
     }
     EnableNpuMemory();
+    UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                     "ai: npu clocks npu=%uHz npu_ram=%uHz\n"),
+                 static_cast<unsigned int>(HAL_RCC_GetNPUClockFreq()),
+                 static_cast<unsigned int>(HAL_RCC_GetNPURAMSClockFreq()));
     initialized = true;
     return {common::ErrorCode::kOk, 0U, "npu.memory_initialize"};
 }
@@ -365,7 +384,9 @@ Status NpuDriver::StartRun()
     }
     ++last_execution_.run_id;
     BeginExecutionTiming(last_execution_);
+    const std::uint32_t submit_start_ms = NowMs();
     stai_return_code code = model_->Run(STAI_MODE_ASYNC);
+    last_execution_.submit_elapsed_ms = NowMs() - submit_start_ms;
     last_error_ = static_cast<std::uint32_t>(code);
     last_execution_.state = ExecutionState::kSubmitted;
     last_execution_.stai_status = last_error_;
@@ -395,6 +416,7 @@ Status NpuDriver::WaitRun(RunProgressCallback progress,
 
     bool completed = false;
     for (std::uint32_t tick = 0U; tick < kTimeoutTicks; ++tick) {
+        ++last_execution_.status_poll_count;
         stai_return_code code = model_->GetRunStatus();
         last_error_ = static_cast<std::uint32_t>(code);
         if (code == STAI_DONE) {
@@ -417,7 +439,16 @@ Status NpuDriver::WaitRun(RunProgressCallback progress,
         /* Give the caller a chance to prepare the next frame only while the
          * current NPU run is still active. */
         if (progress != nullptr) {
+            const std::uint32_t progress_start_ms = NowMs();
+            ++last_execution_.progress_count;
             progress(progress_context);
+            const std::uint32_t progress_elapsed_ms =
+                NowMs() - progress_start_ms;
+            last_execution_.progress_elapsed_ms += progress_elapsed_ms;
+            if (progress_elapsed_ms >
+                last_execution_.progress_max_elapsed_ms) {
+                last_execution_.progress_max_elapsed_ms = progress_elapsed_ms;
+            }
         }
 
         /* The generated ST.AI runtime distinguishes two kinds of wait:
@@ -427,10 +458,19 @@ Status NpuDriver::WaitRun(RunProgressCallback progress,
          * has many epoch blocks, so that delay accumulates into seconds. */
         if (code == STAI_RUNNING_WFE) {
             UINT pattern = 0U;
+            const std::uint32_t wait_start_ms = NowMs();
+            ++last_execution_.irq_wait_count;
             const ER wait_status = tk_wai_flg(
                 g_npu_irq_event_flag, kNpuIrqEvent,
                 TWF_ANDW | TWF_BITCLR, &pattern,
                 static_cast<TMO>(kTimeoutTicks));
+            const std::uint32_t irq_wait_elapsed_ms =
+                NowMs() - wait_start_ms;
+            last_execution_.irq_wait_elapsed_ms += irq_wait_elapsed_ms;
+            if (irq_wait_elapsed_ms >
+                last_execution_.irq_wait_max_elapsed_ms) {
+                last_execution_.irq_wait_max_elapsed_ms = irq_wait_elapsed_ms;
+            }
             if (wait_status == E_TMOUT) {
                 break;
             }
@@ -445,7 +485,18 @@ Status NpuDriver::WaitRun(RunProgressCallback progress,
                         last_execution_};
             }
         }
+        const std::uint32_t continue_start_ms = NowMs();
+        ++last_execution_.continue_count;
         code = model_->ContinueRun();
+        const std::uint32_t continue_elapsed_ms =
+            NowMs() - continue_start_ms;
+        last_execution_.continue_elapsed_ms += continue_elapsed_ms;
+        if (continue_elapsed_ms > last_execution_.continue_max_elapsed_ms) {
+            last_execution_.continue_max_elapsed_ms = continue_elapsed_ms;
+        }
+        if (continue_elapsed_ms >= 10U) {
+            ++last_execution_.continue_slow_count;
+        }
         last_error_ = static_cast<std::uint32_t>(code);
         if (IsError(code)) {
             FinishExecutionTiming(last_execution_);

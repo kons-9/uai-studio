@@ -92,6 +92,31 @@ foreach(_ai_postprocess_path IN LISTS _ai_required_postprocess_paths)
     endif()
 endforeach()
 
+# Generated model sources are intentionally not tracked.  Fail at configure
+# time with the regeneration command instead of producing a cryptic include
+# or file(READ) error in a clean checkout.
+set(_ai_generated_model_files
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/person/network.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/person/network_ecblobs.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/person/stai_network.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/person/stai_network.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation/network.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation/network_ecblobs.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation/stai_network.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation/stai_network.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/face/network.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/face/network_ecblobs.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/face/stai_network.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/face/stai_network.h")
+foreach(_ai_generated_model_file IN LISTS _ai_generated_model_files)
+    if(NOT EXISTS "${_ai_generated_model_file}")
+        message(FATAL_ERROR
+            "Generated model file is missing: ${_ai_generated_model_file}. "
+            "Run userspace/sample-ai/models/generate_model.sh for person, "
+            "segmentation, and face before configuring sample-ai.")
+    endif()
+endforeach()
+
 # Generated network.c files contain the exact ll_aton development version they
 # were produced with.  Fail at configure time instead of allowing a seemingly
 # successful build with a mismatched runtime to fail on the board.

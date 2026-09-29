@@ -27,6 +27,21 @@ struct ExecutionSnapshot {
     std::uint32_t end_ms = 0U;
     std::uint32_t elapsed_ms = 0U;
     bool timing_valid = false;
+    /* Diagnostic breakdown of the asynchronous STAI run. */
+    std::uint32_t status_poll_count = 0U;
+    std::uint32_t irq_wait_count = 0U;
+    std::uint32_t irq_wait_elapsed_ms = 0U;
+    std::uint32_t irq_wait_max_elapsed_ms = 0U;
+    std::uint32_t continue_count = 0U;
+    std::uint32_t continue_elapsed_ms = 0U;
+    std::uint32_t continue_max_elapsed_ms = 0U;
+    std::uint32_t continue_slow_count = 0U;
+    std::uint32_t progress_count = 0U;
+    std::uint32_t progress_elapsed_ms = 0U;
+    std::uint32_t progress_max_elapsed_ms = 0U;
+    std::uint32_t submit_elapsed_ms = 0U;
+    std::uint32_t irq_count_start = 0U;
+    std::uint32_t irq_count_end = 0U;
 };
 
 struct Status {

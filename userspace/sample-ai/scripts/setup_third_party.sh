@@ -67,8 +67,13 @@ do
     fi
 done
 
-model_dev=$(sed -n 's/.*LL_ATON_VERSION_DEV != (\([0-9][0-9]*\)).*/\1/p' \
-    "$sample_ai_dir/models/person/network.c" | head -n 1)
+model_dev=
+if [ -f "$sample_ai_dir/models/person/network.c" ]; then
+    model_dev=$(sed -n 's/.*LL_ATON_VERSION_DEV != (\([0-9][0-9]*\)).*/\1/p' \
+        "$sample_ai_dir/models/person/network.c" | head -n 1)
+else
+    echo "Generated model files are not present yet; run models/generate_model.sh before building."
+fi
 runtime_dev=$(sed -n 's/.*LL_ATON_VERSION_DEV[[:space:]]*(\([0-9][0-9]*\)).*/\1/p' \
     "$runtime_dir/Npu/ll_aton/ll_aton_version.h" | head -n 1)
 if [ -n "$model_dev" ] && [ -n "$runtime_dev" ] && [ "$model_dev" != "$runtime_dev" ]; then

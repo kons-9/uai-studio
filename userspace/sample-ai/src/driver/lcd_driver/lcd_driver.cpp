@@ -225,15 +225,21 @@ void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
         boxes.segmentation.mask_address);
     auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
     /* A mask is emitted only by the segmentation postprocessor. Pipe2 keeps
-     * the complete Pipe1 crop and letterboxes it into 320x320: 320x192 of the
-     * tensor is live image data and 64 rows are padding on each side. */
+     * the complete Pipe1 crop and letterboxes it into the square model input.
+     * Scale the live 16:9 content and its padding into the model mask, which
+     * may be lower resolution than the input (20x20 for segmentation). */
     constexpr std::size_t crop_width = memory_allocator::kConfig.frame_width;
     constexpr std::size_t crop_x = 0U;
-    constexpr std::size_t kMaskContentHeight = 192U;
-    constexpr std::size_t kMaskPadTop = 64U;
+    constexpr std::size_t kModelInputHeight = 320U;
+    constexpr std::size_t kModelContentHeight = 192U;
+    const std::size_t mask_content_height =
+        boxes.segmentation.mask_height * kModelContentHeight /
+        kModelInputHeight;
+    const std::size_t mask_pad_top =
+        (boxes.segmentation.mask_height - mask_content_height) / 2U;
     for (std::size_t y = 0U; y < memory_allocator::kConfig.frame_height; ++y) {
-        const std::size_t mask_y = kMaskPadTop +
-            y * kMaskContentHeight / memory_allocator::kConfig.frame_height;
+        const std::size_t mask_y = mask_pad_top +
+            y * mask_content_height / memory_allocator::kConfig.frame_height;
         for (std::size_t x = 0U; x < crop_width; ++x) {
             const std::size_t mask_x =
                 x * boxes.segmentation.mask_width / crop_width;

@@ -25,8 +25,11 @@ struct MemoryAllocatorConfig {
     std::uint32_t inference_bytes_per_pixel = 3U;
     std::size_t buffer_alignment = 32U;
 
+    /* Output slots are shared by the registered models.  Slot zero must fit
+     * the largest first output (face: 8192 bytes); segmentation now exposes
+     * its native 20x20x2 logits (800 bytes) after its final resize is cut. */
     std::array<std::size_t, 4U> model_output_bytes = {
-        320U * 320U * 2U, 60U * 60U * 18U, 30U * 30U * 18U, 384U * 16U};
+        8192U, 60U * 60U * 18U, 30U * 30U * 18U, 384U * 16U};
 
     /* Dynamic switching uses the fixed person-sized Pipe2 image as a source
      * for smaller model tensors. Scratch capacity is shared because inference
