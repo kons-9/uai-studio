@@ -9,6 +9,8 @@ namespace uai::ai::models::segmentation {
 
 namespace {
 
+using StaticMemoryKey = static_memory_layout::Key;
+
 constexpr std::size_t kMaskWidth = 320U;
 constexpr std::size_t kMaskHeight = 320U;
 constexpr std::size_t kMaskBytes = kMaskWidth * kMaskHeight;
@@ -22,13 +24,22 @@ common::Error Invalid(const char *operation)
 
 common::Error Decoder::Initialize(const ModelOutputSpec &spec)
 {
-    initialized_ = false;
-    mask_buffer_index_ = 0U;
     if (spec.count != 1U || spec.tensors[0].size_bytes != kMaskBytes * 2U ||
-        static_memory_layout::kLayout.segmentation_mask[0].size() < kMaskBytes ||
-        static_memory_layout::kLayout.segmentation_mask[1].size() < kMaskBytes) {
+        static_memory_layout::kLayout
+                .Get(StaticMemoryKey::kSegmentationMask0)
+                .size() < kMaskBytes ||
+        static_memory_layout::kLayout
+                .Get(StaticMemoryKey::kSegmentationMask1)
+                .size() < kMaskBytes) {
+        initialized_ = false;
         return Invalid("segmentation.decoder.output_shape");
     }
+
+    /* Configure is called again whenever the scheduler changes models.  Do
+     * not reset the write side here: the LCD may still be reading the mask
+     * published by the previous segmentation inference.  Decode() alternates
+     * the two regions so the producer never starts by overwriting the last
+     * published result. */
     initialized_ = true;
     return {common::ErrorCode::kOk, 0U,
             "segmentation.decoder.initialize"};
@@ -49,8 +60,9 @@ common::Error Decoder::Decode(const InferenceCompletionContext &context,
 
     const auto *logits = reinterpret_cast<const std::int8_t *>(
         context.outputs.tensors[0].data);
-    const auto &mask_region =
-        static_memory_layout::kLayout.segmentation_mask[mask_buffer_index_];
+    const auto &mask_region = static_memory_layout::kLayout.Get(
+        mask_buffer_index_ == 0U ? StaticMemoryKey::kSegmentationMask0
+                                 : StaticMemoryKey::kSegmentationMask1);
     auto *mask = reinterpret_cast<std::uint8_t *>(mask_region.address());
     std::uint32_t foreground_pixels = 0U;
     for (std::size_t i = 0U; i < kMaskBytes; ++i) {

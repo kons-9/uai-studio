@@ -50,7 +50,8 @@
 
 PSRAM上の固定配置は`stm32n6570-dk-npu-ram.ld`で予約する。capture/display/inferenceの
 各スロットは1 MiB境界に配置し、raw dump、segmentation mask、inference scratchも
-同じリンカスクリプトで重ならない領域として予約する。
+同じリンカスクリプトで重ならない領域として予約する。ThreadMonitorの定常監視記録は
+内部APP RAMの専用64 KiB領域へ保存し、CPU停止後にSWDから読み出せるようにする。
 
 ```text
 0x91000000  capture A0

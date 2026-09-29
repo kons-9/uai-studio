@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include <tk/tkernel.h>
+
 extern "C" {
 #include "stm32n6570_discovery_camera.h"
 #include "stm32n6xx_hal.h"
@@ -25,12 +27,15 @@ void AiResetImx335ControlState(void);
 
 namespace {
 
+using StaticMemoryKey = uai::ai::static_memory_layout::Key;
+
 constexpr std::uint32_t kSensorWidth = 2592U;
 constexpr std::uint32_t kSensorHeight = 1944U;
 constexpr std::uint32_t kOutputWidth = 800U;
 constexpr std::uint32_t kOutputHeight = 480U;
 constexpr std::uint32_t kFrameTimeoutMs = 2000U;
 constexpr std::uint32_t kRecoveryRetryMs = 5000U;
+constexpr UINT kPipe2FrameReadyEvent = 0x01U;
 /* Match ref/ on the STM32N6570-DK.  Keep the CSI PHY configuration
  * unchanged; this only reduces the sensor frame rate to give the CSI link
  * the same timing margin as the reference application. */
@@ -52,12 +57,14 @@ std::uintptr_t g_active_inference = 0U;
 std::uintptr_t g_next_inference = 0U;
 std::uintptr_t g_inference_buffer0 = 0U;
 std::uintptr_t g_inference_buffer1 = 0U;
+std::uintptr_t g_inference_drop_buffer = 0U;
 /* Pipe2 writes the aspect-preserving image into the vertical center of the
  * square NPU tensor. Keep the allocator-visible address at the beginning of
  * the slot; only the DMA destination is offset. */
 std::uintptr_t g_inference_dma_offset = 0U;
 volatile std::uint32_t g_inference_sequence = 0U;
 uai::ai::memory_allocator::MemoryAllocator *g_pipe2_memory = nullptr;
+ID g_pipe2_frame_event_flag = 0;
 volatile std::uint32_t g_last_frame_tick = 0U;
 volatile std::uint32_t g_last_csi_error_tick = 0U;
 volatile bool g_csi_fault_pending = false;
@@ -370,8 +377,8 @@ void PrepareRawDump()
     }
     g_raw_dump_started = false;
     g_raw_dump_reported = false;
-    const auto &raw_dump =
-        uai::ai::static_memory_layout::kLayout.raw_dump;
+    const auto &raw_dump = uai::ai::static_memory_layout::kLayout.Get(
+        StaticMemoryKey::kRawDump);
     std::memset(reinterpret_cast<void *>(raw_dump.address()), kRawDumpSentinel,
                 raw_dump.size());
     SCB_CleanInvalidateDCache_by_Addr(
@@ -392,7 +399,8 @@ void StartRawDump()
                                   DCMIPP_VIRTUAL_CHANNEL0,
                                   static_cast<std::uint32_t>(
                                       uai::ai::static_memory_layout::kLayout
-                                          .raw_dump.address()),
+                                          .Get(StaticMemoryKey::kRawDump)
+                                          .address()),
                                   DCMIPP_MODE_SNAPSHOT) != HAL_OK) {
         g_raw_dump_reported = true;
         return;
@@ -557,6 +565,18 @@ uai::ai::common::Error CameraDriver::Initialize(memory_allocator::MemoryAllocato
     memory_ = &memory;
     cache_ = &cache;
     g_pipe2_memory = &memory;
+    if (g_pipe2_frame_event_flag == 0) {
+        T_CFLG event_flag = {};
+        event_flag.flgatr = TA_TFIFO;
+        g_pipe2_frame_event_flag = tk_cre_flg(&event_flag);
+        if (g_pipe2_frame_event_flag < E_OK) {
+            const ID event_status = g_pipe2_frame_event_flag;
+            g_pipe2_frame_event_flag = 0;
+            return {uai::ai::common::ErrorCode::kInvalidState,
+                    static_cast<std::uint32_t>(event_status),
+                    "camera.pipe2.event"};
+        }
+    }
     initialized_ = true;
     return {uai::ai::common::ErrorCode::kOk, 0U, "camera.initialize"};
 }
@@ -603,10 +623,26 @@ uai::ai::common::Error CameraDriver::Start()
     g_active_frame = first; g_next_frame = second; g_completed_frame = 0U;
     g_inference_buffer0 = inference_first;
     g_inference_buffer1 = inference_second;
+    g_inference_drop_buffer =
+        uai::ai::static_memory_layout::kLayout
+            .Get(StaticMemoryKey::kPipe2Drop)
+            .address();
+    const memory_allocator::Buffer inference_drop_buffer{
+        g_inference_drop_buffer,
+        uai::ai::static_memory_layout::kLayout
+            .Get(StaticMemoryKey::kPipe2Drop)
+            .size(),
+        0U,
+        memory_allocator::Region::kInference};
+    status = cache_->PrepareForDmaWrite(inference_drop_buffer);
+    if (!status.Ok()) return status;
     g_active_inference = inference_first;
     g_next_inference = inference_second;
     g_completed_inference = 0U;
     g_inference_sequence = 0U;
+    if (g_pipe2_frame_event_flag > 0) {
+        (void)tk_clr_flg(g_pipe2_frame_event_flag, 0U);
+    }
     g_csi_fault_pending = false;
     g_camera_recovery_attempted = false;
     PrepareRawDump();
@@ -678,6 +714,9 @@ uai::ai::common::Error CameraDriver::Process()
         g_completed_inference = 0U;
         g_active_inference = g_inference_buffer0;
         g_next_inference = g_inference_buffer1;
+        if (g_pipe2_frame_event_flag > 0) {
+            (void)tk_clr_flg(g_pipe2_frame_event_flag, 0U);
+        }
         (void)registers.SetStreaming(false);
         HAL_Delay(20U);
         const HAL_StatusTypeDef pipe_stop_status =
@@ -747,6 +786,16 @@ uai::ai::common::Error CameraDriver::TakeCompletedInference(
     if (frame == nullptr) {
         return {uai::ai::common::ErrorCode::kInvalidArgument, 0U, "camera.take_inference"};
     }
+    if (g_pipe2_frame_event_flag > 0) {
+        UINT pattern = 0U;
+        const ER event_status = tk_wai_flg(
+            g_pipe2_frame_event_flag, kPipe2FrameReadyEvent,
+            TWF_ANDW | TWF_BITCLR, &pattern, TMO_POL);
+        if (event_status != E_OK) {
+            return {uai::ai::common::ErrorCode::kNoFrame, 0U,
+                    "camera.take_inference"};
+        }
+    }
     const std::uintptr_t address = g_completed_inference;
     const std::uint32_t sequence = g_inference_sequence;
     g_completed_inference = 0U;
@@ -782,22 +831,39 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
 {
     ++g_camera_pipe2_frame_event_count;
     const std::uintptr_t completed = g_active_inference;
-    g_completed_inference = completed;
-    const std::uint32_t sequence = ++g_inference_sequence;
-    const std::uintptr_t other = g_next_inference;
+    const bool completed_is_real_buffer =
+        completed != 0U && completed != g_inference_drop_buffer;
+    if (completed_is_real_buffer) {
+        g_completed_inference = completed;
+        ++g_inference_sequence;
+        __DMB();
+        if (g_pipe2_frame_event_flag > 0) {
+            (void)tk_set_flg(g_pipe2_frame_event_flag, kPipe2FrameReadyEvent);
+        }
+    }
+
     std::uintptr_t selected = 0U;
-    if (g_pipe2_memory != nullptr &&
-        g_pipe2_memory->IsInferenceBufferFree(other)) {
-        selected = other;
-    } else if (g_pipe2_memory != nullptr &&
-               g_pipe2_memory->IsInferenceBufferFree(completed)) {
-        /* If NPU owns the other slot, keep the just-completed slot as a
-         * drop/reuse slot. Pipe1 remains independent and continues to render. */
-        selected = completed;
+    const std::uintptr_t candidates[] = {
+        g_next_inference,
+        g_inference_buffer0,
+        g_inference_buffer1,
+    };
+    for (const std::uintptr_t candidate : candidates) {
+        if (candidate == 0U || candidate == completed ||
+            candidate == g_inference_drop_buffer ||
+            g_pipe2_memory == nullptr ||
+            !g_pipe2_memory->IsInferenceBufferFree(candidate)) {
+            continue;
+        }
+        selected = candidate;
+        break;
+    }
+    if (selected == 0U) {
+        /* Both real buffers are owned by the camera/inference pipeline.  Keep
+         * the producer running, but send the next frame to a DMA-only sink;
+         * otherwise Pipe2 would overwrite the frame being preprocessed. */
+        selected = g_inference_drop_buffer;
         ++g_camera_pipe2_drop_count;
-    } else {
-        ++g_camera_pipe2_drop_count;
-        return;
     }
     if (HAL_DCMIPP_PIPE_SetMemoryAddress(
             &hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_MEMORY_ADDRESS_0,
@@ -805,10 +871,10 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
         ++g_camera_dcmipp_error_count;
         return;
     }
-    (void)sequence;
     g_active_inference = selected;
-    g_next_inference = selected == g_inference_buffer0 ? g_inference_buffer1
-                                                       : g_inference_buffer0;
+    g_next_inference = selected == g_inference_buffer0
+                           ? g_inference_buffer1
+                           : g_inference_buffer0;
 }
 
 extern "C" void DCMIPP_IRQHandler(void)

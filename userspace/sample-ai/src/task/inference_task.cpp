@@ -16,6 +16,35 @@ extern "C" {
 
 namespace uai::ai::task {
 
+struct PrefetchContext {
+    TaskContext *task = nullptr;
+    InferenceMessage message{};
+    bool claimed = false;
+};
+
+memory_allocator::InferenceFrame *ProvidePrefetch(void *context)
+{
+    auto *prefetch = static_cast<PrefetchContext *>(context);
+    if (prefetch == nullptr || prefetch->task == nullptr ||
+        prefetch->claimed) {
+        return nullptr;
+    }
+
+    const INT size = tk_rcv_mbf(prefetch->task->frame_queue,
+                                &prefetch->message, TMO_POL);
+    if (size != static_cast<INT>(sizeof(prefetch->message))) {
+        return nullptr;
+    }
+    const common::Error status =
+        prefetch->task->memory.ClaimInferenceBuffer(prefetch->message.frame);
+    if (!status.Ok()) {
+        LogStatus("memory", status);
+        return nullptr;
+    }
+    prefetch->claimed = true;
+    return &prefetch->message.frame;
+}
+
 void InferenceTask::Entry()
 {
     InferenceTask{}.Run();
@@ -82,23 +111,34 @@ void InferenceTask::Run()
     if (context.diagnostics.inference_fps) {
         fps_window_start = context.Now();
     }
+    InferenceMessage message{};
+    bool have_message = false;
     for (;;) {
-        InferenceMessage message{};
-        const INT size = tk_rcv_mbf(context.frame_queue, &message, TMO_FEVR);
-        if (size != static_cast<INT>(sizeof(message))) {
-            continue;
+        bool message_already_claimed = false;
+        if (!have_message) {
+            const INT size = tk_rcv_mbf(context.frame_queue, &message, TMO_FEVR);
+            if (size != static_cast<INT>(sizeof(message))) {
+                continue;
+            }
+        } else {
+            have_message = false;
+            message_already_claimed = true;
         }
         if (context.diagnostics.inference_fps) {
             ++fps_submitted;
         }
 
-        common::Error status = context.memory.ClaimInferenceBuffer(message.frame);
+        common::Error status{};
+        if (!message_already_claimed) {
+            status = context.memory.ClaimInferenceBuffer(message.frame);
+        }
         if (!status.Ok()) {
             LogStatus("memory", status);
             continue;
         }
 
         memory_allocator::BoxSet boxes{};
+        PrefetchContext prefetch{&context};
         if (inference_enabled) {
             if (context.diagnostics.inference_trace) {
                 UAI_LOG_TRACE(reinterpret_cast<const UB *>(
@@ -123,7 +163,8 @@ void InferenceTask::Run()
                                            context.diagnostics.inference_trace;
             const std::uint32_t inference_start =
                 measure_inference ? context.Now() : 0U;
-            status = runtime.Run(message.frame, &boxes);
+            status = runtime.Run(message.frame, &boxes, ProvidePrefetch,
+                                 &prefetch);
             const std::uint32_t inference_elapsed = measure_inference
                                                         ? context.Now() -
                                                               inference_start
@@ -136,9 +177,14 @@ void InferenceTask::Run()
             }
             if (context.diagnostics.inference_trace &&
                 (message.frame.capture_sequence % 10U) == 0U) {
+                const auto &npu_execution =
+                    runtime.LastNpuStatus().execution;
                 UAI_LOG_TRACE(reinterpret_cast<const UB *>(
-                                  "ai: inference elapsed_ms=%u sequence=%u\n"),
+                                  "ai: inference elapsed_ms=%u npu_elapsed_ms=%u "
+                                  "sequence=%u\n"),
                               static_cast<unsigned int>(inference_elapsed),
+                              static_cast<unsigned int>(
+                                  npu_execution.elapsed_ms),
                               static_cast<unsigned int>(
                                   message.frame.capture_sequence));
             }
@@ -156,6 +202,11 @@ void InferenceTask::Run()
         const common::Error release_status =
             context.memory.ReleaseInferenceBuffer(message.frame);
         LogStatus("memory", release_status);
+        if (prefetch.claimed && !status.Ok()) {
+            const common::Error prefetch_release =
+                context.memory.ReleaseInferenceBuffer(prefetch.message.frame);
+            LogStatus("memory", prefetch_release);
+        }
         if (status.Ok()) {
             if (context.diagnostics.inference_fps) {
                 ++fps_completed;
@@ -183,6 +234,10 @@ void InferenceTask::Run()
                               static_cast<unsigned int>(boxes.capture_sequence),
                               static_cast<unsigned int>(
                                   boxes.person.count + boxes.face.count));
+            }
+            if (prefetch.claimed) {
+                message = prefetch.message;
+                have_message = true;
             }
         } else if (model_status.Ok() && inference_enabled) {
             LogStatus("ai", status);

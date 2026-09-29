@@ -22,6 +22,11 @@ enum class ExecutionState : std::uint8_t {
 struct ExecutionSnapshot {
     ExecutionState state = ExecutionState::kUninitialized;
     std::uint32_t stai_status = 0U;
+    std::uint32_t run_id = 0U;
+    std::uint32_t start_ms = 0U;
+    std::uint32_t end_ms = 0U;
+    std::uint32_t elapsed_ms = 0U;
+    bool timing_valid = false;
 };
 
 struct Status {
@@ -38,6 +43,8 @@ struct Status {
  */
 class NpuDriver final {
 public:
+    using RunProgressCallback = void (*)(void *context);
+
     static common::Error InitializeMemory();
     static void KeepMemoryClocksOnSleep();
 
@@ -55,6 +62,12 @@ public:
     Status GetOutputs(stai_ptr *outputs, stai_size *count) const;
     Status SetOutputs(const stai_ptr *outputs, stai_size count) const;
 
+    /* StartRun submits the current model and returns while the NPU is
+     * executing. WaitRun completes the same submission. Run remains the
+     * blocking convenience operation for callers without prefetching. */
+    Status StartRun();
+    Status WaitRun(RunProgressCallback progress = nullptr,
+                   void *progress_context = nullptr);
     Status Run();
     Status NewInference();
     Status Shutdown();

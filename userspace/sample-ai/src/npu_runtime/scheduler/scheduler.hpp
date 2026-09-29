@@ -22,17 +22,22 @@ public:
     common::Error Initialize();
     /* Selects the next registered model according to scheduler policy. */
     common::Error SelectNext();
+    common::Error Select(models::ModelKind kind);
     common::Error Shutdown();
 
     bool Initialized() const { return initialized_; }
     std::size_t BindingCount() const { return binding_count_; }
     const models::ModelBinding *BindingAt(std::size_t index) const;
     const models::ModelBinding *CurrentBinding() const { return active_; }
+    const models::ModelBinding *NextBinding() const;
     const models::ModelDescriptor *GetDescriptor() const;
 
     common::Error ConfigureActiveDecoder(const models::ModelOutputSpec &spec);
     common::Error PrepareActiveInput(memory_allocator::InferenceFrame &frame,
                                      cache::CacheDriver &cache) const;
+    common::Error PrepareInputFor(const models::ModelBinding &binding,
+                                  memory_allocator::InferenceFrame &frame,
+                                  cache::CacheDriver &cache) const;
     common::Error DecodeActiveOutputs(
         const models::InferenceCompletionContext &context,
         models::ModelResult *result) const;

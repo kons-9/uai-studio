@@ -7,9 +7,12 @@
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "memory_allocator/memory_allocator.hpp"
+#include "npu_runtime/inference_timing.hpp"
 #include "npu_runtime/scheduler/scheduler.hpp"
 
 namespace uai::ai::npu_runtime {
+
+using PrefetchProvider = memory_allocator::InferenceFrame *(*)(void *context);
 
 /*
  * Bridges a selected scheduler model to the camera buffers and application
@@ -25,13 +28,28 @@ public:
                              cache::CacheDriver &cache);
     common::Error RefreshSelectedModel();
     common::Error TryInfer(memory_allocator::InferenceFrame &frame,
-                           memory_allocator::BoxSet *result);
+                           memory_allocator::BoxSet *result,
+                           PrefetchProvider prefetch_provider = nullptr,
+                           void *prefetch_context = nullptr);
+    common::Error PrepareInputFor(const models::ModelBinding &binding,
+                                  memory_allocator::InferenceFrame &frame);
     common::Error Shutdown();
 
     bool Initialized() const { return initialized_; }
     const npu::Status &LastNpuStatus() const { return last_npu_status_; }
+    const InferenceTiming &LastTiming() const { return last_timing_; }
 
 private:
+    struct PrefetchState {
+        InferenceDispatcher *dispatcher = nullptr;
+        PrefetchProvider provider = nullptr;
+        void *provider_context = nullptr;
+        memory_allocator::InferenceFrame *frame = nullptr;
+        common::Error error{};
+        bool prepared = false;
+    };
+
+    static void PreparePrefetch(void *context);
     common::Error ConfigureCurrentModel();
 
     scheduler::Scheduler *scheduler_ = nullptr;
@@ -44,6 +62,7 @@ private:
     std::uint32_t model_sequence_ = 0U;
     std::uint32_t last_error_ = 0U;
     npu::Status last_npu_status_{};
+    InferenceTiming last_timing_{};
 };
 
 } // namespace uai::ai::npu_runtime

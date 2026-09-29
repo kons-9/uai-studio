@@ -36,6 +36,27 @@ namespace {
 
 constexpr std::uint32_t kTimeoutTicks = 5000U;
 
+std::uint32_t NowMs()
+{
+    SYSTIM time = {};
+    return tk_get_otm(&time) == E_OK ? time.lo : 0U;
+}
+
+void BeginExecutionTiming(ExecutionSnapshot &execution)
+{
+    execution.start_ms = NowMs();
+    execution.end_ms = execution.start_ms;
+    execution.elapsed_ms = 0U;
+    execution.timing_valid = false;
+}
+
+void FinishExecutionTiming(ExecutionSnapshot &execution)
+{
+    execution.end_ms = NowMs();
+    execution.elapsed_ms = execution.end_ms - execution.start_ms;
+    execution.timing_valid = true;
+}
+
 void EnableNpuMemory()
 {
     __HAL_RCC_NPU_CLK_ENABLE();
@@ -317,15 +338,21 @@ Status NpuDriver::SetOutputs(const stai_ptr *outputs, stai_size count) const
                         last_execution_};
 }
 
-Status NpuDriver::Run()
+Status NpuDriver::StartRun()
 {
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.run");
     }
+    if (last_execution_.state == ExecutionState::kSubmitted ||
+        last_execution_.state == ExecutionState::kRunning) {
+        return {common::Error{common::ErrorCode::kInvalidState, 0U,
+                              "npu.run.already_active"},
+                last_execution_};
+    }
 
     /* Keep the ref application's asynchronous STAI protocol. The NPU IRQ
-     * wakes this task through a kernel event flag; run_continue() then
-     * consumes the Neural-ART event state and starts the next epoch. */
+     * wakes the waiting task; WaitRun() then consumes the Neural-ART event
+     * state and starts the next epoch. */
     const ER clear_event_status = tk_clr_flg(g_npu_irq_event_flag, 0U);
     if (clear_event_status != E_OK) {
         last_execution_.state = ExecutionState::kFaulted;
@@ -336,26 +363,46 @@ Status NpuDriver::Run()
                 "npu.clear_irq_event"},
                 last_execution_};
     }
+    ++last_execution_.run_id;
+    BeginExecutionTiming(last_execution_);
     stai_return_code code = model_->Run(STAI_MODE_ASYNC);
     last_error_ = static_cast<std::uint32_t>(code);
     last_execution_.state = ExecutionState::kSubmitted;
     last_execution_.stai_status = last_error_;
     if (IsError(code)) {
+        FinishExecutionTiming(last_execution_);
         last_execution_.state = ExecutionState::kFaulted;
         return {common::Error{common::ErrorCode::kNpu, last_error_,
                               "npu.run"},
                 last_execution_};
     }
 
+    last_execution_.state = ExecutionState::kRunning;
+    return {common::Error{common::ErrorCode::kOk, 0U, "npu.start_run"},
+            last_execution_};
+}
+
+Status NpuDriver::WaitRun(RunProgressCallback progress,
+                          void *progress_context)
+{
+    if (!initialized_ || model_ == nullptr) {
+        return InvalidState("npu.wait_run");
+    }
+    if (last_execution_.state != ExecutionState::kSubmitted &&
+        last_execution_.state != ExecutionState::kRunning) {
+        return InvalidState("npu.wait_run.not_active");
+    }
+
     bool completed = false;
     for (std::uint32_t tick = 0U; tick < kTimeoutTicks; ++tick) {
-        code = model_->GetRunStatus();
+        stai_return_code code = model_->GetRunStatus();
         last_error_ = static_cast<std::uint32_t>(code);
         if (code == STAI_DONE) {
             completed = true;
             break;
         }
         if (IsError(code)) {
+            FinishExecutionTiming(last_execution_);
             last_execution_.state = ExecutionState::kFaulted;
             last_execution_.stai_status = last_error_;
             UAI_LOG_ERROR(reinterpret_cast<const UB *>(
@@ -365,6 +412,12 @@ Status NpuDriver::Run()
             return {common::Error{common::ErrorCode::kNpu, last_error_,
                                   "npu.run"},
                     last_execution_};
+        }
+
+        /* Give the caller a chance to prepare the next frame only while the
+         * current NPU run is still active. */
+        if (progress != nullptr) {
+            progress(progress_context);
         }
 
         /* The generated ST.AI runtime distinguishes two kinds of wait:
@@ -382,6 +435,7 @@ Status NpuDriver::Run()
                 break;
             }
             if (wait_status != E_OK) {
+                FinishExecutionTiming(last_execution_);
                 last_execution_.state = ExecutionState::kFaulted;
                 last_execution_.stai_status =
                     static_cast<std::uint32_t>(wait_status);
@@ -394,6 +448,7 @@ Status NpuDriver::Run()
         code = model_->ContinueRun();
         last_error_ = static_cast<std::uint32_t>(code);
         if (IsError(code)) {
+            FinishExecutionTiming(last_execution_);
             last_execution_.state = ExecutionState::kFaulted;
             last_execution_.stai_status = last_error_;
             return {common::Error{common::ErrorCode::kNpu, last_error_,
@@ -403,6 +458,7 @@ Status NpuDriver::Run()
     }
 
     if (!completed) {
+        FinishExecutionTiming(last_execution_);
         last_execution_.state = ExecutionState::kTimedOut;
         last_execution_.stai_status = last_error_;
         const registers::NpuRegisterSnapshot timeout_hardware =
@@ -431,10 +487,20 @@ Status NpuDriver::Run()
                 last_execution_};
     }
 
+    FinishExecutionTiming(last_execution_);
     last_execution_.state = ExecutionState::kCompleted;
     last_execution_.stai_status = STAI_DONE;
-    return {common::Error{common::ErrorCode::kOk, 0U, "npu.run"},
+    return {common::Error{common::ErrorCode::kOk, 0U, "npu.wait_run"},
             last_execution_};
+}
+
+Status NpuDriver::Run()
+{
+    Status status = StartRun();
+    if (!status.Ok()) {
+        return status;
+    }
+    return WaitRun();
 }
 
 Status NpuDriver::NewInference()

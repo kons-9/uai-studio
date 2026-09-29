@@ -91,6 +91,11 @@ common::Error Scheduler::SelectNext()
     return SelectModel(next->kind);
 }
 
+common::Error Scheduler::Select(models::ModelKind kind)
+{
+    return SelectModel(kind);
+}
+
 common::Error Scheduler::SelectModel(models::ModelKind kind)
 {
     if (!initialized_ || active_ == nullptr) {
@@ -112,6 +117,24 @@ common::Error Scheduler::SelectModel(models::ModelKind kind)
 const models::ModelBinding *Scheduler::BindingAt(std::size_t index) const
 {
     return index < binding_count_ ? &bindings_[index] : nullptr;
+}
+
+const models::ModelBinding *Scheduler::NextBinding() const
+{
+    if (!initialized_ || active_ == nullptr || binding_count_ == 0U) {
+        return nullptr;
+    }
+
+    std::size_t active_index = 0U;
+    for (; active_index < binding_count_; ++active_index) {
+        if (BindingAt(active_index) == active_) {
+            break;
+        }
+    }
+    if (active_index >= binding_count_) {
+        return nullptr;
+    }
+    return BindingAt((active_index + 1U) % binding_count_);
 }
 
 const models::ModelBinding *Scheduler::Find(models::ModelKind kind) const
@@ -181,12 +204,17 @@ common::Error Scheduler::PrepareActiveInput(
     if (!initialized_ || active_ == nullptr) {
         return InvalidState("npu_runtime.scheduler.prepare_input");
     }
-    if (active_->model == nullptr) {
-        return {common::ErrorCode::kModel,
-                static_cast<std::uint32_t>(active_->kind),
-                "npu_runtime.scheduler.input_model"};
+    return PrepareInputFor(*active_, frame, cache);
+}
+
+common::Error Scheduler::PrepareInputFor(
+    const models::ModelBinding &binding,
+    memory_allocator::InferenceFrame &frame, cache::CacheDriver &cache) const
+{
+    if (!initialized_ || binding.model == nullptr) {
+        return InvalidState("npu_runtime.scheduler.prepare_input");
     }
-    return active_->model->PrepareInput(frame, cache);
+    return binding.model->PrepareInput(frame, cache);
 }
 
 common::Error Scheduler::ConvertActiveResult(

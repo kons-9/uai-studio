@@ -10,6 +10,8 @@ extern "C" {
 namespace uai::ai::lcd::registers {
 namespace {
 
+using StaticMemoryKey = static_memory_layout::Key;
+
 constexpr std::uint32_t kDisplayInstance = 0U;
 constexpr std::uint32_t kDisplayLayer = 0U;
 constexpr std::uint32_t kDisplayWidth = 800U;
@@ -29,7 +31,8 @@ uai::driver::DriverStatus LcdRegisterLayer::Initialize()
 
     BSP_LCD_LayerConfig_t layer{};
     layer.Address = static_cast<std::uint32_t>(
-        static_memory_layout::kLayout.display[0].address());
+        static_memory_layout::kLayout.Get(StaticMemoryKey::kDisplay0)
+            .address());
     layer.PixelFormat = LCD_PIXEL_FORMAT_RGB565;
     layer.X0 = 0U;
     layer.X1 = kDisplayWidth;

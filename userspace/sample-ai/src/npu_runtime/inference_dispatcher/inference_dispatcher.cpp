@@ -5,9 +5,39 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <tk/tkernel.h>
+
 namespace uai::ai::npu_runtime {
 
 namespace {
+
+std::uint32_t NowMs()
+{
+    SYSTIM time = {};
+    return tk_get_otm(&time) == E_OK ? time.lo : 0U;
+}
+
+class PhaseTimingScope final {
+public:
+    explicit PhaseTimingScope(InferencePhaseTiming &timing)
+        : timing_(timing)
+    {
+        timing_.start_ms = NowMs();
+        timing_.end_ms = timing_.start_ms;
+        timing_.elapsed_ms = 0U;
+        timing_.valid = false;
+    }
+
+    ~PhaseTimingScope()
+    {
+        timing_.end_ms = NowMs();
+        timing_.elapsed_ms = timing_.end_ms - timing_.start_ms;
+        timing_.valid = true;
+    }
+
+private:
+    InferencePhaseTiming &timing_;
+};
 
 models::ModelOutputSpec BuildOutputSpec(const stai_network_info &info)
 {
@@ -105,6 +135,7 @@ common::Error InferenceDispatcher::Shutdown()
     model_sequence_ = 0U;
     last_error_ = 0U;
     last_npu_status_ = {};
+    last_timing_.Reset();
     return {common::ErrorCode::kOk, 0U, "ai.dispatcher.shutdown"};
 }
 
@@ -157,9 +188,66 @@ common::Error InferenceDispatcher::ConfigureCurrentModel()
     return {common::ErrorCode::kOk, 0U, "ai.dispatcher.configure"};
 }
 
+common::Error InferenceDispatcher::PrepareInputFor(
+    const models::ModelBinding &binding,
+    memory_allocator::InferenceFrame &frame)
+{
+    if (!initialized_ || scheduler_ == nullptr || cache_ == nullptr) {
+        return {common::ErrorCode::kNotInitialized,
+                0U, "ai.dispatcher.prepare_input"};
+    }
+    if (!frame || binding.model == nullptr) {
+        return {common::ErrorCode::kInvalidArgument,
+                0U, "ai.dispatcher.prepare_input"};
+    }
+
+    const std::uint32_t start_ms = NowMs();
+    const common::Error status =
+        scheduler_->PrepareInputFor(binding, frame, *cache_);
+    const std::uint32_t end_ms = NowMs();
+    if (!status.Ok()) {
+        return status;
+    }
+
+    frame.input_prepared = true;
+    frame.prepared_model_kind_id = static_cast<std::uint8_t>(binding.kind);
+    frame.input_preparation_start_ms = start_ms;
+    frame.input_preparation_end_ms = end_ms;
+    frame.input_preparation_elapsed_ms = end_ms - start_ms;
+    return {common::ErrorCode::kOk, 0U, "ai.dispatcher.prepare_input"};
+}
+
+void InferenceDispatcher::PreparePrefetch(void *context)
+{
+    auto *prefetch = static_cast<PrefetchState *>(context);
+    if (prefetch == nullptr || prefetch->dispatcher == nullptr ||
+        prefetch->provider == nullptr || prefetch->prepared ||
+        !prefetch->error.Ok()) {
+        return;
+    }
+
+    memory_allocator::InferenceFrame *frame =
+        prefetch->provider(prefetch->provider_context);
+    if (frame == nullptr) {
+        return;
+    }
+    prefetch->frame = frame;
+    const models::ModelBinding *binding =
+        prefetch->dispatcher->scheduler_->NextBinding();
+    if (binding == nullptr) {
+        prefetch->error = {common::ErrorCode::kModel, 0U,
+                           "ai.prefetch.next_model"};
+        return;
+    }
+    prefetch->error = prefetch->dispatcher->PrepareInputFor(*binding, *frame);
+    prefetch->prepared = prefetch->error.Ok();
+}
+
 common::Error InferenceDispatcher::TryInfer(
     memory_allocator::InferenceFrame &frame,
-    memory_allocator::BoxSet *result)
+    memory_allocator::BoxSet *result,
+    PrefetchProvider prefetch_provider,
+    void *prefetch_context)
 {
     if (!initialized_ || scheduler_ == nullptr || npu_ == nullptr ||
         cache_ == nullptr) {
@@ -169,6 +257,8 @@ common::Error InferenceDispatcher::TryInfer(
         return {common::ErrorCode::kInvalidArgument, 0U, "ai.infer"};
     }
 
+    last_timing_.Reset();
+
     result->person = {};
     result->face = {};
     result->segmentation = {};
@@ -177,14 +267,44 @@ common::Error InferenceDispatcher::TryInfer(
     result->segmentation_valid = false;
     result->capture_sequence = frame.capture_sequence;
     result->model_sequence = ++model_sequence_;
+    last_timing_.sequence = result->model_sequence;
 
     const models::ModelDescriptor *descriptor = scheduler_->GetDescriptor();
     if (descriptor == nullptr) {
         return {common::ErrorCode::kModel, 0U, "ai.model_descriptor"};
     }
-    common::Error status = scheduler_->PrepareActiveInput(frame, *cache_);
-    if (!status.Ok()) {
-        return status;
+    const std::uint8_t active_model_kind_id =
+        static_cast<std::uint8_t>(descriptor->kind);
+    const bool input_prepared_for_active_model =
+        frame.input_prepared &&
+        frame.prepared_model_kind_id == active_model_kind_id;
+    if (frame.input_prepared && !input_prepared_for_active_model) {
+        return {common::ErrorCode::kModel,
+                frame.prepared_model_kind_id,
+                "ai.input.prepared_model_mismatch"};
+    }
+
+    common::Error status;
+    std::uint32_t input_preparation_start_ms =
+        input_prepared_for_active_model
+            ? frame.input_preparation_start_ms
+            : NowMs();
+    std::uint32_t input_preparation_end_ms =
+        input_prepared_for_active_model
+            ? frame.input_preparation_end_ms
+            : input_preparation_start_ms;
+    std::uint32_t input_preparation_elapsed_ms =
+        input_prepared_for_active_model
+            ? frame.input_preparation_elapsed_ms
+            : 0U;
+    if (!input_prepared_for_active_model) {
+        status = scheduler_->PrepareActiveInput(frame, *cache_);
+        if (!status.Ok()) {
+            return status;
+        }
+        input_preparation_end_ms = NowMs();
+        input_preparation_elapsed_ms =
+            input_preparation_end_ms - input_preparation_start_ms;
     }
     if (frame.buffer.size < info_.inputs[0].size_bytes) {
         UAI_LOG_WARN(reinterpret_cast<const UB *>(
@@ -199,7 +319,8 @@ common::Error InferenceDispatcher::TryInfer(
         UAI_LOG_WARN(reinterpret_cast<const UB *>(
                          "ai: input rejected source_not_pipe2 model=%s\n"),
                      reinterpret_cast<const UB *>(descriptor->name));
-        return {common::ErrorCode::kInvalidArgument, 2U, "ai.direct_input"};
+        return {common::ErrorCode::kInvalidArgument, 2U,
+                "ai.direct_input"};
     }
 
     const memory_allocator::Buffer input_buffer{
@@ -237,8 +358,7 @@ common::Error InferenceDispatcher::TryInfer(
                         static_cast<std::uint32_t>(i),
                         "ai.dynamic_output_buffer"};
             }
-            dynamic_output_ptrs[i] =
-                reinterpret_cast<stai_ptr>(output.address);
+            dynamic_output_ptrs[i] = reinterpret_cast<stai_ptr>(output.address);
         }
         last_npu_status_ = npu_->SetOutputs(dynamic_output_ptrs,
                                             info_.n_outputs);
@@ -251,47 +371,102 @@ common::Error InferenceDispatcher::TryInfer(
         }
     }
 
-    last_npu_status_ = npu_->Run();
+    const std::uint32_t input_submission_end_ms = NowMs();
+    auto &input_phase = last_timing_.At(InferencePhase::kInputPreparation);
+    input_phase.start_ms = input_preparation_start_ms;
+    input_phase.end_ms = input_preparation_end_ms;
+    input_phase.elapsed_ms = input_preparation_elapsed_ms;
+    input_phase.valid = true;
+
+    /* A prefetched frame may have been prepared while the previous NPU run
+     * was active. Keep that wait separate from the model's actual CPU input
+     * preparation so the phase chart does not attribute the whole overlap to
+     * the model preprocessor. */
+    auto &input_wait_phase =
+        last_timing_.At(InferencePhase::kInputPreparationWait);
+    input_wait_phase.start_ms = input_preparation_end_ms;
+    input_wait_phase.end_ms = input_submission_end_ms;
+    input_wait_phase.elapsed_ms =
+        input_submission_end_ms - input_preparation_end_ms;
+    input_wait_phase.valid = true;
+
+    last_npu_status_ = npu_->StartRun();
+    if (!last_npu_status_.Ok()) {
+        last_npu_status_.execution = npu_->LastExecution();
+        return last_npu_status_.error;
+    }
+
+    PrefetchState prefetch{this, prefetch_provider, prefetch_context};
+    PreparePrefetch(&prefetch);
+    last_npu_status_ = npu_->WaitRun(&PreparePrefetch, &prefetch);
+    /* Refresh the value copied into Status so phase tracing also sees the
+     * finalized start/end snapshot. */
+    last_npu_status_.execution = npu_->LastExecution();
     status = last_npu_status_.error;
     last_error_ = status.detail;
+    const auto &execution = last_npu_status_.execution;
+    if (execution.timing_valid) {
+        auto &phase = last_timing_.At(InferencePhase::kNpuExecution);
+        phase.start_ms = execution.start_ms;
+        phase.end_ms = execution.end_ms;
+        phase.elapsed_ms = execution.elapsed_ms;
+        phase.valid = true;
+    }
     if (!status.Ok()) {
         return status;
     }
-    for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
-        const memory_allocator::Buffer output_buffer =
-            dynamic_outputs_
-                ? frame.outputs[i]
-                : memory_allocator::Buffer{
-                      reinterpret_cast<std::uintptr_t>(outputs_[i]),
-                      info_.outputs[i].size_bytes, 0U,
-                      memory_allocator::Region::kInference};
-        status = cache_->PrepareForCpuRead(output_buffer);
+    if (!prefetch.error.Ok()) {
+        return prefetch.error;
+    }
+
+    models::ModelOutputView output_view{};
+    models::InferenceGeometry geometry{};
+    {
+        PhaseTimingScope phase(
+            last_timing_.At(InferencePhase::kOutputPreparation));
+        for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
+            const memory_allocator::Buffer output_buffer =
+                dynamic_outputs_
+                    ? frame.outputs[i]
+                    : memory_allocator::Buffer{
+                          reinterpret_cast<std::uintptr_t>(outputs_[i]),
+                          info_.outputs[i].size_bytes, 0U,
+                          memory_allocator::Region::kInference};
+            status = cache_->PrepareForCpuRead(output_buffer);
+            if (!status.Ok()) {
+                return status;
+            }
+        }
+
+        output_view.count = info_.n_outputs;
+        for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
+            output_view.tensors[i].data = outputs_[i];
+            output_view.tensors[i].spec.size_bytes = info_.outputs[i].size_bytes;
+            output_view.tensors[i].spec.scale = info_.outputs[i].scale.data[0];
+            output_view.tensors[i].spec.zero_point =
+                info_.outputs[i].zeropoint.data[0];
+        }
+        geometry = BuildInferenceGeometry(*descriptor, frame.from_pipe2);
+    }
+
+    const models::InferenceCompletionContext context{output_view, geometry};
+    models::ModelResult decoded_result{};
+    {
+        PhaseTimingScope phase(
+            last_timing_.At(InferencePhase::kOutputDecoding));
+        status = scheduler_->DecodeActiveOutputs(context, &decoded_result);
         if (!status.Ok()) {
             return status;
         }
     }
 
-    models::ModelOutputView output_view{};
-    output_view.count = info_.n_outputs;
-    for (std::uint16_t i = 0U; i < info_.n_outputs; ++i) {
-        output_view.tensors[i].data = outputs_[i];
-        output_view.tensors[i].spec.size_bytes = info_.outputs[i].size_bytes;
-        output_view.tensors[i].spec.scale = info_.outputs[i].scale.data[0];
-        output_view.tensors[i].spec.zero_point =
-            info_.outputs[i].zeropoint.data[0];
-    }
-    const models::InferenceGeometry geometry =
-        BuildInferenceGeometry(*descriptor, frame.from_pipe2);
-    const models::InferenceCompletionContext context{output_view, geometry};
-    models::ModelResult decoded_result{};
-    status = scheduler_->DecodeActiveOutputs(context, &decoded_result);
-    if (!status.Ok()) {
-        return status;
-    }
-
-    status = scheduler_->ConvertActiveResult(decoded_result, result);
-    if (!status.Ok()) {
-        return status;
+    {
+        PhaseTimingScope phase(
+            last_timing_.At(InferencePhase::kResultConversion));
+        status = scheduler_->ConvertActiveResult(decoded_result, result);
+        if (!status.Ok()) {
+            return status;
+        }
     }
 
     last_npu_status_ = npu_->NewInference();

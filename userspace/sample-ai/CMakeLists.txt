@@ -195,6 +195,7 @@ add_executable(sample-ai.elf
     src/npu_runtime/npu_runtime.cpp
     src/npu_runtime/scheduler/scheduler.cpp
     src/npu_runtime/inference_dispatcher/inference_dispatcher.cpp
+    src/npu_runtime/thread_monitor/thread_monitor.cpp
     ${AI_MODEL_SOURCES}
     # Project-owned ref-compatible BSP with a reset fallback for NOR left in
     # OPI-DTR by the external loader.

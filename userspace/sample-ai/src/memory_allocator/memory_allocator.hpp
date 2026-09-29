@@ -121,6 +121,8 @@ struct DisplayBuffer {
 };
 
 struct InferenceFrame {
+    static constexpr std::uint8_t kUnknownModelKindId = 0xFFU;
+
     Buffer buffer{};
     Buffer scratch{};
     Buffer outputs[kConfig.model_output_bytes.size()]{};
@@ -128,6 +130,11 @@ struct InferenceFrame {
     std::uint32_t capture_sequence = 0U;
     bool from_pipe2 = false;
     bool input_prepared_by_cpu = false;
+    bool input_prepared = false;
+    std::uint8_t prepared_model_kind_id = kUnknownModelKindId;
+    std::uint32_t input_preparation_start_ms = 0U;
+    std::uint32_t input_preparation_end_ms = 0U;
+    std::uint32_t input_preparation_elapsed_ms = 0U;
 
     explicit operator bool() const { return static_cast<bool>(buffer); }
 };

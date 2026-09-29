@@ -28,6 +28,10 @@ MEMORY
   PSRAM_INFERENCE (rwx) : ORIGIN = 0x91400000, LENGTH = 0x00200000
   PSRAM_RAW_DUMP (rwx) : ORIGIN = 0x91600000, LENGTH = 0x00400000
   PSRAM_MASK (rwx) : ORIGIN = 0x91A00000, LENGTH = 0x00040000
+  /* A DMA-only sink used when both inference buffers are owned by the AI
+   * pipeline.  Pipe2 must never overwrite a buffer which CPU preprocessing or
+   * the NPU still owns. */
+  PSRAM_PIPE2_DROP (rwx) : ORIGIN = 0x91A40000, LENGTH = 0x00100000
   PSRAM_SCRATCH (rwx) : ORIGIN = 0x91C00000, LENGTH = 0x00100000
 }
 
@@ -207,6 +211,16 @@ SECTIONS
     . = . + 0x1000;
   } >APP
 
+  /* Keep the monitor trace in internal RAM. Unlike mapped PSRAM, this can be
+   * read through SWD after the CPU has been halted following a fault. */
+  .sample_ai_thread_monitor (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __sample_ai_thread_monitor_start__ = .;
+    . = . + 0x00010000;
+    __sample_ai_thread_monitor_end__ = .;
+  } >APP
+
   __end = .;
   _end = .;
   PROVIDE(end = .);
@@ -264,6 +278,14 @@ SECTIONS
     . = . + 0x00020000;
     __sample_ai_segmentation_mask1_end__ = .;
   } >PSRAM_MASK
+
+  .sample_ai_pipe2_drop (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __sample_ai_pipe2_drop_start__ = .;
+    . = . + 0x00100000;
+    __sample_ai_pipe2_drop_end__ = .;
+  } >PSRAM_PIPE2_DROP
 
   .sample_ai_inference_scratch (NOLOAD) :
   {

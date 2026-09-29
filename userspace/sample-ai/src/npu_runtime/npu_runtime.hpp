@@ -6,8 +6,10 @@
 #include "driver/npu_driver/npu_driver.hpp"
 #include "memory_allocator/memory_allocator.hpp"
 #include "models/model.hpp"
+#include "npu_runtime/inference_timing.hpp"
 #include "npu_runtime/inference_dispatcher/inference_dispatcher.hpp"
 #include "npu_runtime/scheduler/scheduler.hpp"
+#include "npu_runtime/thread_monitor/thread_monitor.hpp"
 
 namespace uai::ai::npu_runtime {
 
@@ -21,7 +23,9 @@ public:
     common::Error RegisterModel(const models::ModelBinding &binding);
     common::Error Initialize(cache::CacheDriver &cache);
     common::Error Run(memory_allocator::InferenceFrame &frame,
-                      memory_allocator::BoxSet *result);
+                      memory_allocator::BoxSet *result,
+                      PrefetchProvider prefetch_provider = nullptr,
+                      void *prefetch_context = nullptr);
     common::Error Shutdown();
 
     bool Initialized() const { return initialized_; }
@@ -31,6 +35,8 @@ private:
     scheduler::Scheduler scheduler_{};
     npu::NpuDriver npu_{};
     InferenceDispatcher dispatcher_{};
+    ThreadMonitor thread_monitor_{};
+    InferenceTiming last_inference_timing_{};
     bool initialized_ = false;
     bool inference_started_ = false;
     npu::Status last_npu_status_{};
