@@ -2,11 +2,12 @@
 #define UAI_AI_MODELS_PERSON_FUTURE_HPP
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 
-#include "middleware/ai_runtime/pipeline.hpp"
+#include "middleware/ai_runtime/pipeline_types.hpp"
 #include "memory_allocator/memory_allocator.hpp"
-#include "models/person/model.hpp"
+#include "stai.h"
 
 namespace uai::ai::cache {
 class CacheDriver;
@@ -23,7 +24,6 @@ using PublishCallback = void (*)(void *, const memory_allocator::BoxSet &);
 /* Runtime resources supplied by the application when a frame is submitted.
  * The Future owns the inference state; the application owns these services. */
 struct FutureContext {
-    Model *model = nullptr;
     npu::NpuDriver *npu = nullptr;
     cache::CacheDriver *cache = nullptr;
     const stai_network_info *info = nullptr;
@@ -35,11 +35,21 @@ struct FutureContext {
  * through its three execution lanes; it does not know model-specific stages. */
 class Future final : public ai_runtime::AiFuture {
 public:
+    static constexpr std::uint32_t kInputWidth = 480U;
+    static constexpr std::uint32_t kInputHeight = 480U;
+
     enum class Phase : std::uint32_t {
         kPreprocess,
         kNpu,
         kPostprocess,
     };
+
+    static constexpr std::size_t InputBytes()
+    {
+        return static_cast<std::size_t>(kInputWidth) * kInputHeight * 3U;
+    }
+
+    static common::Error ConfigureDecoder(const stai_network_info &info);
 
     void Reset(const FutureContext &context,
                const memory_allocator::InferenceFrame &frame);

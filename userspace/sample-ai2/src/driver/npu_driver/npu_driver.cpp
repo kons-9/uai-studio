@@ -216,7 +216,7 @@ Status NpuDriver::InvalidState(const char *operation) const
             last_execution_};
 }
 
-Status NpuDriver::Initialize(models::ModelRuntime &model)
+Status NpuDriver::Initialize(NpuNetwork &model)
 {
     if (initialized_) {
         for (std::uint32_t i = 0U; i < loaded_model_count_; ++i) {
@@ -295,7 +295,7 @@ Status NpuDriver::Initialize(models::ModelRuntime &model)
             last_execution_};
 }
 
-Status NpuDriver::Preload(models::ModelRuntime &model)
+Status NpuDriver::Preload(NpuNetwork &model)
 {
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.preload");
@@ -340,7 +340,7 @@ Status NpuDriver::Preload(models::ModelRuntime &model)
             last_execution_};
 }
 
-Status NpuDriver::SelectModel(models::ModelRuntime &model)
+Status NpuDriver::SelectModel(NpuNetwork &model)
 {
     if (!initialized_) {
         return InvalidState("npu.select_model");
@@ -360,7 +360,7 @@ Status NpuDriver::SelectModel(models::ModelRuntime &model)
             last_execution_};
 }
 
-bool NpuDriver::IsLoaded(const models::ModelRuntime &model) const
+bool NpuDriver::IsLoaded(const NpuNetwork &model) const
 {
     for (std::uint32_t i = 0U; i < loaded_model_count_; ++i) {
         if (loaded_models_[i] == &model) {
@@ -383,23 +383,6 @@ Status NpuDriver::GetInfo(stai_network_info *info) const
                         last_execution_}
                : Status{common::Error{common::ErrorCode::kOk, 0U,
                                       "npu.get_info"},
-                        last_execution_};
-}
-
-Status NpuDriver::GetInputs(stai_ptr *inputs, stai_size *count) const
-{
-    if (!initialized_ || model_ == nullptr || inputs == nullptr ||
-        count == nullptr) {
-        return InvalidState("npu.get_inputs");
-    }
-    const stai_return_code code = model_->GetInputs(inputs, count);
-    return IsError(code)
-               ? Status{common::Error{common::ErrorCode::kModel,
-                                      static_cast<std::uint32_t>(code),
-                                      "npu.get_inputs"},
-                        last_execution_}
-               : Status{common::Error{common::ErrorCode::kOk, 0U,
-                                      "npu.get_inputs"},
                         last_execution_};
 }
 

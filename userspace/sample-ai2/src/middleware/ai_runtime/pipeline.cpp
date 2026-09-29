@@ -1,4 +1,4 @@
-#include "middleware/ai_runtime/pipeline.hpp"
+#include "middleware/ai_runtime/pipeline_runtime.hpp"
 
 namespace uai::ai::ai_runtime {
 namespace {

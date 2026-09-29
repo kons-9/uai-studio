@@ -38,12 +38,7 @@
 #include "../../../models/person/stai_network.c"
 
 #include <stdint.h>
-
-typedef void (*person_epoch_trace_callback)(void *context,
-                                             uint32_t callback_type,
-                                             uint32_t epoch_index,
-                                             uint32_t epoch_flags,
-                                             uintptr_t epoch_address);
+#include "c_wrapper.h"
 
 typedef struct {
   person_epoch_trace_callback callback;

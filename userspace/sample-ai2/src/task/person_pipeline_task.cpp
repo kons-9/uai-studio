@@ -4,9 +4,9 @@
 
 #include "common/log.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
-#include "middleware/ai_runtime/pipeline.hpp"
+#include "middleware/ai_runtime/pipeline_dispatcher.hpp"
 #include "models/person/future.hpp"
-#include "models/person/model.hpp"
+#include "models/person/npu_model.hpp"
 #include "task/task_context.hpp"
 #include "task/task_diagnostics.hpp"
 
@@ -24,7 +24,7 @@ struct PersonApplication;
 PersonApplication &App();
 
 struct PersonApplication {
-    models::person::Model model{};
+    models::person::NpuModel npu_model{};
     npu::NpuDriver npu{};
     ai_runtime::PipelineRuntime pipeline{};
     ai_runtime::Scheduler scheduler{pipeline};
@@ -71,19 +71,18 @@ struct PersonApplication {
 
     common::Error Initialize(TaskContext &context)
     {
-        npu::Status result = npu.Initialize(models::person::Runtime(model));
+        npu::Status result = npu.Initialize(npu_model);
         if (!result.Ok()) return result.error;
         result = npu.GetInfo(&info);
         if (!result.Ok()) return result.error;
         if (info.n_inputs != 1U || info.inputs == nullptr ||
-            info.n_outputs == 0U || info.n_outputs > models::kMaxModelOutputs ||
+            info.n_outputs == 0U ||
+            info.n_outputs > memory_allocator::kConfig.model_output_bytes.size() ||
             info.outputs == nullptr ||
-            info.inputs[0].size_bytes !=
-                static_cast<std::size_t>(model.GetDescriptor().input_width) *
-                    model.GetDescriptor().input_height * 3U) {
+            info.inputs[0].size_bytes != models::person::Future::InputBytes()) {
             return {common::ErrorCode::kModel, 0U, "person_pipeline.model_info"};
         }
-        stai_ptr outputs[models::kMaxModelOutputs]{};
+        stai_ptr outputs[memory_allocator::kConfig.model_output_bytes.size()]{};
         stai_size count = 0U;
         result = npu.GetOutputs(outputs, &count);
         if (!result.Ok()) return result.error;
@@ -100,21 +99,8 @@ struct PersonApplication {
                         "person_pipeline.output_ownership"};
             }
         }
-        const models::ModelCallbacks callbacks = model.GetCallbacks();
-        if (callbacks.configure == nullptr ||
-            callbacks.on_inference_complete == nullptr ||
-            callbacks.user_data == nullptr) {
-            return {common::ErrorCode::kModel, 0U,
-                    "person_pipeline.decoder_callbacks"};
-        }
-        models::ModelOutputSpec spec{};
-        spec.count = info.n_outputs;
-        for (std::uint16_t i = 0U; i < spec.count; ++i) {
-            spec.tensors[i] = {info.outputs[i].size_bytes,
-                               info.outputs[i].scale.data[0],
-                               info.outputs[i].zeropoint.data[0]};
-        }
-        const common::Error status = callbacks.configure(spec, callbacks.user_data);
+        const common::Error status =
+            models::person::Future::ConfigureDecoder(info);
         if (!status.Ok()) return status;
         pipeline.SetCriticalSection(&EnterCritical, &LeaveCritical, nullptr);
         pipeline.SetObserver(&OnDone, &context);
@@ -244,7 +230,6 @@ void PersonPipelineTask::FrameEntry()
         }
         if (available != nullptr) {
             const models::person::FutureContext future_context{
-                &g_app.model,
                 &g_app.npu,
                 &task.cache,
                 &g_app.info,

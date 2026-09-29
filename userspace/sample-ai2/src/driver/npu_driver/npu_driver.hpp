@@ -4,8 +4,8 @@
 #include <cstdint>
 
 #include "common/error.hpp"
+#include "driver/npu_driver/npu_network.hpp"
 #include "driver/npu_driver/registers/npu_registers.hpp"
-#include "models/model.hpp"
 
 namespace uai::ai::npu {
 
@@ -78,16 +78,15 @@ public:
     static common::Error InitializeMemory();
     static void KeepMemoryClocksOnSleep();
 
-    Status Initialize(models::ModelRuntime &model);
+    Status Initialize(NpuNetwork &model);
     /* Initialize a second generated network while the shared ATON runtime is
      * already alive.  This copies its command blob into its runtime buffer so
      * a later model switch does not have to read the external flash again. */
-    Status Preload(models::ModelRuntime &model);
-    Status SelectModel(models::ModelRuntime &model);
-    bool IsLoaded(const models::ModelRuntime &model) const;
+    Status Preload(NpuNetwork &model);
+    Status SelectModel(NpuNetwork &model);
+    bool IsLoaded(const NpuNetwork &model) const;
 
     Status GetInfo(stai_network_info *info) const;
-    Status GetInputs(stai_ptr *inputs, stai_size *count) const;
     Status SetInput(stai_ptr input, stai_size size) const;
     Status GetOutputs(stai_ptr *outputs, stai_size *count) const;
     Status SetOutputs(const stai_ptr *outputs, stai_size count) const;
@@ -136,8 +135,8 @@ private:
     static bool IsError(stai_return_code code);
     Status InvalidState(const char *operation) const;
 
-    models::ModelRuntime *model_ = nullptr;
-    models::ModelRuntime *loaded_models_[3] = {};
+    NpuNetwork *model_ = nullptr;
+    NpuNetwork *loaded_models_[3] = {};
     std::uint32_t loaded_model_count_ = 0U;
     registers::NpuRegisterLayer registers_{};
     ExecutionSnapshot last_execution_{};

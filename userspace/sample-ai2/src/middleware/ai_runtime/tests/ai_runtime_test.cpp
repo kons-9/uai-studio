@@ -1,4 +1,4 @@
-#include "middleware/ai_runtime/pipeline.hpp"
+#include "middleware/ai_runtime/pipeline_dispatcher.hpp"
 
 #include <cassert>
 #include <cstdint>

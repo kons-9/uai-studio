@@ -152,11 +152,9 @@ set(AI_MODEL_TARGET sample-ai2_models)
 set(AI_MODEL_INCLUDE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/models/person")
 set(AI_MODEL_C_API_SOURCES
-    "${AI_SRC_DIR}/models/person/model_person.c")
+    "${AI_SRC_DIR}/models/person/c_wrapper.c")
 set(AI_MODEL_SOURCES
-    "${AI_SRC_DIR}/models/model.cpp"
-    "${AI_SRC_DIR}/models/person/model.cpp"
-    "${AI_SRC_DIR}/models/person/person_decoder.cpp"
+    "${AI_SRC_DIR}/models/person/npu_model.cpp"
     "${AI_SRC_DIR}/models/person/future.cpp")
 set(AI_MODEL_EXTRA_SOURCES
     "${AI_VISION_MODELS_PP_DIR}/Src/od_pp_st_yolox.c"
