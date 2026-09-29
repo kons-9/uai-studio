@@ -25,14 +25,18 @@ MEMORY
    * duplicating physical addresses in allocator or driver code. */
   PSRAM_CAPTURE (rwx) : ORIGIN = 0x91000000, LENGTH = 0x00200000
   PSRAM_DISPLAY (rwx) : ORIGIN = 0x91200000, LENGTH = 0x00200000
-  PSRAM_INFERENCE (rwx) : ORIGIN = 0x91400000, LENGTH = 0x00200000
-  PSRAM_RAW_DUMP (rwx) : ORIGIN = 0x91600000, LENGTH = 0x00400000
-  PSRAM_MASK (rwx) : ORIGIN = 0x91A00000, LENGTH = 0x00040000
+  PSRAM_INFERENCE (rwx) : ORIGIN = 0x91400000, LENGTH = 0x00300000
+  PSRAM_RAW_DUMP (rwx) : ORIGIN = 0x91700000, LENGTH = 0x00400000
+  PSRAM_MASK (rwx) : ORIGIN = 0x91B00000, LENGTH = 0x00040000
   /* A DMA-only sink used when both inference buffers are owned by the AI
    * pipeline.  Pipe2 must never overwrite a buffer which CPU preprocessing or
    * the NPU still owns. */
-  PSRAM_PIPE2_DROP (rwx) : ORIGIN = 0x91A40000, LENGTH = 0x00100000
-  PSRAM_SCRATCH (rwx) : ORIGIN = 0x91C00000, LENGTH = 0x00100000
+  PSRAM_PIPE2_DROP (rwx) : ORIGIN = 0x91B40000, LENGTH = 0x00100000
+  PSRAM_SCRATCH (rwx) : ORIGIN = 0x91D00000, LENGTH = 0x00100000
+  /* Immutable Pipe2 snapshots used when a completed frame is reused for the
+   * next model. This range is outside the active camera, NPU, and scratch
+   * allocations. */
+  PSRAM_INFERENCE_SOURCE (rwx) : ORIGIN = 0x91E00000, LENGTH = 0x00200000
 }
 
 _estack = ORIGIN(APP) + LENGTH(APP);
@@ -107,7 +111,8 @@ SECTIONS
 
   /* Keep the launch entry away from the normal code range so the first fetch
    * cannot be satisfied by an instruction-cache line from the old image. */
-  .text.uai_ram_entry 0x34050400 :
+  /* Leave growth room after .rodata before the cache-sanitizing launch entry. */
+  .text.uai_ram_entry 0x34052000 :
   {
     . = ALIGN(4);
     KEEP(*(.text.uai_ram_entry))
@@ -258,6 +263,9 @@ SECTIONS
     __sample_ai_inference1_start__ = .;
     . = . + 0x00100000;
     __sample_ai_inference1_end__ = .;
+    __sample_ai_inference2_start__ = .;
+    . = . + 0x00100000;
+    __sample_ai_inference2_end__ = .;
   } >PSRAM_INFERENCE
 
   .sample_ai_raw_dump (NOLOAD) :
@@ -294,6 +302,20 @@ SECTIONS
     . = . + 0x00100000;
     __sample_ai_inference_scratch_end__ = .;
   } >PSRAM_SCRATCH
+
+  .sample_ai_inference_source (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __sample_ai_inference_source0_start__ = .;
+    . = . + 0x000A8C00;
+    __sample_ai_inference_source0_end__ = .;
+    __sample_ai_inference_source1_start__ = .;
+    . = . + 0x000A8C00;
+    __sample_ai_inference_source1_end__ = .;
+    __sample_ai_inference_source2_start__ = .;
+    . = . + 0x000A8C00;
+    __sample_ai_inference_source2_end__ = .;
+  } >PSRAM_INFERENCE_SOURCE
 
   /DISCARD/ :
   {

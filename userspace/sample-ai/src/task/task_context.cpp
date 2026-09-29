@@ -145,6 +145,32 @@ void TaskContext::CreateKernelObjects()
     if (box_queue < E_OK) {
         Halt("ai: box queue create failed\n");
     }
+
+    T_CMBF inference_completion_queue_config = {};
+    inference_completion_queue_config.mbfatr = TA_TFIFO;
+    inference_completion_queue_config.bufsz =
+        sizeof(inference_completion_queue_storage);
+    inference_completion_queue_config.maxmsz =
+        sizeof(npu_runtime::InferenceCompletion);
+    inference_completion_queue_config.bufptr = inference_completion_queue_storage;
+    inference_completion_queue = tk_cre_mbf(&inference_completion_queue_config);
+    if (inference_completion_queue < E_OK) {
+        Halt("ai: inference completion queue create failed\n");
+    }
+
+    T_CMBF inference_postprocess_done_queue_config = {};
+    inference_postprocess_done_queue_config.mbfatr = TA_TFIFO;
+    inference_postprocess_done_queue_config.bufsz =
+        sizeof(inference_postprocess_done_queue_storage);
+    inference_postprocess_done_queue_config.maxmsz =
+        sizeof(InferencePostprocessDoneMessage);
+    inference_postprocess_done_queue_config.bufptr =
+        inference_postprocess_done_queue_storage;
+    inference_postprocess_done_queue =
+        tk_cre_mbf(&inference_postprocess_done_queue_config);
+    if (inference_postprocess_done_queue < E_OK) {
+        Halt("ai: postprocess done queue create failed\n");
+    }
 }
 
 void TaskContext::StartApplicationTask(FP entry)
@@ -168,6 +194,15 @@ void TaskContext::StartInferenceTask(FP entry)
      */
     StartTask(entry, inference_task_stack, kInferenceTaskStackSize, 4,
               "inference");
+}
+
+void TaskContext::StartInferencePostprocessTask(FP entry)
+{
+    /* Result conversion is CPU work.  Keep it below the camera and NPU-owner
+     * tasks so it cannot delay the next NPU submission when a completion and
+     * a camera event become ready together. */
+    StartTask(entry, inference_postprocess_task_stack,
+              kInferencePostprocessTaskStackSize, 6, "inference_postprocess");
 }
 
 void TaskContext::StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
@@ -256,14 +291,46 @@ void TaskContext::SendInferenceFrame(const memory_allocator::InferenceFrame &fra
 {
     InferenceMessage message{};
     message.frame = frame;
-    const ER error = tk_snd_mbf(frame_queue, &message, sizeof(message),
-                                TMO_POL);
-    if (error != E_OK) {
+    for (;;) {
+        const ER error = tk_snd_mbf(frame_queue, &message, sizeof(message),
+                                    TMO_POL);
+        if (error == E_OK) {
+            return;
+        }
+
+        /* Inference is slower than Pipe2.  Retaining FIFO frames makes every
+         * subsequent result older than necessary, so discard the oldest
+         * queued frame and keep the newest one instead. */
+        InferenceMessage discarded{};
+        const INT size = tk_rcv_mbf(frame_queue, &discarded, TMO_POL);
+        if (size == static_cast<INT>(sizeof(discarded))) {
+            ++inference_metrics.frame_queue_drop_count;
+            const common::Error status =
+                memory.ReleaseInferenceBuffer(discarded.frame);
+            LogStatus("memory", status);
+            continue;
+        }
+
+        ++inference_metrics.frame_queue_drop_count;
         const common::Error status = memory.ReleaseInferenceBuffer(frame);
         LogStatus("memory", status);
         UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
                           "ai: frame dropped reason=queue_full sequence=%u\n"),
                       static_cast<unsigned int>(frame.capture_sequence));
+        return;
+    }
+}
+
+void TaskContext::SendInferencePostprocessDone(
+    const memory_allocator::InferenceFrame &frame)
+{
+    InferencePostprocessDoneMessage message{};
+    message.frame = frame;
+    const ER error = tk_snd_mbf(inference_postprocess_done_queue, &message,
+                                sizeof(message), TMO_POL);
+    if (error != E_OK) {
+        const common::Error status = memory.ReleaseInferenceBuffer(frame);
+        LogStatus("memory", status);
     }
 }
 

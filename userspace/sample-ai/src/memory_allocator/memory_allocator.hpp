@@ -18,8 +18,8 @@ struct MemoryAllocatorConfig {
     std::uint32_t frame_height = 480U;
     std::uint32_t frame_bytes_per_pixel = 2U;
 
-    /* Runtime model switching keeps one pair of fixed-size Pipe2/NPU slots
-     * alive. Allocate for the largest input/output in the model set. */
+    /* Runtime model switching keeps a small pool of fixed-size Pipe2/NPU
+     * slots alive. Allocate for the largest input/output in the model set. */
     std::uint32_t inference_width = 480U;
     std::uint32_t inference_height = 480U;
     std::uint32_t inference_bytes_per_pixel = 3U;
@@ -62,6 +62,11 @@ struct MemoryAllocatorConfig {
                inference_source_height * inference_bytes_per_pixel;
     }
 
+    constexpr std::size_t inference_source_bytes() const
+    {
+        return inference_frame_bytes();
+    }
+
     constexpr std::size_t inference_outputs_offset() const
     {
         return AlignUp(inference_frame_bytes());
@@ -84,6 +89,7 @@ struct MemoryAllocatorConfig {
 };
 
 inline constexpr MemoryAllocatorConfig kConfig{};
+inline constexpr std::size_t kInferenceBufferCount = 3U;
 
 enum class Region : std::uint8_t {
     kCapture,
@@ -127,11 +133,13 @@ struct InferenceFrame {
     static constexpr std::uint8_t kUnknownModelKindId = 0xFFU;
 
     Buffer buffer{};
+    Buffer source{};
     Buffer scratch{};
     Buffer outputs[kConfig.model_output_bytes.size()]{};
     std::uint8_t output_count = 0U;
     std::uint32_t capture_sequence = 0U;
     bool from_pipe2 = false;
+    bool source_valid = false;
     bool input_prepared_by_cpu = false;
     bool input_prepared = false;
     std::uint8_t prepared_model_kind_id = kUnknownModelKindId;
@@ -179,13 +187,20 @@ public:
 
     common::Error CaptureBuffers(std::uintptr_t *first,
                                  std::uintptr_t *second) const;
-    common::Error InferenceBuffers(std::uintptr_t *first,
-                                   std::uintptr_t *second) const;
+    common::Error InferenceBuffers(std::uintptr_t *buffers,
+                                   std::size_t count) const;
     common::Error ImportCompletedCapture(std::uintptr_t address,
                                          CaptureFrame *frame);
     common::Error ImportCompletedInference(std::uintptr_t address,
                                            std::uint32_t sequence,
                                            InferenceFrame *frame);
+    /* Reserve the completed Pipe2 buffer from the ISR before another DMA
+     * target is selected.  This prevents a delayed camera task from reading
+     * an image that has already been overwritten. */
+    common::Error ReserveCompletedInference(std::uintptr_t address,
+                                            std::uint32_t sequence);
+    common::Error DropCompletedInference(std::uintptr_t address,
+                                         std::uint32_t sequence);
     bool IsInferenceBufferFree(std::uintptr_t address) const;
     common::Error ValidateCaptureFrame(const CaptureFrame &frame) const;
 
@@ -214,12 +229,12 @@ private:
                                 InferenceFrame *frame) const;
 
     Slot display_[2]{};
-    Slot inference_[2]{};
+    Slot inference_[kInferenceBufferCount]{};
     std::int8_t current_display_ = -1;
     std::int8_t pending_display_ = -1;
     std::uint32_t capture_sequence_ = 0U;
     std::uint32_t capture_generation_[2]{};
-    std::uint32_t inference_capture_sequence_[2]{};
+    std::uint32_t inference_capture_sequence_[kInferenceBufferCount]{};
     bool initialized_ = false;
 };
 

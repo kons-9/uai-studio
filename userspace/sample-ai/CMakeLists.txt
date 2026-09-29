@@ -199,6 +199,7 @@ add_executable(sample-ai.elf
     src/task/application_initialize_task.cpp
     src/task/camera_render_task.cpp
     src/task/inference_task.cpp
+    src/task/inference_postprocess_task.cpp
     src/task/task_context.cpp
     src/task/task_diagnostics.cpp
     src/driver/camera_driver/sensor_driver/registers/imx335_registers.cpp

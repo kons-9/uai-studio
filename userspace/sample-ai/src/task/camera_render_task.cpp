@@ -367,6 +367,15 @@ void CameraRenderTask::Run()
                 }
             } else if (inference_due &&
                 kInferenceMode == InferenceMode::kNpu) {
+                status = context.camera.SnapshotInferenceSource(&pipe2_frame);
+                if (!status.Ok()) {
+                    LogStatus("camera", status);
+                    const common::Error release_status =
+                        context.memory.ReleaseInferenceBuffer(pipe2_frame);
+                    LogStatus("memory", release_status);
+                    next_inference = now + kInferencePeriod;
+                    continue;
+                }
                 if (context.diagnostics.inference_trace) {
                     UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
                                   "ai: pipe2 frame queued sequence=%u buffer=%x events=%u drops=%u\n"),

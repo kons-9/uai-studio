@@ -17,34 +17,6 @@ void MergeTiming(InferenceTiming &destination,
     }
 }
 
-class MonitoredOperation final {
-public:
-    explicit MonitoredOperation(ThreadMonitor &monitor) : monitor_(monitor)
-    {
-        monitor_.BeginOperation();
-    }
-
-    ~MonitoredOperation()
-    {
-        if (active_) {
-            (void)monitor_.EndOperation();
-        }
-    }
-
-    bool Finish()
-    {
-        if (!active_) {
-            return monitor_.Faulted();
-        }
-        active_ = false;
-        return monitor_.EndOperation();
-    }
-
-private:
-    ThreadMonitor &monitor_;
-    bool active_ = true;
-};
-
 common::Error ThreadMonitorTimeout()
 {
     return {common::ErrorCode::kTimeout, 0U,
@@ -161,29 +133,52 @@ common::Error NpuRuntime::Initialize(cache::CacheDriver &cache)
     return {common::ErrorCode::kOk, 0U, "ai.npu_runtime.initialize"};
 }
 
-common::Error NpuRuntime::Run(memory_allocator::InferenceFrame &frame,
-                              memory_allocator::BoxSet *result,
-                              PrefetchProvider prefetch_provider,
-                              void *prefetch_context)
+common::Error NpuRuntime::Begin(memory_allocator::InferenceFrame &frame,
+                                PrefetchProvider prefetch_provider,
+                                void *prefetch_context, bool select_model)
 {
     if (!initialized_) {
         return {common::ErrorCode::kNotInitialized, 0U,
-                "ai.npu_runtime.run"};
+                "ai.npu_runtime.begin"};
     }
     if (thread_monitor_.Faulted()) {
         return ThreadMonitorTimeout();
     }
+    if (monitor_operation_active_) {
+        return {common::ErrorCode::kInvalidState, 0U,
+                "ai.npu_runtime.begin.active"};
+    }
 
-    MonitoredOperation monitor_operation(thread_monitor_);
     last_inference_timing_.Reset();
-
-    const bool select_model = inference_started_ || frame.input_prepared;
-    /* The pipeline owns model selection now. Keep the monitor alive while the
-     * first CPU stage configures the selected runtime. */
+    monitor_operation_active_ = true;
+    thread_monitor_.BeginOperation();
     thread_monitor_.Progress();
 
-    const common::Error status = dispatcher_.TryInfer(
-        frame, result, prefetch_provider, prefetch_context, select_model);
+    const bool should_select_model =
+        select_model || inference_started_ || frame.input_prepared;
+    const common::Error status = dispatcher_.BeginInference(
+        frame, prefetch_provider, prefetch_context, should_select_model);
+    if (!status.Ok()) {
+        monitor_operation_active_ = false;
+        if (thread_monitor_.EndOperation()) {
+            return ThreadMonitorTimeout();
+        }
+    }
+    return status;
+}
+
+common::Error NpuRuntime::Wait(InferenceCompletion *completion)
+{
+    if (!initialized_) {
+        return {common::ErrorCode::kNotInitialized, 0U,
+                "ai.npu_runtime.wait"};
+    }
+    if (completion == nullptr || !monitor_operation_active_) {
+        return {common::ErrorCode::kInvalidState, 0U,
+                "ai.npu_runtime.wait.active"};
+    }
+
+    const common::Error status = dispatcher_.WaitForInference(completion);
     last_npu_status_ = dispatcher_.LastNpuStatus();
     MergeTiming(last_inference_timing_, dispatcher_.LastTiming());
     const models::ModelDescriptor *descriptor = scheduler_.GetDescriptor();
@@ -236,13 +231,48 @@ common::Error NpuRuntime::Run(memory_allocator::InferenceFrame &frame,
                      static_cast<unsigned int>(execution.progress_elapsed_ms),
                      static_cast<unsigned int>(execution.progress_max_elapsed_ms));
     }
-    if (monitor_operation.Finish()) {
+    monitor_operation_active_ = false;
+    if (thread_monitor_.EndOperation()) {
         return ThreadMonitorTimeout();
     }
     if (status.Ok()) {
         inference_started_ = true;
     }
     return status;
+}
+
+common::Error NpuRuntime::Complete(const InferenceCompletion &completion,
+                                   memory_allocator::BoxSet *result)
+{
+    if (!initialized_) {
+        return {common::ErrorCode::kNotInitialized, 0U,
+                "ai.npu_runtime.complete"};
+    }
+    return dispatcher_.CompleteInference(completion, result);
+}
+
+common::Error NpuRuntime::Run(memory_allocator::InferenceFrame &frame,
+                              memory_allocator::BoxSet *result,
+                              PrefetchProvider prefetch_provider,
+                              void *prefetch_context)
+{
+    if (!initialized_ || result == nullptr) {
+        return {initialized_ ? common::ErrorCode::kInvalidArgument
+                             : common::ErrorCode::kNotInitialized,
+                0U, "ai.npu_runtime.run"};
+    }
+    const bool select_model = inference_started_ || frame.input_prepared;
+    common::Error status = Begin(frame, prefetch_provider, prefetch_context,
+                                 select_model);
+    if (!status.Ok()) {
+        return status;
+    }
+    InferenceCompletion completion{};
+    status = Wait(&completion);
+    if (!status.Ok()) {
+        return status;
+    }
+    return Complete(completion, result);
 }
 
 common::Error NpuRuntime::Shutdown()
@@ -259,6 +289,7 @@ common::Error NpuRuntime::Shutdown()
     last_npu_status_ = npu_.Shutdown();
     const common::Error scheduler_status = scheduler_.Shutdown();
     initialized_ = false;
+    monitor_operation_active_ = false;
     inference_started_ = false;
     last_inference_timing_.Reset();
     if (!monitor_status.Ok()) {

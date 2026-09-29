@@ -46,6 +46,7 @@ public:
     common::Error Process();
     common::Error TakeCompletedCapture(memory_allocator::CaptureFrame *frame);
     common::Error TakeCompletedInference(memory_allocator::InferenceFrame *frame);
+    common::Error SnapshotInferenceSource(memory_allocator::InferenceFrame *frame);
     Diagnostics GetDiagnostics() const;
 
 private:

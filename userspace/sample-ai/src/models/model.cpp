@@ -59,16 +59,18 @@ common::Error Model::ExecutePipe2InputStage(ModelStageId stage,
             memory_allocator::kConfig.inference_source_width) * 3U;
     auto *scratch = reinterpret_cast<std::uint8_t *>(frame.scratch.address);
     auto *input = reinterpret_cast<std::uint8_t *>(frame.buffer.address);
+    const memory_allocator::Buffer &source =
+        frame.source_valid ? frame.source : frame.buffer;
+    const auto *source_input = reinterpret_cast<const std::uint8_t *>(
+        source.address);
 
     switch (stage) {
     case ModelStageId::kCopy: {
-        status = context.cache->PrepareForCpuRead(frame.buffer);
+        status = context.cache->PrepareForCpuRead(source);
         if (!status.Ok()) {
             return status;
         }
-        const auto *pipe2 = reinterpret_cast<const std::uint8_t *>(
-                                frame.buffer.address) +
-                            kPipe2PadTop * kSourceRowBytes;
+        const auto *pipe2 = source_input + kPipe2PadTop * kSourceRowBytes;
         for (std::uint32_t y = 0U;
              y < memory_allocator::kConfig.inference_source_height; ++y) {
             std::memcpy(scratch + static_cast<std::size_t>(y) * kSourceRowBytes,

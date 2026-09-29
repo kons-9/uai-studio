@@ -18,8 +18,16 @@ extern std::uint8_t __sample_ai_inference0_start__[];
 extern std::uint8_t __sample_ai_inference0_end__[];
 extern std::uint8_t __sample_ai_inference1_start__[];
 extern std::uint8_t __sample_ai_inference1_end__[];
+extern std::uint8_t __sample_ai_inference2_start__[];
+extern std::uint8_t __sample_ai_inference2_end__[];
 extern std::uint8_t __sample_ai_inference_scratch_start__[];
 extern std::uint8_t __sample_ai_inference_scratch_end__[];
+extern std::uint8_t __sample_ai_inference_source0_start__[];
+extern std::uint8_t __sample_ai_inference_source0_end__[];
+extern std::uint8_t __sample_ai_inference_source1_start__[];
+extern std::uint8_t __sample_ai_inference_source1_end__[];
+extern std::uint8_t __sample_ai_inference_source2_start__[];
+extern std::uint8_t __sample_ai_inference_source2_end__[];
 extern std::uint8_t __sample_ai_raw_dump_start__[];
 extern std::uint8_t __sample_ai_raw_dump_end__[];
 extern std::uint8_t __sample_ai_segmentation_mask0_start__[];
@@ -41,7 +49,11 @@ enum class Key : std::uint8_t {
     kDisplay1,
     kInference0,
     kInference1,
+    kInference2,
     kInferenceScratch,
+    kInferenceSource0,
+    kInferenceSource1,
+    kInferenceSource2,
     kRawDump,
     kSegmentationMask0,
     kSegmentationMask1,
@@ -86,8 +98,15 @@ inline constexpr Layout kLayout = {
         {__sample_ai_display1_start__, __sample_ai_display1_end__},
         {__sample_ai_inference0_start__, __sample_ai_inference0_end__},
         {__sample_ai_inference1_start__, __sample_ai_inference1_end__},
+        {__sample_ai_inference2_start__, __sample_ai_inference2_end__},
         {__sample_ai_inference_scratch_start__,
          __sample_ai_inference_scratch_end__},
+        {__sample_ai_inference_source0_start__,
+         __sample_ai_inference_source0_end__},
+        {__sample_ai_inference_source1_start__,
+         __sample_ai_inference_source1_end__},
+        {__sample_ai_inference_source2_start__,
+         __sample_ai_inference_source2_end__},
         {__sample_ai_raw_dump_start__, __sample_ai_raw_dump_end__},
         {__sample_ai_segmentation_mask0_start__,
          __sample_ai_segmentation_mask0_end__},

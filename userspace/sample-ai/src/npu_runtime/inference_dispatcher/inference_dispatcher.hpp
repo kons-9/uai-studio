@@ -15,6 +15,23 @@ namespace uai::ai::npu_runtime {
 
 using PrefetchProvider = memory_allocator::InferenceFrame *(*)(void *context);
 
+/* Snapshot of the NPU-owned part of an inference.  The output pointers and
+ * model callbacks are copied before the shared NPU dispatcher is advanced to
+ * the next model, so CPU completion can run independently afterwards. */
+struct InferenceCompletion {
+    memory_allocator::InferenceFrame frame{};
+    memory_allocator::Buffer output_buffers[models::kMaxModelOutputs]{};
+    models::ModelKind model_kind = models::ModelKind::kPerson;
+    const models::Model *model = nullptr;
+    models::ModelCallbacks callbacks{};
+    models::ModelOutputView output_view{};
+    models::InferenceGeometry geometry{};
+    std::uint32_t model_sequence = 0U;
+    std::uint32_t capture_sequence = 0U;
+    npu::ExecutionSnapshot execution{};
+    bool valid = false;
+};
+
 /*
  * Bridges a selected scheduler model to the camera buffers and application
  * result format. It owns the per-inference protocol because input cache
@@ -33,6 +50,13 @@ public:
                              npu::NpuDriver &npu,
                              cache::CacheDriver &cache);
     common::Error RefreshSelectedModel();
+    common::Error BeginInference(memory_allocator::InferenceFrame &frame,
+                                 PrefetchProvider prefetch_provider = nullptr,
+                                 void *prefetch_context = nullptr,
+                                 bool select_model = false);
+    common::Error WaitForInference(InferenceCompletion *completion);
+    common::Error CompleteInference(const InferenceCompletion &completion,
+                                    memory_allocator::BoxSet *result);
     common::Error TryInfer(memory_allocator::InferenceFrame &frame,
                            memory_allocator::BoxSet *result,
                            PrefetchProvider prefetch_provider = nullptr,
@@ -94,6 +118,10 @@ private:
     static common::Error ExecuteOutputDecoding(void *context);
     static common::Error ExecuteResultConversion(void *context);
     static common::Error ExecuteInferenceFinalize(void *context);
+    common::Error ExecuteStage(PipelineState &state,
+                               models::ModelStageId *executed_stage);
+    common::Error BuildCompletion(const PipelineState &state,
+                                  InferenceCompletion *completion) const;
     static common::Error ExecutePipeline(PipelineState &state);
     common::Error ConfigureCurrentModel();
 
@@ -103,11 +131,14 @@ private:
     stai_network_info info_{};
     stai_ptr outputs_[memory_allocator::kConfig.model_output_bytes.size()]{};
     bool dynamic_outputs_ = false;
+    bool decoder_configured_[3]{};
     bool initialized_ = false;
     std::uint32_t model_sequence_ = 0U;
     std::uint32_t last_error_ = 0U;
     npu::Status last_npu_status_{};
     InferenceTiming last_timing_{};
+    PipelineState active_pipeline_{};
+    bool pipeline_active_ = false;
     PipelineStageObserver pipeline_stage_observer_ = nullptr;
     void *pipeline_stage_context_ = nullptr;
 };

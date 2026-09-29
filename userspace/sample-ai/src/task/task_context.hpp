@@ -13,14 +13,16 @@
 #include "driver/psram_driver/psram_driver.hpp"
 #include "driver/rif_driver/rif_driver.hpp"
 #include "memory_allocator/memory_allocator.hpp"
+#include "npu_runtime/inference_dispatcher/inference_dispatcher.hpp"
 
 namespace uai::ai::task {
 
 inline constexpr UINT kExternalMemoryReady = 0x01U;
-/* The NPU is asynchronous, so inference is scheduled independently from
- * Pipe1 rendering. Pipe2's frame-rate divider remains the upper bound in
- * practice. */
-inline constexpr std::uint32_t kInferencePeriod = 20U;
+/* Dispatch every completed Pipe2 frame immediately. The NPU task already
+ * blocks on completion and consumes a prefetched frame without an extra
+ * delay; this value only prevents the camera task from adding a software
+ * interval between queued inference frames. */
+inline constexpr std::uint32_t kInferencePeriod = 0U;
 
 enum class InferenceMode : std::uint8_t {
     kDisabled,
@@ -66,16 +68,46 @@ struct DiagnosticsConfig {
 
 inline constexpr std::size_t kFrameQueueDepth = 4U;
 inline constexpr std::size_t kBoxQueueDepth = 4U;
+inline constexpr std::size_t kInferenceCompletionQueueDepth = 4U;
+inline constexpr std::size_t kInferencePostprocessDoneQueueDepth = 4U;
+inline constexpr std::size_t kInferenceModelCount = 3U;
 inline constexpr SZ kInitializationTaskStackSize = 32U * 1024U;
 inline constexpr SZ kCameraTaskStackSize = 32U * 1024U;
 inline constexpr SZ kInferenceTaskStackSize = 16U * 1024U;
+inline constexpr SZ kInferencePostprocessTaskStackSize = 16U * 1024U;
 
 struct InferenceMessage {
     memory_allocator::InferenceFrame frame{};
 };
 
+struct InferencePostprocessDoneMessage {
+    memory_allocator::InferenceFrame frame{};
+};
+
 struct BoxMessage {
     memory_allocator::BoxSet boxes{};
+};
+
+/* Low-rate counters used to explain gaps between consecutive NPU runs. They
+ * are intentionally kept outside ThreadMonitor because the monitor follows
+ * the NPU-owner task and does not observe the postprocess task or queue
+ * producers directly. */
+struct InferenceRuntimeMetrics {
+    volatile std::uint32_t frame_queue_wait_calls = 0U;
+    volatile std::uint32_t frame_queue_wait_total_ms = 0U;
+    volatile std::uint32_t frame_queue_wait_max_ms = 0U;
+    volatile std::uint32_t frame_queue_drop_count = 0U;
+    volatile std::uint32_t reused_frame_count = 0U;
+    volatile std::uint32_t prefetch_attempts = 0U;
+    volatile std::uint32_t prefetch_successes = 0U;
+    volatile std::uint32_t prefetch_queue_empty = 0U;
+    volatile std::uint32_t prefetch_buffer_busy = 0U;
+    volatile std::uint32_t prefetch_claim_errors = 0U;
+    volatile std::uint32_t postprocess_queue_wait_total_ms = 0U;
+    volatile std::uint32_t postprocess_queue_wait_max_ms = 0U;
+    volatile std::uint32_t postprocess_count[kInferenceModelCount]{};
+    volatile std::uint32_t postprocess_total_ms[kInferenceModelCount]{};
+    volatile std::uint32_t postprocess_max_ms[kInferenceModelCount]{};
 };
 
 /* Owns all application-wide resources shared by the task objects. The
@@ -93,10 +125,13 @@ public:
     void StartApplicationTask(FP entry);
     void StartCameraTask(FP entry);
     void StartInferenceTask(FP entry);
+    void StartInferencePostprocessTask(FP entry);
 
     bool DrainLatestBoxes(memory_allocator::BoxSet *active);
     void SendLatestBoxes(const memory_allocator::BoxSet &boxes);
     void SendInferenceFrame(const memory_allocator::InferenceFrame &frame);
+    void SendInferencePostprocessDone(
+        const memory_allocator::InferenceFrame &frame);
 
     memory_allocator::MemoryAllocator memory;
     uai::ai::cache::CacheDriver cache;
@@ -111,7 +146,10 @@ public:
     ID external_memory_ready;
     ID frame_queue;
     ID box_queue;
+    ID inference_completion_queue;
+    ID inference_postprocess_done_queue;
     DiagnosticsConfig diagnostics;
+    InferenceRuntimeMetrics inference_metrics{};
 
 private:
     void StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
@@ -120,10 +158,18 @@ private:
     alignas(8) UB frame_queue_storage[
         sizeof(InferenceMessage) * kFrameQueueDepth];
     alignas(8) UB box_queue_storage[sizeof(BoxMessage) * kBoxQueueDepth];
+    alignas(8) UB inference_completion_queue_storage[
+        sizeof(npu_runtime::InferenceCompletion) *
+        kInferenceCompletionQueueDepth];
+    alignas(8) UB inference_postprocess_done_queue_storage[
+        sizeof(InferencePostprocessDoneMessage) *
+        kInferencePostprocessDoneQueueDepth];
     INT initialization_task_stack[
         kInitializationTaskStackSize / sizeof(INT)];
     INT camera_task_stack[kCameraTaskStackSize / sizeof(INT)];
     INT inference_task_stack[kInferenceTaskStackSize / sizeof(INT)];
+    INT inference_postprocess_task_stack[
+        kInferencePostprocessTaskStackSize / sizeof(INT)];
 };
 
 /* The storage is private to task_context.cpp; this function is the only

@@ -15,8 +15,12 @@ volatile unsigned int g_ai_last_sensor_gain_mdB = 0U;
 }
 
 namespace {
-constexpr std::uint32_t kVmaxAt30Fps = 4500U;
 constexpr std::uint32_t kMinimumShutterLines = 9U;
+/* The component driver converts exposure using this integer line period. Keep
+ * the same value here so the limit calculation and IMX335_SetExposure() use
+ * identical units. */
+constexpr std::uint32_t kLinePeriodMicroseconds = 7U;
+constexpr std::uint32_t kFallbackVmax = 4500U;
 }
 
 namespace uai::ai::camera::sensor::registers {
@@ -251,16 +255,23 @@ extern "C" ISP_StatusTypeDef AiSetImx335Exposure(uint32_t instance,
 
     g_ai_last_exposure_request_us = static_cast<unsigned int>(exposure);
     const std::uint32_t lines = static_cast<std::uint32_t>(
-        static_cast<float>(exposure) / (1000000.0F / (4500U * 30U)));
-    const std::uint32_t limited_lines =
-        lines > kVmaxAt30Fps - kMinimumShutterLines
-            ? kVmaxAt30Fps - kMinimumShutterLines
-            : lines;
+        static_cast<float>(exposure) /
+        static_cast<float>(kLinePeriodMicroseconds));
+    uai::ai::camera::sensor::registers::SensorRegisterSnapshot snapshot{};
+    const auto snapshot_status =
+        uai::ai::camera::sensor::registers::Imx335RegisterLayer{}
+            .ReadSnapshot(&snapshot);
+    const std::uint32_t vmax =
+        snapshot_status.Ok() && snapshot.vmax > kMinimumShutterLines
+            ? snapshot.vmax
+            : kFallbackVmax;
+    const std::uint32_t max_lines = vmax - kMinimumShutterLines;
+    const std::uint32_t limited_lines = lines > max_lines ? max_lines : lines;
     g_ai_last_exposure_lines = limited_lines;
     const auto status =
         uai::ai::camera::sensor::registers::Imx335RegisterLayer{}
             .SetExposureMicroseconds(
-        static_cast<int32_t>(limited_lines * 7U));
+        static_cast<int32_t>(limited_lines * kLinePeriodMicroseconds));
     return status.Ok() ? ISP_OK : ISP_ERR_EINVAL;
 }
 

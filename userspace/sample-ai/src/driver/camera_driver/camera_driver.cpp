@@ -36,6 +36,10 @@ constexpr std::uint32_t kOutputHeight = 480U;
 constexpr std::uint32_t kFrameTimeoutMs = 2000U;
 constexpr std::uint32_t kRecoveryRetryMs = 5000U;
 constexpr UINT kPipe2FrameReadyEvent = 0x01U;
+/* Start the sensor from a usable exposure instead of the AEC minimum. The
+ * ISP will still converge from this seed on the first statistics updates. */
+constexpr std::int32_t kStartupExposureMicroseconds = 23814;
+constexpr std::int32_t kStartupGainMilliDb = 20000;
 /* Match ref/ on the STM32N6570-DK.  Keep the CSI PHY configuration
  * unchanged; this only reduces the sensor frame rate to give the CSI link
  * the same timing margin as the reference application. */
@@ -56,8 +60,8 @@ volatile std::uintptr_t g_completed_inference = 0U;
 volatile std::uint32_t g_completed_inference_sequence = 0U;
 std::uintptr_t g_active_inference = 0U;
 std::uintptr_t g_next_inference = 0U;
-std::uintptr_t g_inference_buffer0 = 0U;
-std::uintptr_t g_inference_buffer1 = 0U;
+std::uintptr_t g_inference_buffers[
+    uai::ai::memory_allocator::kInferenceBufferCount]{};
 std::uintptr_t g_inference_drop_buffer = 0U;
 /* Pipe2 writes the aspect-preserving image into the vertical center of the
  * square NPU tensor. Keep the allocator-visible address at the beginning of
@@ -544,6 +548,17 @@ void InstallExposureWorkaround()
     hcamera_isp.appliHelpers.SetSensorGain = AiSetImx335Gain;
     hcamera_isp.appliHelpers.GetSensorGain = AiGetImx335Gain;
     AiResetImx335ControlState();
+
+    const ISP_StatusTypeDef exposure_status = AiSetImx335Exposure(
+        0U, kStartupExposureMicroseconds);
+    const ISP_StatusTypeDef gain_status =
+        AiSetImx335Gain(0U, kStartupGainMilliDb);
+    if (exposure_status != ISP_OK || gain_status != ISP_OK) {
+        UAI_LOG_WARN(reinterpret_cast<const UB *>(
+                         "camera: exposure seed failed exposure=%d gain=%d\n"),
+                     static_cast<int>(exposure_status),
+                     static_cast<int>(gain_status));
+    }
 }
 
 uai::ai::common::Error CameraDriver::Initialize(memory_allocator::MemoryAllocator &memory,
@@ -606,25 +621,22 @@ uai::ai::common::Error CameraDriver::Start()
     if (!status.Ok()) return status;
     status = cache_->PrepareForDmaWrite(second_buffer);
     if (!status.Ok()) return status;
-    std::uintptr_t inference_first = 0U, inference_second = 0U;
-    status = memory_->InferenceBuffers(&inference_first, &inference_second);
+    std::uintptr_t inference_buffers[
+        memory_allocator::kInferenceBufferCount]{};
+    status = memory_->InferenceBuffers(
+        inference_buffers, memory_allocator::kInferenceBufferCount);
     if (!status.Ok()) return status;
-    const memory_allocator::Buffer inference_first_buffer{
-        inference_first, memory_allocator::kConfig.inference_buffer_bytes(), 0U,
-        memory_allocator::Region::kInference};
-    const memory_allocator::Buffer inference_second_buffer{
-        inference_second, memory_allocator::kConfig.inference_buffer_bytes(), 1U,
-        memory_allocator::Region::kInference};
-    ClearInferenceInput(inference_first);
-    ClearInferenceInput(inference_second);
-    status = cache_->PrepareForDmaWrite(inference_first_buffer);
-    if (!status.Ok()) return status;
-    status = cache_->PrepareForDmaWrite(inference_second_buffer);
-    if (!status.Ok()) return status;
+    for (std::size_t i = 0U; i < memory_allocator::kInferenceBufferCount; ++i) {
+        const memory_allocator::Buffer inference_buffer{
+            inference_buffers[i], memory_allocator::kConfig.inference_buffer_bytes(),
+            static_cast<std::uint8_t>(i), memory_allocator::Region::kInference};
+        ClearInferenceInput(inference_buffers[i]);
+        status = cache_->PrepareForDmaWrite(inference_buffer);
+        if (!status.Ok()) return status;
+        g_inference_buffers[i] = inference_buffers[i];
+    }
     g_frame_buffer0 = first; g_frame_buffer1 = second;
     g_active_frame = first; g_next_frame = second; g_completed_frame = 0U;
-    g_inference_buffer0 = inference_first;
-    g_inference_buffer1 = inference_second;
     g_inference_drop_buffer =
         uai::ai::static_memory_layout::kLayout
             .Get(StaticMemoryKey::kPipe2Drop)
@@ -638,8 +650,8 @@ uai::ai::common::Error CameraDriver::Start()
         memory_allocator::Region::kInference};
     status = cache_->PrepareForDmaWrite(inference_drop_buffer);
     if (!status.Ok()) return status;
-    g_active_inference = inference_first;
-    g_next_inference = inference_second;
+    g_active_inference = g_inference_buffers[0];
+    g_next_inference = g_inference_buffers[1];
     g_completed_inference = 0U;
     g_inference_sequence = 0U;
     if (g_pipe2_frame_event_flag > 0) {
@@ -715,9 +727,14 @@ uai::ai::common::Error CameraDriver::Process()
         g_completed_frame = 0U;
         g_active_frame = g_frame_buffer0;
         g_next_frame = g_frame_buffer1;
+        if (g_completed_inference != 0U && g_pipe2_memory != nullptr) {
+            (void)g_pipe2_memory->DropCompletedInference(
+                g_completed_inference, g_completed_inference_sequence);
+        }
         g_completed_inference = 0U;
-        g_active_inference = g_inference_buffer0;
-        g_next_inference = g_inference_buffer1;
+        g_completed_inference_sequence = 0U;
+        g_active_inference = g_inference_buffers[0];
+        g_next_inference = g_inference_buffers[1];
         if (g_pipe2_frame_event_flag > 0) {
             (void)tk_clr_flg(g_pipe2_frame_event_flag, 0U);
         }
@@ -810,6 +827,58 @@ uai::ai::common::Error CameraDriver::TakeCompletedInference(
     return memory_->ImportCompletedInference(address, sequence, frame);
 }
 
+uai::ai::common::Error CameraDriver::SnapshotInferenceSource(
+    memory_allocator::InferenceFrame *frame)
+{
+    if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
+        return {uai::ai::common::ErrorCode::kNotInitialized, 0U,
+                "camera.snapshot_inference_source"};
+    }
+    if (frame == nullptr || !frame->from_pipe2 || !frame->buffer ||
+        !frame->source ||
+        frame->source.size < memory_allocator::kConfig.inference_source_bytes()) {
+        return {uai::ai::common::ErrorCode::kInvalidArgument, 0U,
+                "camera.snapshot_inference_source.argument"};
+    }
+
+    const std::size_t content_bytes =
+        memory_allocator::kConfig.inference_scratch_bytes();
+    const std::size_t pad_bytes =
+        (memory_allocator::kConfig.inference_frame_bytes() - content_bytes) /
+        2U;
+    if (g_inference_dma_offset != pad_bytes ||
+        content_bytes + pad_bytes + pad_bytes > frame->source.size) {
+        return {uai::ai::common::ErrorCode::kInvalidArgument,
+                static_cast<std::uint32_t>(g_inference_dma_offset),
+                "camera.snapshot_inference_source.layout"};
+    }
+    const memory_allocator::Buffer pipe2_content{
+        frame->buffer.address + g_inference_dma_offset, content_bytes,
+        frame->buffer.index, memory_allocator::Region::kInference,
+        memory_allocator::kConfig.buffer_alignment};
+    uai::ai::common::Error status =
+        cache_->PrepareForCpuRead(pipe2_content);
+    if (!status.Ok()) {
+        return status;
+    }
+
+    auto *source = reinterpret_cast<std::uint8_t *>(frame->source.address);
+    const auto *pipe2 = reinterpret_cast<const std::uint8_t *>(
+                            frame->buffer.address) +
+                        g_inference_dma_offset;
+    std::memset(source, 0U, pad_bytes);
+    std::memcpy(source + pad_bytes, pipe2, content_bytes);
+    std::memset(source + pad_bytes + content_bytes, 0U, pad_bytes);
+
+    status = cache_->PrepareForPeripheralRead(frame->source);
+    if (!status.Ok()) {
+        return status;
+    }
+    frame->source_valid = true;
+    return {uai::ai::common::ErrorCode::kOk, 0U,
+            "camera.snapshot_inference_source"};
+}
+
 } // namespace uai::ai::camera
 
 extern "C" void BSP_CAMERA_FrameEventCallback(uint32_t Instance)
@@ -843,19 +912,45 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
     const bool completed_is_real_buffer =
         completed != 0U && completed != g_inference_drop_buffer;
     if (completed_is_real_buffer) {
-        g_completed_inference = completed;
-        g_completed_inference_sequence = capture_sequence;
-        __DMB();
-        if (g_pipe2_frame_event_flag > 0) {
-            (void)tk_set_flg(g_pipe2_frame_event_flag, kPipe2FrameReadyEvent);
+        /* If the camera task has not consumed the previous completion yet,
+         * release that stale result before replacing it.  Reserve the new
+         * completion before selecting the next DMA target; otherwise a
+         * delayed camera task may copy an image after DMA has overwritten it. */
+        const std::uintptr_t previous = g_completed_inference;
+        const std::uint32_t previous_sequence =
+            g_completed_inference_sequence;
+        if (previous != 0U && previous != completed &&
+            g_pipe2_memory != nullptr) {
+            (void)g_pipe2_memory->DropCompletedInference(
+                previous, previous_sequence);
+            g_completed_inference = 0U;
+            g_completed_inference_sequence = 0U;
+        }
+
+        const uai::ai::common::Error reserve_status =
+            g_pipe2_memory == nullptr
+                ? uai::ai::common::Error{
+                      uai::ai::common::ErrorCode::kNotInitialized, 0U,
+                      "camera.pipe2.reserve.no_memory"}
+                : g_pipe2_memory->ReserveCompletedInference(
+                      completed, capture_sequence);
+        if (reserve_status.Ok()) {
+            g_completed_inference = completed;
+            g_completed_inference_sequence = capture_sequence;
+            __DMB();
+            if (g_pipe2_frame_event_flag > 0) {
+                (void)tk_set_flg(g_pipe2_frame_event_flag,
+                                 kPipe2FrameReadyEvent);
+            }
         }
     }
 
     std::uintptr_t selected = 0U;
     const std::uintptr_t candidates[] = {
         g_next_inference,
-        g_inference_buffer0,
-        g_inference_buffer1,
+        g_inference_buffers[0],
+        g_inference_buffers[1],
+        g_inference_buffers[2],
     };
     for (const std::uintptr_t candidate : candidates) {
         if (candidate == 0U || candidate == completed ||
@@ -868,7 +963,7 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
         break;
     }
     if (selected == 0U) {
-        /* Both real buffers are owned by the camera/inference pipeline.  Keep
+        /* All real buffers are owned by the camera/inference pipeline.  Keep
          * the producer running, but send the next frame to a DMA-only sink;
          * otherwise Pipe2 would overwrite the frame being preprocessed. */
         selected = g_inference_drop_buffer;
@@ -878,12 +973,25 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
             &hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_MEMORY_ADDRESS_0,
             static_cast<std::uint32_t>(InferenceDmaAddress(selected))) != HAL_OK) {
         ++g_camera_dcmipp_error_count;
+        if (completed_is_real_buffer && g_completed_inference != 0U &&
+            g_pipe2_memory != nullptr) {
+            (void)g_pipe2_memory->DropCompletedInference(
+                g_completed_inference, g_completed_inference_sequence);
+            g_completed_inference = 0U;
+            g_completed_inference_sequence = 0U;
+        }
         return;
     }
     g_active_inference = selected;
-    g_next_inference = selected == g_inference_buffer0
-                           ? g_inference_buffer1
-                           : g_inference_buffer0;
+    g_next_inference = g_inference_buffers[0];
+    for (std::size_t i = 0U;
+         i < uai::ai::memory_allocator::kInferenceBufferCount; ++i) {
+        if (selected == g_inference_buffers[i]) {
+            g_next_inference = g_inference_buffers[
+                (i + 1U) % uai::ai::memory_allocator::kInferenceBufferCount];
+            break;
+        }
+    }
 }
 
 extern "C" void DCMIPP_IRQHandler(void)
