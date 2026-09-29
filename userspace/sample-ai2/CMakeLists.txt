@@ -152,7 +152,7 @@ set(AI_MODEL_TARGET sample-ai2_models)
 set(AI_MODEL_INCLUDE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/models/person")
 set(AI_MODEL_C_API_SOURCES
-    "${AI_SRC_DIR}/models/person/c_wrapper.c")
+    "${AI_SRC_DIR}/models/person/person_model_runtime.c")
 set(AI_MODEL_SOURCES
     "${AI_SRC_DIR}/models/person/npu_model.cpp"
     "${AI_SRC_DIR}/models/person/future.cpp")
