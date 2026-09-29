@@ -129,8 +129,8 @@ help:
 	@echo "make ram-load   - Alias for make ram-run"
 	@echo "make ai-run     - Write AI data, then load and run sample-ai in RAM"
 	@echo "make sign       - Create an STM32N6 signed image"
-	@echo "make program    - Write an external-flash image with STM32CubeProgrammer"
-	@echo "make flash      - Alias for make program"
+	@echo "make program    - Write the application image to external Flash"
+	@echo "make flash      - Write FSBL, app, NPU blobs, and model weights for sample-ai boot"
 	@echo "make clean      - Clean the CMake build tree"
 	@echo
 	@echo "Set board/tool paths in config/local.mk (see config/local.mk.example)."

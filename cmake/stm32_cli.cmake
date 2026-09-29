@@ -233,23 +233,95 @@ function(uai_add_stm32_cli_targets app_target)
         )
     endif()
 
-    if(STM32_PROGRAMMER_CLI AND STM32_EXTERNAL_LOADER AND STM32_PROGRAM_IMAGE)
+    if(STM32_PROGRAMMER_CLI AND STM32_EXTERNAL_LOADER)
         separate_arguments(_stm32_program_extra_args NATIVE_COMMAND
             "${STM32_PROGRAM_EXTRA_ARGS}")
-        add_custom_target(program
-            COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
-                    "${STM32_PROGRAMMER_CLI}"
-                    -c "${_programmer_connection}"
-                    -el "${STM32_EXTERNAL_LOADER}"
-                    -w "${STM32_PROGRAM_IMAGE}" "${STM32_PROGRAM_ADDRESS}"
-                    -v
-                    ${_stm32_program_extra_args}
-            USES_TERMINAL
-            VERBATIM
-        )
+        if(app_target STREQUAL "sample-ai" AND
+           TARGET sample-ai-flash-images)
+            # sample-ai is an STM32N6 LRUN image set.  The FSBL, signed
+            # application, command blobs, and model weights occupy separate
+            # external-NOR ranges and must all be present for reset boot.
+            set(_ai_flash_dir
+                "${CMAKE_BINARY_DIR}/userspace/sample-ai")
+            set(_ai_model_dir
+                "${CMAKE_SOURCE_DIR}/userspace/sample-ai/models")
+            set(_ai_fsbl_image
+                "${CMAKE_SOURCE_DIR}/userspace/sample-ai/fsbl/stm32n6570-dk-ai_fsbl.hex")
+            if(NOT EXISTS "${_ai_fsbl_image}")
+                message(FATAL_ERROR
+                    "sample-ai official FSBL is missing: ${_ai_fsbl_image}")
+            endif()
+            add_custom_target(program
+                DEPENDS sample-ai-flash-images sample-ai
+                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                        "${STM32_PROGRAMMER_CLI}"
+                        -c "${_programmer_connection}"
+                        -el "${STM32_EXTERNAL_LOADER}"
+                        -w "${_ai_fsbl_image}" -v
+                        ${_stm32_program_extra_args}
+                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                        "${STM32_PROGRAMMER_CLI}"
+                        -c "${_programmer_connection}"
+                        -el "${STM32_EXTERNAL_LOADER}"
+                        -w "${_ai_flash_dir}/sample-ai-flash.bin"
+                           0x70100000 -v
+                        ${_stm32_program_extra_args}
+                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                        "${STM32_PROGRAMMER_CLI}"
+                        -c "${_programmer_connection}"
+                        -el "${STM32_EXTERNAL_LOADER}"
+                        -w "${_ai_model_dir}/person/network_data.hex" -v
+                        ${_stm32_program_extra_args}
+                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                        "${STM32_PROGRAMMER_CLI}"
+                        -c "${_programmer_connection}"
+                        -el "${STM32_EXTERNAL_LOADER}"
+                        -w "${_ai_model_dir}/segmentation/network_data.hex" -v
+                        ${_stm32_program_extra_args}
+                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                        "${STM32_PROGRAMMER_CLI}"
+                        -c "${_programmer_connection}"
+                        -el "${STM32_EXTERNAL_LOADER}"
+                        -w "${_ai_model_dir}/face/network_data.hex" -v
+                        ${_stm32_program_extra_args}
+                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                        "${STM32_PROGRAMMER_CLI}"
+                        -c "${_programmer_connection}"
+                        -el "${STM32_EXTERNAL_LOADER}"
+                        -w "${_ai_flash_dir}/network_blobs_person.hex" -v
+                        ${_stm32_program_extra_args}
+                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                        "${STM32_PROGRAMMER_CLI}"
+                        -c "${_programmer_connection}"
+                        -el "${STM32_EXTERNAL_LOADER}"
+                        -w "${_ai_flash_dir}/network_blobs_segmentation.hex" -v
+                        ${_stm32_program_extra_args}
+                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                        "${STM32_PROGRAMMER_CLI}"
+                        -c "${_programmer_connection}"
+                        -el "${STM32_EXTERNAL_LOADER}"
+                        -w "${_ai_flash_dir}/network_blobs_face.hex" -v
+                        ${_stm32_program_extra_args}
+                USES_TERMINAL
+                VERBATIM)
+        elseif(STM32_PROGRAM_IMAGE)
+            add_custom_target(program
+                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                        "${STM32_PROGRAMMER_CLI}"
+                        -c "${_programmer_connection}"
+                        -el "${STM32_EXTERNAL_LOADER}"
+                        -w "${STM32_PROGRAM_IMAGE}" "${STM32_PROGRAM_ADDRESS}"
+                        -v
+                        ${_stm32_program_extra_args}
+                USES_TERMINAL
+                VERBATIM)
+        else()
+            uai_add_missing_tool_target(program
+                "program requires STM32_PROGRAM_IMAGE for this application")
+        endif()
     else()
         uai_add_missing_tool_target(program
-            "program requires STM32_PROGRAMMER_CLI, STM32_EXTERNAL_LOADER, and STM32_PROGRAM_IMAGE"
+            "program requires STM32_PROGRAMMER_CLI and STM32_EXTERNAL_LOADER"
         )
     endif()
 endfunction()

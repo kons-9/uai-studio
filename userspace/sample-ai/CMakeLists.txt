@@ -336,6 +336,35 @@ add_custom_command(TARGET sample-ai.elf POST_BUILD
 
 add_custom_target(sample-ai DEPENDS sample-ai.elf)
 
+# STM32N6 external-flash boot uses the CubeMX FSBL LRUN flow.  The signing
+# tool adds the 0x400-byte image header expected by the FSBL; the payload is
+# then copied to internal RAM before the application starts.
+set(AI_FLASH_APP_IMAGE
+    "${CMAKE_CURRENT_BINARY_DIR}/sample-ai-flash.bin")
+set(AI_FLASH_FSBL_IMAGE
+    "${CMAKE_CURRENT_SOURCE_DIR}/fsbl/stm32n6570-dk-ai_fsbl.hex")
+if(NOT EXISTS "${AI_FLASH_FSBL_IMAGE}")
+    message(FATAL_ERROR
+        "The official sample-ai FSBL is missing: ${AI_FLASH_FSBL_IMAGE}")
+endif()
+if(STM32_SIGNING_TOOL_CLI)
+    add_custom_command(
+        OUTPUT "${AI_FLASH_APP_IMAGE}"
+        COMMAND "${STM32_SIGNING_TOOL_CLI}"
+                -bin "${CMAKE_CURRENT_BINARY_DIR}/sample-ai.bin"
+                -nk -of 0x80000000 -t fsbl -o "${AI_FLASH_APP_IMAGE}"
+                -hv 2.3 -align -s -dump "${AI_FLASH_APP_IMAGE}"
+        DEPENDS sample-ai.elf
+        VERBATIM)
+    add_custom_target(sample-ai-flash-images
+        DEPENDS "${AI_FLASH_APP_IMAGE}")
+else()
+    add_custom_target(sample-ai-flash-images
+        COMMAND ${CMAKE_COMMAND} -E echo
+                "sample-ai-flash-images requires STM32_SigningTool_CLI"
+        COMMAND ${CMAKE_COMMAND} -E false)
+endif()
+
 add_library(${AI_MODEL_TARGET} STATIC
     ${AI_MODEL_C_API_SOURCES}
     "${AI_STEDGEAI_DIR}/Npu/ll_aton/ecloader.c"

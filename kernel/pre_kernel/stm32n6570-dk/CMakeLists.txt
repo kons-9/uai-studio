@@ -101,3 +101,77 @@ target_compile_options(stm32n6570_dk PRIVATE
 )
 
 add_library(uai::stm32n6570_dk ALIAS stm32n6570_dk)
+
+if(APP_TARGET STREQUAL "sample-ai")
+    # The normal board object above embeds the CubeMX FSBL startup into the
+    # RAM-loaded application.  Flash boot needs a separate standalone FSBL:
+    # BootROM starts it from XSPI2, and it copies the LRUN application from
+    # 0x70100000 to internal RAM before jumping to its vector table.
+    set(AI_FSBL_SOURCES
+        "${CUBEMX_FSBL_ROOT}/Core/Src/main.c"
+        "${CUBEMX_FSBL_ROOT}/Core/Src/extmem_manager.c"
+        "${CUBEMX_FSBL_ROOT}/Core/Src/stm32n6xx_hal_msp.c"
+        "${CUBEMX_FSBL_ROOT}/Core/Src/stm32n6xx_it.c"
+        "${CUBEMX_FSBL_ROOT}/Core/Src/system_stm32n6xx_fsbl.c"
+        "${CUBEMX_FSBL_ROOT}/Core/Src/syscalls.c"
+        "${CUBEMX_FSBL_ROOT}/Core/Src/sysmem.c"
+        "${CUBEMX_FSBL_ROOT}/Core/Startup/startup_stm32n657x0hxq_fsbl.s"
+        flash_lrun_size.c
+        ${CUBEMX_HAL_SOURCES}
+        ${CUBEMX_EXTMEM_SOURCES})
+
+    add_executable(sample-ai-fsbl.elf ${AI_FSBL_SOURCES})
+    target_include_directories(sample-ai-fsbl.elf PRIVATE
+        "${CUBEMX_FSBL_ROOT}/Core/Inc"
+        "${CUBEMX_FSBL_ROOT}/Core/Src"
+        "${CUBEMX_ROOT}/Appli/Core/Inc"
+        "${CUBEMX_ROOT}/Drivers/STM32N6xx_HAL_Driver/Inc"
+        "${CUBEMX_ROOT}/Drivers/STM32N6xx_HAL_Driver/Inc/Legacy"
+        "${CUBEMX_ROOT}/Drivers/CMSIS/Device/ST/STM32N6xx/Include"
+        "${CUBEMX_ROOT}/Drivers/CMSIS/Include"
+        "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager"
+        "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/boot"
+        "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/sal"
+        "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/nor_sfdp"
+        "${STM32CUBE_N6_DIR}/Drivers/BSP/Components/mx66uw1g45g"
+        "${STM32CUBE_N6_DIR}/Drivers/BSP/STM32N6570-DK")
+    target_compile_definitions(sample-ai-fsbl.elf PRIVATE
+        STM32N6570_DK
+        STM32N6570_DK_DEVELOPMENT_MODE
+        USE_HAL_DRIVER
+        STM32N657xx
+        USE_FULL_LL_DRIVER
+        CPU_IN_SECURE_STATE
+        USER_TZ_SAU_SETUP
+        float_t=float)
+    target_compile_options(sample-ai-fsbl.elf PRIVATE
+        $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
+    target_link_libraries(sample-ai-fsbl.elf PRIVATE m)
+
+    set(AI_FSBL_LINKER_SCRIPT
+        "${CUBEMX_FSBL_ROOT}/STM32N657X0HXQ_AXISRAM2_fsbl.ld")
+    # CubeMX emits the newer READONLY output-section syntax, while this
+    # project intentionally uses the installed GCC 10.3 toolchain.  Keep the
+    # generated linker script untouched and derive a compatible build copy.
+    set(AI_FSBL_GCC_LINKER_SCRIPT
+        "${CMAKE_CURRENT_BINARY_DIR}/sample-ai-fsbl-gcc.ld")
+    file(READ "${AI_FSBL_LINKER_SCRIPT}" _ai_fsbl_ld_contents)
+    string(REPLACE "(READONLY)" "" _ai_fsbl_ld_contents
+                   "${_ai_fsbl_ld_contents}")
+    file(WRITE "${AI_FSBL_GCC_LINKER_SCRIPT}" "${_ai_fsbl_ld_contents}")
+    target_link_options(sample-ai-fsbl.elf PRIVATE
+        "-T${AI_FSBL_GCC_LINKER_SCRIPT}"
+        "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/sample-ai-fsbl.map"
+        "-Wl,--print-memory-usage")
+    set_target_properties(sample-ai-fsbl.elf PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY
+            "${CMAKE_BINARY_DIR}/userspace/sample-ai"
+        LINK_DEPENDS
+            "${AI_FSBL_LINKER_SCRIPT};${AI_FSBL_GCC_LINKER_SCRIPT}")
+    add_custom_command(TARGET sample-ai-fsbl.elf POST_BUILD
+        COMMAND ${CMAKE_OBJCOPY} -O binary
+                "$<TARGET_FILE:sample-ai-fsbl.elf>"
+                "$<TARGET_FILE_DIR:sample-ai-fsbl.elf>/sample-ai-fsbl.bin"
+        COMMAND ${CMAKE_SIZE} "$<TARGET_FILE:sample-ai-fsbl.elf>"
+        VERBATIM)
+endif()
