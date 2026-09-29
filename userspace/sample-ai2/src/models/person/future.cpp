@@ -5,6 +5,7 @@
 #include "common/log.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
+#include "driver/npu_driver/npu_network.hpp"
 #include "memory_allocator/memory_allocator.hpp"
 
 namespace uai::ai::models::person {
@@ -368,8 +369,10 @@ common::Error Future::Preprocess()
                 "person.future.frame"};
     }
     frame_.input_prepared_by_cpu = false;
-    const memory_allocator::Buffer &input =
-        frame_.source_valid ? frame_.source : frame_.buffer;
+    // The person network is generated for the 480x480 Pipe2 tensor. Keep its
+    // input on the DMA-owned inference buffer, as in sample-ai; the copied
+    // source buffer is reserved for models that need CPU resizing.
+    const memory_allocator::Buffer &input = frame_.buffer;
     if (!input || input.size < context_.info->inputs[0].size_bytes) {
         return {common::ErrorCode::kInvalidArgument, 0U,
                 "person.future.input"};
@@ -382,9 +385,7 @@ common::Error Future::Preprocess()
         context_.info->inputs[0].size_bytes,
         input.index,
         memory_allocator::Region::kInference};
-    common::Error status = frame_.source_valid
-                               ? context_.cache->PrepareForPeripheralRead(range)
-                               : context_.cache->PrepareForCpuRead(range);
+    common::Error status = context_.cache->PrepareForCpuRead(range);
     if (status.Ok() && !preprocess_stage_logged_) {
         UAI_LOG_INFO(reinterpret_cast<const UB *>(
                          "ai: person preprocess done seq=%u\n"),
@@ -396,7 +397,8 @@ common::Error Future::Preprocess()
 
 common::Error Future::Infer()
 {
-    if (context_.npu == nullptr || context_.info == nullptr) {
+    if (context_.npu == nullptr || context_.model == nullptr ||
+        context_.info == nullptr) {
         return {common::ErrorCode::kNotInitialized,
                 0U,
                 "person.future.infer.context"};
@@ -406,9 +408,12 @@ common::Error Future::Infer()
                          "ai: person infer begin seq=%u\n"),
                      static_cast<unsigned int>(frame_.capture_sequence));
     }
-    const memory_allocator::Buffer &input =
-        frame_.source_valid ? frame_.source : frame_.buffer;
-    npu::Status result = context_.npu->SetInput(
+    const memory_allocator::Buffer &input = frame_.buffer;
+    npu::Status result = context_.npu->SelectModel(*context_.model);
+    if (!result.Ok()) return result.error;
+    context_.npu->SetEpochTraceModelKindId(context_.model_kind_id);
+
+    result = context_.npu->SetInput(
         reinterpret_cast<stai_ptr>(input.address),
         context_.info->inputs[0].size_bytes);
     if (!result.Ok()) return result.error;

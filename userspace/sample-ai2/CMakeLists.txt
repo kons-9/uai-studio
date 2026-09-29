@@ -286,6 +286,8 @@ target_link_options(${AI_APP_TARGET} PRIVATE
     "-Wl,--print-memory-usage")
 target_link_options(${AI_APP_TARGET} PRIVATE
     "-Wl,--section-start=.network_blobs_person=0x70500000")
+target_link_options(${AI_APP_TARGET} PRIVATE
+    "-Wl,--section-start=.network_blobs_face=0x70580000")
 set_target_properties(${AI_APP_TARGET} PROPERTIES
     LINK_DEPENDS "${AI_LINKER_SCRIPT}")
 

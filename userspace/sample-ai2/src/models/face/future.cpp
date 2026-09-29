@@ -6,6 +6,7 @@
 #include "common/log.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
+#include "driver/npu_driver/npu_network.hpp"
 #include "image_resizer/image_resizer.hpp"
 #include "memory_allocator/memory_allocator.hpp"
 #include "arm_math.h"
@@ -400,7 +401,8 @@ common::Error Future::Preprocess()
 
 common::Error Future::Infer()
 {
-    if (context_.npu == nullptr || context_.info == nullptr) {
+    if (context_.npu == nullptr || context_.model == nullptr ||
+        context_.info == nullptr) {
         return {common::ErrorCode::kNotInitialized, 0U,
                 "face.future.infer.context"};
     }
@@ -410,7 +412,11 @@ common::Error Future::Infer()
                      static_cast<unsigned int>(frame_.capture_sequence));
     }
 
-    npu::Status result = context_.npu->SetInput(
+    npu::Status result = context_.npu->SelectModel(*context_.model);
+    if (!result.Ok()) return result.error;
+    context_.npu->SetEpochTraceModelKindId(context_.model_kind_id);
+
+    result = context_.npu->SetInput(
         reinterpret_cast<stai_ptr>(frame_.buffer.address), InputBytes());
     if (!result.Ok()) return result.error;
 

@@ -15,6 +15,7 @@ class CacheDriver;
 
 namespace uai::ai::npu {
 class NpuDriver;
+class NpuNetwork;
 }
 
 namespace uai::ai::models::person {
@@ -25,6 +26,8 @@ using PublishCallback = void (*)(void *, const memory_allocator::BoxSet &);
  * The Future owns the inference state; the application owns these services. */
 struct FutureContext {
     npu::NpuDriver *npu = nullptr;
+    npu::NpuNetwork *model = nullptr;
+    std::uint32_t model_kind_id = 0U;
     cache::CacheDriver *cache = nullptr;
     const stai_network_info *info = nullptr;
     PublishCallback publish = nullptr;
