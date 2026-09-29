@@ -1,5 +1,3 @@
-# Default native-Linux build settings for the STM32N6570-DK sample-ai image.
-# Command-line assignments still override these settings.
+# Default application. The root Makefile selects the matching IOC and
+# build-specific CubeMX output directory after loading this file.
 APP_TARGET ?= sample-ai
-CUBEMX_IOC ?= userspace/sample-ai/config/stm32n6570-dk-sample-ai.ioc
-CUBEMX_OUTPUT_DIR ?= build/cubemx

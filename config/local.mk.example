@@ -12,7 +12,7 @@ STM32_PROGRAM_PORT ?= swd
 # STM32N6570-DK RAM image layout.
 STM32_RAM_ADDRESS ?= 0x34000400
 STM32_RAM_ENTRY ?= 0x34000800
-STM32_RAM_STACK ?= 0x34200000
+STM32_RAM_STACK ?= $(if $(filter sample-ai2,$(APP_TARGET)),0x34100000,0x34200000)
 STM32_RAM_XPSR ?= 0x01000000
 
 # Host UART settings.
@@ -24,8 +24,8 @@ UART_BAUD ?= 115200
 # Classic STM32CubeMX 6.x CLI generation for STM32N657 (not CubeMX2/C5).
 # Set CUBEMX_EXECUTABLE to the Linux STM32CubeMX launcher when installed.
 CUBEMX_EXECUTABLE ?= STM32CubeMX
-CUBEMX_IOC ?= userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc
-CUBEMX_OUTPUT_DIR ?= build/cubemx
+CUBEMX_IOC ?= $(if $(filter sample-ai sample-ai2,$(APP_TARGET)),userspace/$(APP_TARGET)/config/stm32n6570-dk-sample-ai.ioc,userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc)
+CUBEMX_OUTPUT_DIR ?= $(BUILD_DIR)/cubemx
 
 # STM32CubeN6 package root, required by sample-camera-lcd and
 # sample-camera-pipe2 camera/display drivers.
