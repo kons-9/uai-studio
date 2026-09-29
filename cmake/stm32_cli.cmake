@@ -35,6 +35,10 @@ if(NOT CUBEMX_IOC)
     # sample-camera-pipe2 intentionally reuses sample-camera-lcd's
     # CubeMX peripheral/startup setup;
     # its dual-pipe configuration is applied by the application at runtime.
+    if(APP_TARGET STREQUAL "sample-ai2")
+        set(_uai_default_ioc
+            "${CMAKE_SOURCE_DIR}/userspace/sample-ai2/config/stm32n6570-dk-sample-ai.ioc")
+    endif()
     if(NOT EXISTS "${_uai_default_ioc}" AND
        (APP_TARGET STREQUAL "sample-camera-pipe2" OR
         APP_TARGET STREQUAL "sample-camera-pipe2-lab"))
@@ -236,23 +240,24 @@ function(uai_add_stm32_cli_targets app_target)
     if(STM32_PROGRAMMER_CLI AND STM32_EXTERNAL_LOADER)
         separate_arguments(_stm32_program_extra_args NATIVE_COMMAND
             "${STM32_PROGRAM_EXTRA_ARGS}")
-        if(app_target STREQUAL "sample-ai" AND
-           TARGET sample-ai-flash-images)
-            # sample-ai is an STM32N6 LRUN image set.  The FSBL, signed
+        if((app_target STREQUAL "sample-ai" OR
+            app_target STREQUAL "sample-ai2") AND
+           TARGET ${app_target}-flash-images)
+            # Both AI applications are STM32N6 LRUN image sets. The FSBL, signed
             # application, command blobs, and model weights occupy separate
             # external-NOR ranges and must all be present for reset boot.
             set(_ai_flash_dir
-                "${CMAKE_BINARY_DIR}/userspace/sample-ai")
+                "${CMAKE_BINARY_DIR}/userspace/${app_target}")
             set(_ai_model_dir
-                "${CMAKE_SOURCE_DIR}/userspace/sample-ai/models")
+                "${CMAKE_SOURCE_DIR}/userspace/${app_target}/models")
             set(_ai_fsbl_image
-                "${CMAKE_SOURCE_DIR}/userspace/sample-ai/fsbl/stm32n6570-dk-ai_fsbl.hex")
+                "${CMAKE_SOURCE_DIR}/userspace/${app_target}/fsbl/stm32n6570-dk-ai_fsbl.hex")
             if(NOT EXISTS "${_ai_fsbl_image}")
                 message(FATAL_ERROR
                     "sample-ai official FSBL is missing: ${_ai_fsbl_image}")
             endif()
             add_custom_target(program
-                DEPENDS sample-ai-flash-images sample-ai
+                DEPENDS ${app_target}-flash-images ${app_target}
                 COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
                         "${STM32_PROGRAMMER_CLI}"
                         -c "${_programmer_connection}"
@@ -263,7 +268,7 @@ function(uai_add_stm32_cli_targets app_target)
                         "${STM32_PROGRAMMER_CLI}"
                         -c "${_programmer_connection}"
                         -el "${STM32_EXTERNAL_LOADER}"
-                        -w "${_ai_flash_dir}/sample-ai-flash.bin"
+                        -w "${_ai_flash_dir}/${app_target}-flash.bin"
                            0x70100000 -v
                         ${_stm32_program_extra_args}
                 COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}

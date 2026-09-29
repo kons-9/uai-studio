@@ -1,0 +1,17 @@
+# STEdgeAI output and source model files are external/generated artifacts.
+source/*
+model1/*
+!model1/README.md
+model2/*
+!model2/README.md
+
+# Generated STEdgeAI model sources and model-data images. These files depend
+# on the locally installed STEdgeAI release and are recreated by
+# generate_model.sh from the original model files.
+*/network.c
+*/network_ecblobs.h
+*/stai_network.c
+*/stai_network.h
+*/network_data.xSPI2.bin
+*/network_data.hex
+*/network_data_flash.hex

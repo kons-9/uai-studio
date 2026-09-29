@@ -12,8 +12,8 @@ CMAKE ?= cmake
 CONFIG_FILE ?= config/local.mk
 -include $(CONFIG_FILE)
 
-ifeq ($(APP_TARGET),sample-ai)
-CUBEMX_IOC ?= userspace/sample-ai/config/stm32n6570-dk-sample-ai.ioc
+ifneq (,$(filter sample-ai sample-ai2,$(APP_TARGET)))
+CUBEMX_IOC ?= userspace/$(APP_TARGET)/config/stm32n6570-dk-sample-ai.ioc
 else
 CUBEMX_IOC ?= userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc
 endif
@@ -51,9 +51,9 @@ THREAD_MONITOR_LD_PRELOAD ?= $(firstword $(wildcard \
 
 # sample-ai model generation and external-flash programming settings.
 STEDGEAI_BIN ?= /opt/ST/STEdgeAI/4.0/Utilities/linux
-AI_MODELS_DIR := userspace/sample-ai/models
+AI_MODELS_DIR := userspace/$(APP_TARGET)/models
 AI_MODEL_GENERATOR := $(AI_MODELS_DIR)/generate_model.sh
-AI_BUILD_DIR := $(BUILD_DIR)/userspace/sample-ai
+AI_BUILD_DIR := $(BUILD_DIR)/userspace/$(APP_TARGET)
 AI_PERSON_WEIGHTS := $(AI_MODELS_DIR)/person/network_data.hex
 AI_SEGMENTATION_WEIGHTS := $(AI_MODELS_DIR)/segmentation/network_data.hex
 AI_FACE_WEIGHTS := $(AI_MODELS_DIR)/face/network_data.hex
@@ -136,7 +136,7 @@ help:
 	@echo "Set board/tool paths in config/local.mk (see config/local.mk.example)."
 
 setup:
-ifeq ($(APP_TARGET),sample-ai)
+ifneq (,$(filter sample-ai sample-ai2,$(APP_TARGET)))
 	+$(MAKE) sample-ai-deps
 	+$(MAKE) ai-models
 endif
@@ -154,7 +154,7 @@ cubemx-generate: configure
 	$(CMAKE) --build "$(BUILD_DIR)" --target cubemx-generate
 
 sample-ai-deps:
-	$(if $(strip $(STEDGEAI_LIB_DIR)),sh userspace/sample-ai/scripts/setup_third_party.sh "$(STEDGEAI_LIB_DIR)",sh userspace/sample-ai/scripts/setup_third_party.sh)
+	$(if $(strip $(STEDGEAI_LIB_DIR)),sh userspace/$(APP_TARGET)/scripts/setup_third_party.sh "$(STEDGEAI_LIB_DIR)",sh userspace/$(APP_TARGET)/scripts/setup_third_party.sh)
 
 ai-model-person:
 	PATH="$(STEDGEAI_BIN):$(PATH)" sh "$(AI_MODEL_GENERATOR)" person

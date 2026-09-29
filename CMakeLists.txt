@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.16)
 # changing the kernel project.
 set(APP_TARGET "sample-hello-world" CACHE STRING "Userspace application to build")
 set_property(CACHE APP_TARGET PROPERTY STRINGS
-    sample-hello-world sample-camera-lcd sample-ai sample-camera-pipe2
+    sample-hello-world sample-camera-lcd sample-ai sample-ai2 sample-camera-pipe2
     sample-camera-pipe2-lab)
 
 option(CMAKE_EXPORT_COMPILE_COMMANDS
@@ -49,7 +49,7 @@ if(APP_TARGET STREQUAL "sample-camera-lcd" OR
         CPU_IN_SECURE_STATE)
 endif()
 add_subdirectory(kernel/pre_kernel/stm32n6570-dk)
-if(APP_TARGET STREQUAL "sample-ai" AND
+if((APP_TARGET STREQUAL "sample-ai" OR APP_TARGET STREQUAL "sample-ai2") AND
    EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kernel/driver/CMakeLists.txt")
     add_subdirectory(kernel/driver)
 endif()
