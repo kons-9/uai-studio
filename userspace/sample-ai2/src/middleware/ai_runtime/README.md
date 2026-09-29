@@ -1,9 +1,7 @@
 # AI runtime (independent pipeline core)
 
-This directory contains the host-testable core of the three-task pipeline.
-With `UAI_PERSON_PIPELINE_APP=ON`, the person-only task adapter uses this core
-for camera Pipe2 inference. The legacy three-model runtime is not linked in
-that configuration.
+This directory contains the host-testable core of the person pipeline.
+The person-only task adapter uses this core for camera Pipe2 inference.
 
 - `Scheduler::Submit()` registers a model-owned `AiFuture` in the pre-NPU CPU queue.
 - Three `Dispatcher` instances, each with its own `ExecutionContext`, drain the

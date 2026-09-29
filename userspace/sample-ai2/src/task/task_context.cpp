@@ -146,33 +146,6 @@ void TaskContext::CreateKernelObjects()
         Halt("ai: box queue create failed\n");
     }
 
-#ifndef UAI_PERSON_PIPELINE_APP
-    T_CMBF inference_completion_queue_config = {};
-    inference_completion_queue_config.mbfatr = TA_TFIFO;
-    inference_completion_queue_config.bufsz =
-        sizeof(inference_completion_queue_storage);
-    inference_completion_queue_config.maxmsz =
-        sizeof(ai_runtime::InferenceCompletion);
-    inference_completion_queue_config.bufptr = inference_completion_queue_storage;
-    inference_completion_queue = tk_cre_mbf(&inference_completion_queue_config);
-    if (inference_completion_queue < E_OK) {
-        Halt("ai: inference completion queue create failed\n");
-    }
-#endif
-
-    T_CMBF inference_postprocess_done_queue_config = {};
-    inference_postprocess_done_queue_config.mbfatr = TA_TFIFO;
-    inference_postprocess_done_queue_config.bufsz =
-        sizeof(inference_postprocess_done_queue_storage);
-    inference_postprocess_done_queue_config.maxmsz =
-        sizeof(InferencePostprocessDoneMessage);
-    inference_postprocess_done_queue_config.bufptr =
-        inference_postprocess_done_queue_storage;
-    inference_postprocess_done_queue =
-        tk_cre_mbf(&inference_postprocess_done_queue_config);
-    if (inference_postprocess_done_queue < E_OK) {
-        Halt("ai: postprocess done queue create failed\n");
-    }
 }
 
 void TaskContext::StartApplicationTask(FP entry)
@@ -187,33 +160,29 @@ void TaskContext::StartCameraTask(FP entry)
               "camera_render");
 }
 
-void TaskContext::StartInferenceTask(FP entry)
+void TaskContext::StartPersonFrameTask(FP entry)
 {
-    /* NPU completion wakes this task from an event wait.  Keep it above the
-     * camera/LCD task so a ready NPU epoch is continued immediately instead
-     * of waiting behind a display composition period.  The task blocks while
-     * the NPU is running, so the camera task still owns the CPU between IRQs.
-     */
-    StartTask(entry, inference_task_stack, kInferenceTaskStackSize, 4,
-              "inference");
+    StartTask(entry, person_frame_task_stack, kPersonTaskStackSize, 4,
+              "person_frame");
 }
 
-void TaskContext::StartInferencePostprocessTask(FP entry)
+void TaskContext::StartPersonPreprocessTask(FP entry)
 {
-    /* Result conversion is CPU work.  Keep it below the camera and NPU-owner
-     * tasks so it cannot delay the next NPU submission when a completion and
-     * a camera event become ready together. */
-    StartTask(entry, inference_postprocess_task_stack,
-              kInferencePostprocessTaskStackSize, 6, "inference_postprocess");
+    StartTask(entry, person_preprocess_task_stack, kPersonTaskStackSize, 4,
+              "person_preprocess");
 }
 
-#ifdef UAI_PERSON_PIPELINE_APP
 void TaskContext::StartPersonNpuTask(FP entry)
 {
-    StartTask(entry, person_npu_task_stack, kInferenceTaskStackSize, 4,
+    StartTask(entry, person_npu_task_stack, kPersonTaskStackSize, 4,
               "person_npu");
 }
-#endif
+
+void TaskContext::StartPersonPostprocessTask(FP entry)
+{
+    StartTask(entry, person_postprocess_task_stack,
+              kPersonPostprocessTaskStackSize, 6, "person_postprocess");
+}
 
 void TaskContext::StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
                             const char *name)
@@ -314,33 +283,18 @@ void TaskContext::SendInferenceFrame(const memory_allocator::InferenceFrame &fra
         InferenceMessage discarded{};
         const INT size = tk_rcv_mbf(frame_queue, &discarded, TMO_POL);
         if (size == static_cast<INT>(sizeof(discarded))) {
-            ++inference_metrics.frame_queue_drop_count;
             const common::Error status =
                 memory.ReleaseInferenceBuffer(discarded.frame);
             LogStatus("memory", status);
             continue;
         }
 
-        ++inference_metrics.frame_queue_drop_count;
         const common::Error status = memory.ReleaseInferenceBuffer(frame);
         LogStatus("memory", status);
         UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
                           "ai: frame dropped reason=queue_full sequence=%u\n"),
                       static_cast<unsigned int>(frame.capture_sequence));
         return;
-    }
-}
-
-void TaskContext::SendInferencePostprocessDone(
-    const memory_allocator::InferenceFrame &frame)
-{
-    InferencePostprocessDoneMessage message{};
-    message.frame = frame;
-    const ER error = tk_snd_mbf(inference_postprocess_done_queue, &message,
-                                sizeof(message), TMO_POL);
-    if (error != E_OK) {
-        const common::Error status = memory.ReleaseInferenceBuffer(frame);
-        LogStatus("memory", status);
     }
 }
 

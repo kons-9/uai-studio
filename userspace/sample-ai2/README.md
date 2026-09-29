@@ -2,8 +2,7 @@
 
 ## person 専用アプリ（新しい3レーンランタイム）
 
-sample-ai2の既定は`UAI_PERSON_PIPELINE_APP=ON`です。既存の3モデル経路の代わりにpersonモデルだけを
-`src/middleware/ai_runtime/`経由で実行する別構成を選択できます。起動後は
+sample-ai2はpersonモデルだけを`src/middleware/ai_runtime/`経由で実行します。起動後は
 Pipe1のLCD表示とPipe2のフレーム取得を従来どおり維持し、前処理CPUタスクが
 フレームを取り込み、NPUタスクがSTAI非同期実行（IRQ待ち・epoch継続）、
 後処理CPUタスクがperson検出結果をLCDの枠キューに渡します。モデル重みと
@@ -11,8 +10,6 @@ command blobはpersonのみ必要です。ビルド先は`build-sample-ai2-perso
 
 まずpersonのモデル生成物とSTEdgeAI、CubeMXソース、FSBLを準備してから
 `make APP_TARGET=sample-ai2 build`を使います。`setup`と`ai-load`もpersonだけを
-対象にします。旧経路は`UAI_PERSON_PIPELINE_APP=OFF`で選択できますが、
-旧ランタイムとsegmentation/faceのソースを削除した作業ツリーでは使用できません。
 初期化失敗時はカメラ表示を継続し、推論のみ無効にします。UARTには
 `ai: person pipeline enabled (pre/npu/post)`が出ます。各ステップのID/時刻は
 `diagnostics.inference_trace`を有効にしたときだけ記録します。
@@ -129,35 +126,17 @@ ST公式のモデル取得元、モデルファイル名、ライセンスと利
 
 推論実行は、生成モデルのC API、NPUスケジューリング、推論実行を分離した構成です。
 
-- `src/models/`：共通の `Model` インターフェースと、`person/`・`segmentation/`・
-  `face/`ごとのモデル実装・Decoderを配置します。STEdgeAIが生成した `*_model_*`
-  C関数名と、anchor/dequant/NMS・mask変換・座標変換などのモデル固有処理は各モデル
-  namespaceに閉じ込めます。具体的な型は `uai::ai::models::<model>::Model` です。
-- `src/npu_runtime/`：アプリケーション向けの`AiRuntime` Facadeです。Taskにはモデル登録、
-  初期化、推論実行だけを公開し、SchedulerとInferenceDispatcherを内部に隠します。NPU
-  ドライバの初期化、preload、選択済みモデルのruntime切り替えもここで行います。
-  C++名前空間は`uai::ai::ai_runtime`です。ソース配置と診断用エラー識別子は
-  今回維持し、処理分割時に別途整理します。
-- `src/npu_runtime/scheduler/`：登録済みモデルの管理と、次に実行するモデルの選択を
-  担当します。選択中Modelへの入力準備、Decoder、結果変換の委譲もこの層で行います。
-  モデル選択ポリシーはこの層に閉じ込め、NPUドライバは持ちません。
-- `src/npu_runtime/inference_dispatcher/`：選択済みモデルの入力準備、cache処理、動的出力、
-  NPU実行、Decoder呼び出しを担当します。モデル固有の入力準備と`BoxSet`変換は、
-  `Model`インターフェースを通して具体的なモデルへ委譲します。
+- `src/models/`：personモデルの生成C API、入力前処理、Decoder、座標変換を配置します。
+- `src/middleware/ai_runtime/`：Preprocess CPU、NPU、Postprocess CPUの3レーンを管理する
+  `AiFuture`、Scheduler、Dispatcherを配置します。
+- `src/task/person_pipeline_task.cpp`：フレーム受信、前処理、NPU実行、後処理のタスクを
+  起動し、モデル出力をLCDの枠キューへ渡します。
 
-Taskは起動時に`AiRuntime::RegisterModel()`でperson、segmentation、faceを登録し、
-`AiRuntime::Run()`を呼ぶだけです。フレームごとのモデル順序はTaskが決定せず、Schedulerが
-現在ラウンドロビンで選択します。`ModelKind`と入力形状だけを持つ`ModelDescriptor`の共通型は
-`models/model.hpp`に置き、具体的なdescriptor値は各モデルの`model.cpp`が所有します。
-出力数・出力サイズ・量子化値は生成STAIの`stai_network_info`から実行時に取得し、公開
-モデルI/Fには持ち込みません。現在のdescriptorはSchedulerからDispatcherへ提供します。
+フレームは `FrameEntry` が受信してSchedulerへ投入します。Preprocessワーカーが入力を
+準備し、NPUワーカーがSTAI非同期実行とIRQ待ちを行い、Postprocessワーカーがperson検出
+結果を変換します。
 
-そのため、モデル選択の条件分岐はSchedulerのbinding表へ集約し、NPUの実行手順は
-AiRuntimeとDispatcherへ集約しています。モデル選択用のCMakeオプションや`AI_MODEL_*`のビルド分岐はなく、
-生成C API・後処理・3モデルのcommand blobを常に同じ構成でリンクします。生成C
-ラッパーとモデル固有後処理も各`src/models/<model>/`にまとめています。
-
-### 次段階のパイプライン設計（独立コア実装済み・実機経路未接続）
+### パイプライン設計
 
 `AiFuture`は推論単位の非同期状態を保持し、`is_ready()`が真のときだけ
 `Evaluate()`で一つのステップを実行します。返り値の`AiRuntimeResult`は既存の

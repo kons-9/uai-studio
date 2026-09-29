@@ -5,8 +5,7 @@ ENV_FILE ?= env.mk
 
 APP_TARGET ?= sample-hello-world
 ifeq ($(APP_TARGET),sample-ai2)
-UAI_PERSON_PIPELINE_APP ?= ON
-BUILD_DIR ?= $(if $(filter ON,$(UAI_PERSON_PIPELINE_APP)),build-sample-ai2-person,build-sample-ai2)
+BUILD_DIR ?= build-sample-ai2-person
 endif
 BUILD_DIR ?= build
 CMAKE ?= cmake
@@ -65,11 +64,9 @@ AI_PERSON_BLOB := $(AI_BUILD_DIR)/network_blobs_person.hex
 AI_SEGMENTATION_BLOB := $(AI_BUILD_DIR)/network_blobs_segmentation.hex
 AI_FACE_BLOB := $(AI_BUILD_DIR)/network_blobs_face.hex
 ifeq ($(APP_TARGET),sample-ai2)
-ifeq ($(UAI_PERSON_PIPELINE_APP),ON)
 AI_MODEL_BUILD_TARGETS := ai-model-person
 AI_WEIGHT_IMAGES := $(AI_PERSON_WEIGHTS)
 AI_BLOB_IMAGES := $(AI_PERSON_BLOB)
-endif
 endif
 AI_MODEL_BUILD_TARGETS ?= ai-model-person ai-model-segmentation ai-model-face
 AI_WEIGHT_IMAGES ?= $(AI_PERSON_WEIGHTS) $(AI_SEGMENTATION_WEIGHTS) $(AI_FACE_WEIGHTS)
@@ -110,9 +107,6 @@ export AI_MODEL_INPUTS_CH_POSITION AI_MODEL_OUTPUTS_CH_POSITION AI_MODEL_C_API
 export AI_MODEL_CUT_OUTPUT_TENSORS AI_MODEL_NETWORK_ADDRESS AI_MODEL_DOWNLOAD_URL
 
 CMAKE_ARGS := -S . -B "$(BUILD_DIR)" -DAPP_TARGET="$(APP_TARGET)"
-ifneq ($(strip $(UAI_PERSON_PIPELINE_APP)),)
-CMAKE_ARGS += -DUAI_PERSON_PIPELINE_APP="$(UAI_PERSON_PIPELINE_APP)"
-endif
 ifneq ($(strip $(STM32CUBE_N6_DIR)),)
 CMAKE_ARGS += -DSTM32CUBE_N6_DIR="$(STM32CUBE_N6_DIR)"
 endif

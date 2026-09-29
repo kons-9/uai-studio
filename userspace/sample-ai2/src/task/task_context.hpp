@@ -13,9 +13,6 @@
 #include "driver/psram_driver/psram_driver.hpp"
 #include "driver/rif_driver/rif_driver.hpp"
 #include "memory_allocator/memory_allocator.hpp"
-#ifndef UAI_PERSON_PIPELINE_APP
-#include "npu_runtime/inference_dispatcher/inference_dispatcher.hpp"
-#endif
 
 namespace uai::ai::task {
 
@@ -70,46 +67,17 @@ struct DiagnosticsConfig {
 
 inline constexpr std::size_t kFrameQueueDepth = 4U;
 inline constexpr std::size_t kBoxQueueDepth = 4U;
-inline constexpr std::size_t kInferenceCompletionQueueDepth = 4U;
-inline constexpr std::size_t kInferencePostprocessDoneQueueDepth = 4U;
-inline constexpr std::size_t kInferenceModelCount = 3U;
 inline constexpr SZ kInitializationTaskStackSize = 32U * 1024U;
 inline constexpr SZ kCameraTaskStackSize = 32U * 1024U;
-inline constexpr SZ kInferenceTaskStackSize = 16U * 1024U;
-inline constexpr SZ kInferencePostprocessTaskStackSize = 16U * 1024U;
+inline constexpr SZ kPersonTaskStackSize = 16U * 1024U;
+inline constexpr SZ kPersonPostprocessTaskStackSize = 16U * 1024U;
 
 struct InferenceMessage {
     memory_allocator::InferenceFrame frame{};
 };
 
-struct InferencePostprocessDoneMessage {
-    memory_allocator::InferenceFrame frame{};
-};
-
 struct BoxMessage {
     memory_allocator::BoxSet boxes{};
-};
-
-/* Low-rate counters used to explain gaps between consecutive NPU runs. They
- * are intentionally kept outside ThreadMonitor because the monitor follows
- * the NPU-owner task and does not observe the postprocess task or queue
- * producers directly. */
-struct InferenceRuntimeMetrics {
-    volatile std::uint32_t frame_queue_wait_calls = 0U;
-    volatile std::uint32_t frame_queue_wait_total_ms = 0U;
-    volatile std::uint32_t frame_queue_wait_max_ms = 0U;
-    volatile std::uint32_t frame_queue_drop_count = 0U;
-    volatile std::uint32_t reused_frame_count = 0U;
-    volatile std::uint32_t prefetch_attempts = 0U;
-    volatile std::uint32_t prefetch_successes = 0U;
-    volatile std::uint32_t prefetch_queue_empty = 0U;
-    volatile std::uint32_t prefetch_buffer_busy = 0U;
-    volatile std::uint32_t prefetch_claim_errors = 0U;
-    volatile std::uint32_t postprocess_queue_wait_total_ms = 0U;
-    volatile std::uint32_t postprocess_queue_wait_max_ms = 0U;
-    volatile std::uint32_t postprocess_count[kInferenceModelCount]{};
-    volatile std::uint32_t postprocess_total_ms[kInferenceModelCount]{};
-    volatile std::uint32_t postprocess_max_ms[kInferenceModelCount]{};
 };
 
 /* Owns all application-wide resources shared by the task objects. The
@@ -126,17 +94,14 @@ public:
     void CreateKernelObjects();
     void StartApplicationTask(FP entry);
     void StartCameraTask(FP entry);
-    void StartInferenceTask(FP entry);
-#ifdef UAI_PERSON_PIPELINE_APP
+    void StartPersonFrameTask(FP entry);
+    void StartPersonPreprocessTask(FP entry);
     void StartPersonNpuTask(FP entry);
-#endif
-    void StartInferencePostprocessTask(FP entry);
+    void StartPersonPostprocessTask(FP entry);
 
     bool DrainLatestBoxes(memory_allocator::BoxSet *active);
     void SendLatestBoxes(const memory_allocator::BoxSet &boxes);
     void SendInferenceFrame(const memory_allocator::InferenceFrame &frame);
-    void SendInferencePostprocessDone(
-        const memory_allocator::InferenceFrame &frame);
 
     memory_allocator::MemoryAllocator memory;
     uai::ai::cache::CacheDriver cache;
@@ -151,12 +116,7 @@ public:
     ID external_memory_ready;
     ID frame_queue;
     ID box_queue;
-#ifndef UAI_PERSON_PIPELINE_APP
-    ID inference_completion_queue;
-#endif
-    ID inference_postprocess_done_queue;
     DiagnosticsConfig diagnostics;
-    InferenceRuntimeMetrics inference_metrics{};
 
 private:
     void StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
@@ -165,23 +125,14 @@ private:
     alignas(8) UB frame_queue_storage[
         sizeof(InferenceMessage) * kFrameQueueDepth];
     alignas(8) UB box_queue_storage[sizeof(BoxMessage) * kBoxQueueDepth];
-#ifndef UAI_PERSON_PIPELINE_APP
-    alignas(8) UB inference_completion_queue_storage[
-        sizeof(ai_runtime::InferenceCompletion) *
-        kInferenceCompletionQueueDepth];
-#endif
-    alignas(8) UB inference_postprocess_done_queue_storage[
-        sizeof(InferencePostprocessDoneMessage) *
-        kInferencePostprocessDoneQueueDepth];
     INT initialization_task_stack[
         kInitializationTaskStackSize / sizeof(INT)];
     INT camera_task_stack[kCameraTaskStackSize / sizeof(INT)];
-    INT inference_task_stack[kInferenceTaskStackSize / sizeof(INT)];
-#ifdef UAI_PERSON_PIPELINE_APP
-    INT person_npu_task_stack[kInferenceTaskStackSize / sizeof(INT)];
-#endif
-    INT inference_postprocess_task_stack[
-        kInferencePostprocessTaskStackSize / sizeof(INT)];
+    INT person_frame_task_stack[kPersonTaskStackSize / sizeof(INT)];
+    INT person_preprocess_task_stack[kPersonTaskStackSize / sizeof(INT)];
+    INT person_npu_task_stack[kPersonTaskStackSize / sizeof(INT)];
+    INT person_postprocess_task_stack[
+        kPersonPostprocessTaskStackSize / sizeof(INT)];
 };
 
 /* The storage is private to task_context.cpp; this function is the only

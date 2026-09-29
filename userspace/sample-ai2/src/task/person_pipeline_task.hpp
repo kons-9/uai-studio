@@ -3,9 +3,10 @@
 
 namespace uai::ai::task {
 
-/* Opt-in person-only application. Each entry runs a different ai_runtime lane. */
+/* Person pipeline tasks. Each worker runs one ai_runtime lane. */
 class PersonPipelineTask final {
 public:
+    static void FrameEntry();
     static void PreprocessEntry();
     static void NpuEntry();
     static void PostprocessEntry();

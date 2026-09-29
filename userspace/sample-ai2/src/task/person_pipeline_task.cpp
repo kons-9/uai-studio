@@ -59,6 +59,46 @@ struct PersonApplication {
     PersonFuture futures[memory_allocator::kInferenceBufferCount]{};
     stai_network_info info{};
     std::uint32_t model_sequence = 0U;
+    std::uint32_t submitted_count = 0U;
+    std::uint32_t completed_count = 0U;
+    std::uint32_t postprocess_count = 0U;
+    std::uint32_t last_detection_count = 0U;
+    std::uint32_t last_capture_sequence = 0U;
+    std::uint32_t report_tick = 0U;
+    std::uint32_t report_submitted = 0U;
+    std::uint32_t report_completed = 0U;
+    std::uint32_t report_postprocess = 0U;
+    bool submit_stage_logged = false;
+    bool preprocess_stage_logged = false;
+    bool infer_stage_logged = false;
+    bool postprocess_stage_logged = false;
+
+    void Report(TaskContext &context)
+    {
+        if (!context.diagnostics.inference_fps) return;
+        const std::uint32_t now = context.Now();
+        if (report_tick == 0U) {
+            report_tick = now;
+            return;
+        }
+        if (now - report_tick < 1000U) return;
+        const auto camera = context.camera.GetDiagnostics();
+        UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                         "ai: person stats submitted=%u completed=%u "
+                         "post=%u boxes=%u capture=%u pipe2=%u drops=%u csi=%u\n"),
+                     static_cast<unsigned int>(submitted_count - report_submitted),
+                     static_cast<unsigned int>(completed_count - report_completed),
+                     static_cast<unsigned int>(postprocess_count - report_postprocess),
+                     static_cast<unsigned int>(last_detection_count),
+                     static_cast<unsigned int>(last_capture_sequence),
+                     static_cast<unsigned int>(camera.pipe2_frame_event_count),
+                     static_cast<unsigned int>(camera.pipe2_drop_count),
+                     static_cast<unsigned int>(camera.csi_error_count));
+        report_tick = now;
+        report_submitted = submitted_count;
+        report_completed = completed_count;
+        report_postprocess = postprocess_count;
+    }
     std::atomic<bool> enabled{false};
 
     common::Error Initialize(TaskContext &context)
@@ -142,6 +182,7 @@ struct PersonApplication {
     {
         auto &task = *static_cast<TaskContext *>(context);
         auto &future = static_cast<PersonFuture &>(base);
+        ++App().completed_count;
         if (!error.Ok()) {
             LogStatus("person_pipeline", error);
             App().enabled.store(false);
@@ -151,11 +192,18 @@ struct PersonApplication {
         const common::Error released = task.memory.ReleaseInferenceBuffer(future.frame_);
         LogStatus("memory", released);
         future.occupied_.store(false, std::memory_order_release);
+        App().Report(task);
     }
 
     common::Error Preprocess(TaskContext &task, PersonFuture &future)
     {
         auto &frame = future.frame_;
+        if (!preprocess_stage_logged) {
+            UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                             "ai: person preprocess begin seq=%u buffer=%x\n"),
+                         static_cast<unsigned int>(frame.capture_sequence),
+                         static_cast<unsigned int>(frame.buffer.address));
+        }
         if (!frame || !frame.from_pipe2 || frame.output_count < info.n_outputs ||
             frame.buffer.size < info.inputs[0].size_bytes) {
             return {common::ErrorCode::kInvalidArgument, 0U,
@@ -175,13 +223,25 @@ struct PersonApplication {
                                               info.inputs[0].size_bytes,
                                               input.index,
                                               memory_allocator::Region::kInference};
-        return frame.source_valid ? task.cache.PrepareForPeripheralRead(range)
-                                  : task.cache.PrepareForCpuRead(range);
+        status = frame.source_valid ? task.cache.PrepareForPeripheralRead(range)
+                                    : task.cache.PrepareForCpuRead(range);
+        if (status.Ok() && !preprocess_stage_logged) {
+            UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                             "ai: person preprocess done seq=%u\n"),
+                         static_cast<unsigned int>(frame.capture_sequence));
+            preprocess_stage_logged = true;
+        }
+        return status;
     }
 
     common::Error Infer(PersonFuture &future)
     {
         const auto &frame = future.frame_;
+        if (!infer_stage_logged) {
+            UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                             "ai: person infer begin seq=%u\n"),
+                         static_cast<unsigned int>(frame.capture_sequence));
+        }
         const memory_allocator::Buffer &input = frame.source_valid
                                                     ? frame.source : frame.buffer;
         npu::Status result = npu.SetInput(
@@ -201,7 +261,20 @@ struct PersonApplication {
         result = npu.SetOutputs(outputs, info.n_outputs);
         if (!result.Ok()) return result.error;
         result = npu.Run(); // IRQ waits and epoch continuation happen on NPU task.
-        if (!result.Ok()) return result.error;
+        if (!result.Ok()) {
+            UAI_LOG_WARN(reinterpret_cast<const UB *>(
+                             "ai: person infer failed code=%u detail=%u op=%s\n"),
+                         static_cast<unsigned int>(result.error.code),
+                         static_cast<unsigned int>(result.error.detail),
+                         result.error.operation);
+            return result.error;
+        }
+        if (!infer_stage_logged) {
+            UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                             "ai: person infer done seq=%u\n"),
+                         static_cast<unsigned int>(frame.capture_sequence));
+            infer_stage_logged = true;
+        }
         result = npu.NewInference();
         return result.error;
     }
@@ -246,7 +319,20 @@ struct PersonApplication {
         boxes.capture_sequence = frame.capture_sequence;
         boxes.model_sequence = ++model_sequence;
         status = model.ConvertResult(decoded, &boxes);
-        if (status.Ok()) task.SendLatestBoxes(boxes);
+        if (status.Ok()) {
+            ++postprocess_count;
+            last_detection_count = boxes.person.count;
+            last_capture_sequence = boxes.capture_sequence;
+            task.SendLatestBoxes(boxes);
+            if (!postprocess_stage_logged) {
+                UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                                 "ai: person postprocess done seq=%u boxes=%u\n"),
+                             static_cast<unsigned int>(boxes.capture_sequence),
+                             static_cast<unsigned int>(boxes.person.count));
+                postprocess_stage_logged = true;
+            }
+        }
+        Report(task);
         return status;
     }
 };
@@ -287,6 +373,9 @@ ai_runtime::AiRuntimeResult PersonFuture::Evaluate()
 
 void RunWorker(ExecutionContext lane)
 {
+    UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                     "ai: person worker started lane=%u\n"),
+                 static_cast<unsigned int>(lane));
     ai_runtime::Dispatcher dispatcher(g_app.pipeline, lane);
     for (;;) {
         const DispatchResult result = dispatcher.RunOnce();
@@ -299,7 +388,7 @@ void RunWorker(ExecutionContext lane)
 
 } // namespace
 
-void PersonPipelineTask::PreprocessEntry()
+void PersonPipelineTask::FrameEntry()
 {
     TaskContext &task = GetTaskContext();
     UINT pattern = 0U;
@@ -317,8 +406,10 @@ void PersonPipelineTask::PreprocessEntry()
         } else {
             UAI_LOG_INFO(reinterpret_cast<const UB *>(
                 "ai: person pipeline enabled (pre/npu/post)\n"));
+            task.StartPersonPreprocessTask(
+                reinterpret_cast<FP>(PersonPipelineTask::PreprocessEntry));
             task.StartPersonNpuTask(reinterpret_cast<FP>(PersonPipelineTask::NpuEntry));
-            task.StartInferencePostprocessTask(
+            task.StartPersonPostprocessTask(
                 reinterpret_cast<FP>(PersonPipelineTask::PostprocessEntry));
         }
     }
@@ -344,12 +435,27 @@ void PersonPipelineTask::PreprocessEntry()
         if (available != nullptr) {
             available->Reset(g_app, message.frame);
             status = g_app.scheduler.Submit(*available);
-            if (status.Ok()) continue;
+            if (status.Ok()) {
+                ++g_app.submitted_count;
+                if (!g_app.submit_stage_logged) {
+                    UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                                     "ai: person submit ok seq=%u\n"),
+                                 static_cast<unsigned int>(message.frame.capture_sequence));
+                    g_app.submit_stage_logged = true;
+                }
+                g_app.Report(task);
+                continue;
+            }
             available->occupied_.store(false, std::memory_order_release);
         }
         const common::Error released = task.memory.ReleaseInferenceBuffer(message.frame);
         LogStatus("memory", released);
     }
+}
+
+void PersonPipelineTask::PreprocessEntry()
+{
+    RunWorker(ExecutionContext::kPreprocessCpu);
 }
 
 void PersonPipelineTask::NpuEntry() { RunWorker(ExecutionContext::kNpu); }
