@@ -11,8 +11,8 @@ STM32_PROGRAM_PORT ?= swd
 
 # STM32N6570-DK RAM image layout.
 STM32_RAM_ADDRESS ?= 0x34000400
-STM32_RAM_ENTRY ?= $(if $(filter sample-ai2,$(APP_TARGET)),0x34060001,0x34000800)
-STM32_RAM_STACK ?= $(if $(filter sample-ai2,$(APP_TARGET)),0x34100000,0x34200000)
+STM32_RAM_ENTRY ?= $(if $(filter ai-app,$(APP_TARGET)),0x34060001,$(if $(filter experiment-ai,$(APP_TARGET)),0x34052001,0x34000800))
+STM32_RAM_STACK ?= $(if $(filter ai-app experiment-ai,$(APP_TARGET)),0x34100000,0x34200000)
 STM32_RAM_XPSR ?= 0x01000000
 
 # Host UART settings.
@@ -24,10 +24,18 @@ UART_BAUD ?= 115200
 # Classic STM32CubeMX 6.x CLI generation for STM32N657 (not CubeMX2/C5).
 # Set CUBEMX_EXECUTABLE to the Linux STM32CubeMX launcher when installed.
 CUBEMX_EXECUTABLE ?= STM32CubeMX
-CUBEMX_IOC ?= $(if $(filter sample-ai sample-ai2,$(APP_TARGET)),userspace/$(APP_TARGET)/config/stm32n6570-dk-sample-ai.ioc,userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc)
+ifeq ($(APP_TARGET),experiment-ai)
+CUBEMX_IOC ?= userspace/experiment-ai/config/stm32n6570-dk-experiment-ai.ioc
+else ifeq ($(APP_TARGET),ai-app)
+CUBEMX_IOC ?= userspace/ai-app/config/stm32n6570-dk-ai-app.ioc
+else ifeq ($(APP_TARGET),experiment-camera-pipe2)
+CUBEMX_IOC ?= userspace/experiment-camera-lcd/config/stm32n6570-dk-fullsecure.ioc
+else
+CUBEMX_IOC ?= userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc
+endif
 CUBEMX_OUTPUT_DIR ?= $(BUILD_DIR)/cubemx
 
-# STM32CubeN6 package root, required by sample-camera-lcd and
-# sample-camera-pipe2 camera/display drivers.
+# STM32CubeN6 package root, required by experiment-camera-lcd and
+# experiment-camera-pipe2 camera/display drivers.
 # Example:
 # STM32CUBE_N6_DIR ?= /opt/STM32Cube/Repository/STM32Cube_FW_N6_V1.3.0

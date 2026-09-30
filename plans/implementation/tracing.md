@@ -4,13 +4,13 @@
 
 ## 作るもの
 
-- sample-ai と共存する軽量な静的トレースポイント、容量上限のあるバイナリ記録、ST-LINK/SWD からのダンプ手段、ホスト側デコーダ。取得・解析はホスト主体にする。
-- 記録を正規化した「イベント列＋取得条件／品質情報」を [通常タスクと NPU のモニタ](thread-monitor.md)、[ボトルネック検出](bottlenecks.md) 等に渡す。既存 [ThreadMonitor](../../userspace/sample-ai/src/npu_runtime/thread_monitor/README.md) の生形式は比較用に扱い、新形式と互換とは仮定しない。
+- experiment-ai と共存する軽量な静的トレースポイント、容量上限のあるバイナリ記録、ST-LINK/SWD からのダンプ手段、ホスト側デコーダ。取得・解析はホスト主体にする。
+- 記録を正規化した「イベント列＋取得条件／品質情報」を [通常タスクと NPU のモニタ](thread-monitor.md)、[ボトルネック検出](bottlenecks.md) 等に渡す。既存 [ThreadMonitor](../../userspace/experiment-ai/src/npu_runtime/thread_monitor/README.md) の生形式は比較用に扱い、新形式と互換とは仮定しない。
 
 ## データ契約と収集
 
 - セッションヘッダ: magic／format version／record size／build ID／boot ID／CPU 周波数／記録開始・終了／write index／上書き・producer 側欠落件数。イベント: sequence、時刻（取得元と単位を明示）、type、task ID または ISR、frame `capture_sequence`、model ID、必要な payload。イベントごとに使わないフィールドは明示的に無効値とする。
-- v1 イベントは `PIPE1_FRAME`、`PIPE2_FRAME`、`FRAME_DROP(reason)`、`FRAME_ENQUEUE/DEQUEUE`、`NPU_SUBMIT/DONE`、`CSI_ERROR`、`BUFFER_STATE`、`TASK_STATE` に絞る。後続のイベントを追加しても古いデコーダが未知 type を飛ばせるようにする。同一フレームの実際の ID は [TaskContext とカメラ経路](../../userspace/sample-ai/src/task/task_context.hpp) で確認する。
+- v1 イベントは `PIPE1_FRAME`、`PIPE2_FRAME`、`FRAME_DROP(reason)`、`FRAME_ENQUEUE/DEQUEUE`、`NPU_SUBMIT/DONE`、`CSI_ERROR`、`BUFFER_STATE`、`TASK_STATE` に絞る。後続のイベントを追加しても古いデコーダが未知 type を飛ばせるようにする。同一フレームの実際の ID は [TaskContext とカメラ経路](../../userspace/experiment-ai/src/task/task_context.hpp) で確認する。
 - まず userspace の queue／ドライバ境界から記録。カーネルのコンテキストスイッチ記録は ISR・再入・割込みマスク・スケジューラとの相互作用を検証してから追加する。ホットパスでは `tk_get_tid()` や printf を毎回呼ばず、分かっている task ID を渡す。
 - µT-Kernel/DS の `td_hok_dsp` と `td_hok_int` を利用できるようにし、ディスパッチ境界と `TA_HLNG` 割込みハンドラ境界をトレースの入力にする。`USE_DBGSPT_TRACE` はコンパイル時定数で既定値を 0 とし、無効ビルドではホットパスのフック呼出し自体を生成しない。`UAI_KERNEL_TRACE_HOOKS=ON` は同じ設定をCMakeから有効化する。
 - STM32N6570-DK の BSP は `TK_TRAP_SVC=FALSE` の直接C関数呼出し方式であるため、`td_hok_svc` の設定APIは提供するが、SVCトラップ経路のイベントは生成しない。SVCフックを使うポートでは、そのポートのSVC入口／出口から同じ保存済み定義を呼び出す。

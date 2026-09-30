@@ -1,8 +1,8 @@
-# μAI-Studio 実装設計 — sample-ai 起点
+# μAI-Studio 実装設計 — experiment-ai 起点
 
 ## 目的と構成
 
-STM32N6570-DK 上の µT-Kernel と [sample-ai](../../userspace/sample-ai/README.md) を対象に、Pipe1 表示と Pipe2 → NPU 推論について「どのタスクが、いつ、何を待ち、フレーム遅延・欠落にどう関連したか」を根拠イベント付きで説明する。既存 [ThreadMonitor](../../userspace/sample-ai/src/npu_runtime/thread_monitor/README.md) は NPU 所有タスクの状態と推論フェーズの比較基準にする。既存の `host_app/`／`kernel/middle/` の完成度・再利用性は前提にしない。
+STM32N6570-DK 上の µT-Kernel と [experiment-ai](../../userspace/experiment-ai/README.md) を対象に、Pipe1 表示と Pipe2 → NPU 推論について「どのタスクが、いつ、何を待ち、フレーム遅延・欠落にどう関連したか」を根拠イベント付きで説明する。既存 [ThreadMonitor](../../userspace/experiment-ai/src/npu_runtime/thread_monitor/README.md) は NPU 所有タスクの状態と推論フェーズの比較基準にする。既存の `host_app/`／`kernel/middle/` の完成度・再利用性は前提にしない。
 
 **全項目を開発候補として計画する。優先度「低」は不採用や永久的な対象外を意味しない。** 価値を証明する順序・先行条件・APP の空きによって実装形態を変える。期間ベースではなく、各設計の完了条件をゲートにして進める。
 
@@ -25,7 +25,7 @@ STM32N6570-DK 上の µT-Kernel と [sample-ai](../../userspace/sample-ai/README
 
 ## APP 領域による構成の選び方
 
-[APP 縮小計画](../app-size-reduction.md) の実測値が出るまでリング長や節約 KiB を決め打ちしない。特に [リンカスクリプト](../../userspace/sample-ai/stm32n6570-dk-npu-ram.ld) では APP 全体とは別に固定の RAM 起動エントリ手前の制約がある。NOR のモデル重み・command blob、PSRAM の画像バッファ、APP 内の NOLOAD は別予算。
+[APP 縮小計画](../app-size-reduction.md) の実測値が出るまでリング長や節約 KiB を決め打ちしない。特に [リンカスクリプト](../../userspace/experiment-ai/stm32n6570-dk-npu-ram.ld) では APP 全体とは別に固定の RAM 起動エントリ手前の制約がある。NOR のモデル重み・command blob、PSRAM の画像バッファ、APP 内の NOLOAD は別予算。
 
 | 測定結果に応じた構成 | オンデバイス | PC で提供する機能 |
 |---|---|---|
@@ -33,7 +33,7 @@ STM32N6570-DK 上の µT-Kernel と [sample-ai](../../userspace/sample-ai/README
 | 計測向けの小さな余裕が得られた | 軽量リングと静的 frame／queue／NPU 境界イベント。task dispatch はコスト次第 | frame ごとの待ち、エラー相関、欠落を含む可視化。未計測の READY 時間は `UNKNOWN` |
 | 十分な余裕と低オーバーヘッドを実証 | kernel task 切替、詳細 NPU epoch／所有権、高密度記録、必要なら選択的な動的フィルタ | 正確な区間復元と高度な比較。MCP や対話型プローブの採否も個別に検討 |
 
-空き不足の場合は「当面 PC のみ／対象を限定／別ファームウェア」の**実装選択**とし、機能の恒久的な削除にはしない。新しい trace のために既存 ThreadMonitor の 128 KiB を二重に予約しない。動的 VM／JSON-RPC／プローブアリーナを sample-ai に同時常駐させる案と独立ビルドにする案は、対象アプリと同時に観測できるかどうかも含めて比較する。
+空き不足の場合は「当面 PC のみ／対象を限定／別ファームウェア」の**実装選択**とし、機能の恒久的な削除にはしない。新しい trace のために既存 ThreadMonitor の 128 KiB を二重に予約しない。動的 VM／JSON-RPC／プローブアリーナを experiment-ai に同時常駐させる案と独立ビルドにする案は、対象アプリと同時に観測できるかどうかも含めて比較する。
 
 ## データ品質の原則
 
@@ -43,4 +43,4 @@ STM32N6570-DK 上の µT-Kernel と [sample-ai](../../userspace/sample-ai/README
 
 ## 共通の検証ゲート
 
-文書編集のみの場合は実機書込み不要。**ファームウェア、リンカ、ビルド設定を変更したとき**は [sample-ai 実機チェックリスト](../../userspace/sample-ai/VERIFICATION_CHECKLIST.md) に従う。必ず UART を準備し、デバイスへアクセスできる権限・sandbox 設定を確認してから書き込む。UART で起動・Pipe1/Pipe2 の開始と sequence の進行、NPU 完了を確認し、LCD の実表示を別途確認する。30 秒以上の動作と CSI エラー／Pipe2 drop／復旧件数を比較し、実機未確認は「完了」としない。ホストのみの変更も、合成データと保存した実機ダンプの両方で検証する。
+文書編集のみの場合は実機書込み不要。**ファームウェア、リンカ、ビルド設定を変更したとき**は [experiment-ai 実機チェックリスト](../../userspace/experiment-ai/VERIFICATION_CHECKLIST.md) に従う。必ず UART を準備し、デバイスへアクセスできる権限・sandbox 設定を確認してから書き込む。UART で起動・Pipe1/Pipe2 の開始と sequence の進行、NPU 完了を確認し、LCD の実表示を別途確認する。30 秒以上の動作と CSI エラー／Pipe2 drop／復旧件数を比較し、実機未確認は「完了」としない。ホストのみの変更も、合成データと保存した実機ダンプの両方で検証する。

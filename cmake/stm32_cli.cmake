@@ -32,18 +32,17 @@ endif()
 if(NOT CUBEMX_IOC)
     set(_uai_default_ioc
         "${CMAKE_SOURCE_DIR}/userspace/${APP_TARGET}/config/stm32n6570-dk-fullsecure.ioc")
-    # sample-camera-pipe2 intentionally reuses sample-camera-lcd's
+    # experiment-camera-pipe2 intentionally reuses experiment-camera-lcd's
     # CubeMX peripheral/startup setup;
     # its dual-pipe configuration is applied by the application at runtime.
-    if(APP_TARGET STREQUAL "sample-ai2")
+    if(APP_TARGET STREQUAL "ai-app")
         set(_uai_default_ioc
-            "${CMAKE_SOURCE_DIR}/userspace/sample-ai2/config/stm32n6570-dk-sample-ai.ioc")
+            "${CMAKE_SOURCE_DIR}/userspace/ai-app/config/stm32n6570-dk-ai-app.ioc")
     endif()
     if(NOT EXISTS "${_uai_default_ioc}" AND
-       (APP_TARGET STREQUAL "sample-camera-pipe2" OR
-        APP_TARGET STREQUAL "sample-camera-pipe2-lab"))
+       APP_TARGET STREQUAL "experiment-camera-pipe2")
         set(_uai_default_ioc
-            "${CMAKE_SOURCE_DIR}/userspace/sample-camera-lcd/config/stm32n6570-dk-fullsecure.ioc")
+            "${CMAKE_SOURCE_DIR}/userspace/experiment-camera-lcd/config/stm32n6570-dk-fullsecure.ioc")
     endif()
     set(CUBEMX_IOC "${_uai_default_ioc}"
         CACHE FILEPATH "CubeMX IOC input file" FORCE)
@@ -148,8 +147,10 @@ endif()
 set(STM32_RAM_ENTRY "$ENV{STM32_RAM_ENTRY}" CACHE STRING
     "RAM image execution address" FORCE)
 if(NOT STM32_RAM_ENTRY)
-    if(APP_TARGET STREQUAL "sample-ai2")
-        set(_stm32_default_ram_entry "0x34054001")
+    if(APP_TARGET STREQUAL "ai-app")
+        set(_stm32_default_ram_entry "0x34060001")
+    elseif(APP_TARGET STREQUAL "experiment-ai")
+        set(_stm32_default_ram_entry "0x34052001")
     else()
         set(_stm32_default_ram_entry "0x34000800")
     endif()
@@ -159,7 +160,7 @@ endif()
 set(STM32_RAM_STACK "$ENV{STM32_RAM_STACK}" CACHE STRING
     "Initial main stack pointer" FORCE)
 if(NOT STM32_RAM_STACK)
-    if(APP_TARGET STREQUAL "sample-ai2")
+    if(APP_TARGET STREQUAL "ai-app" OR APP_TARGET STREQUAL "experiment-ai")
         set(_stm32_default_ram_stack "0x34100000")
     else()
         set(_stm32_default_ram_stack "0x34200000")
@@ -250,8 +251,8 @@ function(uai_add_stm32_cli_targets app_target)
     if(STM32_PROGRAMMER_CLI AND STM32_EXTERNAL_LOADER)
         separate_arguments(_stm32_program_extra_args NATIVE_COMMAND
             "${STM32_PROGRAM_EXTRA_ARGS}")
-        if((app_target STREQUAL "sample-ai" OR
-            app_target STREQUAL "sample-ai2") AND
+        if((app_target STREQUAL "experiment-ai" OR
+            app_target STREQUAL "ai-app") AND
            TARGET ${app_target}-flash-images)
             # Both AI applications are STM32N6 LRUN image sets. The FSBL, signed
             # application, command blobs, and model weights occupy separate
@@ -264,7 +265,7 @@ function(uai_add_stm32_cli_targets app_target)
                 "${CMAKE_SOURCE_DIR}/userspace/${app_target}/fsbl/stm32n6570-dk-ai_fsbl.hex")
             if(NOT EXISTS "${_ai_fsbl_image}")
                 message(FATAL_ERROR
-                    "sample-ai official FSBL is missing: ${_ai_fsbl_image}")
+                    "experiment-ai official FSBL is missing: ${_ai_fsbl_image}")
             endif()
             add_custom_target(program
                 DEPENDS ${app_target}-flash-images ${app_target}

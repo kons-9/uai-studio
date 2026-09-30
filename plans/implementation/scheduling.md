@@ -10,7 +10,7 @@
 
 ## 解析規則
 
-`READY→RUN` から dispatch 遅延、`RUN→WAIT` から実行片、queue 送受からデータ待ちを復元。NPU の壁時計時間を CPU 使用率へ加算しない。割込みによる待ち、表示 task と後処理 task の優先度差（現状は [TaskContext](../../userspace/sample-ai/src/task/task_context.cpp) に定義）を別に扱い、短時間の揺れと継続的な滞留を p50／p95／max と頻度で比較する。
+`READY→RUN` から dispatch 遅延、`RUN→WAIT` から実行片、queue 送受からデータ待ちを復元。NPU の壁時計時間を CPU 使用率へ加算しない。割込みによる待ち、表示 task と後処理 task の優先度差（現状は [TaskContext](../../userspace/experiment-ai/src/task/task_context.cpp) に定義）を別に扱い、短時間の揺れと継続的な滞留を p50／p95／max と頻度で比較する。
 
 ## APP 依存と段階的提供
 

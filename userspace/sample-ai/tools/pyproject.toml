@@ -1,8 +1,0 @@
-[project]
-name = "sample-ai-tools"
-version = "0.1.0"
-description = "Host-side tools for sample-ai diagnostics"
-requires-python = ">=3.10"
-dependencies = [
-    "matplotlib>=3.8,<4",
-]

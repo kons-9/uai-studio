@@ -46,6 +46,12 @@ add_library(stm32n6570_dk OBJECT
     cubemx_entry.c
 )
 
+if(APP_TARGET STREQUAL "experiment-camera-lcd" OR
+   APP_TARGET STREQUAL "experiment-camera-pipe2")
+    target_include_directories(stm32n6570_dk BEFORE PUBLIC
+        "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Inc")
+endif()
+
 target_include_directories(stm32n6570_dk
     PUBLIC
         "${CUBEMX_FSBL_ROOT}/Core/Inc"
@@ -68,12 +74,11 @@ target_include_directories(stm32n6570_dk
         "${CMAKE_SOURCE_DIR}/kernel/utkernel/mtk3_bsp2/mtkernel/include"
 )
 
-if(NOT APP_TARGET STREQUAL "sample-camera-lcd" AND
-   NOT APP_TARGET STREQUAL "sample-camera-pipe2" AND
-   NOT APP_TARGET STREQUAL "sample-camera-pipe2-lab")
-    set(_ai_board_config_app sample-ai)
-    if(APP_TARGET STREQUAL "sample-ai2")
-        set(_ai_board_config_app sample-ai2)
+if(NOT APP_TARGET STREQUAL "experiment-camera-lcd" AND
+   NOT APP_TARGET STREQUAL "experiment-camera-pipe2")
+    set(_ai_board_config_app experiment-ai)
+    if(APP_TARGET STREQUAL "ai-app")
+        set(_ai_board_config_app ai-app)
     endif()
     target_include_directories(stm32n6570_dk PUBLIC
         "${CMAKE_SOURCE_DIR}/userspace/${_ai_board_config_app}/src/board"
@@ -92,11 +97,10 @@ target_compile_definitions(stm32n6570_dk PRIVATE
     float_t=float
 )
 
-if(APP_TARGET STREQUAL "sample-ai" OR
-    APP_TARGET STREQUAL "sample-ai2" OR
-   APP_TARGET STREQUAL "sample-camera-lcd" OR
-   APP_TARGET STREQUAL "sample-camera-pipe2" OR
-   APP_TARGET STREQUAL "sample-camera-pipe2-lab")
+if(APP_TARGET STREQUAL "experiment-ai" OR
+   APP_TARGET STREQUAL "ai-app" OR
+   APP_TARGET STREQUAL "experiment-camera-lcd" OR
+   APP_TARGET STREQUAL "experiment-camera-pipe2")
     target_compile_definitions(stm32n6570_dk PRIVATE
         UAI_CAMERA_LCD_CLOCKS)
 endif()
@@ -107,7 +111,7 @@ target_compile_options(stm32n6570_dk PRIVATE
 
 add_library(uai::stm32n6570_dk ALIAS stm32n6570_dk)
 
-if(APP_TARGET STREQUAL "sample-ai")
+if(APP_TARGET STREQUAL "experiment-ai")
     # The normal board object above embeds the CubeMX FSBL startup into the
     # RAM-loaded application.  Flash boot needs a separate standalone FSBL:
     # BootROM starts it from XSPI2, and it copies the LRUN application from
@@ -125,8 +129,8 @@ if(APP_TARGET STREQUAL "sample-ai")
         ${CUBEMX_HAL_SOURCES}
         ${CUBEMX_EXTMEM_SOURCES})
 
-    add_executable(sample-ai-fsbl.elf ${AI_FSBL_SOURCES})
-    target_include_directories(sample-ai-fsbl.elf PRIVATE
+    add_executable(experiment-ai-fsbl.elf ${AI_FSBL_SOURCES})
+    target_include_directories(experiment-ai-fsbl.elf PRIVATE
         "${CUBEMX_FSBL_ROOT}/Core/Inc"
         "${CUBEMX_FSBL_ROOT}/Core/Src"
         "${CUBEMX_ROOT}/Appli/Core/Inc"
@@ -140,7 +144,7 @@ if(APP_TARGET STREQUAL "sample-ai")
         "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/nor_sfdp"
         "${STM32CUBE_N6_DIR}/Drivers/BSP/Components/mx66uw1g45g"
         "${STM32CUBE_N6_DIR}/Drivers/BSP/STM32N6570-DK")
-    target_compile_definitions(sample-ai-fsbl.elf PRIVATE
+    target_compile_definitions(experiment-ai-fsbl.elf PRIVATE
         STM32N6570_DK
         STM32N6570_DK_DEVELOPMENT_MODE
         USE_HAL_DRIVER
@@ -149,9 +153,9 @@ if(APP_TARGET STREQUAL "sample-ai")
         CPU_IN_SECURE_STATE
         USER_TZ_SAU_SETUP
         float_t=float)
-    target_compile_options(sample-ai-fsbl.elf PRIVATE
+    target_compile_options(experiment-ai-fsbl.elf PRIVATE
         $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
-    target_link_libraries(sample-ai-fsbl.elf PRIVATE m)
+    target_link_libraries(experiment-ai-fsbl.elf PRIVATE m)
 
     set(AI_FSBL_LINKER_SCRIPT
         "${CUBEMX_FSBL_ROOT}/STM32N657X0HXQ_AXISRAM2_fsbl.ld")
@@ -159,24 +163,24 @@ if(APP_TARGET STREQUAL "sample-ai")
     # project intentionally uses the installed GCC 10.3 toolchain.  Keep the
     # generated linker script untouched and derive a compatible build copy.
     set(AI_FSBL_GCC_LINKER_SCRIPT
-        "${CMAKE_CURRENT_BINARY_DIR}/sample-ai-fsbl-gcc.ld")
+        "${CMAKE_CURRENT_BINARY_DIR}/experiment-ai-fsbl-gcc.ld")
     file(READ "${AI_FSBL_LINKER_SCRIPT}" _ai_fsbl_ld_contents)
     string(REPLACE "(READONLY)" "" _ai_fsbl_ld_contents
                    "${_ai_fsbl_ld_contents}")
     file(WRITE "${AI_FSBL_GCC_LINKER_SCRIPT}" "${_ai_fsbl_ld_contents}")
-    target_link_options(sample-ai-fsbl.elf PRIVATE
+    target_link_options(experiment-ai-fsbl.elf PRIVATE
         "-T${AI_FSBL_GCC_LINKER_SCRIPT}"
-        "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/sample-ai-fsbl.map"
+        "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/experiment-ai-fsbl.map"
         "-Wl,--print-memory-usage")
-    set_target_properties(sample-ai-fsbl.elf PROPERTIES
+    set_target_properties(experiment-ai-fsbl.elf PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY
-            "${CMAKE_BINARY_DIR}/userspace/sample-ai"
+            "${CMAKE_BINARY_DIR}/userspace/experiment-ai"
         LINK_DEPENDS
             "${AI_FSBL_LINKER_SCRIPT};${AI_FSBL_GCC_LINKER_SCRIPT}")
-    add_custom_command(TARGET sample-ai-fsbl.elf POST_BUILD
+    add_custom_command(TARGET experiment-ai-fsbl.elf POST_BUILD
         COMMAND ${CMAKE_OBJCOPY} -O binary
-                "$<TARGET_FILE:sample-ai-fsbl.elf>"
-                "$<TARGET_FILE_DIR:sample-ai-fsbl.elf>/sample-ai-fsbl.bin"
-        COMMAND ${CMAKE_SIZE} "$<TARGET_FILE:sample-ai-fsbl.elf>"
+                "$<TARGET_FILE:experiment-ai-fsbl.elf>"
+                "$<TARGET_FILE_DIR:experiment-ai-fsbl.elf>/experiment-ai-fsbl.bin"
+        COMMAND ${CMAKE_SIZE} "$<TARGET_FILE:experiment-ai-fsbl.elf>"
         VERBATIM)
 endif()

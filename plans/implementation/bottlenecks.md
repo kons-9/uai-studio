@@ -4,7 +4,7 @@
 
 ## 作るもの
 
-- Pipe2 の capture sequence を相関キーとして、受付→queue→モデル選択・入力準備→NPU submit／完了→後処理→結果の表示への反映を一つの因果グラフにする。Pipe1 表示は独立経路として扱い、枠は必ずしも同世代の映像とは限らない（[設計](../../userspace/sample-ai/DESIGN.md)）。
+- Pipe2 の capture sequence を相関キーとして、受付→queue→モデル選択・入力準備→NPU submit／完了→後処理→結果の表示への反映を一つの因果グラフにする。Pipe1 表示は独立経路として扱い、枠は必ずしも同世代の映像とは限らない（[設計](../../userspace/experiment-ai/DESIGN.md)）。
 - frame ごとに queue 待ち、CPU 準備、NPU 関連 wall time、後処理、表示反映待ちを表示。モデル別の p50／p95／max、スループット、入力フレーム鮮度、drop reason、CSI エラー・復旧回数を比較する。
 - 出力は「観測された長い区間」「ボトルネック候補」「データ不足／判定不能」の三区分＋該当イベントへのリンク。負荷の重なりは critical path 上でのみ加算し、prefetch と NPU が重複した時間を合計しない。
 

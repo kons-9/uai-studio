@@ -3,10 +3,10 @@ cmake_minimum_required(VERSION 3.16)
 # Keep the application selection at the top level, like the existing
 # ble-locator firmware.  Adding a new userspace application should not require
 # changing the kernel project.
-set(APP_TARGET "sample-hello-world" CACHE STRING "Userspace application to build")
+set(APP_TARGET "experiment-hello-world" CACHE STRING "Userspace application to build")
 set_property(CACHE APP_TARGET PROPERTY STRINGS
-    sample-hello-world sample-camera-lcd sample-ai sample-ai2 sample-camera-pipe2
-    sample-camera-pipe2-lab)
+    experiment-hello-world experiment-camera-lcd experiment-ai ai-app
+    experiment-camera-pipe2)
 
 option(CMAKE_EXPORT_COMPILE_COMMANDS
        "Generate compile_commands.json for IDEs"
@@ -17,7 +17,7 @@ option(UAI_KERNEL_TRACE_HOOKS
        OFF)
 
 option(UAI_CPU_TASK_MONITOR
-       "Enable the sample-ai2 CPU task monitor (uses dispatch/interrupt hooks)"
+       "Enable the ai-app CPU task monitor (uses dispatch/interrupt hooks)"
        OFF)
 
 set(_app_dir "${CMAKE_CURRENT_SOURCE_DIR}/userspace/${APP_TARGET}")
@@ -44,9 +44,8 @@ add_subdirectory(kernel/utkernel)
 if(UAI_KERNEL_TRACE_HOOKS OR UAI_CPU_TASK_MONITOR)
     target_compile_definitions(utkernel PUBLIC USE_DBGSPT_TRACE=1)
 endif()
-if(APP_TARGET STREQUAL "sample-camera-lcd" OR
-   APP_TARGET STREQUAL "sample-camera-pipe2" OR
-   APP_TARGET STREQUAL "sample-camera-pipe2-lab")
+if(APP_TARGET STREQUAL "experiment-camera-lcd" OR
+   APP_TARGET STREQUAL "experiment-camera-pipe2")
     target_include_directories(utkernel PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/userspace/${APP_TARGET}/src/driver/board/include"
         "${STM32CUBE_N6_DIR}/Drivers/CMSIS/Device/ST/STM32N6xx/Include"
@@ -60,7 +59,7 @@ if(APP_TARGET STREQUAL "sample-camera-lcd" OR
         CPU_IN_SECURE_STATE)
 endif()
 add_subdirectory(kernel/pre_kernel/stm32n6570-dk)
-if((APP_TARGET STREQUAL "sample-ai" OR APP_TARGET STREQUAL "sample-ai2") AND
+if((APP_TARGET STREQUAL "experiment-ai" OR APP_TARGET STREQUAL "ai-app") AND
    EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kernel/driver/CMakeLists.txt")
     add_subdirectory(kernel/driver)
 endif()

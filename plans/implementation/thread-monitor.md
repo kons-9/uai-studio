@@ -1,6 +1,6 @@
 # 通常タスクと NPU のスレッドモニタ
 
-**優先度:** 高。依存: [トレーシング基盤](tracing.md)。既存の [sample-ai ThreadMonitor](../../userspace/sample-ai/src/npu_runtime/thread_monitor/README.md) は NPU 所有タスクの周期観測＋推論フェーズ記録であり、全タスクスイッチの実測ではない。
+**優先度:** 高。依存: [トレーシング基盤](tracing.md)。既存の [experiment-ai ThreadMonitor](../../userspace/experiment-ai/src/npu_runtime/thread_monitor/README.md) は NPU 所有タスクの周期観測＋推論フェーズ記録であり、全タスクスイッチの実測ではない。
 
 ## 作るもの
 
@@ -10,8 +10,8 @@
 
 ## 取得方法
 
-1. [TaskContext](../../userspace/sample-ai/src/task/task_context.cpp) の task 作成／開始、queue 送受、[InferenceTask](../../userspace/sample-ai/src/task/inference_task.cpp) と [PostprocessTask](../../userspace/sample-ai/src/task/inference_postprocess_task.cpp) の既知の待ちと handoff を静的に観測。フレームが捨てられた地点と理由も残す。
-2. [NpuRuntime](../../userspace/sample-ai/src/npu_runtime/npu_runtime.cpp) の既存フェーズ・epoch callback を取り込む。デコーダは従来ダンプとの対応を host で検証してから統合する。
+1. [TaskContext](../../userspace/experiment-ai/src/task/task_context.cpp) の task 作成／開始、queue 送受、[InferenceTask](../../userspace/experiment-ai/src/task/inference_task.cpp) と [PostprocessTask](../../userspace/experiment-ai/src/task/inference_postprocess_task.cpp) の既知の待ちと handoff を静的に観測。フレームが捨てられた地点と理由も残す。
+2. [NpuRuntime](../../userspace/experiment-ai/src/npu_runtime/npu_runtime.cpp) の既存フェーズ・epoch callback を取り込む。デコーダは従来ダンプとの対応を host で検証してから統合する。
 3. 正しい RUNNING／READY 区間が必要なら µT-Kernel の dispatch／wait／wake 境界に**最小**イベントを追加する。アプリ側 queue フックだけでは別の task に横取りされた時刻は分からない。dispatch と割込みの切替コストを測定し、未導入時には CPU 利用率の正確さを主張しない。
 
 ## 容量・劣化時の設計

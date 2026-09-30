@@ -5,7 +5,7 @@
 ## 作るもの
 
 - ビルド時: ELF／map から APP の固定起動エントリ手前の余裕、APP 全体、stack／trace／NOLOAD、NOR blob、PSRAM、NPU 用 activation を混ぜずに一覧化。baseline／計測有効版の差分をレポート。
-- 実行時: [MemoryAllocator](../../userspace/sample-ai/src/memory_allocator/memory_allocator.cpp) が管理する capture／display／inference slot について、slot ID、フレーム ID、取得元、CPU／DMA／NPU／表示側への所有権遷移、現在数・高水位・枯渇理由を記録。queue の深さと破棄／再利用も突き合わせる。
+- 実行時: [MemoryAllocator](../../userspace/experiment-ai/src/memory_allocator/memory_allocator.cpp) が管理する capture／display／inference slot について、slot ID、フレーム ID、取得元、CPU／DMA／NPU／表示側への所有権遷移、現在数・高水位・枯渇理由を記録。queue の深さと破棄／再利用も突き合わせる。
 - stack は high-water と canary を対応するタスクの安全な検査点で記録する。使用量と破壊検出を別の指標とし、未使用領域の初期化方法・チェック時点・余裕を文書化する。
 
 ## デバッグ計測の拡張
