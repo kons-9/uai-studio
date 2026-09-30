@@ -16,6 +16,7 @@
 #include "models/inference_result_types.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
 #include "task/task_context.hpp"
+#include "task/task.hpp"
 #include "task/task_diagnostics.hpp"
 
 extern "C" {
@@ -74,7 +75,7 @@ void WakePipelineWorker(void *, ExecutionContext lane)
     }
 }
 
-common::Error ReadModelInfo(npu::NpuDriver &npu_driver,
+common::Error ReadModelInfo(npu::NpuManagement &npu_driver,
                             RegisteredModel &model,
                             std::size_t expected_input_bytes)
 {
@@ -116,8 +117,8 @@ struct PipelineApplication {
         {"face", 2U, &face_model, {}},
         {"segmentation", 1U, &segmentation_model, {}},
     };
-    npu::NpuDriver npu{};
-    npu::NpuDriver::Writer npu_writer{};
+    npu::NpuManagement &npu = npu::NpuManagement::Instance();
+    npu::NpuManagement::Accessor npu_accessor{};
     ai_runtime::PipelineRuntime pipeline{};
     ai_runtime::Scheduler scheduler{pipeline};
     models::person::Future person_futures[memory_manager::kInferenceBufferCount]{};
@@ -245,6 +246,8 @@ struct PipelineApplication {
         pipeline.SetObserver(&OnDone, &context);
         pipeline.SetTrace(&OnTrace, &context, &Now, &context);
         pipeline.SetWakeCallback(&WakePipelineWorker, nullptr);
+        status = npu.Acquire(&npu_accessor);
+        if (!status.Ok()) return status;
         enabled.store(true);
         return {};
     }
@@ -360,6 +363,15 @@ void RunWorker(ExecutionContext lane)
                  "ai: model worker started lane=%u\n"),
                  static_cast<unsigned int>(lane));
     if (lane == ExecutionContext::kNpu) {
+        for (const RegisteredModel &model : g_app.registered_models) {
+            const common::Error name_status =
+                g_app.pipeline.RegisterModelName(
+                    static_cast<ai_runtime::AiModelId>(model.kind_id),
+                    model.name);
+            if (!name_status.Ok()) {
+                LogStatus("ai_model_monitor.register_model_name", name_status);
+            }
+        }
         const common::Error monitor_status =
             g_app.pipeline.StartAiModelMonitor();
         if (!monitor_status.Ok()) {
@@ -371,26 +383,15 @@ void RunWorker(ExecutionContext lane)
     }
     ai_runtime::Dispatcher dispatcher(g_app.pipeline, lane);
     TaskContext &task = GetTaskContext();
-    if (lane == ExecutionContext::kNpu) {
-        const common::Error ownership =
-            g_app.npu.AcquireWriter(&g_app.npu_writer);
-        if (!ownership.Ok()) {
-            LogStatus("npu.management", ownership);
-            task.Halt("ai: npu writer acquisition failed\n");
-        }
-    }
     const UINT wake_bit = PipelineWorkBit(lane);
-    for (;;) {
-        const DispatchResult result = dispatcher.RunOnce();
-        if (result == DispatchResult::kRan) {
-            /* Keep the three same-priority pipeline workers fair. This is
-             * especially important after a pre step queues NPU work: the
-             * next worker must get CPU time while the NPU task is waiting for
-             * accelerator progress. */
-            (void)tk_rot_rdq(TPRI_RUN);
-            continue;
-        }
-
+    const char *task_name =
+        lane == ExecutionContext::kPreprocessCpu
+            ? "pipeline_preprocess"
+            : lane == ExecutionContext::kNpu ? "pipeline_npu"
+                                               : "pipeline_postprocess";
+    bool dispatch_ready = true;
+    Task::RunForever(task.cpu_task_monitor, task_name, [&] {
+        if (dispatch_ready) return;
         UINT pattern = 0U;
         const ER wait_status = tk_wai_flg(
             task.pipeline_work_ready, wake_bit, TWF_ANDW | TWF_BITCLR,
@@ -402,7 +403,18 @@ void RunWorker(ExecutionContext lane)
                           static_cast<unsigned int>(wait_status));
             task.Halt("ai: pipeline worker event wait failed\n");
         }
-    }
+        dispatch_ready = true;
+    }, [&] {
+        const DispatchResult result = dispatcher.RunOnce();
+        dispatch_ready = result == DispatchResult::kRan;
+        if (dispatch_ready) {
+            /* Keep the three same-priority pipeline workers fair. This is
+             * especially important after a pre step queues NPU work: the
+             * next worker must get CPU time while the NPU task is waiting for
+             * accelerator progress. */
+            (void)tk_rot_rdq(TPRI_RUN);
+        }
+    });
 }
 
 } // namespace
@@ -487,8 +499,8 @@ void PipelineTask::FrameEntry()
 
             if (model_index == kFaceModel) {
                 models::face::FutureContext future_context{};
-                future_context.npu = &g_app.npu;
-                future_context.npu_writer = &g_app.npu_writer;
+                future_context.npu = g_app.npu_accessor.Get();
+                future_context.npu_writer = &g_app.npu_accessor.Ownership();
                 future_context.model =
                     g_app.registered_models[kFaceModel].network;
                 future_context.model_kind_id =
@@ -501,8 +513,8 @@ void PipelineTask::FrameEntry()
                 status = g_app.scheduler.Submit(*face_available);
             } else if (model_index == kSegmentationModel) {
                 models::segmentation::FutureContext future_context{};
-                future_context.npu = &g_app.npu;
-                future_context.npu_writer = &g_app.npu_writer;
+                future_context.npu = g_app.npu_accessor.Get();
+                future_context.npu_writer = &g_app.npu_accessor.Ownership();
                 future_context.model =
                     g_app.registered_models[kSegmentationModel].network;
                 future_context.model_kind_id =
@@ -516,8 +528,8 @@ void PipelineTask::FrameEntry()
                 status = g_app.scheduler.Submit(*segmentation_available);
             } else {
                 models::person::FutureContext future_context{};
-                future_context.npu = &g_app.npu;
-                future_context.npu_writer = &g_app.npu_writer;
+                future_context.npu = g_app.npu_accessor.Get();
+                future_context.npu_writer = &g_app.npu_accessor.Ownership();
                 future_context.model =
                     g_app.registered_models[kPersonModel].network;
                 future_context.model_kind_id =

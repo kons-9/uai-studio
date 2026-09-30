@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 
-MODEL_NAMES = {0: "person", 1: "segmentation", 2: "face"}
 EPOCH_FLAGS = {
     1 << 2: "blob",
     1 << 4: "pure_hw",
@@ -37,8 +36,30 @@ def load_trace(path: Path) -> dict[str, Any]:
     return decode(path)
 
 
-def model_name(model_id: int) -> str:
-    return MODEL_NAMES.get(model_id, f"kind={model_id}")
+def model_names_from_trace(trace: dict[str, Any]) -> dict[int, str]:
+    header_names = trace.get("header", {}).get("model_names") or {}
+    if isinstance(header_names, dict):
+        names = {
+            int(model_id): str(name)
+            for model_id, name in header_names.items()
+            if str(name)
+        }
+    else:
+        names = {
+            int(item["id"]): str(item["name"])
+            for item in header_names
+            if item.get("name")
+        }
+    for record in trace.get("records", []):
+        model_id = int(record.get("model_kind_id", 0xFFFFFFFF))
+        name = record.get("model_kind")
+        if model_id != 0xFFFFFFFF and name and model_id not in names:
+            names[model_id] = str(name)
+    return names
+
+
+def model_name(model_id: int, names: dict[int, str]) -> str:
+    return names.get(model_id, f"kind={model_id}")
 
 
 def flag_name(flags: int) -> str:
@@ -66,7 +87,8 @@ def callback_stage(record: dict[str, Any]) -> str:
     )
 
 
-def summarize_ai_runtime(trace: dict[str, Any], records: list[dict[str, Any]]) -> None:
+def summarize_ai_runtime(trace: dict[str, Any], records: list[dict[str, Any]],
+                         model_names: dict[int, str]) -> None:
     """Summarize sample-ai2 runtime records as CPU and NPU totals."""
     header = trace.get("header", {})
     dropped = int(header.get("dropped_count", 0))
@@ -113,10 +135,10 @@ def summarize_ai_runtime(trace: dict[str, Any], records: list[dict[str, Any]]) -
             if elapsed > 0:
                 groups.setdefault((model_id, lane), []).append(elapsed)
 
-    print(f"ai_runtime CPU/NPU inference records: {len(per_inference)}")
+    print(f"ai_runtime CPU/NPU elapsed samples: {len(per_inference)}")
     for (model_id, lane), values in sorted(groups.items()):
         print(
-            f"  {model_name(model_id)} {lane.upper()} "
+            f"  {model_name(model_id, model_names)} {lane.upper()} elapsed "
             f"n={len(values)} median={statistics.median(values):.1f} ms "
             f"p95={percentile(values, 0.95):.1f} ms max={max(values)} ms"
         )
@@ -124,13 +146,14 @@ def summarize_ai_runtime(trace: dict[str, Any], records: list[dict[str, Any]]) -
 
 def summarize(trace: dict[str, Any], top: int, cpu_hz: float | None) -> None:
     all_records = trace.get("records", [])
+    model_names = model_names_from_trace(trace)
     records = [record for record in all_records
                if record.get("type") == "npu_epoch"]
     if not records:
         runtime_records = [record for record in all_records
                            if record.get("type") == "ai_runtime_step"]
         if runtime_records:
-            summarize_ai_runtime(trace, runtime_records)
+            summarize_ai_runtime(trace, runtime_records, model_names)
             return
         raise ValueError("trace contains no npu_epoch or ai_runtime_step records")
 
@@ -203,7 +226,8 @@ def summarize(trace: dict[str, Any], top: int, cpu_hz: float | None) -> None:
             if stages.get(stage)
         )
         print(
-            f"{model_name(model_id)}: focus={focus_stage_by_model[model_id]} "
+            f"{model_name(model_id, model_names)}: "
+            f"focus={focus_stage_by_model[model_id]} "
             f"events={len(focus_cycles)} blocks="
             f"{len({(record.get('epoch_index'), record.get('epoch_address')) for record in focus_records})} "
             f"sum={format_cycles(sum(focus_cycles), cpu_hz)} "
@@ -221,7 +245,7 @@ def summarize(trace: dict[str, Any], top: int, cpu_hz: float | None) -> None:
     print(f"top {min(top, len(ranked))} epoch blocks by focused measured cycles:")
     for total, (model_id, epoch_index, flags), count, median in ranked[:top]:
         print(
-            f"  {model_name(model_id)} epoch={epoch_index} "
+            f"  {model_name(model_id, model_names)} epoch={epoch_index} "
             f"class={flag_name(flags)} samples={count} "
             f"total={format_cycles(total, cpu_hz)} "
             f"median={format_cycles(median, cpu_hz)}"

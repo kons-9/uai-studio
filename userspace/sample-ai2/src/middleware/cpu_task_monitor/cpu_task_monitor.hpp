@@ -18,18 +18,33 @@ namespace uai::ai::middleware::cpu_task_monitor {
 #if UAI_CPU_TASK_MONITOR
 
 inline constexpr std::uint32_t kCpuTaskMonitorTraceMagic = 0x43544D4EU;
-inline constexpr std::uint16_t kCpuTaskMonitorTraceVersion = 1U;
+inline constexpr std::uint16_t kCpuTaskMonitorTraceVersion = 3U;
 inline constexpr std::uint32_t kCpuTaskMonitorTraceCommitMagic = 0x43544D43U;
+inline constexpr std::size_t kCpuTaskMonitorTaskNameCount = 33U;
+inline constexpr std::size_t kCpuTaskMonitorTaskNameBytes = 28U;
+
+struct CpuTaskMonitorTraceTaskName {
+    std::uint32_t task_id = 0U;
+    char name[kCpuTaskMonitorTaskNameBytes] = {};
+};
+
+static_assert(sizeof(CpuTaskMonitorTraceTaskName) == 32U);
+inline constexpr std::uint32_t kCpuTaskMonitorTraceDataOffset =
+    64U +
+    kCpuTaskMonitorTaskNameCount *
+        sizeof(CpuTaskMonitorTraceTaskName);
 
 enum class CpuTaskMonitorTraceRecordType : std::uint8_t {
     kReport = 1U,
     kTask = 2U,
+    kTaskLoop = 3U,
+    kTaskLoopInterval = 4U,
 };
 
 struct alignas(32) CpuTaskMonitorTraceHeader {
     std::uint32_t magic = kCpuTaskMonitorTraceMagic;
     std::uint16_t version = kCpuTaskMonitorTraceVersion;
-    std::uint16_t header_size = 64U;
+    std::uint16_t header_size = kCpuTaskMonitorTraceDataOffset;
     std::uint32_t record_size = 0U;
     std::uint32_t capacity = 0U;
     std::uint32_t write_index = 0U;
@@ -41,7 +56,10 @@ struct alignas(32) CpuTaskMonitorTraceHeader {
     std::uint32_t report_task_id = 0U;
     std::uint32_t last_period_cycles = 0U;
     std::uint32_t last_interrupt_percent = 0U;
-    std::uint32_t reserved[3] = {};
+    std::uint32_t task_name_count = 0U;
+    std::uint32_t task_name_entry_size =
+        sizeof(CpuTaskMonitorTraceTaskName);
+    std::uint32_t reserved = 0U;
 };
 
 struct alignas(32) CpuTaskMonitorTraceRecord {
@@ -76,6 +94,11 @@ class CpuTaskMonitor final {
 public:
     common::Error Start();
     common::Error Stop();
+    common::Error RegisterTask(ID task_id, const char *name);
+    static common::Error RegisterTaskForActiveMonitor(
+        ID task_id, const char *name);
+    std::uint32_t BeginTaskLoop() const;
+    void RecordTaskLoop(ID task_id, std::uint32_t start_cycles);
     /* Must be called after external PSRAM has been initialized. */
     common::Error InitializeTraceBuffer();
     void Report();
@@ -90,6 +113,10 @@ private:
         UINT state = 0U;
         std::uint32_t cycles = 0U;
         std::uint32_t dispatch_count = 0U;
+        std::uint32_t loop_count = 0U;
+        std::uint32_t loop_total_cycles = 0U;
+        std::uint32_t loop_max_cycles = 0U;
+        std::uint32_t loop_last_cycles = 0U;
     };
 
     static void DispatchExec(ID task_id, ID lsid);
@@ -103,6 +130,7 @@ private:
     void OnInterruptLeave();
     void AccountTask(ID task_id, std::uint32_t cycles);
     TaskSlot *FindTaskSlot(ID task_id);
+    void UpdateTraceTaskName(ID task_id);
     void ResetCounters();
     bool TraceHeaderValid() const;
     void AppendTraceRecord(CpuTaskMonitorTraceRecord record);
@@ -120,7 +148,9 @@ private:
     volatile std::uint32_t interrupt_count_ = 0U;
     volatile std::uint32_t unknown_task_events_ = 0U;
     TaskSlot task_slots_[kTaskSlotCount] = {};
+    char task_names_[kTaskSlotCount][kCpuTaskMonitorTaskNameBytes] = {};
     CpuTaskMonitorTraceHeader *trace_header_ = nullptr;
+    CpuTaskMonitorTraceTaskName *trace_task_names_ = nullptr;
     CpuTaskMonitorTraceRecord *trace_records_ = nullptr;
     std::uint32_t trace_capacity_ = 0U;
 };
@@ -132,6 +162,13 @@ class CpuTaskMonitor final {
 public:
     common::Error Start() { return {}; }
     common::Error Stop() { return {}; }
+    common::Error RegisterTask(ID, const char *) { return {}; }
+    static common::Error RegisterTaskForActiveMonitor(ID, const char *)
+    {
+        return {};
+    }
+    std::uint32_t BeginTaskLoop() const { return 0U; }
+    void RecordTaskLoop(ID, std::uint32_t) {}
     common::Error InitializeTraceBuffer() { return {}; }
     void Report() {}
     bool Active() const { return false; }

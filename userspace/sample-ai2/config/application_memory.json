@@ -22,7 +22,7 @@
       "key": "kCpuTaskMonitor",
       "memory": "PSRAM_CPU_TRACE",
       "section": "sample_ai_cpu_task_monitor",
-      "size": "0x00008000",
+      "size": "0x00080000",
       "alignment": 32
     },
     {

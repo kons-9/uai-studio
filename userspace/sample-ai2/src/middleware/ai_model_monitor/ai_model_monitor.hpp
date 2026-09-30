@@ -18,9 +18,22 @@ namespace uai::ai::middleware::ai_model_monitor {
  * PSRAM avoids taking the model NOR out of memory-mapped mode while the NPU
  * may still be reading weights. */
 inline constexpr std::uint32_t kThreadMonitorTraceMagic = 0x544D4F4EU;
-inline constexpr std::uint16_t kThreadMonitorTraceVersion = 4U;
+inline constexpr std::uint16_t kThreadMonitorTraceVersion = 5U;
 inline constexpr std::uint32_t kThreadMonitorTraceCommitMagic = 0x434D4954U;
 inline constexpr std::uint32_t kUnknownModelKindId = 0xFFFFFFFFU;
+inline constexpr std::size_t kThreadMonitorModelNameCapacity = 16U;
+inline constexpr std::size_t kThreadMonitorModelNameBytes = 28U;
+
+struct ThreadMonitorTraceModelName {
+    std::uint32_t model_kind_id = kUnknownModelKindId;
+    char name[kThreadMonitorModelNameBytes] = {};
+};
+
+static_assert(sizeof(ThreadMonitorTraceModelName) == 32U);
+inline constexpr std::uint16_t kThreadMonitorTraceDataOffset =
+    static_cast<std::uint16_t>(
+        64U + kThreadMonitorModelNameCapacity *
+                  sizeof(ThreadMonitorTraceModelName));
 
 enum class TraceRecordType : std::uint8_t {
     kSample = 1U,
@@ -43,7 +56,7 @@ inline constexpr std::uint8_t kTraceFlagAiRuntimeBegin = 1U << 4U;
 struct alignas(32) ThreadMonitorTraceHeader {
     std::uint32_t magic = kThreadMonitorTraceMagic;
     std::uint16_t version = kThreadMonitorTraceVersion;
-    std::uint16_t header_size = 64U;
+    std::uint16_t header_size = kThreadMonitorTraceDataOffset;
     std::uint32_t record_size = 0U;
     std::uint32_t capacity = 0U;
     std::uint32_t write_index = 0U;
@@ -55,7 +68,10 @@ struct alignas(32) ThreadMonitorTraceHeader {
     std::uint32_t last_fault_code = 0U;
     std::uint32_t fault_count = 0U;
     std::uint32_t next_sequence = 0U;
-    std::uint32_t reserved[3] = {};
+    std::uint32_t model_name_count = 0U;
+    std::uint32_t model_name_entry_size =
+        sizeof(ThreadMonitorTraceModelName);
+    std::uint32_t reserved = 0U;
 };
 
 struct alignas(32) ThreadMonitorTraceRecord {
@@ -93,6 +109,9 @@ class AiModelMonitor final {
 public:
     common::Error Start();
     common::Error Stop();
+    /* Register the trace label before Start initializes the shared buffer. */
+    common::Error RegisterModelName(ai_runtime::AiModelId model_id,
+                                    const char *name);
 
     void ObserveAiRuntimeStep(const ai_runtime::StepTrace &trace);
     bool Faulted() const { return faulted_; }
@@ -115,6 +134,8 @@ private:
                      ER reference_status, TraceFaultCode fault_code);
     bool InitializeTraceBuffer();
     bool TraceHeaderValid() const;
+    bool TraceModelNamesMatch() const;
+    void UpdateTraceModelNames();
     bool QueueTraceEvent(const PendingTraceEvent &event);
     void FlushPendingTraceEvents();
     void RecordSample(std::uint32_t now, const T_RTSK &task_status);
@@ -141,7 +162,10 @@ private:
     std::uint32_t pending_write_index_ = 0U;
     std::uint32_t pending_read_index_ = 0U;
     std::uint32_t pending_dropped_count_ = 0U;
+    ThreadMonitorTraceModelName
+        registered_model_names_[kThreadMonitorModelNameCapacity]{};
     ThreadMonitorTraceHeader *trace_header_ = nullptr;
+    ThreadMonitorTraceModelName *trace_model_names_ = nullptr;
     ThreadMonitorTraceRecord *trace_records_ = nullptr;
     std::uint32_t trace_capacity_ = 0U;
 };
@@ -159,6 +183,10 @@ class AiModelMonitor final {
 public:
     common::Error Start() { return {}; }
     common::Error Stop() { return {}; }
+    common::Error RegisterModelName(ai_runtime::AiModelId, const char *)
+    {
+        return {};
+    }
     void ObserveAiRuntimeStep(const ai_runtime::StepTrace &) {}
     bool Faulted() const { return false; }
     bool Active() const { return false; }

@@ -49,7 +49,7 @@ memory_regions:
   - name: PSRAM_CPU_TRACE
     attributes: rwx
     origin: 0x91C48000
-    length: 0x00008000
+    length: 0x00080000
   - name: PSRAM_SCRATCH
     attributes: rwx
     origin: 0x91D00000
@@ -73,7 +73,7 @@ allocations:
     key: kCpuTaskMonitor
     memory: PSRAM_CPU_TRACE
     section: sample_ai_cpu_task_monitor
-    size: 0x00008000
+    size: 0x00080000
     alignment: 32
 
   - name: capture0

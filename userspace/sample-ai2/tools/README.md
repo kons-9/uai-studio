@@ -58,8 +58,9 @@ available to `make -C userspace/sample-ai2 thread-monitor-dump` while the CPU is
 volatile PSRAM; dump it before resetting the board if the trace must be kept.
 
 The CPU task monitor uses a separate `PSRAM_CPU_TRACE` ring at
-`0x91C48000` (32 KiB). Use `make -C userspace/sample-ai2 cpu-task-monitor` to dump and visualize its
-one-second task-usage reports.
+`0x91C48000` (512 KiB). It records one-second usage reports and each measured
+`Task::RunForever` loop interval. Use `make -C userspace/sample-ai2
+cpu-task-monitor` to dump and visualize the reports and loop intervals.
 
 AI model monitor tools are collected under
 [`ai_model_monitor/`](ai_model_monitor/).  See

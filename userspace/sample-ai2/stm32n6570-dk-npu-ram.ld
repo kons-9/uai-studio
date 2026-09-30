@@ -33,7 +33,7 @@ MEMORY
    * the NPU still owns. */
   PSRAM_PIPE2_DROP (rwx) : ORIGIN = 0x91B40000, LENGTH = 0x00100000
   PSRAM_TRACE (rwx) : ORIGIN = 0x91C40000, LENGTH = 0x00008000
-  PSRAM_CPU_TRACE (rwx) : ORIGIN = 0x91C48000, LENGTH = 0x00008000
+  PSRAM_CPU_TRACE (rwx) : ORIGIN = 0x91C48000, LENGTH = 0x00080000
   PSRAM_SCRATCH (rwx) : ORIGIN = 0x91D00000, LENGTH = 0x00100000
   /* Immutable Pipe2 snapshots used when a completed frame is reused for the
    * next model. This range is outside the active camera, NPU, and scratch
@@ -114,7 +114,7 @@ SECTIONS
   /* Keep the launch entry away from the normal code range so the first fetch
    * cannot be satisfied by an instruction-cache line from the old image. */
   /* Leave growth room after .rodata before the cache-sanitizing launch entry. */
-  .text.uai_ram_entry 0x34054000 :
+  .text.uai_ram_entry 0x34060000 :
   {
     . = ALIGN(4);
     KEEP(*(.text.uai_ram_entry))

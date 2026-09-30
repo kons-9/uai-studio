@@ -89,6 +89,12 @@ void PipelineRuntime::Wake(ExecutionContext lane) const
     if (wake_ != nullptr) wake_(wake_context_, lane);
 }
 
+common::Error PipelineRuntime::RegisterModelName(AiModelId model_id,
+                                                 const char *name)
+{
+    return ai_model_monitor_.RegisterModelName(model_id, name);
+}
+
 common::Error PipelineRuntime::StartAiModelMonitor()
 {
     return ai_model_monitor_.Start();

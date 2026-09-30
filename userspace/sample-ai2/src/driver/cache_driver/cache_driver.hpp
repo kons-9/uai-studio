@@ -7,14 +7,15 @@
 
 namespace uai::ai::cache {
 
+class CacheManagement;
+
 /* Owns CACHEAXI startup and cache maintenance for DMA/NPU memory transfers. */
 class CacheDriver final {
 public:
     using Writer = driver::ResourceManagement::Writer;
 
-    common::Error Initialize();
-    common::Error AcquireWriter(Writer *writer, TMO timeout = TMO_FEVR) const
-    { return management_.Acquire(writer, timeout); }
+    CacheDriver(const CacheDriver &) = delete;
+    CacheDriver &operator=(const CacheDriver &) = delete;
     common::Error PrepareForDmaWrite(
         const memory_allocator::Buffer &buffer) const;
     common::Error PrepareForDmaWrite(
@@ -31,8 +32,64 @@ public:
     void KeepClocksOnSleep(const Writer &writer) const;
 
 private:
-    driver::ResourceManagement management_{};
+    friend class CacheManagement;
+    CacheDriver() = default;
+    ~CacheDriver() = default;
+    common::Error Initialize(const Writer &writer);
     bool initialized_ = false;
+};
+
+class CacheManagement final {
+public:
+    using Writer = CacheDriver::Writer;
+    using Accessor = driver::ResourceAccessor<CacheDriver>;
+    static CacheManagement &Instance()
+    {
+        static CacheManagement management;
+        return management;
+    }
+    common::Error Initialize()
+    {
+        common::Error status = ownership_.Initialize("cache.management");
+        if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) return status;
+        Accessor accessor;
+        status = Acquire(&accessor);
+        return status.Ok() ? driver_.Initialize(accessor.Ownership()) : status;
+    }
+    common::Error Acquire(Accessor *accessor, TMO timeout = TMO_FEVR)
+    {
+        if (accessor == nullptr) return {common::ErrorCode::kInvalidArgument, 0U, "cache.management.acquire.null_accessor"};
+        *accessor = {};
+        CacheDriver::Writer writer;
+        const common::Error status = ownership_.Acquire(&writer, timeout);
+        if (status.Ok()) *accessor = Accessor(driver_, static_cast<Writer &&>(writer));
+        return status;
+    }
+    common::Error Validate(const Writer &writer, const char *operation) const
+    { return ownership_.Validate(writer, operation); }
+    common::Error PrepareForDmaWrite(const memory_allocator::Buffer &buffer)
+    { return WithWriter([&](CacheDriver &d, const Writer &w) { return d.PrepareForDmaWrite(buffer, w); }); }
+    common::Error PrepareForCpuRead(const memory_allocator::Buffer &buffer)
+    { return WithWriter([&](CacheDriver &d, const Writer &w) { return d.PrepareForCpuRead(buffer, w); }); }
+    common::Error PrepareForPeripheralRead(const memory_allocator::Buffer &buffer)
+    { return WithWriter([&](CacheDriver &d, const Writer &w) { return d.PrepareForPeripheralRead(buffer, w); }); }
+    void KeepClocksOnSleep()
+    { (void)WithWriter([](CacheDriver &d, const Writer &w) { d.KeepClocksOnSleep(w); return common::Error{common::ErrorCode::kOk, 0U, "cache.keep_clocks"}; }); }
+    CacheManagement(const CacheManagement &) = delete;
+    CacheManagement &operator=(const CacheManagement &) = delete;
+private:
+    template <typename Operation>
+    common::Error WithWriter(Operation operation)
+    {
+        Accessor accessor;
+        const common::Error status = Acquire(&accessor);
+        if (!status.Ok()) return status;
+        return operation(*accessor.Get(), accessor.Ownership());
+    }
+    CacheManagement() = default;
+    ~CacheManagement() = default;
+    driver::ResourceManagement ownership_{};
+    CacheDriver driver_{};
 };
 
 } // namespace uai::ai::cache

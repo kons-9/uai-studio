@@ -16,7 +16,7 @@
     {"name": "PSRAM_MASK", "attributes": "rwx", "origin": "0x91B00000", "length": "0x00040000"},
     {"name": "PSRAM_PIPE2_DROP", "attributes": "rwx", "origin": "0x91B40000", "length": "0x00100000"},
     {"name": "PSRAM_TRACE", "attributes": "rwx", "origin": "0x91C40000", "length": "0x00008000"},
-    {"name": "PSRAM_CPU_TRACE", "attributes": "rwx", "origin": "0x91C48000", "length": "0x00008000"},
+    {"name": "PSRAM_CPU_TRACE", "attributes": "rwx", "origin": "0x91C48000", "length": "0x00080000"},
     {"name": "PSRAM_SCRATCH", "attributes": "rwx", "origin": "0x91D00000", "length": "0x00100000"},
     {"name": "PSRAM_INFERENCE_SOURCE", "attributes": "rwx", "origin": "0x91E00000", "length": "0x00200000"}
   ],

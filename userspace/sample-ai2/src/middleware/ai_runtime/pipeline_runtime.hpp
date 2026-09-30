@@ -30,6 +30,7 @@ public:
                             void *context);
     /* Called by the NPU lane after it enters its RTOS task. The monitor uses
      * that task as the owner for periodic state samples. */
+    common::Error RegisterModelName(AiModelId model_id, const char *name);
     common::Error StartAiModelMonitor();
     common::Error Submit(AiFuture &future);
     /* Events belong to a specific future, not to every NPU waiter. */

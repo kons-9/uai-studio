@@ -301,8 +301,11 @@ ThreadMonitorのリングはモデルNORではなく、PSRAMの専用領域
 でき、`make -C userspace/sample-ai2 thread-monitor-dump`で停止時に取得できます。
 PSRAMは揮発性なので、リセット前にダンプしてください。
 
-CPU task monitorの1秒周期レポートも別のPSRAM領域`0x91C48000`（32 KiB）へ保存されます。
-`make -C userspace/sample-ai2 cpu-task-monitor`でダンプと可視化を実行できます。
+CPU task monitorのレポートとループ区間も別のPSRAM領域`0x91C48000`（512 KiB）へ保存されます。
+`make -C userspace/sample-ai2 thread-monitor`でAIモデルのPNGを、
+`make -C userspace/sample-ai2 cpu-task-monitor`でCPU task monitorの別PNGを生成します。
+CPU task monitorはタスクループの開始・終了区間も記録するため、CPU task側では
+ガント図として各ループの時間範囲を表示します。
 
 ## 外部Flashからの起動
 

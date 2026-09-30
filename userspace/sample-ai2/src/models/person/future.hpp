@@ -13,7 +13,7 @@
 #include "stai.h"
 
 namespace uai::ai::cache {
-class CacheDriver;
+class CacheManagement;
 }
 
 namespace uai::ai::npu {
@@ -29,10 +29,10 @@ using PublishCallback = void (*)(void *, const inference::BoxSet &);
  * The Future owns the inference state; the application owns these services. */
 struct FutureContext {
     npu::NpuDriver *npu = nullptr;
-    driver::ResourceManagement::Writer *npu_writer = nullptr;
+    const driver::ResourceManagement::Writer *npu_writer = nullptr;
     npu::NpuNetwork *model = nullptr;
     std::uint32_t model_kind_id = 0U;
-    cache::CacheDriver *cache = nullptr;
+    cache::CacheManagement *cache = nullptr;
     const stai_network_info *info = nullptr;
     PublishCallback publish = nullptr;
     void *publish_context = nullptr;

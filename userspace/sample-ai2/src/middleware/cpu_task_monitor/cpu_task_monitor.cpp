@@ -77,7 +77,7 @@ common::Error CpuTaskMonitor::InitializeTraceBuffer()
     const auto &region = static_memory_layout::Region::GetRegionFromKey(
         static_memory_layout::Key::kCpuTaskMonitor);
     if (region.begin == nullptr ||
-        region.size() < sizeof(CpuTaskMonitorTraceHeader) +
+        region.size() < kCpuTaskMonitorTraceDataOffset +
                             sizeof(CpuTaskMonitorTraceRecord)) {
         return {common::ErrorCode::kInvalidState, 0U,
                 "ai2.cpu_task_monitor.trace_region"};
@@ -85,13 +85,16 @@ common::Error CpuTaskMonitor::InitializeTraceBuffer()
 
     trace_header_ = reinterpret_cast<CpuTaskMonitorTraceHeader *>(
         region.address());
-    trace_records_ = reinterpret_cast<CpuTaskMonitorTraceRecord *>(
+    trace_task_names_ = reinterpret_cast<CpuTaskMonitorTraceTaskName *>(
         region.address() + sizeof(CpuTaskMonitorTraceHeader));
+    trace_records_ = reinterpret_cast<CpuTaskMonitorTraceRecord *>(
+        region.address() + kCpuTaskMonitorTraceDataOffset);
     trace_capacity_ = static_cast<std::uint32_t>(
-        (region.size() - sizeof(CpuTaskMonitorTraceHeader)) /
+        (region.size() - kCpuTaskMonitorTraceDataOffset) /
         sizeof(CpuTaskMonitorTraceRecord));
     if (trace_capacity_ == 0U) {
         trace_header_ = nullptr;
+        trace_task_names_ = nullptr;
         trace_records_ = nullptr;
         return {common::ErrorCode::kInvalidState, 0U,
                 "ai2.cpu_task_monitor.trace_capacity"};
@@ -102,6 +105,7 @@ common::Error CpuTaskMonitor::InitializeTraceBuffer()
                     region.size());
         *trace_header_ = CpuTaskMonitorTraceHeader{};
         trace_header_->record_size = sizeof(CpuTaskMonitorTraceRecord);
+        trace_header_->header_size = kCpuTaskMonitorTraceDataOffset;
         trace_header_->capacity = trace_capacity_;
         trace_header_->boot_count = 1U;
     } else {
@@ -111,6 +115,9 @@ common::Error CpuTaskMonitor::InitializeTraceBuffer()
         static_cast<std::uint32_t>(tk_get_tid());
     trace_header_->report_task_id =
         static_cast<std::uint32_t>(tk_get_tid());
+    for (std::size_t index = 0U; index < kTaskSlotCount; ++index) {
+        UpdateTraceTaskName(static_cast<ID>(index));
+    }
     FlushTrace(trace_header_, sizeof(*trace_header_));
     UAI_LOG_INFO(reinterpret_cast<const UB *>(
                      "ai: cpu task trace addr=%x bytes=%u records=%u version=%u\n"),
@@ -127,8 +134,11 @@ bool CpuTaskMonitor::TraceHeaderValid() const
     return trace_header_ != nullptr &&
            trace_header_->magic == kCpuTaskMonitorTraceMagic &&
            trace_header_->version == kCpuTaskMonitorTraceVersion &&
-           trace_header_->header_size == sizeof(CpuTaskMonitorTraceHeader) &&
+           trace_header_->header_size == kCpuTaskMonitorTraceDataOffset &&
            trace_header_->record_size == sizeof(CpuTaskMonitorTraceRecord) &&
+           trace_header_->task_name_entry_size ==
+               sizeof(CpuTaskMonitorTraceTaskName) &&
+           trace_header_->task_name_count <= kTaskSlotCount &&
            trace_header_->capacity == trace_capacity_ &&
            trace_header_->capacity != 0U &&
            trace_header_->write_index < trace_header_->capacity &&
@@ -141,6 +151,8 @@ void CpuTaskMonitor::AppendTraceRecord(CpuTaskMonitorTraceRecord record)
         trace_capacity_ == 0U) {
         return;
     }
+
+    InterruptMaskGuard guard;
 
     const std::uint32_t sequence = trace_header_->next_sequence;
     record.sequence = sequence;
@@ -157,8 +169,11 @@ void CpuTaskMonitor::AppendTraceRecord(CpuTaskMonitorTraceRecord record)
     trace_header_->write_index =
         (trace_header_->write_index + 1U) % trace_header_->capacity;
     trace_header_->next_sequence = sequence + 1U;
-    trace_header_->last_period_cycles = record.period_cycles;
-    trace_header_->last_interrupt_percent = record.interrupt_percent;
+    if (record.type == static_cast<std::uint8_t>(
+                           CpuTaskMonitorTraceRecordType::kReport)) {
+        trace_header_->last_period_cycles = record.period_cycles;
+        trace_header_->last_interrupt_percent = record.interrupt_percent;
+    }
     FlushTrace(trace_header_, sizeof(*trace_header_));
 }
 
@@ -168,6 +183,107 @@ void CpuTaskMonitor::FlushTrace(const void *address, std::size_t size) const
     SCB_CleanDCache_by_Addr(
         reinterpret_cast<std::uint32_t *>(const_cast<void *>(address)),
         static_cast<std::int32_t>(size));
+}
+
+common::Error CpuTaskMonitor::RegisterTask(ID task_id, const char *name)
+{
+    if (task_id <= 0 || task_id >= static_cast<ID>(kTaskSlotCount) ||
+        name == nullptr || name[0] == '\0') {
+        return {common::ErrorCode::kInvalidArgument,
+                static_cast<std::uint32_t>(task_id),
+                "ai2.cpu_task_monitor.register_task"};
+    }
+
+    char *registered_name = task_names_[static_cast<std::size_t>(task_id)];
+    const std::size_t name_length = std::strlen(name);
+    const std::size_t copy_length =
+        name_length < kCpuTaskMonitorTaskNameBytes - 1U
+            ? name_length
+            : kCpuTaskMonitorTaskNameBytes - 1U;
+    const bool unchanged =
+        std::strncmp(registered_name, name, copy_length) == 0 &&
+        registered_name[copy_length] == '\0';
+    if (!unchanged) {
+        {
+            InterruptMaskGuard guard;
+            std::memset(registered_name, 0, kCpuTaskMonitorTaskNameBytes);
+            std::memcpy(registered_name, name, copy_length);
+        }
+        UpdateTraceTaskName(task_id);
+        UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                         "cpu: task_name id=%u name=%s\n"),
+                     static_cast<unsigned int>(task_id),
+                     reinterpret_cast<const UB *>(registered_name));
+    }
+    return {common::ErrorCode::kOk, 0U,
+            "ai2.cpu_task_monitor.register_task"};
+}
+
+common::Error CpuTaskMonitor::RegisterTaskForActiveMonitor(
+    ID task_id, const char *name)
+{
+    CpuTaskMonitor *monitor = active_instance_;
+    if (monitor == nullptr || !monitor->active_) {
+        return {common::ErrorCode::kNotInitialized, 0U,
+                "ai2.cpu_task_monitor.active_instance"};
+    }
+    return monitor->RegisterTask(task_id, name);
+}
+
+std::uint32_t CpuTaskMonitor::BeginTaskLoop() const
+{
+    return ReadCycles();
+}
+
+void CpuTaskMonitor::RecordTaskLoop(ID task_id, std::uint32_t start_cycles)
+{
+    const std::uint32_t end_cycles = ReadCycles();
+    const std::uint32_t elapsed = end_cycles - start_cycles;
+    {
+        InterruptMaskGuard guard;
+        TaskSlot *slot = FindTaskSlot(task_id);
+        if (slot == nullptr) {
+            ++unknown_task_events_;
+            return;
+        }
+        ++slot->loop_count;
+        slot->loop_total_cycles += elapsed;
+        slot->loop_last_cycles = elapsed;
+        if (elapsed > slot->loop_max_cycles) {
+            slot->loop_max_cycles = elapsed;
+        }
+    }
+
+    CpuTaskMonitorTraceRecord interval{};
+    interval.timestamp_cycles = end_cycles;
+    interval.task_id = static_cast<std::uint32_t>(task_id);
+    interval.cycles = elapsed;
+    interval.type = static_cast<std::uint8_t>(
+        CpuTaskMonitorTraceRecordType::kTaskLoopInterval);
+    AppendTraceRecord(interval);
+}
+
+void CpuTaskMonitor::UpdateTraceTaskName(ID task_id)
+{
+    if (trace_header_ == nullptr || trace_task_names_ == nullptr ||
+        task_id < 0 || task_id >= static_cast<ID>(kTaskSlotCount)) {
+        return;
+    }
+    const std::size_t index = static_cast<std::size_t>(task_id);
+    CpuTaskMonitorTraceTaskName &entry = trace_task_names_[index];
+    entry = {};
+    if (task_id > 0 && task_names_[index][0] != '\0') {
+        entry.task_id = static_cast<std::uint32_t>(task_id);
+        std::memcpy(entry.name, task_names_[index],
+                    kCpuTaskMonitorTaskNameBytes);
+    }
+    std::uint32_t count = 0U;
+    for (std::size_t slot = 1U; slot < kTaskSlotCount; ++slot) {
+        if (task_names_[slot][0] != '\0') ++count;
+    }
+    trace_header_->task_name_count = count;
+    FlushTrace(&entry, sizeof(entry));
+    FlushTrace(trace_header_, sizeof(*trace_header_));
 }
 
 common::Error CpuTaskMonitor::Start()
@@ -356,6 +472,10 @@ void CpuTaskMonitor::Report()
         UINT state;
         std::uint32_t cycles;
         std::uint32_t dispatch_count;
+        std::uint32_t loop_count;
+        std::uint32_t loop_total_cycles;
+        std::uint32_t loop_max_cycles;
+        std::uint32_t loop_last_cycles;
     };
 
     Snapshot snapshots[kTaskSlotCount] = {};
@@ -385,9 +505,17 @@ void CpuTaskMonitor::Report()
             snapshots[index] = {task_slots_[index].task_id,
                                  task_slots_[index].state,
                                  task_slots_[index].cycles,
-                                 task_slots_[index].dispatch_count};
+                                 task_slots_[index].dispatch_count,
+                                 task_slots_[index].loop_count,
+                                 task_slots_[index].loop_total_cycles,
+                                 task_slots_[index].loop_max_cycles,
+                                 task_slots_[index].loop_last_cycles};
             task_slots_[index].cycles = 0U;
             task_slots_[index].dispatch_count = 0U;
+            task_slots_[index].loop_count = 0U;
+            task_slots_[index].loop_total_cycles = 0U;
+            task_slots_[index].loop_max_cycles = 0U;
+            task_slots_[index].loop_last_cycles = 0U;
         }
     }
 
@@ -434,6 +562,26 @@ void CpuTaskMonitor::Report()
         AppendTraceRecord(task_record);
     }
 
+    for (const Snapshot &snapshot : snapshots) {
+        if (snapshot.task_id <= 0 || snapshot.loop_count == 0U) {
+            continue;
+        }
+        CpuTaskMonitorTraceRecord loop_record{};
+        loop_record.timestamp_cycles = report_timestamp_cycles;
+        loop_record.period_cycles = period_cycles;
+        loop_record.task_id = static_cast<std::uint32_t>(snapshot.task_id);
+        loop_record.state = snapshot.loop_last_cycles;
+        loop_record.cycles = snapshot.loop_total_cycles;
+        loop_record.dispatch_count = snapshot.loop_count;
+        loop_record.usage_percent = snapshot.loop_max_cycles;
+        loop_record.interrupt_percent = interrupt_percent;
+        loop_record.interrupt_count = interrupt_count;
+        loop_record.unknown_task_events = unknown_task_events;
+        loop_record.type = static_cast<std::uint8_t>(
+            CpuTaskMonitorTraceRecordType::kTaskLoop);
+        AppendTraceRecord(loop_record);
+    }
+
     UAI_LOG_INFO(reinterpret_cast<const UB *>(
                      "cpu: period=%u cycles irq=%u%% count=%u unknown=%u\n"),
                  static_cast<unsigned int>(period_cycles),
@@ -451,6 +599,20 @@ void CpuTaskMonitor::Report()
                      static_cast<unsigned int>(snapshot.cycles),
                      static_cast<unsigned int>(snapshot.dispatch_count),
                      static_cast<unsigned int>(snapshot.state));
+    }
+    for (const Snapshot &snapshot : snapshots) {
+        if (snapshot.task_id <= 0 || snapshot.loop_count == 0U) {
+            continue;
+        }
+        const std::uint32_t average =
+            snapshot.loop_total_cycles / snapshot.loop_count;
+        UAI_LOG_INFO(reinterpret_cast<const UB *>(
+                         "cpu: loop id=%u n=%u avg=%u max=%u last=%u\n"),
+                     static_cast<unsigned int>(snapshot.task_id),
+                     static_cast<unsigned int>(snapshot.loop_count),
+                     static_cast<unsigned int>(average),
+                     static_cast<unsigned int>(snapshot.loop_max_cycles),
+                     static_cast<unsigned int>(snapshot.loop_last_cycles));
     }
 }
 

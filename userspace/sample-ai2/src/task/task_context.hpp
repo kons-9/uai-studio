@@ -109,11 +109,11 @@ public:
     void SendInferenceFrame(const pipeline::InferenceFrame &frame);
 
     memory_manager::MemoryManager memory;
-    uai::ai::cache::CacheDriver cache;
-    uai::ai::psram::PsramDriver psram;
-    uai::ai::rif::RifDriver rif;
-    uai::ai::lcd::LcdDriver lcd;
-    uai::ai::camera::CameraDriver camera;
+    uai::ai::cache::CacheManagement &cache;
+    uai::ai::psram::PsramManagement &psram;
+    uai::ai::rif::RifManagement &rif;
+    uai::ai::lcd::LcdManagement &lcd;
+    uai::ai::camera::CameraManagement &camera;
     uai::ai::middleware::cpu_task_monitor::CpuTaskMonitor cpu_task_monitor;
 
     volatile std::uint32_t app_stage;

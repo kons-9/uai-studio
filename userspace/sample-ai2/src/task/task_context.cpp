@@ -25,7 +25,12 @@ TaskContext &GetTaskContext()
     return g_context;
 }
 
-TaskContext::TaskContext() = default;
+TaskContext::TaskContext()
+    : cache(cache::CacheManagement::Instance()),
+      psram(psram::PsramManagement::Instance()),
+      rif(rif::RifManagement::Instance()),
+      lcd(lcd::LcdManagement::Instance()),
+      camera(camera::CameraManagement::Instance()) {}
 
 [[noreturn]] void TaskContext::Halt(const char *message)
 {
@@ -216,6 +221,14 @@ void TaskContext::StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
                           "error: component=task_context operation=create_%s code=%x detail=0\n"),
                       name, static_cast<unsigned int>(task_id));
         Halt("ai: task create failed\n");
+    }
+    const common::Error name_status = cpu_task_monitor.RegisterTask(task_id, name);
+    if (!name_status.Ok()) {
+        UAI_LOG_WARN(reinterpret_cast<const UB *>(
+                         "ai: task name registration failed name=%s code=%u detail=%u\n"),
+                     reinterpret_cast<const UB *>(name),
+                     static_cast<unsigned int>(name_status.code),
+                     static_cast<unsigned int>(name_status.detail));
     }
     const ER error = tk_sta_tsk(task_id, 0);
     if (error != E_OK) {

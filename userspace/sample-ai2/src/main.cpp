@@ -68,6 +68,7 @@ extern "C" INT usermain(void)
                       static_cast<unsigned int>(cpu_monitor_status.detail));
         context.Halt("ai: cpu task monitor start failed\n");
     }
+    (void)context.cpu_task_monitor.RegisterTask(tk_get_tid(), "usermain");
 
     /* µT-Kernel replaces the startup vector table with its RAM table. Use its
      * HLL wrapper for the NPU IRQ so the handler can signal the inference task

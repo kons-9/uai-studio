@@ -74,6 +74,34 @@ private:
     bool initialized_ = false;
 };
 
+/* A scoped handle to a managed driver. Moving the handle transfers its Writer;
+ * destroying it releases the management lock. */
+template <typename Resource>
+class ResourceAccessor final {
+public:
+    using Writer = ResourceManagement::Writer;
+
+    ResourceAccessor() = default;
+    ResourceAccessor(Resource &resource, Writer &&writer)
+        : resource_(&resource), writer_(static_cast<Writer &&>(writer))
+    {
+    }
+
+    ResourceAccessor(const ResourceAccessor &) = delete;
+    ResourceAccessor &operator=(const ResourceAccessor &) = delete;
+    ResourceAccessor(ResourceAccessor &&) noexcept = default;
+    ResourceAccessor &operator=(ResourceAccessor &&) noexcept = default;
+
+    bool Valid() const { return resource_ != nullptr && writer_.Valid(); }
+    Resource *Get() const { return Valid() ? resource_ : nullptr; }
+    Resource *operator->() const { return Get(); }
+    const Writer &Ownership() const { return writer_; }
+
+private:
+    Resource *resource_ = nullptr;
+    Writer writer_{};
+};
+
 } // namespace uai::ai::driver
 
 #endif // UAI_AI_DRIVER_OWNERSHIP_HPP

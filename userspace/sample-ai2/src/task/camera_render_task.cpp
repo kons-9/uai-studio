@@ -10,6 +10,7 @@
 #include "memory_manager/memory_sizes.hpp"
 #include "models/inference_result_types.hpp"
 #include "task/camera_render_task.hpp"
+#include "task/task.hpp"
 #include "task/task_context.hpp"
 #include "task/task_diagnostics.hpp"
 
@@ -273,7 +274,8 @@ void CameraRenderTask::Run()
     unsigned int reported_recovery_errors = 0U;
     unsigned int reported_isp_errors = 0U;
     std::uint32_t last_async_error_log_tick = context.Now();
-    for (;;) {
+    Task::RunForever(context.cpu_task_monitor, "camera_render",
+                     [] { tk_dly_tsk(1); }, [&] {
         ++loop_count;
         status = camera.Process();
         if (!status.Ok()) {
@@ -376,7 +378,7 @@ void CameraRenderTask::Run()
                         context.memory.ReleaseInferenceBuffer(pipe2_frame);
                     LogStatus("memory", release_status);
                     next_inference = now + kInferencePeriod;
-                    continue;
+                    return;
                 }
                 if (context.diagnostics.inference_trace) {
                     UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
@@ -410,8 +412,7 @@ void CameraRenderTask::Run()
             if (status.code != common::ErrorCode::kNoFrame) {
                 LogStatus("camera", status);
             }
-            tk_dly_tsk(1);
-            continue;
+            return;
         }
 
         if (context.diagnostics.camera_frame_trace) {
@@ -475,8 +476,7 @@ void CameraRenderTask::Run()
                       g_camera_pipe2_drop_count,
                       g_aton_irq_count, g_aton_last_irqs);
         }
-        tk_dly_tsk(1);
-    }
+    });
 }
 
 } // namespace uai::ai::task

@@ -10,6 +10,21 @@
 - `sample/ai_model_monitor.bin`: raw dump
 - `sample/ai_model_monitor.json`: decode済みJSON
 
+## トレースヘッダー
+
+trace version 5では、固定ヘッダー直後にモデル名テーブルを保持します。
+各エントリーは `model_kind_id -> name` で、ファームウェア初期化時に
+`PipelineRuntime::RegisterModelName()` から登録します。raw dumpを読むツールは
+このテーブルを使って表示名を解決するため、モデル追加時にPython側のID一覧を
+更新する必要はありません。テーブルは最大16モデル、名前は最大27 byteです。
+
+旧version 2〜4のdumpもデコードできますが、旧形式には名前テーブルがありません。
+その場合はIDで表示します。以前に生成したJSONにモデル名が含まれる場合は、表示ツール側で
+その名前も引き続き読み取れます。
+
+decode済みJSONではモデル名をヘッダーに一度だけ保持し、各レコードのphase、callback、
+pipeline stage、laneはIDで表します。表示ツールはIDから必要なラベルを解決します。
+
 ## CLI
 
 リポジトリのルートから実行する場合:
@@ -33,7 +48,10 @@ python3 userspace/sample-ai2/tools/ai_model_monitor/ai_model_monitor.py \
 
 ### analyze
 
-JSONまたはraw dumpからCPU/NPUの実行時間を集計します。
+JSONまたはraw dumpからCPU/NPUのステップ経過時間を集計します。
+ai_runtimeのCPU値は `Evaluate()` の開始・終了時刻差（`tk_get_otm()`）で、
+DWTによるCPU実行サイクルではありません。スケジューリング待ちを含み、
+システム時刻の分解能に丸められます。
 
 ```sh
 python3 userspace/sample-ai2/tools/ai_model_monitor/ai_model_monitor.py \
@@ -53,6 +71,9 @@ uv run --project userspace/sample-ai2/tools \
   visualize trace.json -o trace.png --cpu-hz 600000000
 ```
 
+AIタイムラインはモデルごとにCPU/NPUの2行で表示します。3モデルの場合は6行になり、
+各CPU/NPU区間のそばに推論IDを表示して、同じモデルの実行順を追えるようにしています。
+
 ### all
 
 raw dumpのdecode、解析、PNG生成を一度に実行します。
@@ -71,7 +92,7 @@ uv run --project userspace/sample-ai2/tools \
 
 `--json` と `--png` を省略した場合は、入力ファイルの隣に同じbasenameで
 出力します。`--max-inferences`で可視化する推論数を指定でき、デフォルトは
-直近12件（person/segmentation/faceの約4サイクル）です。
+直近12件です。
 
 ## Makefileからの実行
 
@@ -81,5 +102,7 @@ uv run --project userspace/sample-ai2/tools \
 make -C userspace/sample-ai2 thread-monitor
 ```
 
-このターゲットは、ダンプ取得後にこのディレクトリの `all` コマンドを呼び出し、
+このターゲットはAIモデルのトレースを取得して可視化し、
 `THREAD_MONITOR_JSON` と `THREAD_MONITOR_PNG` に指定したファイルを生成します。
+CPU task monitorは別のPNGとして、`make -C userspace/sample-ai2 cpu-task-monitor`から
+取得・可視化できます。

@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "common/log.hpp"
+#include "middleware/cpu_task_monitor/cpu_task_monitor.hpp"
 #include "middleware/memory/static_memory_layout.hpp"
 #include "middleware/memory/generated/static_memory_layout/key.hpp"
 
@@ -30,25 +31,28 @@ bool AiModelMonitor::InitializeTraceBuffer()
     const auto &region = static_memory_layout::Region::GetRegionFromKey(
         static_memory_layout::Key::kThreadMonitor);
     if (region.begin == nullptr ||
-        region.size() < sizeof(ThreadMonitorTraceHeader) +
+        region.size() < kThreadMonitorTraceDataOffset +
                             sizeof(ThreadMonitorTraceRecord)) {
         return false;
     }
 
     trace_header_ = reinterpret_cast<ThreadMonitorTraceHeader *>(
         region.address());
-    trace_records_ = reinterpret_cast<ThreadMonitorTraceRecord *>(
+    trace_model_names_ = reinterpret_cast<ThreadMonitorTraceModelName *>(
         region.address() + sizeof(ThreadMonitorTraceHeader));
+    trace_records_ = reinterpret_cast<ThreadMonitorTraceRecord *>(
+        region.address() + kThreadMonitorTraceDataOffset);
     trace_capacity_ = static_cast<std::uint32_t>(
-        (region.size() - sizeof(ThreadMonitorTraceHeader)) /
+        (region.size() - kThreadMonitorTraceDataOffset) /
         sizeof(ThreadMonitorTraceRecord));
     if (trace_capacity_ == 0U) {
         trace_header_ = nullptr;
+        trace_model_names_ = nullptr;
         trace_records_ = nullptr;
         return false;
     }
 
-    if (!TraceHeaderValid()) {
+    if (!TraceHeaderValid() || !TraceModelNamesMatch()) {
         std::memset(reinterpret_cast<void *>(region.address()), 0U,
                     region.size());
         *trace_header_ = ThreadMonitorTraceHeader{};
@@ -58,6 +62,7 @@ bool AiModelMonitor::InitializeTraceBuffer()
     } else {
         ++trace_header_->boot_count;
     }
+    UpdateTraceModelNames();
     trace_header_->monitored_task_id =
         static_cast<std::uint32_t>(monitored_task_id_);
     trace_header_->monitor_task_id = 0U;
@@ -76,12 +81,106 @@ bool AiModelMonitor::TraceHeaderValid() const
     return trace_header_ != nullptr &&
            trace_header_->magic == kThreadMonitorTraceMagic &&
            trace_header_->version == kThreadMonitorTraceVersion &&
-           trace_header_->header_size == sizeof(ThreadMonitorTraceHeader) &&
+           trace_header_->header_size == kThreadMonitorTraceDataOffset &&
            trace_header_->record_size == sizeof(ThreadMonitorTraceRecord) &&
+           trace_header_->model_name_entry_size ==
+               sizeof(ThreadMonitorTraceModelName) &&
+           trace_header_->model_name_count <=
+               kThreadMonitorModelNameCapacity &&
            trace_header_->capacity == trace_capacity_ &&
            trace_header_->capacity != 0U &&
            trace_header_->write_index < trace_header_->capacity &&
            trace_header_->record_count <= trace_header_->capacity;
+}
+
+bool AiModelMonitor::TraceModelNamesMatch() const
+{
+    if (trace_header_ == nullptr || trace_model_names_ == nullptr) {
+        return false;
+    }
+    std::uint32_t registered_count = 0U;
+    for (std::size_t index = 0U;
+         index < kThreadMonitorModelNameCapacity; ++index) {
+        const ThreadMonitorTraceModelName &registered =
+            registered_model_names_[index];
+        const ThreadMonitorTraceModelName &traced = trace_model_names_[index];
+        if (registered.model_kind_id != kUnknownModelKindId) {
+            ++registered_count;
+        }
+        if (registered.model_kind_id != traced.model_kind_id ||
+            std::memcmp(registered.name, traced.name,
+                        kThreadMonitorModelNameBytes) != 0) {
+            return false;
+        }
+    }
+    return trace_header_->model_name_count == registered_count;
+}
+
+void AiModelMonitor::UpdateTraceModelNames()
+{
+    if (trace_header_ == nullptr || trace_model_names_ == nullptr) return;
+    std::uint32_t name_count = 0U;
+    for (std::size_t index = 0U;
+         index < kThreadMonitorModelNameCapacity; ++index) {
+        trace_model_names_[index] = registered_model_names_[index];
+        if (registered_model_names_[index].model_kind_id !=
+            kUnknownModelKindId) {
+            ++name_count;
+        }
+    }
+    trace_header_->model_name_count = name_count;
+    trace_header_->model_name_entry_size =
+        sizeof(ThreadMonitorTraceModelName);
+    trace_header_->header_size = kThreadMonitorTraceDataOffset;
+    FlushTrace(trace_model_names_,
+               kThreadMonitorModelNameCapacity *
+                   sizeof(ThreadMonitorTraceModelName));
+    FlushTrace(trace_header_, sizeof(*trace_header_));
+}
+
+common::Error AiModelMonitor::RegisterModelName(
+    ai_runtime::AiModelId model_id, const char *name)
+{
+    const std::uint32_t id = static_cast<std::uint32_t>(model_id);
+    if (id == kUnknownModelKindId || name == nullptr || name[0] == '\0') {
+        return {common::ErrorCode::kInvalidArgument, id,
+                "ai2.ai_model_monitor.register_model_name"};
+    }
+    if (trace_header_ != nullptr || monitor_task_id_ != 0) {
+        return {common::ErrorCode::kInvalidState, id,
+                "ai2.ai_model_monitor.register_model_name"};
+    }
+
+    std::size_t slot = kThreadMonitorModelNameCapacity;
+    for (std::size_t index = 0U;
+         index < kThreadMonitorModelNameCapacity; ++index) {
+        if (registered_model_names_[index].model_kind_id == id) {
+            slot = index;
+            break;
+        }
+        if (slot == kThreadMonitorModelNameCapacity &&
+            registered_model_names_[index].model_kind_id ==
+                kUnknownModelKindId) {
+            slot = index;
+        }
+    }
+    if (slot == kThreadMonitorModelNameCapacity) {
+        return {common::ErrorCode::kQueueFull,
+                static_cast<std::uint32_t>(kThreadMonitorModelNameCapacity),
+                "ai2.ai_model_monitor.register_model_name"};
+    }
+
+    ThreadMonitorTraceModelName &entry = registered_model_names_[slot];
+    entry = {};
+    entry.model_kind_id = id;
+    const std::size_t name_length = std::strlen(name);
+    const std::size_t copy_length =
+        name_length < kThreadMonitorModelNameBytes - 1U
+            ? name_length
+            : kThreadMonitorModelNameBytes - 1U;
+    std::memcpy(entry.name, name, copy_length);
+    return {common::ErrorCode::kOk, 0U,
+            "ai2.ai_model_monitor.register_model_name"};
 }
 
 common::Error AiModelMonitor::Start()
@@ -131,6 +230,16 @@ common::Error AiModelMonitor::Start()
         return {common::ErrorCode::kInvalidState,
                 static_cast<std::uint32_t>(monitor_task_id_),
                 "ai2.ai_model_monitor.create"};
+    }
+
+    const common::Error task_name_status =
+        cpu_task_monitor::CpuTaskMonitor::RegisterTaskForActiveMonitor(
+            monitor_task_id_, "ai_model_monitor");
+    if (!task_name_status.Ok()) {
+        UAI_LOG_WARN(reinterpret_cast<const UB *>(
+                         "ai: CPU task name registration failed name=ai_model_monitor code=%u detail=%u\n"),
+                     static_cast<unsigned int>(task_name_status.code),
+                     static_cast<unsigned int>(task_name_status.detail));
     }
 
     trace_header_->monitor_task_id =

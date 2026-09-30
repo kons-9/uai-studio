@@ -68,18 +68,13 @@ common::Error CacheOperation(const memory_allocator::Buffer &buffer,
 
 } // namespace
 
-common::Error CacheDriver::Initialize()
+common::Error CacheDriver::Initialize(const Writer &writer)
 {
     if (initialized_) {
         return {common::ErrorCode::kAlreadyInitialized, 0U, "cache.initialize"};
     }
-    common::Error management_status = management_.Initialize("cache.management");
-    if (!management_status.Ok() &&
-        management_status.code != common::ErrorCode::kAlreadyInitialized) {
-        return management_status;
-    }
-    Writer writer;
-    management_status = management_.Acquire(&writer);
+    common::Error management_status = CacheManagement::Instance().Validate(
+        writer, "cache.initialize");
     if (!management_status.Ok()) return management_status;
 
     SCB_EnableDCache();
@@ -91,14 +86,14 @@ common::Error CacheDriver::Initialize()
 
 void CacheDriver::KeepClocksOnSleep() const
 {
-    Writer writer;
-    if (!management_.Acquire(&writer).Ok()) return;
-    KeepClocksOnSleep(writer);
+    CacheManagement::Accessor accessor;
+    if (!CacheManagement::Instance().Acquire(&accessor).Ok()) return;
+    accessor->KeepClocksOnSleep(accessor.Ownership());
 }
 
 void CacheDriver::KeepClocksOnSleep(const Writer &writer) const
 {
-    if (!management_.Validate(writer, "cache.keep_clocks").Ok()) return;
+    if (!CacheManagement::Instance().Validate(writer, "cache.keep_clocks").Ok()) return;
     __HAL_RCC_CACHEAXI_CLK_SLEEP_ENABLE();
     __HAL_RCC_CACHEAXIRAM_MEM_CLK_SLEEP_ENABLE();
 }
@@ -106,16 +101,16 @@ void CacheDriver::KeepClocksOnSleep(const Writer &writer) const
 common::Error CacheDriver::PrepareForDmaWrite(
     const memory_allocator::Buffer &buffer) const
 {
-    Writer writer;
-    common::Error status = management_.Acquire(&writer);
+    CacheManagement::Accessor accessor;
+    common::Error status = CacheManagement::Instance().Acquire(&accessor);
     if (!status.Ok()) return status;
-    return PrepareForDmaWrite(buffer, writer);
+    return accessor->PrepareForDmaWrite(buffer, accessor.Ownership());
 }
 
 common::Error CacheDriver::PrepareForDmaWrite(
     const memory_allocator::Buffer &buffer, const Writer &writer) const
 {
-    common::Error status = management_.Validate(writer, "cache.dma_write");
+    common::Error status = CacheManagement::Instance().Validate(writer, "cache.dma_write");
     if (!status.Ok()) return status;
     if (!initialized_) {
         return {common::ErrorCode::kNotInitialized, 0U, "cache.dma_write"};
@@ -126,16 +121,16 @@ common::Error CacheDriver::PrepareForDmaWrite(
 common::Error CacheDriver::PrepareForCpuRead(
     const memory_allocator::Buffer &buffer) const
 {
-    Writer writer;
-    common::Error status = management_.Acquire(&writer);
+    CacheManagement::Accessor accessor;
+    common::Error status = CacheManagement::Instance().Acquire(&accessor);
     if (!status.Ok()) return status;
-    return PrepareForCpuRead(buffer, writer);
+    return accessor->PrepareForCpuRead(buffer, accessor.Ownership());
 }
 
 common::Error CacheDriver::PrepareForCpuRead(
     const memory_allocator::Buffer &buffer, const Writer &writer) const
 {
-    common::Error status = management_.Validate(writer, "cache.cpu_read");
+    common::Error status = CacheManagement::Instance().Validate(writer, "cache.cpu_read");
     if (!status.Ok()) return status;
     if (!initialized_) {
         return {common::ErrorCode::kNotInitialized, 0U, "cache.cpu_read"};
@@ -146,17 +141,17 @@ common::Error CacheDriver::PrepareForCpuRead(
 common::Error CacheDriver::PrepareForPeripheralRead(
     const memory_allocator::Buffer &buffer) const
 {
-    Writer writer;
-    common::Error status = management_.Acquire(&writer);
+    CacheManagement::Accessor accessor;
+    common::Error status = CacheManagement::Instance().Acquire(&accessor);
     if (!status.Ok()) return status;
-    return PrepareForPeripheralRead(buffer, writer);
+    return accessor->PrepareForPeripheralRead(buffer, accessor.Ownership());
 }
 
 common::Error CacheDriver::PrepareForPeripheralRead(
     const memory_allocator::Buffer &buffer, const Writer &writer) const
 {
     common::Error status =
-        management_.Validate(writer, "cache.peripheral_read");
+        CacheManagement::Instance().Validate(writer, "cache.peripheral_read");
     if (!status.Ok()) return status;
     if (!initialized_) {
         return {common::ErrorCode::kNotInitialized, 0U,

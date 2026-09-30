@@ -14,14 +14,14 @@
 
 namespace uai::ai::lcd {
 
+class LcdManagement;
+
 class LcdDriver final {
 public:
     using Writer = driver::ResourceManagement::Writer;
 
-    common::Error Initialize(memory_manager::MemoryManager &memory,
-                             cache::CacheDriver &cache);
     common::Error AcquireWriter(Writer *writer, TMO timeout = TMO_FEVR) const
-    { return management_.Acquire(writer, timeout); }
+    { return management_->Acquire(writer, timeout); }
     void KeepClocksOnSleep() const;
     void KeepClocksOnSleep(const Writer &writer) const;
     common::Error ShowInitialFrame(
@@ -49,10 +49,15 @@ public:
         const pipeline::InferenceFrame &frame);
     common::Error ComposeInferenceAndPresent(
         const pipeline::InferenceFrame &frame, const Writer &writer);
-    void SetTimingDiagnostics(bool enabled) { timing_diagnostics_ = enabled; }
+    void SetTimingDiagnostics(bool enabled, const Writer &writer);
 
 private:
-    driver::ResourceManagement management_{};
+    friend class LcdManagement;
+    ~LcdDriver() = default;
+    LcdDriver(driver::ResourceManagement &management) : management_(&management) {}
+    common::Error Initialize(memory_manager::MemoryManager &memory,
+                             cache::CacheManagement &cache);
+    driver::ResourceManagement *management_;
     static void FillInitialFrame(const pipeline::DisplayBuffer &buffer,
                                  const inference::BoxSet &boxes,
                                  bool coordinate_pattern);
@@ -65,10 +70,40 @@ private:
     static common::Error FromBackend(uai::driver::DriverStatus status,
                                      const char *operation);
     memory_manager::MemoryManager *memory_ = nullptr;
-    cache::CacheDriver *cache_ = nullptr;
+    cache::CacheManagement *cache_ = nullptr;
     registers::LcdRegisterLayer registers_{};
     bool initialized_ = false;
     bool timing_diagnostics_ = false;
+};
+
+class LcdManagement final {
+public:
+    using Writer = LcdDriver::Writer;
+    using Accessor = driver::ResourceAccessor<LcdDriver>;
+    static LcdManagement &Instance() { static LcdManagement m; return m; }
+    common::Error Initialize(memory_manager::MemoryManager &memory, cache::CacheManagement &cache)
+    { return driver_.Initialize(memory, cache); }
+    common::Error Acquire(Accessor *a, TMO timeout = TMO_FEVR)
+    {
+        if (!a) return {common::ErrorCode::kInvalidArgument, 0U, "lcd.management.acquire.null_accessor"};
+        *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout);
+        if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w));
+        return s;
+    }
+    common::Error Validate(const Writer &w, const char *op) const { return ownership_.Validate(w, op); }
+    void KeepClocksOnSleep() { (void)WithWriter([](LcdDriver &d, const Writer &w) { d.KeepClocksOnSleep(w); return common::Error{}; }); }
+    common::Error ShowInitialFrame(const inference::BoxSet &b, bool p = false) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ShowInitialFrame(b, w, p); }); }
+    common::Error SynchronizeCurrentFrame() { return WithWriter([](LcdDriver &d, const Writer &w) { return d.SynchronizeCurrentFrame(w); }); }
+    common::Error GenerateCoordinatePattern(const memory_allocator::Buffer &b) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.GenerateCoordinatePattern(b, w); }); }
+    common::Error ComposeAndPresent(const pipeline::CaptureFrame &f, const inference::BoxSet &b, bool crc = false) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ComposeAndPresent(f, b, w, crc); }); }
+    common::Error ComposeInferenceAndPresent(const pipeline::InferenceFrame &f) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ComposeInferenceAndPresent(f, w); }); }
+    void SetTimingDiagnostics(bool enabled) { (void)WithWriter([&](LcdDriver &d, const Writer &w) { d.SetTimingDiagnostics(enabled, w); return common::Error{}; }); }
+    LcdManagement(const LcdManagement &) = delete;
+    LcdManagement &operator=(const LcdManagement &) = delete;
+private:
+    LcdManagement() : driver_(ownership_) {} ~LcdManagement() = default;
+    template <typename F> common::Error WithWriter(F f) { Accessor a; auto s = Acquire(&a); return s.Ok() ? f(*a.Get(), a.Ownership()) : s; }
+    driver::ResourceManagement ownership_{}; LcdDriver driver_;
 };
 
 } // namespace uai::ai::lcd

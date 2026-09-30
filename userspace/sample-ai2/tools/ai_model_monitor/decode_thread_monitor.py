@@ -13,43 +13,14 @@ from pathlib import Path
 
 
 TRACE_MAGIC = 0x544D4F4E
-TRACE_VERSION = 4
-LEGACY_TRACE_VERSION = 2
+TRACE_VERSION = 5
+LEGACY_TRACE_VERSIONS = {2, 3, 4}
 COMMIT_MAGIC = 0x434D4954
 HEADER = struct.Struct("<IHH14I")
 RECORD = struct.Struct("<12IBBH3I")
-PHASE_NAMES = {
-    1: "model_selection",
-    2: "input_preparation",
-    3: "npu_execution",
-    4: "output_preparation",
-    5: "output_decoding",
-    6: "result_conversion",
-    7: "input_preparation_wait",
-}
-MODEL_KIND_NAMES = {
-    0: "person",
-    1: "segmentation",
-    2: "face",
-}
-CALLBACK_STAGE_NAMES = {
-    1: "cpu_start",
-    2: "npu",
-    3: "cpu_end",
-}
-PIPELINE_STAGE_NAMES = {
-    0: "copy",
-    1: "resize",
-    2: "letterbox",
-    3: "input_cache",
-    4: "submit",
-    5: "irq_wait",
-    6: "epoch_continue",
-    7: "output_cache",
-    8: "decode",
-    9: "convert",
-    10: "finalize",
-}
+MODEL_NAME_ENTRY = struct.Struct("<I28s")
+MODEL_NAME_CAPACITY = 16
+TRACE_DATA_OFFSET = HEADER.size + MODEL_NAME_CAPACITY * MODEL_NAME_ENTRY.size
 
 
 def signed32(value: int) -> int:
@@ -76,9 +47,23 @@ def decode(path: Path) -> dict:
      _reserved0, _reserved1, _reserved2) = values
     if magic != TRACE_MAGIC:
         raise ValueError(f"invalid magic: 0x{magic:08x}")
-    if version not in (LEGACY_TRACE_VERSION, 3, TRACE_VERSION):
+    if version not in LEGACY_TRACE_VERSIONS | {TRACE_VERSION}:
         raise ValueError(f"unsupported version: {version}")
-    if header_size != HEADER.size or record_size != RECORD.size:
+    model_name_count = _reserved0
+    model_name_entry_size = _reserved1
+    data_offset = HEADER.size
+    if version == TRACE_VERSION:
+        if (header_size != TRACE_DATA_OFFSET
+                or model_name_entry_size != MODEL_NAME_ENTRY.size
+                or model_name_count > MODEL_NAME_CAPACITY):
+            raise ValueError(
+                f"unsupported model-name table: offset={header_size}, "
+                f"entry={model_name_entry_size}, count={model_name_count}"
+            )
+        data_offset = TRACE_DATA_OFFSET
+    elif header_size != HEADER.size:
+        raise ValueError(f"unsupported header size: {header_size}")
+    if record_size != RECORD.size:
         raise ValueError(
             f"unsupported layout: header={header_size}, record={record_size}"
         )
@@ -87,15 +72,35 @@ def decode(path: Path) -> dict:
             f"invalid ring state: capacity={capacity}, write_index={write_index}, "
             f"record_count={record_count}"
         )
-    if header_size + capacity * record_size > len(data):
+    if data_offset + capacity * record_size > len(data):
         raise ValueError("dump does not contain the complete trace region")
+
+    if version == TRACE_VERSION:
+        model_names = {}
+        for index in range(MODEL_NAME_CAPACITY):
+            model_id, encoded_name = MODEL_NAME_ENTRY.unpack_from(
+                data, HEADER.size + index * MODEL_NAME_ENTRY.size
+            )
+            name = encoded_name.split(b"\0", 1)[0].decode(
+                "utf-8", errors="replace"
+            )
+            if model_id != 0xFFFFFFFF and name:
+                model_names[model_id] = name
+        if len(model_names) != model_name_count:
+            raise ValueError(
+                "model-name count does not match the metadata table"
+            )
+    else:
+        # Legacy traces do not contain model-name metadata. Keep their IDs
+        # unresolved instead of maintaining a Python-side ID/name table.
+        model_names = {}
 
     count = min(record_count, capacity)
     first_index = (write_index - count) % capacity
     records = []
     for offset in range(count):
         index = (first_index + offset) % capacity
-        values = RECORD.unpack_from(data, header_size + index * record_size)
+        values = RECORD.unpack_from(data, data_offset + index * record_size)
         (sequence, timestamp_ms, monitored_id, monitor_id, task_state,
          wait_factor, wait_object_id, current_priority, base_priority,
          progress_tick, reference_status, fault_code, record_type, flags,
@@ -119,8 +124,6 @@ def decode(path: Path) -> dict:
             "type": record_type_name(record_type),
             "type_id": record_type,
             "phase_id": (phase_id if version >= 3 else None),
-            "phase": (PHASE_NAMES.get(phase_id)
-                      if record_type in (3, 4) else None),
             "flags": flags,
             "npu_timing_valid": bool(flags & (1 << 2)),
             "npu_cycle_valid": bool(flags & (1 << 3)),
@@ -132,8 +135,6 @@ def decode(path: Path) -> dict:
             "stage_cycle_end": (progress_tick if record_type == 6 else None),
             "stage_cycle_elapsed": (npu_elapsed_ms
                                      if record_type == 6 else None),
-            "model_kind": (MODEL_KIND_NAMES.get(kind_or_status)
-                            if version >= 3 else None),
             "model_kind_id": (kind_or_status if version >= 3
                                else None),
             "npu_status": (kind_or_status if version < 3
@@ -143,20 +144,11 @@ def decode(path: Path) -> dict:
             "epoch_address": (wait_object_id if record_type == 5 else None),
             "callback_type": (signed32(reference_status)
                               if record_type == 5 else None),
-            "callback_stage": (CALLBACK_STAGE_NAMES.get(
-                signed32(reference_status), "legacy_post_end")
-                               if record_type == 5 else None),
             "pipeline_stage_id": (phase_id if record_type == 6 else None),
-            "pipeline_stage": (PIPELINE_STAGE_NAMES.get(
-                phase_id, f"stage={phase_id}") if record_type == 6 else None),
             "ai_runtime_inference_id": (task_state
                                          if record_type == 7 else None),
             "ai_runtime_lane_id": (wait_factor if record_type == 7 else None),
             "ai_runtime_step_id": (wait_object_id if record_type == 7 else None),
-            "ai_runtime_lane": ({0: "preprocess_cpu", 1: "npu",
-                                 2: "postprocess_cpu"}.get(
-                                     wait_factor, f"lane={wait_factor}")
-                                if record_type == 7 else None),
             "ai_runtime_begin": (bool(flags & (1 << 4))
                                  if record_type == 7 else None),
             "cycle_end": (progress_tick if record_type == 5 else None),
@@ -180,6 +172,10 @@ def decode(path: Path) -> dict:
             "last_fault_code": last_fault_code,
             "fault_count": fault_count,
             "next_sequence": next_sequence,
+            "model_names": {
+                str(model_id): name
+                for model_id, name in sorted(model_names.items())
+            },
         },
         "records": records,
     }

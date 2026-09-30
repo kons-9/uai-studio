@@ -91,18 +91,18 @@ common::Error LcdDriver::FromBackend(uai::driver::DriverStatus status,
 }
 
 common::Error LcdDriver::Initialize(memory_manager::MemoryManager &memory,
-                             cache::CacheDriver &cache)
+                             cache::CacheManagement &cache)
 {
     if (initialized_) {
         return {common::ErrorCode::kAlreadyInitialized, 0U, "lcd.initialize"};
     }
-    common::Error management_status = management_.Initialize("lcd.management");
+    common::Error management_status = management_->Initialize("lcd.management");
     if (!management_status.Ok() &&
         management_status.code != common::ErrorCode::kAlreadyInitialized) {
         return management_status;
     }
     Writer writer;
-    management_status = management_.Acquire(&writer);
+    management_status = management_->Acquire(&writer);
     if (!management_status.Ok()) return management_status;
     memory_ = &memory;
     cache_ = &cache;
@@ -115,16 +115,22 @@ common::Error LcdDriver::Initialize(memory_manager::MemoryManager &memory,
     return {common::ErrorCode::kOk, 0U, "lcd.initialize"};
 }
 
+void LcdDriver::SetTimingDiagnostics(bool enabled, const Writer &writer)
+{
+    if (!management_->Validate(writer, "lcd.set_timing_diagnostics").Ok()) return;
+    timing_diagnostics_ = enabled;
+}
+
 void LcdDriver::KeepClocksOnSleep() const
 {
     Writer writer;
-    if (!management_.Acquire(&writer).Ok()) return;
+    if (!management_->Acquire(&writer).Ok()) return;
     KeepClocksOnSleep(writer);
 }
 
 void LcdDriver::KeepClocksOnSleep(const Writer &writer) const
 {
-    if (!management_.Validate(writer, "lcd.keep_clocks").Ok()) return;
+    if (!management_->Validate(writer, "lcd.keep_clocks").Ok()) return;
     __HAL_RCC_LTDC_CLK_SLEEP_ENABLE();
     __HAL_RCC_DMA2D_CLK_SLEEP_ENABLE();
 }
@@ -155,7 +161,7 @@ common::Error LcdDriver::GenerateCoordinatePattern(
     const memory_allocator::Buffer &destination) const
 {
     Writer writer;
-    common::Error status = management_.Acquire(&writer);
+    common::Error status = management_->Acquire(&writer);
     if (!status.Ok()) return status;
     return GenerateCoordinatePattern(destination, writer);
 }
@@ -164,7 +170,7 @@ common::Error LcdDriver::GenerateCoordinatePattern(
     const memory_allocator::Buffer &destination, const Writer &writer) const
 {
     common::Error ownership =
-        management_.Validate(writer, "lcd.generate_coordinate_pattern");
+        management_->Validate(writer, "lcd.generate_coordinate_pattern");
     if (!ownership.Ok()) return ownership;
     if (!initialized_ || destination.region != memory_allocator::Region::kCapture ||
         destination.size != memory_manager::kCaptureBufferBytes ||
@@ -298,7 +304,7 @@ common::Error LcdDriver::ShowInitialFrame(
     bool coordinate_pattern)
 {
     Writer writer;
-    common::Error status = management_.Acquire(&writer);
+    common::Error status = management_->Acquire(&writer);
     if (!status.Ok()) return status;
     return ShowInitialFrame(boxes, writer, coordinate_pattern);
 }
@@ -307,7 +313,7 @@ common::Error LcdDriver::ShowInitialFrame(
     const inference::BoxSet &boxes, const Writer &writer,
     bool coordinate_pattern)
 {
-    common::Error ownership = management_.Validate(writer, "lcd.show_initial");
+    common::Error ownership = management_->Validate(writer, "lcd.show_initial");
     if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr) {
         return {common::ErrorCode::kNotInitialized, 0U, "lcd.show_initial"};
@@ -356,7 +362,7 @@ common::Error LcdDriver::ShowInitialFrame(
 common::Error LcdDriver::SynchronizeCurrentFrame()
 {
     Writer writer;
-    common::Error status = management_.Acquire(&writer);
+    common::Error status = management_->Acquire(&writer);
     if (!status.Ok()) return status;
     return SynchronizeCurrentFrame(writer);
 }
@@ -364,7 +370,7 @@ common::Error LcdDriver::SynchronizeCurrentFrame()
 common::Error LcdDriver::SynchronizeCurrentFrame(const Writer &writer)
 {
     common::Error ownership =
-        management_.Validate(writer, "lcd.synchronize_current_frame");
+        management_->Validate(writer, "lcd.synchronize_current_frame");
     if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr) {
         return {common::ErrorCode::kNotInitialized, 0U,
@@ -383,7 +389,7 @@ common::Error LcdDriver::ComposeAndPresent(
     bool log_copy_crc)
 {
     Writer writer;
-    common::Error status = management_.Acquire(&writer);
+    common::Error status = management_->Acquire(&writer);
     if (!status.Ok()) return status;
     return ComposeAndPresent(capture, boxes, writer, log_copy_crc);
 }
@@ -393,7 +399,7 @@ common::Error LcdDriver::ComposeAndPresent(
     const inference::BoxSet &boxes, const Writer &writer,
     bool log_copy_crc)
 {
-    common::Error ownership = management_.Validate(writer, "lcd.compose");
+    common::Error ownership = management_->Validate(writer, "lcd.compose");
     if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr) {
         return {common::ErrorCode::kNotInitialized, 0U, "lcd.compose"};
@@ -526,7 +532,7 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
     const pipeline::InferenceFrame &frame)
 {
     Writer writer;
-    common::Error status = management_.Acquire(&writer);
+    common::Error status = management_->Acquire(&writer);
     if (!status.Ok()) return status;
     return ComposeInferenceAndPresent(frame, writer);
 }
@@ -535,7 +541,7 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
     const pipeline::InferenceFrame &frame, const Writer &writer)
 {
     common::Error ownership =
-        management_.Validate(writer, "lcd.compose_inference");
+        management_->Validate(writer, "lcd.compose_inference");
     if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
         return {common::ErrorCode::kNotInitialized, 0U, "lcd.compose_inference"};

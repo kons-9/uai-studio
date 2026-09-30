@@ -240,7 +240,7 @@ Status NpuDriver::InvalidState(const char *operation) const
 
 Status NpuDriver::Initialize(NpuNetwork &model)
 {
-    common::Error management_status = management_.Initialize("npu.management");
+    common::Error management_status = management_->Initialize("npu.management");
     if (!management_status.Ok() &&
         management_status.code != common::ErrorCode::kAlreadyInitialized) {
         return {management_status, last_execution_};
@@ -253,7 +253,7 @@ Status NpuDriver::Initialize(NpuNetwork &model)
 Status NpuDriver::Initialize(NpuNetwork &model, const Writer &writer)
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.initialize");
+        management_->Validate(writer, "npu.initialize");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (initialized_) {
         for (std::uint32_t i = 0U; i < loaded_model_count_; ++i) {
@@ -342,7 +342,7 @@ Status NpuDriver::Preload(NpuNetwork &model)
 Status NpuDriver::Preload(NpuNetwork &model, const Writer &writer)
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.preload");
+        management_->Validate(writer, "npu.preload");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.preload");
@@ -397,7 +397,7 @@ Status NpuDriver::SelectModel(NpuNetwork &model)
 Status NpuDriver::SelectModel(NpuNetwork &model, const Writer &writer)
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.select_model");
+        management_->Validate(writer, "npu.select_model");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_) {
         return InvalidState("npu.select_model");
@@ -437,7 +437,7 @@ Status NpuDriver::GetInfo(stai_network_info *info) const
 Status NpuDriver::GetInfo(stai_network_info *info, const Writer &writer) const
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.get_info");
+        management_->Validate(writer, "npu.get_info");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr || info == nullptr) {
         return InvalidState("npu.get_info");
@@ -464,7 +464,7 @@ Status NpuDriver::SetInput(stai_ptr input, stai_size size,
                            const Writer &writer) const
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.set_input");
+        management_->Validate(writer, "npu.set_input");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr || input == nullptr || size == 0U) {
         return InvalidState("npu.set_input");
@@ -491,7 +491,7 @@ Status NpuDriver::GetOutputs(stai_ptr *outputs, stai_size *count,
                              const Writer &writer) const
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.get_outputs");
+        management_->Validate(writer, "npu.get_outputs");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr || outputs == nullptr ||
         count == nullptr) {
@@ -519,7 +519,7 @@ Status NpuDriver::SetOutputs(const stai_ptr *outputs, stai_size count,
                              const Writer &writer) const
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.set_outputs");
+        management_->Validate(writer, "npu.set_outputs");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr || outputs == nullptr) {
         return InvalidState("npu.set_outputs");
@@ -545,7 +545,7 @@ Status NpuDriver::StartRun()
 Status NpuDriver::StartRun(const Writer &writer)
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.start_run");
+        management_->Validate(writer, "npu.start_run");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.run");
@@ -606,7 +606,7 @@ Status NpuDriver::PollRun(const Writer &writer,
                           void *progress_context)
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.poll_run");
+        management_->Validate(writer, "npu.poll_run");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.poll_run");
@@ -671,7 +671,7 @@ Status NpuDriver::WaitForIrq()
 Status NpuDriver::WaitForIrq(const Writer &writer)
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.wait_irq");
+        management_->Validate(writer, "npu.wait_irq");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.wait_irq");
@@ -724,7 +724,7 @@ Status NpuDriver::ContinueRun()
 Status NpuDriver::ContinueRun(const Writer &writer)
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.continue_run");
+        management_->Validate(writer, "npu.continue_run");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.continue_run");
@@ -773,7 +773,7 @@ Status NpuDriver::WaitRun(const Writer &writer,
                           void *progress_context)
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.wait_run");
+        management_->Validate(writer, "npu.wait_run");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.wait_run");
@@ -840,7 +840,7 @@ Status NpuDriver::Run()
 Status NpuDriver::Run(const Writer &writer)
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.run");
+        management_->Validate(writer, "npu.run");
     if (!ownership.Ok()) return {ownership, last_execution_};
     Status status = StartRun(writer);
     if (!status.Ok()) {
@@ -859,7 +859,7 @@ Status NpuDriver::NewInference()
 Status NpuDriver::NewInference(const Writer &writer)
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.new_inference");
+        management_->Validate(writer, "npu.new_inference");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.new_inference");
@@ -890,7 +890,7 @@ Status NpuDriver::Shutdown()
 Status NpuDriver::Shutdown(const Writer &writer)
 {
     const common::Error ownership =
-        management_.Validate(writer, "npu.shutdown");
+        management_->Validate(writer, "npu.shutdown");
     if (!ownership.Ok()) return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState("npu.shutdown");
@@ -940,14 +940,14 @@ void NpuDriver::SetEpochTraceObserver(EpochTraceObserver observer,
                                       void *context)
 {
     Writer writer;
-    if (!management_.Acquire(&writer).Ok()) return;
+    if (!management_->Acquire(&writer).Ok()) return;
     SetEpochTraceObserver(observer, context, writer);
 }
 
 void NpuDriver::SetEpochTraceObserver(EpochTraceObserver observer,
                                       void *context, const Writer &writer)
 {
-    if (!management_.Validate(writer, "npu.set_trace_observer").Ok()) return;
+    if (!management_->Validate(writer, "npu.set_trace_observer").Ok()) return;
     epoch_trace_observer_ = observer;
     epoch_trace_context_ = context;
 }
@@ -955,14 +955,14 @@ void NpuDriver::SetEpochTraceObserver(EpochTraceObserver observer,
 void NpuDriver::SetEpochTraceModelKindId(std::uint32_t model_kind_id)
 {
     Writer writer;
-    if (!management_.Acquire(&writer).Ok()) return;
+    if (!management_->Acquire(&writer).Ok()) return;
     SetEpochTraceModelKindId(model_kind_id, writer);
 }
 
 void NpuDriver::SetEpochTraceModelKindId(std::uint32_t model_kind_id,
                                          const Writer &writer)
 {
-    if (!management_.Validate(writer, "npu.set_trace_model").Ok()) return;
+    if (!management_->Validate(writer, "npu.set_trace_model").Ok()) return;
     epoch_trace_model_kind_id_ = model_kind_id;
 }
 

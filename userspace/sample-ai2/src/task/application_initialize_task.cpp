@@ -3,6 +3,7 @@
 #include "driver/npu_driver/debug.h"
 #include "common/log.hpp"
 #include "task/task_context.hpp"
+#include "task/task.hpp"
 #include "task/camera_render_task.hpp"
 #include "task/pipeline_task.hpp"
 #include "task/task_diagnostics.hpp"
@@ -104,10 +105,9 @@ void ApplicationInitializeTask::Run()
     }
     context.app_stage = 6U;
 
-    for (;;) {
-        tk_dly_tsk(1000);
-        context.cpu_task_monitor.Report();
-    }
+    Task::RunForever(context.cpu_task_monitor, "application_initialize",
+                     [] { tk_dly_tsk(1000); },
+                     [&] { context.cpu_task_monitor.Report(); });
 }
 
 } // namespace uai::ai::task
