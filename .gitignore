@@ -25,6 +25,9 @@ Thumbs.db
 /build-experiment-*/
 /build-sample-*/
 
+# Documentation site output
+/site/
+
 # Locally installed vendor tools
 /.tools/
 
@@ -36,3 +39,4 @@ Thumbs.db
 # sources with `make generate` when needed.
 
 ref/
+application.md

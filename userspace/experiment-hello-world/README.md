@@ -1,18 +1,12 @@
 # experiment-hello-world
 
-STM32N6570-DK上でµT-Kernel 3.0を起動し、T-MonitorのUSART1へhello worldを
-出力する最小サンプルです。
+µT-Kernel 3.0の起動を確かめるために使った実験用ディレクトリです。STM32N6570-DK上でµT-Kernelを起動し、T-MonitorのUART（USART1）へhello worldを出力します。最小構成なので、新しいアプリを作るときの参考になります。
 
-必要なツール、ホスト設定、UART端末、RAMロードの手順は、リポジトリルートの
-[README](../../README.md)を参照してください。
-CubeMXの入力設定は[`config/stm32n6570-dk-fullsecure.ioc`](config/stm32n6570-dk-fullsecure.ioc)です。
-
-リポジトリルートからの基本的な実行手順は次のとおりです。
+必要なツールとホスト設定はルートの[README](../../README.md)を参照してください。アプリの追加方法は[docs/kernel.md](../../docs/kernel.md)にあります。
 
 ```sh
-cp build-system/host-config/local.mk.example build-system/host-config/local.mk
-# build-system/host-config/local.mkにホスト固有の値を設定
 make -C userspace/experiment-hello-world generate
 make -C userspace/experiment-hello-world build
+make -C userspace/experiment-hello-world monitor   # 別端末で先に起動
 make -C userspace/experiment-hello-world ram-run
 ```

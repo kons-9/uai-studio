@@ -1,85 +1,53 @@
-# ai-app model generation
+# ai-appのモデル生成
 
-`generate_model.sh` generates the Neural-ART files used by `ai-app` for
-the three supported model families:
+`generate_model.sh`はSTEdgeAIで3モデルのNeural-ARTコードと重みイメージを生成します。通常は`make -C userspace/ai-app setup`（または`ai-models`）から呼ばれます。
 
-| name | official application | source model | xSPI2 model address | xSPI2 command blob address |
-| --- | --- | --- | --- | --- |
-| `person` | [STM32N6-GettingStarted-ObjectDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-ObjectDetection) | `st_yolo_x_nano_480_1.0_0.25_3_st_int8.tflite` | `0x70380000` | `0x70500000` |
-| `segmentation` | [STM32N6-GettingStarted-SemanticSegmentation](https://github.com/STMicroelectronics/STM32N6-GettingStarted-SemanticSegmentation) | `deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8.onnx` | `0x70600000` | `0x70560000` |
-| `face` | [STM32N6-GettingStarted-FaceDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-FaceDetection) | `blazeface_front_128_quant_pc_ff_od_wider_face.tflite` | `0x70800000` | `0x70580000` |
+| モデル | 取得元 | 元モデル |
+| --- | --- | --- |
+| `person` | [STM32N6-GettingStarted-ObjectDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-ObjectDetection) | `st_yolo_x_nano_480_1.0_0.25_3_st_int8.tflite` |
+| `segmentation` | [STM32N6-GettingStarted-SemanticSegmentation](https://github.com/STMicroelectronics/STM32N6-GettingStarted-SemanticSegmentation) | `deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8.onnx` |
+| `face` | [STM32N6-GettingStarted-FaceDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-FaceDetection) | `blazeface_front_128_quant_pc_ff_od_wider_face.tflite` |
 
-The official repositories are complete STM32N6 applications, not a runtime
-library that needs to be linked into this project. The generator uses their
-model files and the local `STEdgeAI` installation. Keeping the official
-application repositories as submodules is optional; passing a model path is
-enough and avoids importing their duplicate application, BSP, and middleware
-trees into `experiment-ai`.
+元モデルはサイズが大きく、個別のライセンス条件があるためGit管理外です。利用条件は各取得元を確認してください。
 
-Example:
+## 実行方法
 
 ```sh
-sh userspace/ai-app/models/generate_model.sh person \
-  /path/to/st_yolo_x_nano_480_1.0_0.25_3_st_int8.tflite
-
-sh userspace/ai-app/models/generate_model.sh segmentation \
-  /path/to/deeplab_v3_mobilenetv2_05_16_320_fft_qdq_int8.onnx
-
-sh userspace/ai-app/models/generate_model.sh face \
-  /path/to/blazeface_front_128_quant_pc_ff_od_wider_face.tflite
+sh userspace/ai-app/models/generate_model.sh person
+sh userspace/ai-app/models/generate_model.sh segmentation
+sh userspace/ai-app/models/generate_model.sh face
 ```
 
-If the model is placed under `models/source/<name>/` with the filename shown
-above, the second argument can be omitted. If that default file is missing,
-`generate_model.sh` downloads it from the corresponding official
-STMicroelectronics repository. The source model files are ignored by git
-because they are large and may have separate model licenses. Use
-`AI_MODEL_DOWNLOAD_URL` to override the download URL when needed.
+第2引数を省略すると`models/source/<model>/`の元モデルを使い、なければ取得元からダウンロードします。任意のファイルを使う場合は第2引数にパスを渡します。`stedgeai`と`arm-none-eabi-objcopy`がPATHに必要です。
 
-The generator uses `--no-inputs-allocation` and `--no-outputs-allocation` so
-the application can provide the Pipe2 input buffer. Use the same STEdgeAI
-and `ll_aton` runtime generation version consistently when generating the
-model and building the application;
-otherwise the generated C files can fail the Neural-ART version check.
+## 出力
 
-The generated `network.c`, `network_ecblobs.h`, `stai_network.c`,
-`stai_network.h`, and `network_data.*` files are intentionally not tracked by
-Git. Generate `person`, `segmentation`, and `face` locally before configuring
-or building a clean checkout.
+`models/<model>/`に次を出力します。いずれもGit管理外です。
 
-Generation can be tuned without editing the script:
+| ファイル | 内容 |
+| --- | --- |
+| `network.c`、`network_ecblobs.h` | Neural-ARTのcommand blob |
+| `stai_network.c`、`stai_network.h` | ST.AI C API |
+| `network_data.xSPI2.bin`、`network_data.hex` | 外部NORへ書く重み |
 
-```sh
-AI_MODEL_OPTIMIZATION=time \
-AI_MODEL_INPUT_DATA_TYPE=uint8 \
-AI_MODEL_OUTPUT_DATA_TYPE=int8 \
-sh userspace/ai-app/models/generate_model.sh person /path/to/model.tflite
-```
+生成時の重みアドレスと書き込みアドレスは一致している必要があります。既定のアドレスは[ai-appのREADME](../README.md#モデル)の表の通りです。
 
-The corresponding variables are `AI_MODEL_OPTIMIZATION`,
-`AI_MODEL_INPUT_DATA_TYPE`, `AI_MODEL_OUTPUT_DATA_TYPE`,
-`AI_MODEL_INPUTS_CH_POSITION`, `AI_MODEL_OUTPUTS_CH_POSITION`,
-`AI_MODEL_C_API`, `AI_MODEL_CUT_OUTPUT_TENSORS`, and `AI_MODEL_NETWORK_ADDRESS`.
-The segmentation generator cuts the final `Resize_202` layer by default so
-the model outputs its native `20x20x2` logits instead of performing a CPU
-`20x20 -> 320x320` resize. `AI_MODEL_CUT_OUTPUT_TENSORS` overrides that tensor
-name. The network address variable overrides the
-model-specific xSPI2 address when using a different Flash layout. The default C API is `st-ai`; it is required for the
-experimental runtime activation/state allocation options.
+## 生成オプション
 
-`model1` and `model2` are legacy directories and are no longer accepted by
-the generator.
+環境変数で上書きできます。
 
-Each model's `network_blobs.hex` must be programmed at its corresponding
-command blob address above. experiment-ai always links all three models; the linker
-emits three sections and three separate command-blob images:
+| 変数 | 既定値 | 内容 |
+| --- | --- | --- |
+| `AI_MODEL_OPTIMIZATION` | `balanced` | `time`、`ram`、`balanced` |
+| `AI_MODEL_INPUT_DATA_TYPE` | `uint8` | 入力の型 |
+| `AI_MODEL_OUTPUT_DATA_TYPE` | `int8` | 出力の型 |
+| `AI_MODEL_INPUTS_CH_POSITION` | `chlast` | 入力のチャネル位置 |
+| `AI_MODEL_OUTPUTS_CH_POSITION` | モデルごと | 出力のチャネル位置（faceは`chfirst`） |
+| `AI_MODEL_C_API` | `st-ai` | 生成するC API |
+| `AI_MODEL_CUT_OUTPUT_TENSORS` | モデルごと | 出力を切り出すテンソル名。segmentationは最終Resizeの手前で切ります |
+| `AI_MODEL_NETWORK_ADDRESS` | モデルごと | 重みを置くxSPI2アドレス |
+| `AI_MODEL_DOWNLOAD_URL` | 取得元 | ダウンロードURL |
 
-| model | section | image | address |
-| --- | --- | --- | ---: |
-| person | `.network_blobs_person` | `network_blobs_person.hex` | `0x70500000` |
-| segmentation | `.network_blobs_segmentation` | `network_blobs_segmentation.hex` | `0x70560000` |
-| face | `.network_blobs_face` | `network_blobs_face.hex` | `0x70580000` |
+入出力バッファはアプリが所有するため、`--no-inputs-allocation --no-outputs-allocation`で生成します。NPUのメモリプールは`my_mpools/stm32n6-app2_STM32N6570-DK.mpool`、Neural-ARTの設定は`user_neuralart_STM32N6570-DK.json`です。
 
-At startup experiment-ai initializes all three generated network contexts. This
-copies each EC command blob into its runtime buffer once; switching models then
-reuses the resident buffers and shared activation RAM.
+生成に使うSTEdgeAIと、ビルドでリンクするランタイムは同じ版にしてください。CMakeは`ll_aton`のバージョン不一致を検出するとconfigureを止めます。

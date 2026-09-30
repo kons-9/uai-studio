@@ -1,6 +1,6 @@
 # experiment-camera-pipe2
 
-STM32N6570-DKのIMX335カメラをPipe1/2で取得し、LCDへ連続表示する実験アプリです。Pipe構成、センサーのCSI設定、撮像バッファ、クロップ方法を切り替えて比較できます。
+カメラドライバーを実装する際に使った実験用ディレクトリです。STM32N6570-DKのIMX335カメラをPipe1/2で取得し、LCDへ連続表示します。Pipe構成、センサーのCSI設定、撮像バッファ、クロップ方法を切り替えて比較できます。
 
 ## 表示の合格条件
 
@@ -27,8 +27,7 @@ make -C userspace/experiment-camera-pipe2 monitor  # RAM実行より先に起動
 make -C userspace/experiment-camera-pipe2 ram-run
 ```
 
-## 実機確認メモ
+## 既知の結果
 
-2026-09-30のSTM32N6570-DK確認では、標準センサー設定、dual、SRAM、標準縮小でプレビューが開始し、Pipe1 VSYNCとPipe2 frameの両カウンターが増加しました。
-
-2026-09-25の確認では、`mipi891`（BT900）でカウンターが進んでもLCD映像に画乱れが発生しました。BT900の判定にはCSIエラーやカウンターだけでなく、LCDの実映像も含めます。まず`stock`（BT1600）を基準にし、他の設定をそろえてBT900だけを切り替えます。
+- `stock`、`dual`、`sram`、`downsize`の組み合わせでプレビューが始まり、Pipe1 VSYNCとPipe2 frameの両カウンターが増えることを確認済みです。
+- `mipi891`（BT900）はカウンターが進んでもLCD映像が乱れることがあります。BT900を評価するときは`stock`を基準に、他の設定をそろえてBT900だけを切り替え、LCDの実映像も確認してください。

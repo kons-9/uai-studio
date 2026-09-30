@@ -1,11 +1,13 @@
 # μAI-Studio: ai-app
 
-STM32N6570-DKのカメラ映像をLCDへ表示しながら、Neural-ART NPUで推論するµT-Kernel 3.0アプリです。このREADMEでは、クリーンなLinux環境の準備からビルド、RAM実行までを説明します。
+STM32N6570-DKのカメラ映像をLCDへ表示しながら、Neural-ART NPUでperson、face、segmentationの3モデルを推論するµT-Kernel 3.0アプリです。
 
-- カメラのPipe1でLCD表示用フレームを取得します。
-- Pipe2でNPU推論用のフレームを取得します。
-- person、face、segmentationの3モデルを使います。
-- アプリ本体はRAMへロードして起動します。モデルの重みとcommand blobは外部NOR Flashに置きます。
+- カメラのPipe1でLCD表示用フレーム（RGB565 800x480）を取得します。
+- Pipe2でNPU推論用フレーム（RGB888 480x480）を取得します。
+- 前処理CPU、NPU、後処理CPUの3タスクでモデルをパイプライン実行し、検出結果をLCDに重ねて表示します。
+- アプリ本体はRAMへロードして実行します。モデルの重みとcommand blobは外部NOR Flashに置きます。
+
+アプリの内部構成は[userspace/ai-app/README.md](userspace/ai-app/README.md)、カーネル・ドライバー・ミドルウェアの使い方は[docs/index.md](docs/index.md)を参照してください。
 
 ## 必要な機材とソフトウェア
 
@@ -16,7 +18,7 @@ STM32N6570-DKのカメラ映像をLCDへ表示しながら、Neural-ART NPUで�
 - カメラモジュールとLCD
 - UARTログを見るためのLinuxホスト
 
-本プロジェクトの書き込み手順はネイティブLinuxを前提にしています。USBパススルーを使うWSL環境ではなく、ボードを直接認識するLinuxで実行してください。
+書き込み手順はボードを直接認識するネイティブLinuxを前提にしています。
 
 ### Linuxパッケージ
 
@@ -30,14 +32,14 @@ sudo apt install build-essential cmake git python3 minicom \
 
 ### STの開発ツール
 
-次のツールを別途インストールします。
+| ツール | 用途 |
+| --- | --- |
+| STM32CubeMX 6.x | IOCからHAL・BSP・FSBL用ソースを生成します。CubeMX2は対象外です。 |
+| STM32CubeN6 Firmware Package | HAL、CMSIS、BSPを提供します。 |
+| STEdgeAI 4.0 | `stedgeai`CLIとNeural-ARTランタイムを提供します。ランタイムはリポジトリに含まれません。 |
+| STM32CubeProgrammer | `STM32_Programmer_CLI`とSTM32N6570-DK用External Loaderを使います。Flash起動には`STM32_SigningTool_CLI`も使います。 |
 
-1. **STM32CubeMX 6.x** — `userspace/ai-app/config/stm32n6570-dk-ai-app.ioc`からHAL・BSP・FSBL用ソースを生成します。STM32N6用の従来版CubeMXを使ってください。CubeMX2は対象外です。
-2. **STM32CubeN6 Firmware Package** — N6のHAL、CMSIS、BSPヘッダーとソースを提供します。ai-appは`STM32CUBE_N6_DIR`に指定したパッケージを参照します。
-3. **STEdgeAI 4.0** — `stedgeai`モデル生成CLIとNeural-ARTランタイムを提供します。モデル生成コードとランタイムの`ll_aton`バージョンを一致させてください。ランタイムのライブラリはリポジトリに含まれません。
-4. **STM32CubeProgrammer** — RAMロード用の`STM32_Programmer_CLI`を使います。外部NORへ書く場合はSTM32N6570-DK用External Loaderも必要です。永続Flash起動用イメージを作る場合は`STM32_SigningTool_CLI`も必要です。
-
-標準的なインストール先以外に配置した場合は、次節の`build-system/host-config/local.mk`に実際のパスを設定します。
+モデル生成に使ったSTEdgeAIと、リンクするランタイムの`ll_aton`バージョンは一致させてください。不一致はCMake configure時にエラーになります。
 
 ## 初回セットアップ
 
@@ -76,10 +78,17 @@ UART_BAUD = 115200
 
 ## ディレクトリの役割
 
-- `kernel/driver` と `kernel/middleware` は、アプリから利用するドライバーと共通処理です。共有ヘッダーも `kernel/` に置きます。
-- `userspace/<sample>/config` は、そのサンプルのボード設定・メモリ設定・CubeMX IOCなど、ファームウェアを構成する入力です。
-- `build-system/` はビルド手順をまとめた場所です。`cmake/` はコンパイラーとSTM32コマンド定義、`make/` は各サンプル共通のMakeレシピ、`scripts/` はCubeMX生成とUART起動、`host-config/` は開発PCごとのツールパスを扱います。
-- `host_app/` はPC上で動かすトレース解析・可視化ツールです。起動例とサンプルデータの場所は[Host側README](host_app/README.md)を参照してください。
+| パス | 内容 |
+| --- | --- |
+| `kernel/utkernel` | µT-Kernel 3.0 BSP2（サブモジュール） |
+| `kernel/pre_kernel` | CubeMX生成コードとµT-Kernel起動をつなぐボード依存コード |
+| `kernel/driver` | カメラ、LCD、NPU、PSRAM、NORなどのドライバー |
+| `kernel/middleware` | AIランタイム、メモリ管理、モニターなどの共通処理 |
+| `userspace/ai-app` | 本アプリ |
+| `userspace/experiment-*` | ドライバーなどを実装する際に使った実験用ディレクトリ |
+| `build-system` | CMake・Makeの共通定義、CubeMX生成とUARTのスクリプト、ホスト設定 |
+| `host_app` | PCで動かすトレース解析とメモリ配置生成ツール（[host_app/README.md](host_app/README.md)） |
+| `docs` | カーネル・ドライバー・ミドルウェアの利用ガイド |
 
 ## セットアップ、ビルド、RAM実行
 
@@ -90,34 +99,30 @@ make -C userspace/ai-app setup
 make -C userspace/ai-app build
 ```
 
-初回の`setup`は、依存パスを確認し、person・face・segmentationのモデルデータを取得してNeural-ARTコードを生成し、CubeMXソースを生成してCMakeを構成します。生成物とビルド結果はローカルに作られ、Gitには登録されません。初回はモデル取得とCubeMX生成に時間がかかります。
+`setup`は依存パスを確認し、3モデルを取得してNeural-ARTコードを生成し、CubeMXソースを生成してCMakeを構成します。生成物はGit管理外で、ビルド先は`build-ai-app-person/`です。
 
-モデルファイルはSTMicroelectronicsの各公式モデルリポジトリから取得します。ホストからダウンロードできない場合は、モデルを`userspace/ai-app/models/source/<model>/`へ置いてから`setup`を実行するか、[モデルの説明](userspace/ai-app/models/README.md)にある手動生成手順を使ってください。モデルの配布条件も同ページを確認してください。
+モデルはSTMicroelectronicsの公式リポジトリから自動で取得します。ダウンロードできない環境では、モデルを`userspace/ai-app/models/source/<model>/`へ置いてから`setup`を実行してください。詳細は[userspace/ai-app/models/README.md](userspace/ai-app/models/README.md)にあります。
 
 ### UARTを起動してからRAMへロード
 
-まずUARTモニタを起動します。UARTを開いた端末は実行確認が終わるまで開いたままにします。
+UARTモニタを先に起動し、実行確認が終わるまで開いたままにします。
 
 ```sh
 make -C userspace/ai-app monitor
 ```
 
-別の端末でアプリをRAMへロードし、実行します。
-
-```sh
-make -C userspace/ai-app ram-run
-```
-
-`ram-run`はアプリのビルド後、STM32CubeProgrammer CLIでバイナリをRAMアドレス`0x34000400`へ転送し、指定されたスタックと実行アドレスでCPUを再開します。これはアプリ本体を外部NORへ保存する操作ではありません。リセットや電源断後は、再度`ram-run`が必要です。
-
-ai-appはモデルの重みとcommand blobを外部NORから読みます。ボードに今回のビルドと一致するモデルデータがすでにある場合は、そのまま`ram-run`できます。モデルデータがない、または更新が必要な場合は、UARTを先に起動した状態で次を実行してから`ram-run`してください。
+別の端末で、モデルデータを外部NORへ書き込んでからアプリをRAMで実行します。
 
 ```sh
 make -C userspace/ai-app ai-load
 make -C userspace/ai-app ram-run
 ```
 
-`ai-load`は外部NORのモデル領域へ重みとcommand blobを書き込みます。アプリ本体やFSBLは書き込みません。モデルデータは電源を切っても残ります。`ai-run`は`ai-load`の後にRAM実行する短縮コマンドです。
+| ターゲット | 動作 |
+| --- | --- |
+| `ai-load` | 3モデルの重みとcommand blobを外部NORへ書き込みます。電源を切っても残るため、モデルを変えない限り再実行は不要です。 |
+| `ram-run` | ビルドしたアプリを`0x34000400`へ転送して実行します。リセット後は再実行が必要です。 |
+| `ai-run` | `ai-load`と`ram-run`を続けて実行します。 |
 
 ### 起動確認
 
@@ -130,41 +135,44 @@ ai: model registered=segmentation
 ai: 3-model pipeline enabled (person/face/segmentation)
 ```
 
-その後、LCDにカメラ映像が表示され、UARTのモデル統計で`capture`と`pipe2`のフレーム数、各モデルの推論完了数が増えていくことを確認します。ログの表示間隔や詳細度は診断設定によって変わります。LCDの表示確認も行ってください。
+その後、LCDにカメラ映像と検出結果が表示され、1秒ごとの`ai: model stats`で`capture`、`pipe2`、各モデルの推論完了数が増えていくことを確認します。
 
-`camera: no frame for 5000 ms`が繰り返され、`vsync=0`と`pipe2=0`のままなら、カメラからのフレーム取得が始まっていません。カメラモジュールと接続を確認し、同じログに出るCSI/DCMIPPエラーを切り分けてください。モデルの`ai-load`はカメラ入力の問題を解決しません。
+`camera: no frame for 5000 ms`が繰り返され、`vsync=0`と`pipe2=0`のままなら、カメラからフレームが届いていません。カメラモジュールの接続と、同じログに出るCSI/DCMIPPエラーを確認してください。
 
 ## 以降の開発サイクル
 
-ソースを変更した後は、ビルドとRAM実行を繰り返します。設定やCubeMXのIOCを変更した場合は`setup`も再実行してください。
+ソースを変更したら`build`と`ram-run`を繰り返します。IOCやモデルを変更した場合は`setup`から、モデルを再生成した場合は`ai-load`も実行してください。
 
 ```sh
 make -C userspace/ai-app build
 make -C userspace/ai-app ram-run
 ```
 
-ホスト固有の設定を変えずに使うコマンドは、`make -C userspace/ai-app help`で確認できます。
+利用できるターゲットは`make -C userspace/ai-app help`で確認できます。
 
-## おまけ: 外部Flashから起動する場合
+## 外部Flashから起動する場合
 
-RAM実行ではアプリ本体を揮発性RAMへ転送します。Flash起動では、FSBL、署名済みアプリ、モデル重み、command blobを外部NORへ保存し、ボードのリセット後にFSBLからアプリを起動します。アプリのRAM転送後も外部NORをモデルデータ置き場として使う点は共通です。
+FSBL、署名済みアプリ、モデル重み、command blobを外部NORへ書き込み、リセット後にFSBLからアプリを起動します。`STM32_SigningTool_CLI`がPATHにない場合は`local.mk`の`STM32_SIGNING_TOOL_CLI`で指定します。
 
-Flash起動には、STM32CubeProgrammer CLI、STM32N6570-DK用External Loader、`STM32_SigningTool_CLI`が必要です。Signing ToolがPATHにない場合は`build-system/host-config/local.mk`の`STM32_SIGNING_TOOL_CLI`で実行ファイルを指定してください。ボードのBOOT0とBOOT1をLOWにします。
-
-UARTモニタを別端末で先に起動したうえで、次を実行します。
+ボードのBOOT0とBOOT1をLOWにし、UARTモニタを起動してから次を実行します。
 
 ```sh
 make -C userspace/ai-app program
 ```
 
-`program`（同義の`flash`ターゲットもあります）は署名済みLRUNアプリイメージを生成し、External Loader経由でFSBL、アプリ、3モデル分の重みとcommand blobを外部NORへ書き込み、各書き込みを検証します。書き込み完了後にボードをリセットすると、外部Flashから起動します。
+`program`（別名`flash`）は書き込み後に各領域を検証します。完了後にリセットすると外部Flashから起動します。FSBLについては[userspace/ai-app/fsbl/README.md](userspace/ai-app/fsbl/README.md)を参照してください。
 
-Flashからの自動起動が不要で、RAM実行用のモデルデータだけを書き換える場合は`program`ではなく`ai-load`を使います。逆に、Flash起動に必要な一式を更新する場合は`ai-load`だけでは足りません。
+## ドキュメントサイト
 
-## 関連ファイル
+`docs/`と紹介スライド（`introduction.md`）は、`main`へのpush時にGitHub Actionsが[Zensical](https://zensical.org/)とMarpでビルドし、[GitHub Pages](https://kons-9.github.io/uai-studio/)へ公開します。設定は`mkdocs.yml`で、MkDocs（Material for MkDocs）でもビルドできます。
 
-- [ホスト設定テンプレート](build-system/host-config/local.mk.example)
-- [Host側ツールの起動方法とサンプルデータ](host_app/README.md)
-- [ai-appのモデルと生成手順](userspace/ai-app/models/README.md)
-- [ai-appのCubeMX設定](userspace/ai-app/config/stm32n6570-dk-ai-app.ioc)
-- [Flash起動用FSBLについて](userspace/ai-app/fsbl/README.md)
+ローカルで確認する場合:
+
+```sh
+uvx zensical serve
+```
+
+## ライセンス
+
+- [ライセンス（MIT）](LICENSE)
+- [利用している既存ソフトウェアとμT-Kernelへの変更](THIRD_PARTY_NOTICES.md)
