@@ -25,6 +25,8 @@ TaskContext &GetTaskContext()
     return g_context;
 }
 
+TaskContext::TaskContext() = default;
+
 [[noreturn]] void TaskContext::Halt(const char *message)
 {
     UAI_LOG_TEXT(uai::ai::common::LogLevel::kError,
@@ -126,6 +128,13 @@ void TaskContext::CreateKernelObjects()
         Halt("ai: event flag create failed\n");
     }
 
+    T_CFLG pipeline_work_flag = {};
+    pipeline_work_flag.flgatr = TA_TFIFO | TA_WMUL;
+    pipeline_work_ready = tk_cre_flg(&pipeline_work_flag);
+    if (pipeline_work_ready < E_OK) {
+        Halt("ai: pipeline event flag create failed\n");
+    }
+
     T_CMBF frame_queue_config = {};
     frame_queue_config.mbfatr = TA_TFIFO;
     frame_queue_config.bufsz = sizeof(frame_queue_storage);
@@ -168,20 +177,23 @@ void TaskContext::StartFrameTask(FP entry)
 
 void TaskContext::StartPreprocessTask(FP entry)
 {
-    StartTask(entry, pipeline_preprocess_task_stack, kPipelineTaskStackSize, 4,
+    /* Preprocessing shares a priority with the NPU worker. The NPU driver
+     * rotates this queue between IRQ-driven epochs so the next frame can be
+     * prepared without creating another NPU context. */
+    StartTask(entry, pipeline_preprocess_task_stack, kPipelineTaskStackSize, 5,
               "pipeline_preprocess");
 }
 
 void TaskContext::StartNpuTask(FP entry)
 {
-    StartTask(entry, pipeline_npu_task_stack, kPipelineTaskStackSize, 4,
+    StartTask(entry, pipeline_npu_task_stack, kPipelineTaskStackSize, 5,
               "pipeline_npu");
 }
 
 void TaskContext::StartPostprocessTask(FP entry)
 {
     StartTask(entry, pipeline_postprocess_task_stack,
-              kPipelinePostprocessTaskStackSize, 6, "pipeline_postprocess");
+              kPipelinePostprocessTaskStackSize, 4, "pipeline_postprocess");
 }
 
 void TaskContext::StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
@@ -209,7 +221,7 @@ void TaskContext::StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
     }
 }
 
-bool TaskContext::DrainLatestBoxes(memory_allocator::BoxSet *active)
+bool TaskContext::DrainLatestBoxes(inference::BoxSet *active)
 {
     if (active == nullptr) {
         return false;
@@ -249,7 +261,7 @@ bool TaskContext::DrainLatestBoxes(memory_allocator::BoxSet *active)
     return received;
 }
 
-void TaskContext::SendLatestBoxes(const memory_allocator::BoxSet &boxes)
+void TaskContext::SendLatestBoxes(const inference::BoxSet &boxes)
 {
     BoxMessage message{};
     message.boxes = boxes;
@@ -266,7 +278,7 @@ void TaskContext::SendLatestBoxes(const memory_allocator::BoxSet &boxes)
     }
 }
 
-void TaskContext::SendInferenceFrame(const memory_allocator::InferenceFrame &frame)
+void TaskContext::SendInferenceFrame(const pipeline::InferenceFrame &frame)
 {
     InferenceMessage message{};
     message.frame = frame;

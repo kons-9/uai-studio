@@ -7,6 +7,8 @@
 #include "driver/lcd_driver/lcd_driver.hpp"
 #include "driver/npu_driver/debug.h"
 #include "common/log.hpp"
+#include "memory_manager/memory_sizes.hpp"
+#include "models/inference_result_types.hpp"
 #include "task/camera_render_task.hpp"
 #include "task/task_context.hpp"
 #include "task/task_diagnostics.hpp"
@@ -56,7 +58,7 @@ void CameraRenderTask::Run()
         camera_diag.csi_sot_sync_dl1_count;
     auto &g_camera_csi_sot_dl0_count = camera_diag.csi_sot_dl0_count;
     auto &g_camera_csi_sot_dl1_count = camera_diag.csi_sot_dl1_count;
-    const memory_allocator::BoxSet initial{};
+    const inference::BoxSet initial{};
 
     UAI_LOG_TEXT(uai::ai::common::LogLevel::kDebug, reinterpret_cast<UB *>(const_cast<char *>(
         "lcd: driver ready\n")));
@@ -109,7 +111,7 @@ void CameraRenderTask::Run()
             context.Halt("ai: diagnostic capture buffers unavailable\n");
         }
         const uai::ai::memory_allocator::Buffer source_buffer{
-            capture0, uai::ai::memory_allocator::kConfig.frame_bytes(), 0U,
+            capture0, uai::ai::memory_manager::kCaptureBufferBytes, 0U,
             uai::ai::memory_allocator::Region::kCapture};
         status = context.cache.PrepareForDmaWrite(source_buffer);
         if (!status.Ok()) {
@@ -125,7 +127,7 @@ void CameraRenderTask::Run()
             reinterpret_cast<std::uint32_t *>(source_buffer.address),
             static_cast<std::int32_t>(source_buffer.size));
 
-        uai::ai::memory_allocator::CaptureFrame synthetic_capture{};
+        uai::ai::pipeline::CaptureFrame synthetic_capture{};
         status = context.memory.ImportCompletedCapture(source_buffer.address,
                                                         &synthetic_capture);
         if (!status.Ok()) {
@@ -159,7 +161,7 @@ void CameraRenderTask::Run()
     UAI_LOG_TEXT(uai::ai::common::LogLevel::kDebug, reinterpret_cast<UB *>(const_cast<char *>(
         "camera: start result=ok detail=0\n")));
     if constexpr (kLiveCaptureFreezeDiagnostic) {
-        uai::ai::memory_allocator::CaptureFrame first_capture{};
+        uai::ai::pipeline::CaptureFrame first_capture{};
         const std::uint32_t wait_start = context.Now();
         for (;;) {
             status = camera.Process();
@@ -168,7 +170,7 @@ void CameraRenderTask::Run()
                 context.Halt("ai: frozen capture process failed\n");
             }
             camera_diag = camera.GetDiagnostics();
-            uai::ai::memory_allocator::CaptureFrame candidate{};
+            uai::ai::pipeline::CaptureFrame candidate{};
             status = camera.TakeCompletedCapture(&candidate);
             if (status.Ok()) {
                 if ((candidate.sequence % 10U) == 0U) {
@@ -206,7 +208,7 @@ void CameraRenderTask::Run()
             context.Halt("ai: camera stop failed; capture not inspected\n");
         }
 
-        uai::ai::memory_allocator::CaptureFrame latest_capture{};
+        uai::ai::pipeline::CaptureFrame latest_capture{};
         const common::Error latest_status =
             camera.TakeCompletedCapture(&latest_capture);
         if (latest_status.Ok()) {
@@ -260,7 +262,7 @@ void CameraRenderTask::Run()
                  static_cast<unsigned int>(NVIC_GetEnableIRQ(CSI_IRQn)),
                  static_cast<unsigned int>(NVIC_GetPendingIRQ(CSI_IRQn)));
 
-    memory_allocator::BoxSet active_boxes = initial;
+    inference::BoxSet active_boxes = initial;
     std::uint32_t next_inference = context.Now() + kInferencePeriod;
 
     std::uint32_t loop_count = 0U;
@@ -332,7 +334,7 @@ void CameraRenderTask::Run()
         /* Pipe2 is a separate RGB888 producer. Drain it on every camera-task
          * iteration so the two DMA buffers are returned quickly even when the
          * inference period is intentionally slow. */
-        memory_allocator::InferenceFrame pipe2_frame{};
+        pipeline::InferenceFrame pipe2_frame{};
         const common::Error pipe2_status = camera.TakeCompletedInference(&pipe2_frame);
         if (pipe2_status.Ok()) {
             if (context.diagnostics.inference_input_display) {
@@ -402,7 +404,7 @@ void CameraRenderTask::Run()
              * keep presenting the previous result so model switching does not
              * create a blank frame. */
         }
-        uai::ai::memory_allocator::CaptureFrame capture{};
+        uai::ai::pipeline::CaptureFrame capture{};
         status = camera.TakeCompletedCapture(&capture);
         if (!status.Ok()) {
             if (status.code != common::ErrorCode::kNoFrame) {

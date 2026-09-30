@@ -65,5 +65,8 @@ PSRAM上の固定配置は`stm32n6570-dk-npu-ram.ld`で予約する。capture/di
 実際のアドレスと予約容量はリンカシンボルから`static_memory_layout`が取得し、各
 ドライバや`MemoryAllocator`が個別に固定値を持たないようにする。`MemoryAllocator`は
 この固定領域の中で、フレームサイズ・推論出力サイズ・アライメントなどの動的な
-割り当てポリシーとバッファ所有権を管理する。設定したサイズがリンカ予約容量を
-超える場合は初期化時に失敗させる。
+割り当てポリシーとバッファ所有権を管理する。ドライバはallocatorが返した`Buffer`
+descriptorをそのまま使い、raw addressからサイズやregionを再構成しない。Pipe2の
+ISRとタスク間のslot状態遷移は短い割込み禁止区間で保護し、frame sequenceとslot
+lease tokenを併用して古いframeの再claimを拒否する。設定したサイズがリンカ予約容量を
+超える場合、予約領域の重なり・alignment不整合を含めて初期化時に失敗させる。

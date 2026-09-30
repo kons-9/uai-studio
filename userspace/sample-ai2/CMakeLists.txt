@@ -205,6 +205,8 @@ add_executable(${AI_APP_TARGET}
     ${AI_INFERENCE_TASK_SOURCES}
     src/task/task_context.cpp
     src/task/task_diagnostics.cpp
+    src/middleware/ai_model_monitor/ai_model_monitor.cpp
+    src/memory_manager/static_memory_layout.cpp
     src/driver/camera_driver/sensor_driver/registers/imx335_registers.cpp
     src/driver/camera_driver/camera_driver.cpp
     src/image_resizer/image_resizer.cpp
@@ -217,7 +219,8 @@ add_executable(${AI_APP_TARGET}
     src/driver/rif_driver/rif_driver.cpp
     src/driver/lcd_driver/registers/lcd_registers.cpp
     src/driver/lcd_driver/lcd_driver.cpp
-    src/memory_allocator/memory_allocator.cpp
+    src/memory_manager/fixed_pool_allocator.cpp
+    src/memory_manager/memory_manager.cpp
     src/driver/npu_driver/registers/npu_registers.cpp
     src/driver/npu_driver/npu_driver.cpp
     src/driver/npu_driver/debug.cpp
@@ -268,7 +271,6 @@ target_compile_definitions(${AI_APP_TARGET} PRIVATE
     USE_HAL_DRIVER
     STM32N657xx
     USE_FULL_LL_DRIVER
-    CPU_IN_SECURE_STATE
     LL_ATON_PLATFORM=LL_ATON_PLAT_STM32N6
     LL_ATON_OSAL=LL_ATON_OSAL_BARE_METAL
     LL_ATON_RT_MODE=LL_ATON_RT_ASYNC
@@ -403,7 +405,6 @@ target_compile_definitions(${AI_MODEL_TARGET} PRIVATE
     USE_HAL_DRIVER
     STM32N657xx
     USE_FULL_LL_DRIVER
-    CPU_IN_SECURE_STATE
     LL_ATON_PLATFORM=LL_ATON_PLAT_STM32N6
     LL_ATON_OSAL=LL_ATON_OSAL_BARE_METAL
     LL_ATON_RT_MODE=LL_ATON_RT_ASYNC

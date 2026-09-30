@@ -8,7 +8,10 @@
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
 #include "image_resizer/image_resizer.hpp"
-#include "memory_allocator/memory_allocator.hpp"
+#include "application/pipeline/image_format.hpp"
+#include "middleware/memory/buffer_types.hpp"
+#include "memory_manager/memory_config.hpp"
+#include "memory_manager/memory_sizes.hpp"
 #include "arm_math.h"
 #include "fd_blazeface_anchors_0.h"
 #include "fd_blazeface_anchors_1.h"
@@ -26,7 +29,7 @@ constexpr std::size_t kExpectedOutputs = 4U;
 constexpr std::uint32_t kModelId = 2U;
 
 struct ModelOutputView {
-    const void *tensors[memory_allocator::kConfig.model_output_bytes.size()]{ };
+    const void *tensors[memory_manager::kMemoryConfig.model_output_bytes.size()]{ };
     std::uint16_t count = 0U;
 };
 
@@ -56,7 +59,7 @@ struct Detection {
 struct ModelResult {
     bool detections_valid = false;
     std::uint32_t detection_count = 0U;
-    Detection detections[memory_allocator::kConfig.max_boxes]{};
+    Detection detections[inference::kMaxBoxes]{};
 };
 
 struct RawDetection {
@@ -93,7 +96,7 @@ common::Error InitializeDecoder(const stai_network_info &info)
 {
     g_decoder_initialized = false;
     if (info.outputs == nullptr || info.n_outputs != kExpectedOutputs ||
-        info.n_outputs > memory_allocator::kConfig.model_output_bytes.size()) {
+        info.n_outputs > memory_manager::kMemoryConfig.model_output_bytes.size()) {
         return Invalid("face.future.decoder.initialize");
     }
 
@@ -120,7 +123,7 @@ common::Error InitializeDecoder(const stai_network_info &info)
     g_face_params.nb_detections_1 = static_cast<std::int32_t>(kBoxes1);
     g_face_params.in_size = Future::kInputWidth;
     g_face_params.max_boxes_limit =
-        static_cast<std::int32_t>(memory_allocator::kConfig.max_boxes);
+        static_cast<std::int32_t>(inference::kMaxBoxes);
     g_face_params.conf_threshold = 0.35F;
     g_face_params.iou_threshold = 0.3F;
     g_face_params.pAnchors_0 = g_Anchors_0;
@@ -194,9 +197,9 @@ common::Error DecodeFace(const ModelOutputView &outputs,
                                               output.nb_detect)
                                         : 0U;
     result->detections_valid = true;
-    result->detection_count = available < memory_allocator::kConfig.max_boxes
+    result->detection_count = available < inference::kMaxBoxes
                                   ? available
-                                  : memory_allocator::kConfig.max_boxes;
+                                  : inference::kMaxBoxes;
 
     for (std::uint32_t i = 0U; i < result->detection_count; ++i) {
         const fd_pp_outBuffer_t &source = g_face_output[i];
@@ -250,7 +253,7 @@ std::int16_t ClampBoxCoordinate(float value, std::int32_t limit)
 }
 
 common::Error ConvertResult(const ModelResult &source,
-                            memory_allocator::BoxSet *destination)
+                            inference::BoxSet *destination)
 {
     if (destination == nullptr) {
         return {common::ErrorCode::kInvalidArgument, 0U,
@@ -262,19 +265,19 @@ common::Error ConvertResult(const ModelResult &source,
 
     destination->face = {};
     destination->face.count = source.detection_count <
-                                      memory_allocator::kConfig.max_boxes
+                                      inference::kMaxBoxes
                                   ? source.detection_count
-                                  : memory_allocator::kConfig.max_boxes;
+                                  : inference::kMaxBoxes;
     for (std::uint32_t i = 0U; i < destination->face.count; ++i) {
         const Detection &detection = source.detections[i];
         destination->face.boxes[i].x = ClampBoxCoordinate(
-            detection.x, memory_allocator::kConfig.frame_width);
+            detection.x, pipeline::kCaptureFormat.width);
         destination->face.boxes[i].y = ClampBoxCoordinate(
-            detection.y, memory_allocator::kConfig.frame_height);
+            detection.y, pipeline::kCaptureFormat.height);
         destination->face.boxes[i].width = ClampBoxCoordinate(
-            detection.width, memory_allocator::kConfig.frame_width);
+            detection.width, pipeline::kCaptureFormat.width);
         destination->face.boxes[i].height = ClampBoxCoordinate(
-            detection.height, memory_allocator::kConfig.frame_height);
+            detection.height, pipeline::kCaptureFormat.height);
         destination->face.boxes[i].confidence = detection.confidence;
     }
     destination->face_valid = true;
@@ -284,10 +287,9 @@ common::Error ConvertResult(const ModelResult &source,
 
 std::uint32_t LetterboxContentHeight()
 {
-    return (Future::kInputWidth *
-                memory_allocator::kConfig.inference_source_height +
-            memory_allocator::kConfig.inference_source_width - 1U) /
-           memory_allocator::kConfig.inference_source_width;
+    return (Future::kInputWidth * pipeline::kInferenceContentFormat.height +
+            pipeline::kInferenceContentFormat.width - 1U) /
+           pipeline::kInferenceContentFormat.width;
 }
 
 } // namespace
@@ -298,7 +300,7 @@ common::Error Future::ConfigureDecoder(const stai_network_info &info)
 }
 
 void Future::Reset(const FutureContext &context,
-                   const memory_allocator::InferenceFrame &frame)
+                   const pipeline::InferenceFrame &frame)
 {
     context_ = context;
     frame_ = frame;
@@ -350,12 +352,12 @@ common::Error Future::Preprocess()
                 "face.future.frame"};
     }
 
-    const std::uint32_t source_width = memory_allocator::kConfig.inference_width;
-    const std::uint32_t source_height = memory_allocator::kConfig.inference_height;
+    const std::uint32_t source_width = pipeline::kInferenceFormat.width;
+    const std::uint32_t source_height = pipeline::kInferenceFormat.height;
     const memory_allocator::Buffer &input = frame_.buffer;
     if (frame_.source_valid) {
         if (!frame_.source || frame_.source.size <
-                                  memory_allocator::kConfig.inference_source_bytes()) {
+                                  memory_manager::kInferenceSourceBytes) {
             return {common::ErrorCode::kInvalidArgument, 0U,
                     "face.future.source"};
         }
@@ -420,7 +422,7 @@ common::Error Future::Infer()
         reinterpret_cast<stai_ptr>(frame_.buffer.address), InputBytes());
     if (!result.Ok()) return result.error;
 
-    stai_ptr outputs[memory_allocator::kConfig.model_output_bytes.size()]{ };
+    stai_ptr outputs[memory_manager::kMemoryConfig.model_output_bytes.size()]{ };
     for (std::uint16_t i = 0U; i < context_.info->n_outputs; ++i) {
         const auto &output = frame_.outputs[i];
         if (!output || output.size < context_.info->outputs[i].size_bytes ||
@@ -475,8 +477,8 @@ common::Error Future::Postprocess()
 
     InferenceGeometry geometry{};
     geometry.projection = InputProjection::kLetterboxed;
-    geometry.frame_width = memory_allocator::kConfig.frame_width;
-    geometry.frame_height = memory_allocator::kConfig.frame_height;
+    geometry.frame_width = pipeline::kCaptureFormat.width;
+    geometry.frame_height = pipeline::kCaptureFormat.height;
     geometry.model_width = kInputWidth;
     geometry.model_height = kInputHeight;
     geometry.content_height = LetterboxContentHeight();
@@ -486,7 +488,7 @@ common::Error Future::Postprocess()
     common::Error status = DecodeFace(view, geometry, &decoded);
     if (!status.Ok()) return status;
 
-    memory_allocator::BoxSet boxes{};
+    inference::BoxSet boxes{};
     status = ConvertResult(decoded, &boxes);
     if (!status.Ok()) return status;
     context_.publish(context_.publish_context, boxes);

@@ -8,7 +8,10 @@
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
 #include "image_resizer/image_resizer.hpp"
-#include "static_memory_layout/static_memory_layout.hpp"
+#include "application/pipeline/image_format.hpp"
+#include "memory_manager/memory_config.hpp"
+#include "memory_manager/memory_sizes.hpp"
+#include "memory_manager/static_memory_layout.hpp"
 
 namespace uai::ai::models::segmentation {
 
@@ -34,9 +37,9 @@ common::Error InitializeDecoder(const stai_network_info &info)
     g_decoder_initialized = false;
     if (info.outputs == nullptr || info.n_outputs != 1U ||
         info.outputs[0].size_bytes != kOutputBytes ||
-        static_memory_layout::kLayout.Get(StaticMemoryKey::kSegmentationMask0)
+        static_memory_layout::GetRegion(StaticMemoryKey::kSegmentationMask0)
                 .size() < kMaskBytes ||
-        static_memory_layout::kLayout.Get(StaticMemoryKey::kSegmentationMask1)
+        static_memory_layout::GetRegion(StaticMemoryKey::kSegmentationMask1)
                 .size() < kMaskBytes) {
         return Invalid("segmentation.future.decoder.initialize");
     }
@@ -46,7 +49,7 @@ common::Error InitializeDecoder(const stai_network_info &info)
 }
 
 common::Error DecodeMask(const void *output, std::uint8_t mask_index,
-                         memory_allocator::BoxSet *boxes)
+                         inference::BoxSet *boxes)
 {
     if (!g_decoder_initialized) {
         return {common::ErrorCode::kNotInitialized, 0U,
@@ -59,7 +62,7 @@ common::Error DecodeMask(const void *output, std::uint8_t mask_index,
 
     const auto key = mask_index == 0U ? StaticMemoryKey::kSegmentationMask0
                                       : StaticMemoryKey::kSegmentationMask1;
-    const auto &region = static_memory_layout::kLayout.Get(key);
+    const auto &region = static_memory_layout::GetRegion(key);
     auto *mask = reinterpret_cast<std::uint8_t *>(region.address());
     const auto *logits = reinterpret_cast<const std::int8_t *>(output);
     std::uint32_t foreground_pixels = 0U;
@@ -85,7 +88,7 @@ common::Error Future::ConfigureDecoder(const stai_network_info &info)
 }
 
 void Future::Reset(const FutureContext &context,
-                   const memory_allocator::InferenceFrame &frame)
+                   const pipeline::InferenceFrame &frame)
 {
     context_ = context;
     frame_ = frame;
@@ -133,7 +136,7 @@ common::Error Future::Preprocess()
         context_.info->n_inputs != 1U || context_.info->inputs == nullptr ||
         context_.info->inputs[0].size_bytes != InputBytes() ||
         frame_.buffer.size < InputBytes() ||
-        frame_.source.size < memory_allocator::kConfig.inference_source_bytes()) {
+        frame_.source.size < memory_manager::kInferenceSourceBytes) {
         return {common::ErrorCode::kInvalidArgument, 0U,
                 "segmentation.future.frame"};
     }
@@ -142,9 +145,10 @@ common::Error Future::Preprocess()
     if (!status.Ok()) return status;
     const image_resizer::Rgb888Source source{
         reinterpret_cast<const std::uint8_t *>(frame_.source.address),
-        memory_allocator::kConfig.inference_width,
-        memory_allocator::kConfig.inference_height,
-        memory_allocator::kConfig.inference_width * 3U};
+        pipeline::kInferenceFormat.width,
+        pipeline::kInferenceFormat.height,
+        pipeline::kInferenceFormat.width *
+            pipeline::kInferenceFormat.bytes_per_pixel};
     const image_resizer::Rgb888Destination destination{
         reinterpret_cast<std::uint8_t *>(frame_.buffer.address), kInputWidth,
         kInputHeight, kInputWidth * 3U};
@@ -185,7 +189,7 @@ common::Error Future::Infer()
         reinterpret_cast<stai_ptr>(frame_.buffer.address), InputBytes());
     if (!result.Ok()) return result.error;
 
-    stai_ptr outputs[memory_allocator::kConfig.model_output_bytes.size()]{};
+    stai_ptr outputs[memory_manager::kMemoryConfig.model_output_bytes.size()]{};
     for (std::uint16_t i = 0U; i < context_.info->n_outputs; ++i) {
         const auto &output = frame_.outputs[i];
         if (!output || output.size < context_.info->outputs[i].size_bytes ||
@@ -230,7 +234,7 @@ common::Error Future::Postprocess()
     common::Error status = context_.cache->PrepareForCpuRead(range);
     if (!status.Ok()) return status;
 
-    memory_allocator::BoxSet boxes{};
+    inference::BoxSet boxes{};
     status = DecodeMask(reinterpret_cast<const void *>(output.address),
                         mask_buffer_index_, &boxes);
     if (!status.Ok()) return status;

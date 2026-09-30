@@ -38,8 +38,8 @@ AI_VISION_MODELS_PP_DIR ?=
 UART_DEVICE ?= auto
 UART_BAUD ?= 115200
 
-# ThreadMonitor acquisition settings for sample-ai.
-THREAD_MONITOR_ELF ?= $(BUILD_DIR)/userspace/sample-ai/sample-ai.elf
+# ThreadMonitor acquisition settings for sample-ai and sample-ai2.
+THREAD_MONITOR_ELF ?= $(BUILD_DIR)/userspace/$(APP_TARGET)/$(APP_TARGET).elf
 THREAD_MONITOR_DUMP ?= $(BUILD_DIR)/thread_monitor.bin
 THREAD_MONITOR_JSON ?= $(BUILD_DIR)/thread_monitor.json
 THREAD_MONITOR_PNG ?= $(BUILD_DIR)/thread_monitor.png
@@ -228,8 +228,8 @@ monitor:
 	sh tools/uart-monitor.sh
 
 thread-monitor-dump: build
-	@test "$(APP_TARGET)" = "sample-ai" || { \
-		echo "thread-monitor-dump requires APP_TARGET=sample-ai" >&2; exit 2; \
+	@test "$(APP_TARGET)" = "sample-ai" || test "$(APP_TARGET)" = "sample-ai2" || { \
+		echo "thread-monitor-dump requires APP_TARGET=sample-ai or sample-ai2" >&2; exit 2; \
 	}
 	@test -x "$(STM32_PROGRAMMER_CLI)" || { \
 		echo "STM32_PROGRAMMER_CLI is not executable: $(STM32_PROGRAMMER_CLI)" >&2; exit 2; \
@@ -262,22 +262,32 @@ thread-monitor-dump: build
 	echo "ThreadMonitor dump written: $(THREAD_MONITOR_DUMP)"
 
 thread-monitor: thread-monitor-dump
-	@mkdir -p "$(dir $(THREAD_MONITOR_JSON))"
-	$(THREAD_MONITOR_PYTHON) userspace/sample-ai/tools/decode_thread_monitor.py \
-		"$(THREAD_MONITOR_DUMP)" --output "$(THREAD_MONITOR_JSON)"
-	$(THREAD_MONITOR_PYTHON) userspace/sample-ai/tools/analyze_npu_trace.py \
-		"$(THREAD_MONITOR_JSON)" --cpu-hz "$(THREAD_MONITOR_CPU_HZ)"
 	@command -v "$(THREAD_MONITOR_UV)" >/dev/null 2>&1 || { \
 		echo "THREAD_MONITOR_UV is not available: $(THREAD_MONITOR_UV)" >&2; exit 2; \
 	}
+ifeq ($(APP_TARGET),sample-ai2)
+	MPLCONFIGDIR="$(BUILD_DIR)/matplotlib" \
+	$(if $(strip $(THREAD_MONITOR_LD_PRELOAD)),LD_PRELOAD="$(THREAD_MONITOR_LD_PRELOAD)") \
+	$(THREAD_MONITOR_UV) run --project userspace/$(APP_TARGET)/tools \
+		python userspace/$(APP_TARGET)/tools/ai_model_monitor/ai_model_monitor.py all \
+		"$(THREAD_MONITOR_DUMP)" --json "$(THREAD_MONITOR_JSON)" \
+		--png "$(THREAD_MONITOR_PNG)" --cpu-hz "$(THREAD_MONITOR_CPU_HZ)"
+	@echo "ThreadMonitor PNG written: $(THREAD_MONITOR_PNG)"
+else
+	@mkdir -p "$(dir $(THREAD_MONITOR_JSON))"
+	$(THREAD_MONITOR_PYTHON) userspace/$(APP_TARGET)/tools/decode_thread_monitor.py \
+		"$(THREAD_MONITOR_DUMP)" --output "$(THREAD_MONITOR_JSON)"
+	$(THREAD_MONITOR_PYTHON) userspace/$(APP_TARGET)/tools/analyze_npu_trace.py \
+		"$(THREAD_MONITOR_JSON)" --cpu-hz "$(THREAD_MONITOR_CPU_HZ)"
 	@mkdir -p "$(dir $(THREAD_MONITOR_PNG))"
 	MPLCONFIGDIR="$(BUILD_DIR)/matplotlib" \
 	$(if $(strip $(THREAD_MONITOR_LD_PRELOAD)),LD_PRELOAD="$(THREAD_MONITOR_LD_PRELOAD)") \
-	$(THREAD_MONITOR_UV) run --project userspace/sample-ai/tools \
-		python userspace/sample-ai/tools/visualize_thread_monitor.py \
+	$(THREAD_MONITOR_UV) run --project userspace/$(APP_TARGET)/tools \
+		python userspace/$(APP_TARGET)/tools/visualize_thread_monitor.py \
 		"$(THREAD_MONITOR_JSON)" --output "$(THREAD_MONITOR_PNG)" \
 		--cpu-hz "$(THREAD_MONITOR_CPU_HZ)"
 	@echo "ThreadMonitor PNG written: $(THREAD_MONITOR_PNG)"
+endif
 
 ram-run: configure
 	$(CMAKE) --build "$(BUILD_DIR)" --target ram-run

@@ -3,11 +3,11 @@
 
 Examples:
     uv run --project userspace/sample-ai/tools \
-        python userspace/sample-ai/tools/visualize_thread_monitor.py \
+        python userspace/sample-ai2/tools/ai_model_monitor/visualize_thread_monitor.py \
         build/thread_monitor_final.bin
 
     uv run --project userspace/sample-ai/tools \
-        python userspace/sample-ai/tools/visualize_thread_monitor.py \
+        python userspace/sample-ai2/tools/ai_model_monitor/visualize_thread_monitor.py \
         build/thread_monitor_final.json --output build/thread_monitor.png \
         --cpu-hz 600000000
 """
@@ -20,6 +20,7 @@ from typing import Any
 
 NPU_TIMING_VALID = 1 << 2
 UNKNOWN_MODEL_KIND_ID = 0xFFFFFFFF
+DEFAULT_MAX_INFERENCES = 12  # roughly four person/segmentation/face cycles
 
 MODEL_COLORS = ("#1565c0", "#ef6c00", "#2e7d32", "#6a1b9a")
 MODEL_NAMES = {
@@ -148,6 +149,93 @@ def phase_id(record: dict[str, Any]) -> int | None:
     return None
 
 
+def ai_runtime_step_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        record for record in records
+        if record.get("type") == "ai_runtime_step"
+        and not record.get("ai_runtime_begin", False)
+    ]
+
+
+def ai_runtime_all_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        record for record in records
+        if record.get("type") == "ai_runtime_step"
+    ]
+
+
+def aggregate_ai_runtime_records(
+    records: list[dict[str, Any]], max_inferences: int
+) -> list[dict[str, Any]]:
+    """Collapse preprocess/postprocess into CPU and keep only recent inferences."""
+    runtime_records = ai_runtime_all_records(records)
+    if not runtime_records:
+        return []
+
+    inference_ids: list[int] = []
+    for record in runtime_records:
+        inference_id = int(record.get("ai_runtime_inference_id", -1))
+        if inference_id not in inference_ids:
+            inference_ids.append(inference_id)
+    if max_inferences > 0:
+        selected = set(inference_ids[-max_inferences:])
+        runtime_records = [
+            record for record in runtime_records
+            if int(record.get("ai_runtime_inference_id", -1)) in selected
+        ]
+
+    # Pair each begin/end step first, then combine preprocess and postprocess
+    # into one CPU lane for each inference. Keeping separate segments inside
+    # that lane preserves the NPU overlap without adding extra rows.
+    pairs: dict[tuple[int, int, int, int], dict[str, dict[str, Any]]] = {}
+    for record in runtime_records:
+        key = (
+            int(record.get("model_kind_id", UNKNOWN_MODEL_KIND_ID)),
+            int(record.get("ai_runtime_inference_id", -1)),
+            int(record.get("ai_runtime_lane_id", -1)),
+            int(record.get("ai_runtime_step_id", -1)),
+        )
+        pair = pairs.setdefault(key, {})
+        pair["begin" if record.get("ai_runtime_begin", False) else "end"] = record
+
+    grouped: dict[tuple[int, int, str], dict[str, Any]] = {}
+    for (model_id, inference_id, lane_id, _), pair in pairs.items():
+        end = pair.get("end")
+        if end is None:
+            continue
+        end_time = float(end.get("time_s", 0.0))
+        begin = pair.get("begin")
+        if begin is not None:
+            start_time = float(begin.get("time_s", end_time))
+        else:
+            duration = max(0.0, float(elapsed_ms(end)) / 1000.0)
+            start_time = end_time - duration
+        if begin is not None and end_time >= start_time:
+            # ai_runtime records have a wall-clock begin/end pair even when
+            # the optional NPU timing field is not valid for that step.
+            duration = end_time - start_time
+        else:
+            duration = max(0.0, float(elapsed_ms(end)) / 1000.0)
+            start_time = end_time - duration
+        lane = "npu" if lane_id == 1 else "cpu"
+        key = (model_id, inference_id, lane)
+        item = grouped.setdefault(key, {
+            "type": "ai_runtime_step",
+            "model_kind_id": model_id,
+            "ai_runtime_inference_id": inference_id,
+            "ai_runtime_lane": lane,
+            "ai_runtime_lane_id": lane_id,
+            "time_s": end_time,
+            "elapsed_ms": 0.0,
+            "segments": [],
+        })
+        item["segments"].append((start_time, end_time))
+        item["elapsed_ms"] += duration * 1000.0
+        item["time_s"] = max(item["time_s"], end_time)
+
+    return list(grouped.values())
+
+
 def elapsed_ms(record: dict[str, Any]) -> int:
     value = record.get("elapsed_ms")
     return value if value is not None else record.get("npu_elapsed_ms", 0)
@@ -174,6 +262,11 @@ def epoch_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def interval(record: dict[str, Any], cpu_hz: float) -> tuple[float, float]:
+    if record.get("segments"):
+        segments = record["segments"]
+        return min(start for start, _ in segments), max(
+            end for _, end in segments
+        )
     end = record["time_s"]
     if record.get("type") == "npu_epoch":
         duration = max(0.0, record.get("cycle_elapsed", 0) / cpu_hz)
@@ -199,12 +292,61 @@ def stage_elapsed_ms(record: dict[str, Any], cpu_hz: float) -> float:
 
 
 def add_pipeline_panel(axis: Any, records: list[dict[str, Any]],
-                       cpu_hz: float) -> None:
+                       cpu_hz: float, max_inferences: int) -> None:
     """Draw CPU stages and NPU execution on separate, non-stacked lanes."""
     from matplotlib.patches import Patch
 
     phase_events = [record for record in records if phase_id(record) is not None]
     stage_events = pipeline_stage_records(records)
+    runtime_events = aggregate_ai_runtime_records(records, max_inferences)
+    if runtime_events and not phase_events and not stage_events:
+        lanes = sorted({
+            (record.get("model_kind_id", UNKNOWN_MODEL_KIND_ID),
+             record.get("ai_runtime_lane", "unknown"))
+            for record in runtime_events
+        })
+        labels = [
+            f"{model_name(kind_id)} / {lane.upper()}"
+            for kind_id, lane in lanes
+        ]
+        colors = {"cpu": "#1565c0", "npu": "#ef6c00"}
+        for row, (kind_id, lane) in enumerate(lanes):
+            for event in runtime_events:
+                if (event.get("model_kind_id", UNKNOWN_MODEL_KIND_ID),
+                        event.get("ai_runtime_lane", "unknown")) != (kind_id, lane):
+                    continue
+                for start, end in event["segments"]:
+                    if end <= start:
+                        continue
+                    axis.broken_barh(
+                        [(start, end - start)],
+                        (row - 0.32, 0.64),
+                        facecolors=colors.get(lane, "#607d8b"),
+                        edgecolors=model_color(kind_id),
+                        linewidth=0.45,
+                    )
+        axis.set_yticks(range(len(labels)))
+        axis.set_yticklabels(labels)
+        axis.set_ylim(-0.7, max(0.7, len(labels) - 0.3))
+        axis.legend(
+            handles=[
+                Patch(facecolor="#1565c0", label="CPU (pre + post)"),
+                Patch(facecolor="#ef6c00", label="NPU"),
+            ],
+            loc="upper left",
+            bbox_to_anchor=(0.0, 1.0),
+            ncol=3,
+            fontsize="x-small",
+        )
+        axis.set_ylabel("model / lane")
+        axis.set_title(
+            f"ai_runtime execution: CPU (pre + post) / NPU; "
+            f"latest {max_inferences} inferences"
+        )
+        axis.grid(True, axis="x", alpha=0.25)
+        axis.invert_yaxis()
+        return
+
     kind_ids = sorted({
         record.get("model_kind_id", UNKNOWN_MODEL_KIND_ID) for record in
         phase_events + stage_events
@@ -474,6 +616,28 @@ def average_decomposition(records: list[dict[str, Any]],
         record.get("model_kind_id", UNKNOWN_MODEL_KIND_ID)
         for record in stage_events
     })
+    runtime_events = aggregate_ai_runtime_records(records, -1)
+    if runtime_events and not kind_ids:
+        runtime_kind_ids = sorted({
+            record.get("model_kind_id", UNKNOWN_MODEL_KIND_ID)
+            for record in runtime_events
+        })
+        result = {}
+        for kind_id in runtime_kind_ids:
+            lane_values: dict[str, list[float]] = {"cpu": [], "npu": []}
+            for record in runtime_events:
+                if record.get("model_kind_id", UNKNOWN_MODEL_KIND_ID) != kind_id:
+                    continue
+                lane = record.get("ai_runtime_lane", "")
+                if lane in lane_values:
+                    lane_values[lane].append(float(elapsed_ms(record)))
+            result[kind_id] = {
+                "cpu": (sum(lane_values["cpu"]) / len(lane_values["cpu"])
+                        if lane_values["cpu"] else 0.0),
+                "npu": (sum(lane_values["npu"]) / len(lane_values["npu"])
+                        if lane_values["npu"] else 0.0),
+            }
+        return result
     result = {}
     for kind_id in kind_ids:
         model_stages = [
@@ -570,7 +734,9 @@ def timeline_bounds(records: list[dict[str, Any]], cpu_hz: float) -> tuple[float
     points = [record["time_s"] for record in records]
     for record in records:
         if (phase_id(record) is not None or
-                record.get("type") in ("npu_epoch", "pipeline_stage")):
+                record.get("type") in (
+                    "ai_runtime_step", "npu_epoch", "pipeline_stage"
+                )):
             points.extend(interval(record, cpu_hz))
     start = min(points)
     end = max(points)
@@ -580,7 +746,8 @@ def timeline_bounds(records: list[dict[str, Any]], cpu_hz: float) -> tuple[float
 
 
 def plot_trace(
-    trace: dict[str, Any], output: Path, show: bool, dpi: int, cpu_hz: float
+    trace: dict[str, Any], output: Path, show: bool, dpi: int,
+    cpu_hz: float, max_inferences: int
 ) -> None:
     import matplotlib
 
@@ -600,11 +767,19 @@ def plot_trace(
         if phase_events else timing_records
     )
     stage_records = pipeline_stage_records(records)
+    runtime_records = ai_runtime_step_records(records)
+    runtime_plot_records = aggregate_ai_runtime_records(
+        records, max_inferences
+    )
     faults = [record for record in records if record.get("fault_code", 0) != 0]
-    display_records = phase_records + [
-        record for record in stage_records
-        if record.get("pipeline_stage") not in CPU_WAIT_STAGE_IDS
-    ]
+    runtime_only = bool(runtime_plot_records) and not phase_events and not stage_records
+    if runtime_only:
+        display_records = runtime_plot_records
+    else:
+        display_records = phase_records + runtime_plot_records + [
+            record for record in stage_records
+            if record.get("pipeline_stage") not in CPU_WAIT_STAGE_IDS
+        ]
     x_start, x_end = timeline_bounds(display_records, cpu_hz)
 
     figure, axes = plt.subplots(
@@ -615,7 +790,7 @@ def plot_trace(
         constrained_layout=True,
     )
     figure.suptitle(
-        "sample-ai ThreadMonitor\n"
+        "AI ThreadMonitor\n"
         f"records={header.get('decoded_count', len(records))} "
         f"faults={header.get('fault_count', 0)} model-centric\n"
         "CPU/NPU execution timeline and average decomposition; overlaps are preserved"
@@ -625,7 +800,7 @@ def plot_trace(
     # operation-level CPU stages with the corresponding NPU/ATON lane. Panel 2
     # is a duration chart in milliseconds and intentionally has an independent
     # x-axis.
-    add_pipeline_panel(axes[0], records, cpu_hz)
+    add_pipeline_panel(axes[0], records, cpu_hz, max_inferences)
     add_average_panel(axes[1], records, cpu_hz)
 
     # Keep the timeline focused on inference events. This also includes the
@@ -659,7 +834,20 @@ def plot_trace(
         plt.show()
     plt.close(figure)
 
-    if phase_records:
+    if runtime_only:
+        values = [elapsed_ms(record) for record in runtime_records]
+        execution = average_decomposition(records, cpu_hz)
+        execution_averages = ", ".join(
+            f"{model_name(kind)} CPU={metrics['cpu']:.3f} ms "
+            f"NPU={metrics['npu']:.3f} ms"
+            for kind, metrics in sorted(execution.items())
+        )
+        print(
+            f"saved {output} | ai_runtime end samples={len(values)} "
+            f"min={min(values)} ms max={max(values)} ms | "
+            f"execution averages: {execution_averages}"
+        )
+    elif phase_records:
         values = [elapsed_ms(record) for record in phase_records]
         groups = {}
         for record in phase_records:
@@ -685,8 +873,14 @@ def plot_trace(
             f"phase averages: {averages} | "
             f"execution averages: {execution_averages}"
         )
+    elif runtime_records:
+        values = [elapsed_ms(record) for record in runtime_records]
+        print(
+            f"saved {output} | ai_runtime step end samples={len(values)} "
+            f"min={min(values)} ms max={max(values)} ms"
+        )
     else:
-        print(f"saved {output} | no NPU timing records")
+        print(f"saved {output} | no runtime timing records")
 
 
 def main() -> None:
@@ -707,12 +901,23 @@ def main() -> None:
         help="CPU clock used to convert npu_epoch cycles (default: 600000000)",
     )
     parser.add_argument("--show", action="store_true", help="also open a window")
+    parser.add_argument(
+        "--max-inferences",
+        type=int,
+        default=DEFAULT_MAX_INFERENCES,
+        help=(
+            "number of recent ai_runtime inferences to plot "
+            "(default: roughly 4 cycles)"
+        ),
+    )
     args = parser.parse_args()
 
     if args.cpu_hz <= 0.0:
         parser.error("--cpu-hz must be positive")
+    if args.max_inferences == 0 or args.max_inferences < -1:
+        parser.error("--max-inferences must be positive or -1 for all")
     plot_trace(load_trace(args.trace), args.output, args.show, args.dpi,
-               args.cpu_hz)
+               args.cpu_hz, args.max_inferences)
 
 
 if __name__ == "__main__":

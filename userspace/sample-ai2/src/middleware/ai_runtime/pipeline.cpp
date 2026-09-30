@@ -68,6 +68,13 @@ void PipelineRuntime::SetTrace(TraceCallback callback, void *context,
     clock_context_ = clock_context;
 }
 
+void PipelineRuntime::SetWakeCallback(WakeCallback callback, void *context)
+{
+    Guard guard(*this);
+    wake_ = callback;
+    wake_context_ = context;
+}
+
 void PipelineRuntime::SetCriticalSection(CriticalSection enter,
                                          CriticalSection exit, void *context)
 {
@@ -77,47 +84,75 @@ void PipelineRuntime::SetCriticalSection(CriticalSection enter,
     lock_context_ = context;
 }
 
+void PipelineRuntime::Wake(ExecutionContext lane) const
+{
+    if (wake_ != nullptr) wake_(wake_context_, lane);
+}
+
+common::Error PipelineRuntime::StartAiModelMonitor()
+{
+    return ai_model_monitor_.Start();
+}
+
 common::Error PipelineRuntime::Submit(AiFuture &future)
 {
-    Guard guard(*this);
-    std::size_t free_index = kCapacity;
-    for (std::size_t i = 0; i < kCapacity; ++i) {
-        if (slots_[i].future == &future) {
-            return Error(common::ErrorCode::kInvalidState, "ai_runtime.duplicate");
+    {
+        Guard guard(*this);
+        std::size_t free_index = kCapacity;
+        for (std::size_t i = 0; i < kCapacity; ++i) {
+            if (slots_[i].future == &future) {
+                return Error(common::ErrorCode::kInvalidState,
+                             "ai_runtime.duplicate");
+            }
+            if (free_index == kCapacity && slots_[i].state == State::kFree) {
+                free_index = i;
+            }
         }
-        if (free_index == kCapacity && slots_[i].state == State::kFree) {
-            free_index = i;
+        if (free_index == kCapacity) {
+            return Error(common::ErrorCode::kQueueFull,
+                         "ai_runtime.capacity");
         }
+        ++next_inference_id_;
+        if (next_inference_id_ == 0U) ++next_inference_id_;
+        slots_[free_index] = {};
+        slots_[free_index].future = &future;
+        slots_[free_index].inference_id = next_inference_id_;
+        Enqueue(free_index, ExecutionContext::kPreprocessCpu);
     }
-    if (free_index == kCapacity) {
-        return Error(common::ErrorCode::kQueueFull, "ai_runtime.capacity");
-    }
-    ++next_inference_id_;
-    if (next_inference_id_ == 0U) ++next_inference_id_;
-    slots_[free_index] = {};
-    slots_[free_index].future = &future;
-    slots_[free_index].inference_id = next_inference_id_;
-    Enqueue(free_index, ExecutionContext::kPreprocessCpu);
+    Wake(ExecutionContext::kPreprocessCpu);
     return {};
 }
 
 common::Error PipelineRuntime::Signal(AiFuture &future, WaitBitFlag flags)
 {
-    Guard guard(*this);
-    for (std::size_t i = 0; i < kCapacity; ++i) {
-        Slot &slot = slots_[i];
-        if (slot.future != &future) continue;
-        if (slot.state != State::kExecuting && slot.state != State::kWaiting) {
-            return Error(common::ErrorCode::kInvalidState,
-                         "ai_runtime.signal.not_waiting");
+    bool wake = false;
+    bool found = false;
+    ExecutionContext wake_lane = ExecutionContext::kPreprocessCpu;
+    {
+        Guard guard(*this);
+        for (std::size_t i = 0; i < kCapacity; ++i) {
+            Slot &slot = slots_[i];
+            if (slot.future != &future) continue;
+            found = true;
+            if (slot.state != State::kExecuting &&
+                slot.state != State::kWaiting) {
+                return Error(common::ErrorCode::kInvalidState,
+                             "ai_runtime.signal.not_waiting");
+            }
+            slot.received = slot.received | flags;
+            if (slot.state == State::kWaiting && Satisfied(slot)) {
+                wake_lane = slot.next.context;
+                Enqueue(i, wake_lane);
+                wake = true;
+            }
+            break;
         }
-        slot.received = slot.received | flags;
-        if (slot.state == State::kWaiting && Satisfied(slot)) {
-            Enqueue(i, slot.next.context);
-        }
-        return {};
     }
-    return Error(common::ErrorCode::kInvalidState, "ai_runtime.signal");
+    if (!found) {
+        return Error(common::ErrorCode::kInvalidState, "ai_runtime.signal");
+    }
+    if (wake) Wake(wake_lane);
+    return {};
 }
 
 DispatchResult PipelineRuntime::RunOne(ExecutionContext lane)
@@ -139,24 +174,29 @@ DispatchResult PipelineRuntime::RunOne(ExecutionContext lane)
     }
 
     if (!future->is_ready()) {
-        Guard guard(*this);
-        Enqueue(index, lane);
+        {
+            Guard guard(*this);
+            Enqueue(index, lane);
+        }
+        Wake(lane);
         return DispatchResult::kNotReady;
     }
     const StepTrace event{inference_id, future->model_id(), future->step_id(),
                           lane, clock_ == nullptr ? 0U : clock_(clock_context_),
                           true};
+    ai_model_monitor_.ObserveAiRuntimeStep(event);
     if (trace_ != nullptr) trace_(trace_context_, event);
     const AiRuntimeResult result = future->Evaluate();
-    if (trace_ != nullptr) {
-        StepTrace end = event;
-        end.begin = false;
-        end.timestamp = clock_ == nullptr ? 0U : clock_(clock_context_);
-        trace_(trace_context_, end);
-    }
+    StepTrace end = event;
+    end.begin = false;
+    end.timestamp = clock_ == nullptr ? 0U : clock_(clock_context_);
+    ai_model_monitor_.ObserveAiRuntimeStep(end);
+    if (trace_ != nullptr) trace_(trace_context_, end);
 
     const bool terminal = !result.Ok() || result.completed;
     const common::Error error = result.error;
+    bool wake = false;
+    ExecutionContext wake_lane = ExecutionContext::kPreprocessCpu;
     {
         Guard guard(*this);
         Slot &slot = slots_[index];
@@ -167,12 +207,15 @@ DispatchResult PipelineRuntime::RunOne(ExecutionContext lane)
         } else {
             slot.next = result.next;
             if (Satisfied(slot)) {
-                Enqueue(index, result.next.context);
+                wake_lane = result.next.context;
+                Enqueue(index, wake_lane);
+                wake = true;
             } else {
                 slot.state = State::kWaiting;
             }
         }
     }
+    if (wake) Wake(wake_lane);
     if (!terminal && LaneIndex(result.next.context) >= 3U) {
         if (done_ != nullptr) {
             done_(done_context_, *future,

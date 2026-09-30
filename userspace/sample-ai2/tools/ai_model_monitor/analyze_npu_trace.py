@@ -66,11 +66,73 @@ def callback_stage(record: dict[str, Any]) -> str:
     )
 
 
+def summarize_ai_runtime(trace: dict[str, Any], records: list[dict[str, Any]]) -> None:
+    """Summarize sample-ai2 runtime records as CPU and NPU totals."""
+    header = trace.get("header", {})
+    dropped = int(header.get("dropped_count", 0))
+    if dropped:
+        print(f"warning: trace ring dropped {dropped} records")
+
+    pairs: dict[tuple[int, int, int, int], dict[str, dict[str, Any]]] = {}
+    for record in records:
+        model_id = int(record.get("model_kind_id", 0xFFFFFFFF))
+        inference_id = int(record.get("ai_runtime_inference_id", -1))
+        lane_id = int(record.get("ai_runtime_lane_id", -1))
+        step_id = int(record.get("ai_runtime_step_id", -1))
+        pairs.setdefault((model_id, inference_id, lane_id, step_id), {})[
+            "begin" if record.get("ai_runtime_begin") else "end"
+        ] = record
+
+    per_inference: dict[tuple[int, int], dict[str, int]] = {}
+    for (model_id, inference_id, lane_id, _), pair in pairs.items():
+        end = pair.get("end")
+        if end is None:
+            continue
+        begin = pair.get("begin")
+        if begin is not None:
+            elapsed = max(
+                0,
+                int(end.get("timestamp_ms", 0)) -
+                int(begin.get("timestamp_ms", 0)),
+            )
+        else:
+            elapsed = end.get("npu_elapsed_ms")
+            if elapsed is None:
+                elapsed = end.get("elapsed_ms", 0)
+        lane = "npu" if lane_id == 1 else "cpu" if lane_id in (0, 2) else None
+        if lane is None:
+            continue
+        totals = per_inference.setdefault(
+            (model_id, inference_id), {"cpu": 0, "npu": 0}
+        )
+        totals[lane] += int(elapsed or 0)
+
+    groups: dict[tuple[int, str], list[int]] = {}
+    for (model_id, _), totals in per_inference.items():
+        for lane, elapsed in totals.items():
+            if elapsed > 0:
+                groups.setdefault((model_id, lane), []).append(elapsed)
+
+    print(f"ai_runtime CPU/NPU inference records: {len(per_inference)}")
+    for (model_id, lane), values in sorted(groups.items()):
+        print(
+            f"  {model_name(model_id)} {lane.upper()} "
+            f"n={len(values)} median={statistics.median(values):.1f} ms "
+            f"p95={percentile(values, 0.95):.1f} ms max={max(values)} ms"
+        )
+
+
 def summarize(trace: dict[str, Any], top: int, cpu_hz: float | None) -> None:
-    records = [record for record in trace.get("records", [])
+    all_records = trace.get("records", [])
+    records = [record for record in all_records
                if record.get("type") == "npu_epoch"]
     if not records:
-        raise ValueError("trace contains no npu_epoch records; use firmware with epoch profiling")
+        runtime_records = [record for record in all_records
+                           if record.get("type") == "ai_runtime_step"]
+        if runtime_records:
+            summarize_ai_runtime(trace, runtime_records)
+            return
+        raise ValueError("trace contains no npu_epoch or ai_runtime_step records")
 
     header = trace.get("header", {})
     dropped = int(header.get("dropped_count", 0))

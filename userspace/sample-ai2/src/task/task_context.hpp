@@ -12,7 +12,9 @@
 #include "driver/nor_driver/nor_driver.hpp"
 #include "driver/psram_driver/psram_driver.hpp"
 #include "driver/rif_driver/rif_driver.hpp"
-#include "memory_allocator/memory_allocator.hpp"
+#include "application/pipeline/frame_types.hpp"
+#include "memory_manager/memory_manager.hpp"
+#include "models/inference_result_types.hpp"
 
 namespace uai::ai::task {
 
@@ -73,11 +75,11 @@ inline constexpr SZ kPipelineTaskStackSize = 16U * 1024U;
 inline constexpr SZ kPipelinePostprocessTaskStackSize = 16U * 1024U;
 
 struct InferenceMessage {
-    memory_allocator::InferenceFrame frame{};
+    pipeline::InferenceFrame frame{};
 };
 
 struct BoxMessage {
-    memory_allocator::BoxSet boxes{};
+    inference::BoxSet boxes{};
 };
 
 /* Owns all application-wide resources shared by the task objects. The
@@ -85,6 +87,8 @@ struct BoxMessage {
  * tasks no longer depend on unrelated linker-visible global variables. */
 class TaskContext final {
 public:
+    TaskContext();
+
     [[noreturn]] void Halt(const char *message);
     bool IsBestEffort(common::ErrorCode code) const;
     std::uint32_t Now() const;
@@ -99,11 +103,11 @@ public:
     void StartNpuTask(FP entry);
     void StartPostprocessTask(FP entry);
 
-    bool DrainLatestBoxes(memory_allocator::BoxSet *active);
-    void SendLatestBoxes(const memory_allocator::BoxSet &boxes);
-    void SendInferenceFrame(const memory_allocator::InferenceFrame &frame);
+    bool DrainLatestBoxes(inference::BoxSet *active);
+    void SendLatestBoxes(const inference::BoxSet &boxes);
+    void SendInferenceFrame(const pipeline::InferenceFrame &frame);
 
-    memory_allocator::MemoryAllocator memory;
+    memory_manager::MemoryManager memory;
     uai::ai::cache::CacheDriver cache;
     uai::ai::psram::PsramDriver psram;
     uai::ai::nor::NorDriver nor;
@@ -114,6 +118,7 @@ public:
     volatile std::uint32_t app_stage;
     volatile bool external_nor_ready;
     ID external_memory_ready;
+    ID pipeline_work_ready;
     ID frame_queue;
     ID box_queue;
     DiagnosticsConfig diagnostics;

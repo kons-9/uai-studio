@@ -6,7 +6,9 @@
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
-#include "memory_allocator/memory_allocator.hpp"
+#include "application/pipeline/image_format.hpp"
+#include "middleware/memory/buffer_types.hpp"
+#include "memory_manager/memory_config.hpp"
 
 namespace uai::ai::models::person {
 
@@ -14,8 +16,8 @@ namespace {
 
 constexpr std::uint32_t kMaxPostprocessDetections = 100U;
 constexpr std::size_t kMaxModelOutputs =
-    memory_allocator::kConfig.model_output_bytes.size();
-constexpr std::size_t kMaxDecodedDetections = memory_allocator::kConfig.max_boxes;
+    memory_manager::kMemoryConfig.model_output_bytes.size();
+constexpr std::size_t kMaxDecodedDetections = inference::kMaxBoxes;
 
 struct ModelOutputView {
     const void *tensors[kMaxModelOutputs]{};
@@ -279,7 +281,7 @@ std::int16_t ClampBoxCoordinate(float value, std::int32_t limit)
 }
 
 common::Error ConvertResult(const ModelResult &source,
-                            memory_allocator::BoxSet *destination)
+                            inference::BoxSet *destination)
 {
     if (destination == nullptr) {
         return {common::ErrorCode::kInvalidArgument, 0U,
@@ -291,19 +293,19 @@ common::Error ConvertResult(const ModelResult &source,
 
     destination->person = {};
     destination->person.count = source.detection_count <
-                                        memory_allocator::kConfig.max_boxes
+                                        inference::kMaxBoxes
                                     ? source.detection_count
-                                    : memory_allocator::kConfig.max_boxes;
+                                    : inference::kMaxBoxes;
     for (std::uint32_t i = 0U; i < destination->person.count; ++i) {
         const Detection &detection = source.detections[i];
         destination->person.boxes[i].x = ClampBoxCoordinate(
-            detection.x, memory_allocator::kConfig.frame_width);
+            detection.x, pipeline::kCaptureFormat.width);
         destination->person.boxes[i].y = ClampBoxCoordinate(
-            detection.y, memory_allocator::kConfig.frame_height);
+            detection.y, pipeline::kCaptureFormat.height);
         destination->person.boxes[i].width = ClampBoxCoordinate(
-            detection.width, memory_allocator::kConfig.frame_width);
+            detection.width, pipeline::kCaptureFormat.width);
         destination->person.boxes[i].height = ClampBoxCoordinate(
-            detection.height, memory_allocator::kConfig.frame_height);
+            detection.height, pipeline::kCaptureFormat.height);
         destination->person.boxes[i].confidence = detection.confidence;
     }
     destination->person_valid = true;
@@ -319,7 +321,7 @@ common::Error Future::ConfigureDecoder(const stai_network_info &info)
 }
 
 void Future::Reset(const FutureContext &context,
-                   const memory_allocator::InferenceFrame &frame)
+                   const pipeline::InferenceFrame &frame)
 {
     context_ = context;
     frame_ = frame;
@@ -418,7 +420,7 @@ common::Error Future::Infer()
         context_.info->inputs[0].size_bytes);
     if (!result.Ok()) return result.error;
 
-    stai_ptr outputs[memory_allocator::kConfig.model_output_bytes.size()]{};
+    stai_ptr outputs[memory_manager::kMemoryConfig.model_output_bytes.size()]{};
     for (std::uint16_t i = 0U; i < context_.info->n_outputs; ++i) {
         const auto &output = frame_.outputs[i];
         if (!output || output.size < context_.info->outputs[i].size_bytes ||
@@ -473,21 +475,21 @@ common::Error Future::Postprocess()
 
     InferenceGeometry geometry{};
     geometry.projection = InputProjection::kLetterboxed;
-    geometry.frame_width = memory_allocator::kConfig.frame_width;
-    geometry.frame_height = memory_allocator::kConfig.frame_height;
+    geometry.frame_width = pipeline::kCaptureFormat.width;
+    geometry.frame_height = pipeline::kCaptureFormat.height;
     geometry.model_width = kInputWidth;
     geometry.model_height = kInputHeight;
     geometry.content_height =
-        (kInputWidth * memory_allocator::kConfig.inference_source_height +
-         memory_allocator::kConfig.inference_source_width - 1U) /
-        memory_allocator::kConfig.inference_source_width;
+        (kInputWidth * pipeline::kInferenceContentFormat.height +
+         pipeline::kInferenceContentFormat.width - 1U) /
+        pipeline::kInferenceContentFormat.width;
     geometry.pad_top = (geometry.model_height - geometry.content_height) / 2U;
 
     ModelResult decoded{};
     common::Error status = DecodePerson(view, geometry, &decoded);
     if (!status.Ok()) return status;
 
-    memory_allocator::BoxSet boxes{};
+    inference::BoxSet boxes{};
     status = ConvertResult(decoded, &boxes);
     if (!status.Ok()) return status;
     context_.publish(context_.publish_context, boxes);

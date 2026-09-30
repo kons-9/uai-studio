@@ -74,6 +74,10 @@ ref/と同じく、sample-aiもPipe2のPSRAMバッファをNPUのユーザー入
 allocatorはPipe2の入力とモデル出力を1つの推論スロットとして管理します。
 各スロットは32 byte境界で、入力領域の後ろにモデル出力領域を確保します。
 推論中はスロットをNPUが所有し、NPU完了とキャッシュ無効化後に再利用します。
+バッファのサイズ・alignment・region metadataは`MemoryAllocator`が`Buffer` descriptor
+として返し、camera driver側でraw addressから再構築しません。Pipe2のISRとタスク間では
+capture sequenceに加えてslot lease tokenも照合するため、古いqueue messageが再利用済み
+slotを誤ってclaim/releaseすることを防ぎます。
 `--no-outputs-allocation` で生成したモデルはこの出力領域へ切り替わり、旧生成物は
 固定出力へフォールバックします。
 

@@ -2,7 +2,7 @@
 #define UAI_AI_CACHE_DRIVER_HPP
 
 #include "common/error.hpp"
-#include "memory_allocator/memory_allocator.hpp"
+#include "middleware/memory/buffer_types.hpp"
 
 namespace uai::ai::cache {
 

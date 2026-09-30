@@ -5,7 +5,8 @@
 
 #include "common/error.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
-#include "memory_allocator/memory_allocator.hpp"
+#include "application/pipeline/frame_types.hpp"
+#include "memory_manager/memory_manager.hpp"
 
 namespace uai::ai::camera {
 
@@ -38,19 +39,19 @@ struct Diagnostics {
  * and the backend lifecycle; sensor register details stay in registers/. */
 class CameraDriver final {
 public:
-    common::Error Initialize(memory_allocator::MemoryAllocator &memory,
+    common::Error Initialize(memory_manager::MemoryManager &memory,
                              cache::CacheDriver &cache);
     void KeepClocksOnSleep() const;
     common::Error Start();
     common::Error Stop();
     common::Error Process();
-    common::Error TakeCompletedCapture(memory_allocator::CaptureFrame *frame);
-    common::Error TakeCompletedInference(memory_allocator::InferenceFrame *frame);
-    common::Error SnapshotInferenceSource(memory_allocator::InferenceFrame *frame);
+    common::Error TakeCompletedCapture(pipeline::CaptureFrame *frame);
+    common::Error TakeCompletedInference(pipeline::InferenceFrame *frame);
+    common::Error SnapshotInferenceSource(pipeline::InferenceFrame *frame);
     Diagnostics GetDiagnostics() const;
 
 private:
-    memory_allocator::MemoryAllocator *memory_ = nullptr;
+    memory_manager::MemoryManager *memory_ = nullptr;
     cache::CacheDriver *cache_ = nullptr;
     bool initialized_ = false;
     bool started_ = false;

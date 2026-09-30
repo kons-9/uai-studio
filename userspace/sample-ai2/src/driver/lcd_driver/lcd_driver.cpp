@@ -1,5 +1,7 @@
 #include "driver/lcd_driver/lcd_driver.hpp"
 #include "common/log.hpp"
+#include "application/pipeline/image_format.hpp"
+#include "memory_manager/memory_sizes.hpp"
 
 #include <cstddef>
 #include <cstring>
@@ -20,9 +22,9 @@ constexpr std::uint16_t kSegmentationGreen = 0x07E0U;
 constexpr std::uint16_t kInferenceRegionColor = kSegmentationGreen;
 constexpr std::int32_t kLineWidth = 4;
 constexpr std::size_t kInferenceDisplaySize =
-    memory_allocator::kConfig.inference_width;
+    pipeline::kInferenceFormat.width;
 constexpr std::size_t kInferenceDisplayX =
-    (memory_allocator::kConfig.frame_width - kInferenceDisplaySize) / 2U;
+    (pipeline::kCaptureFormat.width - kInferenceDisplaySize) / 2U;
 constexpr std::uint16_t kInitialPattern[] = {
     0xFFFFU, 0xFFE0U, 0x07FFU, 0x07E0U,
     0xF81FU, 0xF800U, 0x001FU, 0x0000U,
@@ -88,7 +90,7 @@ common::Error LcdDriver::FromBackend(uai::driver::DriverStatus status,
             operation};
 }
 
-common::Error LcdDriver::Initialize(memory_allocator::MemoryAllocator &memory,
+common::Error LcdDriver::Initialize(memory_manager::MemoryManager &memory,
                              cache::CacheDriver &cache)
 {
     if (initialized_) {
@@ -112,21 +114,21 @@ void LcdDriver::KeepClocksOnSleep() const
 }
 
 void LcdDriver::FillInitialFrame(
-    const memory_allocator::DisplayBuffer &buffer,
-    const memory_allocator::BoxSet &boxes, bool coordinate_pattern)
+    const pipeline::DisplayBuffer &buffer,
+    const inference::BoxSet &boxes, bool coordinate_pattern)
 {
     auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
-    for (std::size_t y = 0U; y < memory_allocator::kConfig.frame_height; ++y) {
-        for (std::size_t x = 0U; x < memory_allocator::kConfig.frame_width; ++x) {
+    for (std::size_t y = 0U; y < pipeline::kCaptureFormat.height; ++y) {
+        for (std::size_t x = 0U; x < pipeline::kCaptureFormat.width; ++x) {
             if (coordinate_pattern) {
-                pixels[y * memory_allocator::kConfig.frame_width + x] =
+                pixels[y * pipeline::kCaptureFormat.width + x] =
                     CoordinatePatternPixel(x, y);
                 continue;
             }
             const std::size_t color =
                 x * (sizeof(kInitialPattern) / sizeof(kInitialPattern[0])) /
-                memory_allocator::kConfig.frame_width;
-            pixels[y * memory_allocator::kConfig.frame_width + x] =
+                pipeline::kCaptureFormat.width;
+            pixels[y * pipeline::kCaptureFormat.width + x] =
                 kInitialPattern[color];
         }
     }
@@ -137,37 +139,37 @@ common::Error LcdDriver::GenerateCoordinatePattern(
     const memory_allocator::Buffer &destination) const
 {
     if (!initialized_ || destination.region != memory_allocator::Region::kCapture ||
-        destination.size != memory_allocator::kConfig.frame_bytes() ||
+        destination.size != memory_manager::kCaptureBufferBytes ||
         destination.address == 0U) {
         return {common::ErrorCode::kInvalidArgument, 0U,
                 "lcd.generate_coordinate_pattern"};
     }
     auto *pixels = reinterpret_cast<std::uint16_t *>(destination.address);
-    for (std::size_t y = 0U; y < memory_allocator::kConfig.frame_height; ++y) {
-        for (std::size_t x = 0U; x < memory_allocator::kConfig.frame_width; ++x) {
-            pixels[y * memory_allocator::kConfig.frame_width + x] =
+    for (std::size_t y = 0U; y < pipeline::kCaptureFormat.height; ++y) {
+        for (std::size_t x = 0U; x < pipeline::kCaptureFormat.width; ++x) {
+            pixels[y * pipeline::kCaptureFormat.width + x] =
                 CoordinatePatternPixel(x, y);
         }
     }
     return {common::ErrorCode::kOk, 0U, "lcd.generate_coordinate_pattern"};
 }
 
-void LcdDriver::DrawBoxes(const memory_allocator::DisplayBuffer &buffer,
-                           const memory_allocator::BoxSet &boxes)
+void LcdDriver::DrawBoxes(const pipeline::DisplayBuffer &buffer,
+                           const inference::BoxSet &boxes)
 {
     auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
     const std::int32_t width =
-        static_cast<std::int32_t>(memory_allocator::kConfig.frame_width);
+        static_cast<std::int32_t>(pipeline::kCaptureFormat.width);
     const std::int32_t height =
-        static_cast<std::int32_t>(memory_allocator::kConfig.frame_height);
-    const auto draw_set = [&](const memory_allocator::DetectionSet &set,
+        static_cast<std::int32_t>(pipeline::kCaptureFormat.height);
+    const auto draw_set = [&](const inference::DetectionSet &set,
                               std::uint16_t color) {
         const std::uint32_t count =
-            set.count < memory_allocator::kConfig.max_boxes
+            set.count < inference::kMaxBoxes
                 ? set.count
-                : memory_allocator::kConfig.max_boxes;
+                : inference::kMaxBoxes;
         for (std::uint32_t i = 0U; i < count; ++i) {
-            const memory_allocator::Box &box = set.boxes[i];
+            const inference::Box &box = set.boxes[i];
             const std::int32_t left = box.x;
             const std::int32_t top = box.y;
             const std::int32_t right = left + box.width - 1;
@@ -207,13 +209,13 @@ void LcdDriver::DrawBoxes(const memory_allocator::DisplayBuffer &buffer,
 }
 
 void LcdDriver::DrawInferenceRegion(
-    const memory_allocator::DisplayBuffer &buffer)
+    const pipeline::DisplayBuffer &buffer)
 {
     (void)buffer;
 }
 
-void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
-                          const memory_allocator::BoxSet &boxes)
+void LcdDriver::DrawMask(const pipeline::DisplayBuffer &buffer,
+                          const inference::BoxSet &boxes)
 {
     if (boxes.segmentation.mask_address == 0U ||
         boxes.segmentation.mask_width == 0U ||
@@ -228,7 +230,7 @@ void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
      * the complete Pipe1 crop and letterboxes it into the square model input.
      * Scale the live 16:9 content and its padding into the model mask, which
      * may be lower resolution than the input (20x20 for segmentation). */
-    constexpr std::size_t crop_width = memory_allocator::kConfig.frame_width;
+    constexpr std::size_t crop_width = pipeline::kCaptureFormat.width;
     constexpr std::size_t crop_x = 0U;
     constexpr std::size_t kModelInputHeight = 320U;
     constexpr std::size_t kModelContentHeight = 192U;
@@ -237,9 +239,9 @@ void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
         kModelInputHeight;
     const std::size_t mask_pad_top =
         (boxes.segmentation.mask_height - mask_content_height) / 2U;
-    for (std::size_t y = 0U; y < memory_allocator::kConfig.frame_height; ++y) {
+    for (std::size_t y = 0U; y < pipeline::kCaptureFormat.height; ++y) {
         const std::size_t mask_y = mask_pad_top +
-            y * mask_content_height / memory_allocator::kConfig.frame_height;
+            y * mask_content_height / pipeline::kCaptureFormat.height;
         for (std::size_t x = 0U; x < crop_width; ++x) {
             const std::size_t mask_x =
                 x * boxes.segmentation.mask_width / crop_width;
@@ -247,7 +249,7 @@ void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
                 continue;
             }
             const std::size_t pixel_index =
-                y * memory_allocator::kConfig.frame_width + crop_x + x;
+                y * pipeline::kCaptureFormat.width + crop_x + x;
             const std::uint16_t original = pixels[pixel_index];
             const std::uint16_t red =
                 static_cast<std::uint16_t>((original >> 11U) & 0x1FU);
@@ -264,14 +266,14 @@ void LcdDriver::DrawMask(const memory_allocator::DisplayBuffer &buffer,
 }
 
 common::Error LcdDriver::ShowInitialFrame(
-    const memory_allocator::BoxSet &boxes,
+    const inference::BoxSet &boxes,
     bool coordinate_pattern)
 {
     if (!initialized_ || memory_ == nullptr) {
         return {common::ErrorCode::kNotInitialized, 0U, "lcd.show_initial"};
     }
 
-    memory_allocator::DisplayBuffer first{};
+    pipeline::DisplayBuffer first{};
     common::Error status = memory_->AcquireDisplayBuffer(&first);
     if (!status.Ok()) {
         return status;
@@ -296,7 +298,7 @@ common::Error LcdDriver::ShowInitialFrame(
 
     /* Both B surfaces start with a valid initial frame. The second one remains
      * free and will be overwritten as a whole on the first camera frame. */
-    memory_allocator::DisplayBuffer spare{};
+    pipeline::DisplayBuffer spare{};
     status = memory_->AcquireDisplayBuffer(&spare);
     if (status.Ok()) {
         FillInitialFrame(spare, boxes, coordinate_pattern);
@@ -325,8 +327,8 @@ common::Error LcdDriver::SynchronizeCurrentFrame()
 }
 
 common::Error LcdDriver::ComposeAndPresent(
-    const memory_allocator::CaptureFrame &capture,
-    const memory_allocator::BoxSet &boxes,
+    const pipeline::CaptureFrame &capture,
+    const inference::BoxSet &boxes,
     bool log_copy_crc)
 {
     if (!initialized_ || memory_ == nullptr) {
@@ -363,10 +365,10 @@ common::Error LcdDriver::ComposeAndPresent(
         capture.buffer.address);
     const std::uint32_t source_crc =
         log_copy_crc
-            ? Crc32(source_bytes, memory_allocator::kConfig.frame_bytes())
+            ? Crc32(source_bytes, memory_manager::kCaptureBufferBytes)
             : 0U;
 
-    memory_allocator::DisplayBuffer display{};
+    pipeline::DisplayBuffer display{};
     status = memory_->AcquireDisplayBuffer(&display);
     if (!status.Ok()) {
         return status;
@@ -377,7 +379,7 @@ common::Error LcdDriver::ComposeAndPresent(
     }
     std::memcpy(reinterpret_cast<void *>(display.buffer.address),
                 reinterpret_cast<const void *>(capture.buffer.address),
-                memory_allocator::kConfig.frame_bytes());
+                memory_manager::kCaptureBufferBytes);
     if (timing_diagnostics_) {
         const std::uint32_t copy_elapsed_ms = HAL_GetTick() - copy_start_tick;
         static std::uint32_t copy_window_start = 0U;
@@ -415,7 +417,7 @@ common::Error LcdDriver::ComposeAndPresent(
         log_copy_crc
             ? Crc32(reinterpret_cast<const std::uint8_t *>(
                     display.buffer.address),
-                    memory_allocator::kConfig.frame_bytes())
+                    memory_manager::kCaptureBufferBytes)
             : 0U;
     DrawMask(display, boxes);
     DrawInferenceRegion(display);
@@ -434,7 +436,7 @@ common::Error LcdDriver::ComposeAndPresent(
         }
         const std::uint32_t memory_crc = Crc32(
             reinterpret_cast<const std::uint8_t *>(display.buffer.address),
-            memory_allocator::kConfig.frame_bytes());
+            memory_manager::kCaptureBufferBytes);
         status = cache_->PrepareForPeripheralRead(display.buffer);
         if (!status.Ok()) {
             (void)memory_->ReleaseDisplayBuffer(display);
@@ -442,7 +444,7 @@ common::Error LcdDriver::ComposeAndPresent(
         }
         UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
                       "lcd: copy crc bytes=%u source=%x copied=%x psram=%x\n"),
-                  static_cast<unsigned int>(memory_allocator::kConfig.frame_bytes()),
+                  static_cast<unsigned int>(memory_manager::kCaptureBufferBytes),
                   static_cast<unsigned int>(source_crc),
                   static_cast<unsigned int>(copied_crc),
                   static_cast<unsigned int>(memory_crc));
@@ -457,13 +459,13 @@ common::Error LcdDriver::ComposeAndPresent(
 }
 
 common::Error LcdDriver::ComposeInferenceAndPresent(
-    const memory_allocator::InferenceFrame &frame)
+    const pipeline::InferenceFrame &frame)
 {
     if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
         return {common::ErrorCode::kNotInitialized, 0U, "lcd.compose_inference"};
     }
     if (!frame || !frame.from_pipe2 ||
-        frame.buffer.size < memory_allocator::kConfig.inference_frame_bytes()) {
+        frame.buffer.size < memory_manager::kInferenceFrameBytes) {
         return {common::ErrorCode::kInvalidArgument, 0U, "lcd.compose_inference"};
     }
 
@@ -482,14 +484,14 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
     }
 
     const memory_allocator::Buffer input_buffer{
-        frame.buffer.address, memory_allocator::kConfig.inference_frame_bytes(),
+        frame.buffer.address, memory_manager::kInferenceFrameBytes,
         frame.buffer.index, memory_allocator::Region::kInference};
     status = cache_->PrepareForCpuRead(input_buffer);
     if (!status.Ok()) {
         return status;
     }
 
-    memory_allocator::DisplayBuffer display{};
+    pipeline::DisplayBuffer display{};
     status = memory_->AcquireDisplayBuffer(&display);
     if (!status.Ok()) {
         return status;
@@ -499,21 +501,21 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
         frame.buffer.address);
     auto *destination = reinterpret_cast<std::uint16_t *>(
         display.buffer.address);
-    for (std::size_t y = 0U; y < memory_allocator::kConfig.frame_height; ++y) {
-        for (std::size_t x = 0U; x < memory_allocator::kConfig.frame_width; ++x) {
-            destination[y * memory_allocator::kConfig.frame_width + x] = 0U;
+    for (std::size_t y = 0U; y < pipeline::kCaptureFormat.height; ++y) {
+        for (std::size_t x = 0U; x < pipeline::kCaptureFormat.width; ++x) {
+            destination[y * pipeline::kCaptureFormat.width + x] = 0U;
         }
     }
     for (std::size_t y = 0U; y < kInferenceDisplaySize; ++y) {
         const std::size_t source_y =
-            y * memory_allocator::kConfig.inference_height /
+            y * pipeline::kInferenceFormat.height /
             kInferenceDisplaySize;
         for (std::size_t x = 0U; x < kInferenceDisplaySize; ++x) {
             const std::size_t source_x =
-            x * memory_allocator::kConfig.inference_width /
+            x * pipeline::kInferenceFormat.width /
             kInferenceDisplaySize;
             const std::size_t source_index =
-                (source_y * memory_allocator::kConfig.inference_width +
+                (source_y * pipeline::kInferenceFormat.width +
                  source_x) * 3U;
             const std::uint16_t red =
                 static_cast<std::uint16_t>(source[source_index] >> 3U);
@@ -521,7 +523,7 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
                 static_cast<std::uint16_t>(source[source_index + 1U] >> 2U);
             const std::uint16_t blue =
                 static_cast<std::uint16_t>(source[source_index + 2U] >> 3U);
-            destination[y * memory_allocator::kConfig.frame_width +
+            destination[y * pipeline::kCaptureFormat.width +
                         kInferenceDisplayX + x] =
                 static_cast<std::uint16_t>((red << 11U) | (green << 5U) |
                                             blue);

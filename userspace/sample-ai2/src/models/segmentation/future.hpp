@@ -6,7 +6,9 @@
 #include <cstdint>
 
 #include "middleware/ai_runtime/pipeline_types.hpp"
-#include "memory_allocator/memory_allocator.hpp"
+#include "application/pipeline/frame_types.hpp"
+#include "middleware/memory/buffer_types.hpp"
+#include "models/inference_result_types.hpp"
 #include "stai.h"
 
 namespace uai::ai::cache {
@@ -20,7 +22,7 @@ class NpuNetwork;
 
 namespace uai::ai::models::segmentation {
 
-using PublishCallback = void (*)(void *, const memory_allocator::BoxSet &);
+using PublishCallback = void (*)(void *, const inference::BoxSet &);
 
 struct FutureContext {
     npu::NpuDriver *npu = nullptr;
@@ -51,10 +53,10 @@ public:
     static common::Error ConfigureDecoder(const stai_network_info &info);
 
     void Reset(const FutureContext &context,
-               const memory_allocator::InferenceFrame &frame);
+               const pipeline::InferenceFrame &frame);
     bool TryClaim();
     void ReleaseClaim();
-    const memory_allocator::InferenceFrame &frame() const { return frame_; }
+    const pipeline::InferenceFrame &frame() const { return frame_; }
 
     ai_runtime::AiModelId model_id() const override;
     std::uint32_t step_id() const override;
@@ -67,7 +69,7 @@ private:
     common::Error Postprocess();
 
     FutureContext context_{};
-    memory_allocator::InferenceFrame frame_{};
+    pipeline::InferenceFrame frame_{};
     Phase phase_ = Phase::kPreprocess;
     std::atomic<bool> occupied_{false};
     std::uint8_t mask_buffer_index_ = 0U;

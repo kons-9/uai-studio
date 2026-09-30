@@ -109,7 +109,7 @@ public:
     Status NewInference();
     Status Shutdown();
 
-    /* Install the low-overhead sink used by ThreadMonitor.  The generated
+    /* Install the low-overhead sink used by the NPU task monitor. The generated
      * model callback is registered internally for every loaded model. */
     void SetEpochTraceObserver(EpochTraceObserver observer, void *context)
     {

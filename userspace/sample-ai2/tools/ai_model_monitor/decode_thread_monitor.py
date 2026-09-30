@@ -59,7 +59,7 @@ def signed32(value: int) -> int:
 def record_type_name(value: int) -> str:
     return {1: "sample", 2: "fault", 3: "npu_execution",
             4: "inference_phase", 5: "npu_epoch",
-            6: "pipeline_stage"}.get(
+            6: "pipeline_stage", 7: "ai_runtime_step"}.get(
         value, "unknown"
     )
 
@@ -149,6 +149,16 @@ def decode(path: Path) -> dict:
             "pipeline_stage_id": (phase_id if record_type == 6 else None),
             "pipeline_stage": (PIPELINE_STAGE_NAMES.get(
                 phase_id, f"stage={phase_id}") if record_type == 6 else None),
+            "ai_runtime_inference_id": (task_state
+                                         if record_type == 7 else None),
+            "ai_runtime_lane_id": (wait_factor if record_type == 7 else None),
+            "ai_runtime_step_id": (wait_object_id if record_type == 7 else None),
+            "ai_runtime_lane": ({0: "preprocess_cpu", 1: "npu",
+                                 2: "postprocess_cpu"}.get(
+                                     wait_factor, f"lane={wait_factor}")
+                                if record_type == 7 else None),
+            "ai_runtime_begin": (bool(flags & (1 << 4))
+                                 if record_type == 7 else None),
             "cycle_end": (progress_tick if record_type == 5 else None),
             "cycle_elapsed": (npu_elapsed_ms if record_type == 5 else None),
             "cycle_start": ((progress_tick - npu_elapsed_ms) & 0xFFFFFFFF

@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "middleware/ai_runtime/pipeline_types.hpp"
+#include "middleware/ai_model_monitor/ai_model_monitor.hpp"
 
 namespace uai::ai::ai_runtime {
 
@@ -17,14 +18,19 @@ public:
     static constexpr std::size_t kCapacity = 8U;
     using DoneCallback = void (*)(void *, AiFuture &, common::Error);
     using TraceCallback = void (*)(void *, const StepTrace &);
+    using WakeCallback = void (*)(void *, ExecutionContext);
     using Clock = std::uint32_t (*)(void *);
     using CriticalSection = void (*)(void *);
 
     void SetObserver(DoneCallback callback, void *context);
     void SetTrace(TraceCallback callback, void *context, Clock clock,
                   void *clock_context);
+    void SetWakeCallback(WakeCallback callback, void *context);
     void SetCriticalSection(CriticalSection enter, CriticalSection exit,
                             void *context);
+    /* Called by the NPU lane after it enters its RTOS task. The monitor uses
+     * that task as the owner for periodic state samples. */
+    common::Error StartAiModelMonitor();
     common::Error Submit(AiFuture &future);
     /* Events belong to a specific future, not to every NPU waiter. */
     common::Error Signal(AiFuture &future, WaitBitFlag flags);
@@ -63,6 +69,7 @@ private:
     static std::size_t LaneIndex(ExecutionContext lane);
     static bool Satisfied(const Slot &slot);
     void Enqueue(std::size_t index, ExecutionContext lane);
+    void Wake(ExecutionContext lane) const;
 
     Slot slots_[kCapacity]{};
     Queue queues_[3]{};
@@ -71,11 +78,14 @@ private:
     void *done_context_ = nullptr;
     TraceCallback trace_ = nullptr;
     void *trace_context_ = nullptr;
+    WakeCallback wake_ = nullptr;
+    void *wake_context_ = nullptr;
     Clock clock_ = nullptr;
     void *clock_context_ = nullptr;
     CriticalSection enter_ = nullptr;
     CriticalSection exit_ = nullptr;
     void *lock_context_ = nullptr;
+    middleware::ai_model_monitor::AiModelMonitor ai_model_monitor_{};
 };
 
 } // namespace uai::ai::ai_runtime

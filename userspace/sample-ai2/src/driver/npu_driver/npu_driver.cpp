@@ -637,6 +637,10 @@ Status NpuDriver::WaitRun(RunProgressCallback progress,
             if (!status.Ok()) {
                 return status;
             }
+            /* An inference may contain many short IRQ-driven epochs. Give a
+             * queued CPU preprocess worker one scheduling turn between
+             * epochs, while keeping the NPU protocol in this single worker. */
+            (void)tk_rot_rdq(TPRI_RUN);
         }
         status = ContinueRun();
         if (!status.Ok()) {

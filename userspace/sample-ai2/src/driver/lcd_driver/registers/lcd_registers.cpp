@@ -1,6 +1,6 @@
 #include "driver/lcd_driver/registers/lcd_registers.hpp"
 
-#include "static_memory_layout/static_memory_layout.hpp"
+#include "memory_manager/static_memory_layout.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
@@ -31,7 +31,7 @@ uai::driver::DriverStatus LcdRegisterLayer::Initialize()
 
     BSP_LCD_LayerConfig_t layer{};
     layer.Address = static_cast<std::uint32_t>(
-        static_memory_layout::kLayout.Get(StaticMemoryKey::kDisplay0)
+        static_memory_layout::GetRegion(StaticMemoryKey::kDisplay0)
             .address());
     layer.PixelFormat = LCD_PIXEL_FORMAT_RGB565;
     layer.X0 = 0U;

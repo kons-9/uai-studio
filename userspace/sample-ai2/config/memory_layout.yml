@@ -1,10 +1,11 @@
 # One source of truth for the fixed sample-ai2 memory map.
 #
-# The generator emits both static_memory_layout.hpp and the reservation part
-# of the linker script.  Values may be written as hexadecimal bytes or with
-# K/M/G suffixes.  The same schema is accepted as JSON or TOML.
+# The generator emits the raw static-memory key/layout headers and the
+# reservation part of the linker script. Values may be written as hexadecimal
+# bytes or with K/M/G suffixes. The same schema is accepted as JSON or TOML.
 schema_version: 1
 header_guard: UAI_AI_STATIC_MEMORY_LAYOUT_HPP
+raw_header_guard: UAI_AI_STATIC_MEMORY_LAYOUT_RAW_HPP
 cpp_namespace: uai::ai::static_memory_layout
 symbol_prefix: sample_ai
 
