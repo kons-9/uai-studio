@@ -1,0 +1,35 @@
+site_name: μAI-Studio
+site_description: μT-Kernel 3.0向けエッジAI開発環境
+site_author: Toshiki Goto
+site_url: https://kons-9.github.io/uai-studio/
+repo_url: https://github.com/kons-9/uai-studio
+repo_name: kons-9/uai-studio
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Toshiki Goto
+
+docs_dir: docs
+site_dir: site
+
+nav:
+  - ホーム: index.md
+  - 紹介スライド: https://kons-9.github.io/uai-studio/introduction.html
+  - カーネルとビルド構成: kernel.md
+  - ドライバー: driver.md
+  - ミドルウェア: middleware.md
+
+theme:
+  name: material
+  language: ja
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
