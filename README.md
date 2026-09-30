@@ -1,166 +1,162 @@
-# μAI-Studio
+# μAI-Studio: ai-app
 
-STM32N6570-DK上でµT-Kernel 3.0のサンプル群を動かすためのプロジェクトです。
-ネイティブLinuxからST-LINK経由でRAMへロードし、T-MonitorのUSART1へ出力します。
+STM32N6570-DKのカメラ映像をLCDへ表示しながら、Neural-ART NPUで推論するµT-Kernel 3.0アプリです。このREADMEでは、クリーンなLinux環境の準備からビルド、RAM実行までを説明します。
 
-## 環境構築
+- カメラのPipe1でLCD表示用フレームを取得します。
+- Pipe2でNPU推論用のフレームを取得します。
+- person、face、segmentationの3モデルを使います。
+- アプリ本体はRAMへロードして起動します。モデルの重みとcommand blobは外部NOR Flashに置きます。
 
-### 必須ツール
+## 必要な機材とソフトウェア
 
-ネイティブLinuxに、ビルドツール、ARM GCCツールチェーン、シリアル端末を
-インストールします。
+### 機材
+
+- STM32N6570-DK
+- ST-LINK USB接続
+- カメラモジュールとLCD
+- UARTログを見るためのLinuxホスト
+
+本プロジェクトの書き込み手順はネイティブLinuxを前提にしています。USBパススルーを使うWSL環境ではなく、ボードを直接認識するLinuxで実行してください。
+
+### Linuxパッケージ
+
+Ubuntu系Linuxでは次をインストールします。
 
 ```sh
-sudo apt install build-essential cmake git minicom \
+sudo apt update
+sudo apt install build-essential cmake git python3 minicom \
   gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi
 ```
 
-別途、STM32CubeProgrammer CLIをインストールしてください。STM32CubeIDEに
-同梱されたCLIも使用できます。CLIの`tools`ディレクトリを
-`config/local.mk`の`STM32_PROGRAMMER_ROOT`に設定します。
+### STの開発ツール
 
-ホスト固有の設定は、テンプレートから作成します。
+次のツールを別途インストールします。
 
-```sh
-cp config/local.mk.example config/local.mk
-```
+1. **STM32CubeMX 6.x** — `userspace/ai-app/config/stm32n6570-dk-ai-app.ioc`からHAL・BSP・FSBL用ソースを生成します。STM32N6用の従来版CubeMXを使ってください。CubeMX2は対象外です。
+2. **STM32CubeN6 Firmware Package** — N6のHAL、CMSIS、BSPヘッダーとソースを提供します。ai-appは`STM32CUBE_N6_DIR`に指定したパッケージを参照します。
+3. **STEdgeAI 4.0** — `stedgeai`モデル生成CLIとNeural-ARTランタイムを提供します。モデル生成コードとランタイムの`ll_aton`バージョンを一致させてください。ランタイムのライブラリはリポジトリに含まれません。
+4. **STM32CubeProgrammer** — RAMロード用の`STM32_Programmer_CLI`を使います。外部NORへ書く場合はSTM32N6570-DK用External Loaderも必要です。永続Flash起動用イメージを作る場合は`STM32_SigningTool_CLI`も必要です。
 
-`config/local.mk`には、少なくとも次を設定します。
+標準的なインストール先以外に配置した場合は、次節の`config/local.mk`に実際のパスを設定します。
 
-- `STM32_PROGRAMMER_ROOT`: CubeProgrammer CLIの`tools`ディレクトリ
-- `STM32_PROGRAM_SERIAL`: 対象ST-LINKのシリアル番号
-- `UART_DEVICE`: ボードの仮想COMポート
+## 初回セットアップ
 
-`config/local.mk`はホスト固有のファイルなので、コミットしません。
-
-各アプリケーションの`Makefile`がCMakeを呼び出す入口です。ルートにMakefileは置かず、
-対象アプリケーションのディレクトリを指定して実行します。CubeMX/CubeProgrammerの設定、
-ツール検出、引数検証、実行コマンドはCMake側で管理します。
-
-Makefile内部のパスはMakefile自身の場所から解決するため、カレントディレクトリには
-依存しません。リポジトリルートからは`make -C userspace/<application> ...`、別の場所からは
-アプリケーションのMakefileを絶対パスで指定します。
+リポジトリをサブモジュール込みで取得します。すでにclone済みなら、サブモジュールを初期化します。
 
 ```sh
-make -f /path/to/uai-studio/userspace/ai-app/Makefile build
+git clone --recurse-submodules https://github.com/kons-9/uai-studio.git
+cd uai-studio
+
+# 既存checkoutの場合はこちら
+git submodule update --init --recursive
 ```
 
-experiment-aiでは、モデルの取得・生成からAIデータの外部Flash書き込み、RAM実行までを
-Makefileから実行できます。
-
-## ビルドとRAM実行
+ホスト固有設定ファイルを用意します。すでに`config/local.mk`がある場合はそのまま編集してください。
 
 ```sh
-make -C userspace/experiment-hello-world generate       # 初回またはIOC変更後
-make -C userspace/experiment-hello-world build
-make -C userspace/experiment-hello-world attach
+test -f config/local.mk || cp config/local.mk.example config/local.mk
 ```
 
-experiment-aiを初めて構築する場合は、次の一連の初期化を実行します。
-
-```sh
-make -C userspace/experiment-ai setup          # 依存関係、3モデル取得/生成、CubeMX、CMake
-make -C userspace/experiment-ai build
-```
-
-`make -C userspace/experiment-ai setup` はCubeMXのコード生成も行うため、CubeMXを起動できるGUI環境で実行してください。
-ヘッドレス環境では、CubeMX生成済みの状態で`make -C userspace/experiment-ai ai-deps`、
-`make -C userspace/experiment-ai ai-models`、`make -C userspace/experiment-ai configure`、
-`make -C userspace/experiment-ai build`を個別に実行できます。
-
-端末を先に開きます。`UART_DEVICE`と`UART_BAUD`は`config/local.mk`で変更できます。
-デフォルト設定は115200 bps、8N1、フロー制御なしです。
-
-```sh
-make -C userspace/experiment-ai monitor
-```
-
-別の端末からRAMへロードして実行します。
-
-```sh
-make -C userspace/experiment-ai ram-run
-```
-
-experiment-aiのモデル重みとcommand blobを外部Flashへ書き込む場合は、RAM実行前に
-`make -C userspace/experiment-ai ai-load`を実行します。UARTモニタは別端末で先に起動してください。
-
-```sh
-make -C userspace/experiment-ai monitor        # 別端末
-make -C userspace/experiment-ai ai-load        # AI重み + command blob
-make -C userspace/experiment-ai ram-load       # RAMへアプリをロードして実行
-```
-
-`make -C userspace/experiment-ai ai-run`は`ai-load`と`ram-load`を連続して実行します。AIモデルの取得だけを
-行う場合は`make -C userspace/experiment-ai ai-models`、通常のアプリケーションビルドだけなら
-`make -C userspace/experiment-ai build`を使用します。
-
-成功すると、T-Monitorの起動メッセージに続いて次の出力が表示されます。
-
-```text
-Hello from uai-studio / STM32N6570-DK
-```
-
-RAMロード先や実行開始アドレスは`config/local.mk.example`に定義しています。
-RAM実行はネイティブLinux上のSTM32CubeProgrammer CLIで行います。
-WSLやUSB/IPは使用しません。
-
-## CubeMXコード生成
-
-このプロジェクトのSTM32N657向け設定は、従来版STM32CubeMX 6.xの`.ioc`形式です。
-STM32CubeMX2はSTM32C5などのHAL2系向けであり、N657には使用しません。
-
-コード生成には、ST公式のスタンドアロン版STM32CubeMX 6.x Linux版を
-インストールしてください。CubeIDEの`headless-build.sh`やSTM32CubeMX2は、
-このSTM32N6向けの生成には使用しません。CubeMXは初回生成時にIOCが指定する
-STM32Cube FW_N6を取得します。
-
-`config/local.mk`で`CUBEMX_EXECUTABLE`にCubeMX本体を指定し、実行します。
+`config/local.mk`で、インストール先と接続するボードに合わせて設定します。
 
 ```make
-CUBEMX_EXECUTABLE ?= /path/to/STM32CubeMX
+STM32_PROGRAMMER_ROOT = /path/to/STM32CubeProgrammer/tools
+STM32_PROGRAM_SERIAL = <ST-LINK serial number>
+STM32CUBE_N6_DIR = /path/to/STM32Cube_FW_N6_V1.3.0
+STEDGEAI_LIB_DIR = /path/to/STEdgeAI/4.0/Middlewares/ST/AI
+STEDGEAI_BIN = /path/to/STEdgeAI/4.0/Utilities/linux
+CUBEMX_EXECUTABLE = /path/to/STM32CubeMX
+UART_DEVICE = auto
+UART_BAUD = 115200
 ```
+
+`STM32_PROGRAMMER_ROOT`はSTM32CubeProgrammerの`tools`ディレクトリを指定します。`STM32_PROGRAM_SERIAL`を設定すると、書き込み先を特定し、`UART_DEVICE = auto`が同じST-LINKの仮想COMポートを選びます。シリアル番号を使わない場合や複数の仮想COMポートがある場合は、`UART_DEVICE`に`/dev/ttyACM0`などを明示してください。UARTは115200 bps、8N1、フロー制御なしです。
+
+`STM32CUBE_N6_DIR`は`Drivers/`を含むSTM32CubeN6パッケージのルートです。`STEDGEAI_LIB_DIR`は`Inc/`、`Npu/`、`Lib/`を含む`Middlewares/ST/AI`ディレクトリです。`STEDGEAI_BIN`は`stedgeai`実行ファイルがあるディレクトリです。一般的な`/opt/ST/STEdgeAI/4.0`へのインストールは自動検出されます。
+
+## セットアップ、ビルド、RAM実行
+
+リポジトリルートから、ai-appのMakefileを指定して操作します。
 
 ```sh
-make -C userspace/experiment-hello-world generate
+make -C userspace/ai-app setup
+make -C userspace/ai-app build
 ```
 
-生成物は各アプリケーションのビルドディレクトリ（例: `build-experiment-hello-world/cubemx/FSBL`、
-`Drivers`、`Middlewares`）に出力されます。
-これらは生成物としてGit管理しないため、初回checkout後は対象アプリケーションの
-`make -C userspace/<application> generate`が必要です。
-生成後は、生成FSBLのSecure `SystemInit`、クロック、GPIO、USART1初期化、startupを
-プロジェクト側の`kernel/pre_kernel/stm32n6570-dk`がリンクし、同ディレクトリの
-board adapterからµT-Kernelを起動します。生成ファイル自体は編集しません。
+初回の`setup`は、依存パスを確認し、person・face・segmentationのモデルデータを取得してNeural-ARTコードを生成し、CubeMXソースを生成してCMakeを構成します。生成物とビルド結果はローカルに作られ、Gitには登録されません。初回はモデル取得とCubeMX生成に時間がかかります。
 
-生成後のビルドとRAM実行は次のとおりです。
+モデルファイルはSTMicroelectronicsの各公式モデルリポジトリから取得します。ホストからダウンロードできない場合は、モデルを`userspace/ai-app/models/source/<model>/`へ置いてから`setup`を実行するか、[モデルの説明](userspace/ai-app/models/README.md)にある手動生成手順を使ってください。モデルの配布条件も同ページを確認してください。
+
+### UARTを起動してからRAMへロード
+
+まずUARTモニタを起動します。UARTを開いた端末は実行確認が終わるまで開いたままにします。
 
 ```sh
-make -C userspace/experiment-hello-world build
-make -C userspace/experiment-hello-world attach
-make -C userspace/experiment-hello-world ram-run
+make -C userspace/ai-app monitor
 ```
 
-## 実機の動作状況
+別の端末でアプリをRAMへロードし、実行します。
 
-2026-09-30にSTM32N6570-DKで`ram-run`し、UART出力を確認した結果です。
+```sh
+make -C userspace/ai-app ram-run
+```
 
-### 動作確認済み
+`ram-run`はアプリのビルド後、STM32CubeProgrammer CLIでバイナリをRAMアドレス`0x34000400`へ転送し、指定されたスタックと実行アドレスでCPUを再開します。これはアプリ本体を外部NORへ保存する操作ではありません。リセットや電源断後は、再度`ram-run`が必要です。
 
-- `experiment-hello-world`: `ram-run`後にUARTへ`Hello from uai-studio / STM32N6570-DK`を出力。
-- `experiment-camera-lcd`: UARTに`camera_lcd: camera preview started`を出力。
-- `experiment-camera-pipe2`: UARTに`camera_pipe2: preview started`を出力し、Pipe1 VSYNCとPipe2 frameのカウンタがともに増加。
-- `experiment-ai`: Pipe1/2の開始を出力し、AIモデル推論が完了。UARTの推論統計は約7 completed/s。
-- `ai-app`: Pipe1/2の開始を出力し、人物・顔・セグメンテーション推論が完了。Pipe2 frameカウンタも増加。
+ai-appはモデルの重みとcommand blobを外部NORから読みます。ボードに今回のビルドと一致するモデルデータがすでにある場合は、そのまま`ram-run`できます。モデルデータがない、または更新が必要な場合は、UARTを先に起動した状態で次を実行してから`ram-run`してください。
 
-AIアプリは今回`ram-run`のみで確認し、モデルデータはボード上の既存データを使用しました。AIデータのFlash書き込みは行っていません。
+```sh
+make -C userspace/ai-app ai-load
+make -C userspace/ai-app ram-run
+```
 
-### 動作しない
+`ai-load`は外部NORのモデル領域へ重みとcommand blobを書き込みます。アプリ本体やFSBLは書き込みません。モデルデータは電源を切っても残ります。`ai-run`は`ai-load`の後にRAM実行する短縮コマンドです。
 
-- なし。以前の`experiment-camera-pipe2`のBusFault版は削除し、Pipe1/2の連続動作を確認した実装へ置き換えました。
+### 起動確認
+
+UARTにµT-Kernelとアプリの起動ログが出て、次のような行が続くことを確認します。
+
+```text
+ai: model registered=person
+ai: model registered=face
+ai: model registered=segmentation
+ai: 3-model pipeline enabled (person/face/segmentation)
+```
+
+その後、LCDにカメラ映像が表示され、UARTのモデル統計で`capture`と`pipe2`のフレーム数、各モデルの推論完了数が増えていくことを確認します。ログの表示間隔や詳細度は診断設定によって変わります。LCDの表示確認も行ってください。
+
+`camera: no frame for 5000 ms`が繰り返され、`vsync=0`と`pipe2=0`のままなら、カメラからのフレーム取得が始まっていません。カメラモジュールと接続を確認し、同じログに出るCSI/DCMIPPエラーを切り分けてください。モデルの`ai-load`はカメラ入力の問題を解決しません。
+
+## 以降の開発サイクル
+
+ソースを変更した後は、ビルドとRAM実行を繰り返します。設定やCubeMXのIOCを変更した場合は`setup`も再実行してください。
+
+```sh
+make -C userspace/ai-app build
+make -C userspace/ai-app ram-run
+```
+
+ホスト固有の設定を変えずに使うコマンドは、`make -C userspace/ai-app help`で確認できます。
+
+## おまけ: 外部Flashから起動する場合
+
+RAM実行ではアプリ本体を揮発性RAMへ転送します。Flash起動では、FSBL、署名済みアプリ、モデル重み、command blobを外部NORへ保存し、ボードのリセット後にFSBLからアプリを起動します。アプリのRAM転送後も外部NORをモデルデータ置き場として使う点は共通です。
+
+Flash起動には、STM32CubeProgrammer CLI、STM32N6570-DK用External Loader、`STM32_SigningTool_CLI`が必要です。Signing ToolがPATHにない場合は`config/local.mk`の`STM32_SIGNING_TOOL_CLI`で実行ファイルを指定してください。ボードのBOOT0とBOOT1をLOWにします。
+
+UARTモニタを別端末で先に起動したうえで、次を実行します。
+
+```sh
+make -C userspace/ai-app program
+```
+
+`program`（同義の`flash`ターゲットもあります）は署名済みLRUNアプリイメージを生成し、External Loader経由でFSBL、アプリ、3モデル分の重みとcommand blobを外部NORへ書き込み、各書き込みを検証します。書き込み完了後にボードをリセットすると、外部Flashから起動します。
+
+Flashからの自動起動が不要で、RAM実行用のモデルデータだけを書き換える場合は`program`ではなく`ai-load`を使います。逆に、Flash起動に必要な一式を更新する場合は`ai-load`だけでは足りません。
 
 ## 関連ファイル
 
-- [`config/local.mk.example`](config/local.mk.example): ホスト固有設定のテンプレート
-- [`userspace/experiment-hello-world/config/stm32n6570-dk-fullsecure.ioc`](userspace/experiment-hello-world/config/stm32n6570-dk-fullsecure.ioc): `experiment-hello-world`のSTM32N657向けCubeMX設定
-- [`kernel/pre_kernel/stm32n6570-dk/`](kernel/pre_kernel/stm32n6570-dk/): µT-Kernel起動前のCubeMX/HAL初期化と接続
-- [`userspace/experiment-hello-world/`](userspace/experiment-hello-world/): RAM実行用サンプル
+- [ホスト設定テンプレート](config/local.mk.example)
+- [ai-appのモデルと生成手順](userspace/ai-app/models/README.md)
+- [ai-appのCubeMX設定](userspace/ai-app/config/stm32n6570-dk-ai-app.ioc)
+- [Flash起動用FSBLについて](userspace/ai-app/fsbl/README.md)

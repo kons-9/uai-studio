@@ -59,8 +59,8 @@ if(APP_TARGET STREQUAL "experiment-camera-lcd" OR
         CPU_IN_SECURE_STATE)
 endif()
 add_subdirectory(kernel/pre_kernel/stm32n6570-dk)
-if((APP_TARGET STREQUAL "experiment-ai" OR APP_TARGET STREQUAL "ai-app") AND
-   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kernel/driver/CMakeLists.txt")
+if(APP_TARGET STREQUAL "ai-app")
+    add_subdirectory(kernel/middleware)
     add_subdirectory(kernel/driver)
 endif()
 add_subdirectory("userspace/${APP_TARGET}")

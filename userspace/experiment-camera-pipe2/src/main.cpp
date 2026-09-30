@@ -56,7 +56,7 @@ void FillRgb565(std::uint8_t *buffer, std::uint16_t color)
     }
 }
 
-void InitializeLabUart()
+void InitializePipe2Uart()
 {
     RCC_PeriphCLKInitTypeDef peripheral_clock{};
     peripheral_clock.PeriphClockSelection = RCC_PERIPHCLK_USART1;
@@ -88,7 +88,7 @@ void halt_with_message(const char *message)
     }
 }
 
-void CameraLabTask(INT, void *)
+void CameraPipe2Task(INT, void *)
 {
 #if PIPE2_BUFFER_PSRAM
     if (BSP_XSPI_RAM_Init(0U) != BSP_ERROR_NONE ||
@@ -159,10 +159,10 @@ void CameraLabTask(INT, void *)
 
 extern "C" INT usermain(void)
 {
-    InitializeLabUart();
+    InitializePipe2Uart();
     T_CTSK camera_task = {};
     camera_task.tskatr = TA_HLNG | TA_USERBUF;
-    camera_task.task = reinterpret_cast<FP>(CameraLabTask);
+    camera_task.task = reinterpret_cast<FP>(CameraPipe2Task);
     camera_task.itskpri = 10;
     camera_task.stksz = kCameraTaskStackSize;
     camera_task.bufptr = g_camera_task_stack;
@@ -178,7 +178,7 @@ extern "C" INT usermain(void)
     }
 }
 
-/* Override the kernel's weak BusFault handler only in this lab executable so
+/* Override the kernel's weak BusFault handler only in this pipe2 executable so
  * the stacked fault PC is available over UART during camera bring-up. */
 extern "C" [[gnu::noreturn]] void uai_busfault_dump(
     const std::uint32_t *exception_stack, std::uint32_t exception_return)

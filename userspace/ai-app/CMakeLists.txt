@@ -156,7 +156,7 @@ set(AI_COMPONENT_ROOT
 # sample-generated tree. The generated include root is listed before src/ so
 # the middleware consumes the generated contract directly.
 set(AI_MEMORY_LAYOUT_GENERATOR_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/tools/auto_static_memory_layout")
+    "${PROJECT_SOURCE_DIR}/host_app/auto_static_memory_layout")
 set(AI_MEMORY_LAYOUT_GENERATOR_SOURCES
     "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/__init__.py"
     "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/__main__.py"
@@ -220,6 +220,15 @@ add_custom_target(${AI_APP_NAME}-memory-layout
         "${AI_MEMORY_LAYOUT_CONFIG_HEADER}"
         "${AI_MEMORY_LAYOUT_LINKER}")
 
+# The kernel components include the generated memory contract, so make its
+# generation an explicit prerequisite after both component targets exist.
+add_dependencies(ai-app-middleware ${AI_APP_NAME}-memory-layout)
+add_dependencies(ai-app-drivers ${AI_APP_NAME}-memory-layout)
+target_include_directories(ai-app-drivers PUBLIC
+    "${AI_STEDGEAI_DIR}/Inc"
+    "${AI_STEDGEAI_DIR}/Npu/ll_aton"
+    "${AI_STEDGEAI_DIR}/Npu/Devices/STM32N6xx")
+
 # Keep the sample application explicitly optimized even though the common
 # Cortex-M55 toolchain also defaults to -O3. Do not use -Ofast here: its
 # relaxed floating-point rules can change post-processing results and
@@ -251,8 +260,7 @@ set(AI_MODEL_EXTRA_SOURCES
 set(AI_MODEL_EXTRA_LIBRARIES
     "${AI_STEDGEAI_RUNTIME_LIBRARY}")
 set(AI_INFERENCE_TASK_SOURCES
-    src/task/pipeline_task.cpp
-    src/middleware/ai_runtime/pipeline.cpp)
+    src/task/pipeline_task.cpp)
 set(AI_NPU_CACHE_SOURCE
     "${AI_STEDGEAI_DIR}/Npu/Devices/STM32N6xx/npu_cache.c")
 # CubeMX already supplies the strong HAL cache MSP hooks. Some STEdgeAI
@@ -261,48 +269,24 @@ set(AI_NPU_CACHE_SOURCE
 set_source_files_properties(${AI_NPU_CACHE_SOURCE} PROPERTIES
     COMPILE_DEFINITIONS
     "HAL_CACHEAXI_MspInit=sample_ai_STEDGEAI_HAL_CACHEAXI_MspInit;HAL_CACHEAXI_MspDeInit=sample_ai_STEDGEAI_HAL_CACHEAXI_MspDeInit")
-set(AI_CAMERA_BSP_SOURCE
-    "${AI_SRC_DIR}/driver/camera_driver/board_driver/stm32n6570_discovery_camera.c")
-set_source_files_properties(${AI_CAMERA_BSP_SOURCE} PROPERTIES
-    COMPILE_DEFINITIONS
-    "HAL_DCMIPP_PIPE_VsyncEventCallback=sample_ai_HAL_DCMIPP_PIPE_VsyncEventCallback;HAL_DCMIPP_PIPE_FrameEventCallback=sample_ai_HAL_DCMIPP_PIPE_FrameEventCallback")
-
 add_executable(${AI_APP_TARGET}
     src/main.cpp
+    # Keep the HAL time bridge as a direct object in the executable. The
+    # Cube HAL provides weak defaults in an object file that is always linked,
+    # so an override hidden inside a static archive would never be extracted.
+    "${PROJECT_SOURCE_DIR}/kernel/driver/board/hal_time.c"
+    # HAL discovers these DCMIPP callbacks through its callback symbols, so
+    # keep their strong overrides in the executable instead of the archive.
+    "${PROJECT_SOURCE_DIR}/kernel/driver/camera_driver/dcmipp_driver/dcmipp_callbacks.c"
     src/task/application_initialize_task.cpp
     src/task/camera_render_task.cpp
     ${AI_INFERENCE_TASK_SOURCES}
     src/task/task_context.cpp
     src/task/task_diagnostics.cpp
-    src/middleware/cpu_task_monitor/cpu_task_monitor.cpp
-    src/middleware/ai_model_monitor/ai_model_monitor.cpp
-    src/middleware/memory/static_memory_layout.cpp
-    src/driver/camera_driver/sensor_driver/registers/imx335_registers.cpp
-    src/driver/camera_driver/camera_driver.cpp
-    src/image_resizer/image_resizer.cpp
-    src/driver/board/hal_time.c
-    src/driver/cache_driver/cache_driver.cpp
-    src/driver/driver_ownership.cpp
-    src/driver/nor_driver/registers/nor_registers.cpp
-    src/driver/nor_driver/nor_driver.cpp
-    src/driver/psram_driver/registers/psram_registers.cpp
-    src/driver/psram_driver/psram_driver.cpp
-    src/driver/rif_driver/rif_driver.cpp
-    src/driver/lcd_driver/registers/lcd_registers.cpp
-    src/driver/lcd_driver/lcd_driver.cpp
-    src/memory_manager/fixed_pool_allocator.cpp
-    src/memory_manager/memory_manager.cpp
-    src/driver/npu_driver/registers/npu_registers.cpp
-    src/driver/npu_driver/npu_driver.cpp
-    src/driver/npu_driver/debug.cpp
     ${AI_MODEL_SOURCES}
     # Project-owned ref-compatible BSP with a reset fallback for NOR left in
     # OPI-DTR by the external loader.
-    "${AI_SRC_DIR}/driver/c_bsp/stm32n6570_discovery_xspi.c"
     "${AI_BSP_ROOT}/stm32n6570_discovery_bus.c"
-    ${AI_CAMERA_BSP_SOURCE}
-    src/driver/camera_driver/dcmipp_driver/dcmipp_callbacks.c
-    src/driver/camera_driver/sensor_driver/imx335_driver.c
     "${AI_CUBE_ROOT}/Drivers/BSP/Components/imx335/imx335_reg.c"
     "${AI_BSP_ROOT}/stm32n6570_discovery_lcd.c"
     "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/isp/Src/isp_core.c"
@@ -319,7 +303,8 @@ add_executable(${AI_APP_TARGET}
 target_include_directories(${AI_APP_TARGET} PRIVATE
     "${AI_MEMORY_LAYOUT_GENERATED_DIR}"
     "${AI_SRC_DIR}"
-    "${AI_SRC_DIR}/driver/board/include"
+    "${PROJECT_SOURCE_DIR}/kernel"
+    "${PROJECT_SOURCE_DIR}/kernel/middleware"
     "${CMAKE_CURRENT_SOURCE_DIR}/config"
     ${AI_MODEL_INCLUDE_DIRS}
     "${AI_STEDGEAI_DIR}/Inc"
@@ -356,6 +341,7 @@ target_compile_options(${AI_APP_TARGET} PRIVATE
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
 target_link_libraries(${AI_APP_TARGET} PRIVATE
     uai::utkernel
+    uai::ai_app_drivers
     uai::stm32n6570_dk
     "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/evision/Lib/libn6-evision-awb_gcc.a"
     "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/evision/Lib/libn6-evision-st-ae_gcc.a"
@@ -455,6 +441,9 @@ add_library(${AI_MODEL_TARGET} STATIC
 
 target_include_directories(${AI_MODEL_TARGET} PRIVATE
     "${AI_SRC_DIR}"
+    "${PROJECT_SOURCE_DIR}/kernel"
+    "${PROJECT_SOURCE_DIR}/kernel/middleware"
+    "${AI_MEMORY_LAYOUT_GENERATED_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/config"
     ${AI_MODEL_INCLUDE_DIRS}
     "${AI_STEDGEAI_DIR}/Inc"
@@ -490,6 +479,7 @@ target_compile_options(${AI_MODEL_TARGET} PRIVATE
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
 target_link_libraries(${AI_MODEL_TARGET} PRIVATE
     uai::utkernel
+    uai::ai_app_drivers
     uai::stm32n6570_dk)
 target_link_libraries(${AI_APP_TARGET} PRIVATE
     ${AI_MODEL_TARGET}

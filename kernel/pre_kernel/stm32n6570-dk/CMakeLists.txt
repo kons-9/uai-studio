@@ -20,8 +20,16 @@ file(GLOB CUBEMX_HAL_SOURCES CONFIGURE_DEPENDS
 # relies on it for OPI-DTR status/configuration commands.  Keep the ref XSPI
 # HAL implementation until the component and HAL are updated as a pair.
 list(FILTER CUBEMX_HAL_SOURCES EXCLUDE REGEX "/stm32n6xx_hal_xspi\\.c$")
-list(APPEND CUBEMX_HAL_SOURCES
+set(UAI_LEGACY_XSPI_SOURCE
     "${CMAKE_SOURCE_DIR}/ref/STM32N6_Survivor_Detection/STM32Cube_FW_N6/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_xspi.c")
+if(NOT EXISTS "${UAI_LEGACY_XSPI_SOURCE}")
+    set(UAI_LEGACY_XSPI_SOURCE
+        "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_xspi.c")
+endif()
+if(NOT EXISTS "${UAI_LEGACY_XSPI_SOURCE}")
+    message(FATAL_ERROR "No STM32N6 XSPI HAL source was found")
+endif()
+list(APPEND CUBEMX_HAL_SOURCES "${UAI_LEGACY_XSPI_SOURCE}")
 file(GLOB CUBEMX_EXTMEM_SOURCES CONFIGURE_DEPENDS
     "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/*.c"
     "${CUBEMX_ROOT}/Middlewares/ST/STM32_ExtMem_Manager/boot/*.c"

@@ -12,7 +12,7 @@ CPU task monitorのバイナリリングも直接読み取れます。minicomの
 UARTログを保存してから、リポジトリルートで実行します。
 
 ```sh
-python3 userspace/ai-app/tools/cpu_task_monitor/cpu_task_monitor.py \
+python3 host_app/cpu_task_monitor/cpu_task_monitor.py \
   uart.log \
   --output build/cpu_task_monitor.png \
   --csv build/cpu_task_monitor.csv \
@@ -37,15 +37,15 @@ make -C userspace/ai-app cpu-task-monitor
 他タスクによるプリエンプトは区間に含まれます。UARTログやv2以前のダンプには
 各ループの時刻がないため、CPU使用率と平均・最大時間のみ表示します。
 
-matplotlibは既存の `userspace/ai-app/tools/pyproject.toml` に定義されています。
+matplotlibは既存の `host_app/pyproject.toml` に定義されています。
 環境を使う場合は次のように実行できます。
 
 ```sh
 UV_CACHE_DIR=/tmp/uai-uv-cache \
 MPLCONFIGDIR=/tmp/ai-app-matplotlib \
 LD_PRELOAD=/lib/x86_64-linux-gnu/libstdc++.so.6 \
-uv run --project userspace/ai-app/tools \
-  python userspace/ai-app/tools/cpu_task_monitor/cpu_task_monitor.py \
+uv run --project host_app \
+  python host_app/cpu_task_monitor/cpu_task_monitor.py \
   uart.log -o build/cpu_task_monitor.png
 ```
 

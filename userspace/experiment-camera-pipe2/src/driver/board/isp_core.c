@@ -29,7 +29,7 @@
 #include <inttypes.h>
 #include <tm/tmonitor.h>
 
-#define ISP_LAB_TRACE(message) tm_putstring((UB *) (message))
+#define ISP_PIPE2_TRACE(message) tm_putstring((UB *) (message))
 
 /* Private types -------------------------------------------------------------*/
 /* Private constants ---------------------------------------------------------*/
@@ -58,7 +58,7 @@ ISP_StatusTypeDef ISP_Init(ISP_HandleTypeDef *hIsp,
                            ISP_AppliHelpersTypeDef *pAppliHelpers,
                            const ISP_IQParamTypeDef *ISP_IQParamCacheInit)
 {
-  ISP_LAB_TRACE("lab ISP_Init: enter\n");
+  ISP_PIPE2_TRACE("pipe2 ISP_Init: enter\n");
   ISP_StatusTypeDef ret;
 
   if ((hIsp == NULL) || (hDcmipp == NULL) || (pAppliHelpers == NULL))
@@ -67,7 +67,7 @@ ISP_StatusTypeDef ISP_Init(ISP_HandleTypeDef *hIsp,
   }
 
   memset(hIsp, 0, sizeof(*hIsp));
-  ISP_LAB_TRACE("lab ISP_Init: handle cleared\n");
+  ISP_PIPE2_TRACE("pipe2 ISP_Init: handle cleared\n");
 
 #ifdef ISP_MW_TUNING_TOOL_SUPPORT
   ISP_ToolCom_Init();
@@ -80,7 +80,7 @@ ISP_StatusTypeDef ISP_Init(ISP_HandleTypeDef *hIsp,
   hIsp->DumpPipe_FrameCount = 0;
 
   hIsp->appliHelpers = *pAppliHelpers;
-  ISP_LAB_TRACE("lab ISP_Init: helpers copied\n");
+  ISP_PIPE2_TRACE("pipe2 ISP_Init: helpers copied\n");
   /* Appli CB is mandatory for the sensor get/set exp/gain function */
   if (hIsp->appliHelpers.GetSensorInfo == NULL)
   {
@@ -109,23 +109,23 @@ ISP_StatusTypeDef ISP_Init(ISP_HandleTypeDef *hIsp,
    }
 
   /* Initialize IQ param (read from non volatile memory) */
-  ISP_LAB_TRACE("lab ISP_Init: before IQParam_Init\n");
+  ISP_PIPE2_TRACE("pipe2 ISP_Init: before IQParam_Init\n");
   ret = ISP_SVC_IQParam_Init(hIsp, ISP_IQParamCacheInit);
   if (ret != ISP_OK)
   {
     return ret;
   }
-  ISP_LAB_TRACE("lab ISP_Init: IQParam_Init complete\n");
+  ISP_PIPE2_TRACE("pipe2 ISP_Init: IQParam_Init complete\n");
 
   /* Set decimation configuration */
   /* Get Sensor Info */
-  ISP_LAB_TRACE("lab ISP_Init: before Sensor_GetInfo\n");
+  ISP_PIPE2_TRACE("pipe2 ISP_Init: before Sensor_GetInfo\n");
   ret = ISP_SVC_Sensor_GetInfo(hIsp, &hIsp->sensorInfo);
   if (ret != ISP_OK)
   {
     return ret;
   }
-  ISP_LAB_TRACE("lab ISP_Init: Sensor_GetInfo complete\n");
+  ISP_PIPE2_TRACE("pipe2 ISP_Init: Sensor_GetInfo complete\n");
   /* Compute the ISP decimation value according to the sensor resolution and the maximum ISP resolution */
   /* It is mandatory to ensure that RAW frame size does not exceed 2688 width prior to demosaicing */
   ISP_DecimationTypeDef decimation;
@@ -155,20 +155,20 @@ ISP_StatusTypeDef ISP_Init(ISP_HandleTypeDef *hIsp,
   {
     return ret;
   }
-  ISP_LAB_TRACE("lab ISP_Init: SetDecimation complete\n");
+  ISP_PIPE2_TRACE("pipe2 ISP_Init: SetDecimation complete\n");
 
   /* Initialize algorithms */
-  ISP_LAB_TRACE("lab ISP_Init: before Algo_Init\n");
+  ISP_PIPE2_TRACE("pipe2 ISP_Init: before Algo_Init\n");
   ret = ISP_Algo_Init(hIsp);
   if (ret != ISP_OK)
   {
     return ret;
   }
-  ISP_LAB_TRACE("lab ISP_Init: Algo_Init complete\n");
+  ISP_PIPE2_TRACE("pipe2 ISP_Init: Algo_Init complete\n");
 
   /* Initialize the statistic engine */
   ISP_SVC_Stats_Init(hIsp);
-  ISP_LAB_TRACE("lab ISP_Init: Stats_Init complete\n");
+  ISP_PIPE2_TRACE("pipe2 ISP_Init: Stats_Init complete\n");
 
   return ISP_OK;
 }

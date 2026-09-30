@@ -2,7 +2,7 @@
 
 ## face 表示用アプリ（新しい3レーンランタイム）
 
-ai-appは現在faceモデルを`src/middleware/ai_runtime/`経由で実行します。起動後は
+ai-appは現在faceモデルを`kernel/middleware/ai_runtime/`経由で実行します。起動後は
 Pipe1のLCD表示とPipe2のフレーム取得を従来どおり維持し、前処理CPUタスクが
 フレームを取り込み、NPUタスクがSTAI非同期実行（IRQ待ち・epoch継続）、
 後処理CPUタスクがface検出結果をLCDの青枠キューに渡します。faceのモデル重みと
@@ -13,7 +13,7 @@ command blobが必要です。ビルド先は`build-ai-app-person`です。
 初期化失敗時はカメラ表示を継続し、推論のみ無効にします。UARTには
 `ai: face pipeline enabled (pre/npu/post)`が出ます。各ステップのID/時刻は
 `diagnostics.inference_trace`を有効にしたときだけ記録します。
-詳細とホストテストは[ランタイムの説明](src/middleware/ai_runtime/README.md)を参照。
+詳細とホストテストは[ランタイムの説明](../../kernel/middleware/ai_runtime/README.md)を参照。
 実機では起動、Pipe1/2開始、face推論、face枠生成まで確認済みです。
 
 このアプリは experiment-ai をコピーした再構築版です。以下のコピー元の実機計測値は
@@ -132,7 +132,7 @@ ST公式のモデル取得元、モデルファイル名、ライセンスと利
 推論実行は、生成モデルのC API、NPUスケジューリング、推論実行を分離した構成です。
 
 - `src/models/`：モデルごとの生成C API、入力前処理、Decoder、座標変換を配置します。
-- `src/middleware/ai_runtime/`：Preprocess CPU、NPU、Postprocess CPUの3レーンを管理する
+- `kernel/middleware/ai_runtime/`：Preprocess CPU、NPU、Postprocess CPUの3レーンを管理する
   `AiFuture`、Scheduler、Dispatcherを配置します。
 - `src/task/pipeline_task.cpp`：フレーム受信、前処理、NPU実行、後処理のタスクを
   起動し、モデル出力をLCDの枠キューへ渡します。
@@ -149,7 +149,7 @@ ST公式のモデル取得元、モデルファイル名、ライセンスと利
 `completed`が真なら次のステップはありません。待ち条件ゼロは即時実行、
 複数条件の場合は`WaitMode`で全件待ちかいずれか一件待ちかを指定します。
 CPU処理とNPU処理の投入先はランタイムが決定し、モデルは実行先キューやRTOSの
-待ち方を知りません。`src/middleware/ai_runtime/`に3キューとScheduler、各キューのDispatcher、
+待ち方を知りません。`kernel/middleware/ai_runtime/`に3キューとScheduler、各キューのDispatcher、
 Futureごとの通知、ステップ前後のトレースフックを独立実装しています。後処理完了まで
 Futureと入出力バッファを保持する責務は利用側に残ります。RTOSタスク、モデル、
 既存の推論ディスパッチャと実機ログにはまだ接続していません。

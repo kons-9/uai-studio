@@ -3,11 +3,11 @@
 
 Examples:
     uv run --project userspace/experiment-ai/tools \
-        python userspace/ai-app/tools/ai_model_monitor/visualize_thread_monitor.py \
+        python host_app/ai_model_monitor/visualize_thread_monitor.py \
         build/thread_monitor_final.bin
 
     uv run --project userspace/experiment-ai/tools \
-        python userspace/ai-app/tools/ai_model_monitor/visualize_thread_monitor.py \
+        python host_app/ai_model_monitor/visualize_thread_monitor.py \
         build/thread_monitor_final.json --output build/thread_monitor.png \
         --cpu-hz 600000000
 """

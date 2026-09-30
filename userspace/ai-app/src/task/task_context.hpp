@@ -56,7 +56,7 @@ inline constexpr bool kCopyInferenceFrames =
  * Pipe2 drops and inference freshness without per-frame UART traffic. */
 struct DiagnosticsConfig {
     bool register_dump = false;
-    bool camera_frame_trace = false;
+    bool camera_frame_trace = true;
     bool camera_brightness = false;
     bool inference_input = false;
     bool inference_input_display = false;

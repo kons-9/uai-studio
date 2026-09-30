@@ -30,8 +30,8 @@ pipeline stage、laneはIDで表します。表示ツールはIDから必要な�
 リポジトリのルートから実行する場合:
 
 ```sh
-python3 userspace/ai-app/tools/ai_model_monitor/ai_model_monitor.py \
-  decode userspace/ai-app/tools/ai_model_monitor/sample/ai_model_monitor.bin \
+python3 host_app/ai_model_monitor/ai_model_monitor.py \
+  decode host_app/ai_model_monitor/sample/ai_model_monitor.bin \
   --output /tmp/ai_model_monitor.json
 ```
 
@@ -42,7 +42,7 @@ python3 userspace/ai-app/tools/ai_model_monitor/ai_model_monitor.py \
 raw dumpをJSONに変換します。`--output`を省略すると標準出力に出力します。
 
 ```sh
-python3 userspace/ai-app/tools/ai_model_monitor/ai_model_monitor.py \
+python3 host_app/ai_model_monitor/ai_model_monitor.py \
   decode dump.bin -o trace.json
 ```
 
@@ -54,7 +54,7 @@ DWTによるCPU実行サイクルではありません。スケジューリン�
 システム時刻の分解能に丸められます。
 
 ```sh
-python3 userspace/ai-app/tools/ai_model_monitor/ai_model_monitor.py \
+python3 host_app/ai_model_monitor/ai_model_monitor.py \
   analyze trace.json --cpu-hz 600000000
 ```
 
@@ -66,8 +66,8 @@ JSONまたはraw dumpからタイムラインのPNGを生成します。matplotl
 ```sh
 MPLCONFIGDIR=/tmp/ai-app-matplotlib \
 LD_PRELOAD=/lib/x86_64-linux-gnu/libstdc++.so.6 \
-uv run --project userspace/ai-app/tools \
-  python userspace/ai-app/tools/ai_model_monitor/ai_model_monitor.py \
+uv run --project host_app \
+  python host_app/ai_model_monitor/ai_model_monitor.py \
   visualize trace.json -o trace.png --cpu-hz 600000000
 ```
 
@@ -81,10 +81,10 @@ raw dumpのdecode、解析、PNG生成を一度に実行します。
 ```sh
 MPLCONFIGDIR=/tmp/ai-app-matplotlib \
 LD_PRELOAD=/lib/x86_64-linux-gnu/libstdc++.so.6 \
-uv run --project userspace/ai-app/tools \
-  python userspace/ai-app/tools/ai_model_monitor/ai_model_monitor.py \
+uv run --project host_app \
+  python host_app/ai_model_monitor/ai_model_monitor.py \
   all \
-  userspace/ai-app/tools/ai_model_monitor/sample/ai_model_monitor.bin \
+  host_app/ai_model_monitor/sample/ai_model_monitor.bin \
   --json /tmp/ai_model_monitor.json \
   --png /tmp/ai_model_monitor.png \
   --cpu-hz 600000000

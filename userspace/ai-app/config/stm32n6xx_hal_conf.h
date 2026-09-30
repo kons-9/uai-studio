@@ -9,6 +9,8 @@
 #define HAL_DMA2D_MODULE_ENABLED
 #define HAL_LTDC_MODULE_ENABLED
 #define HAL_I2C_MODULE_ENABLED
+#define HAL_RIF_MODULE_ENABLED
+#define HAL_XSPI_MODULE_ENABLED
 
 #include_next "stm32n6xx_hal_conf.h"
 

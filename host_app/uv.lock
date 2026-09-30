@@ -1048,7 +1048,7 @@ wheels = [
 ]
 
 [[package]]
-name = "experiment-ai-tools"
+name = "uai-host-tools"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

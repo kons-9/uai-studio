@@ -8,6 +8,8 @@
 
 .DEFAULT_GOAL := help
 
+HOST_APP_DIR := $(PROJECT_ROOT)/host_app
+
 CONFIG_FILE ?= $(PROJECT_ROOT)/config/local.mk
 ifneq ($(filter /%,$(CONFIG_FILE)),)
 else
@@ -114,7 +116,7 @@ ifneq ($(strip $(AI_VISION_MODELS_PP_DIR)),)
 CMAKE_ARGS += -DAI_VISION_MODELS_PP_DIR="$(AI_VISION_MODELS_PP_DIR)"
 endif
 
-.PHONY: help setup init configure generate cubemx-generate build attach monitor \
+.PHONY: help setup init configure generate cubemx-generate build monitor \
 	ram-run ram-load sign program flash run clean
 .PHONY: ai-deps ai-model-person ai-model-segmentation ai-model-face \
 	ai-models ai-build ai-load-weights ai-load-blobs ai-load ai-init ai-run
@@ -125,7 +127,6 @@ help:
 	@echo "$(MAKE) -f $(SAMPLE_MAKEFILE) generate   - Generate STM32Cube sources"
 	@echo "$(MAKE) -f $(SAMPLE_MAKEFILE) build      - Build $(APP_TARGET)"
 	@echo "$(MAKE) -f $(SAMPLE_MAKEFILE) setup      - Prepare dependencies and CMake"
-	@echo "$(MAKE) -f $(SAMPLE_MAKEFILE) attach     - Check the native Linux ST-LINK USB connection"
 	@echo "$(MAKE) -f $(SAMPLE_MAKEFILE) monitor    - Open the configured UART monitor"
 	@echo "$(MAKE) -f $(SAMPLE_MAKEFILE) ram-run    - Build and load $(APP_TARGET)"
 	@echo "$(MAKE) -f $(SAMPLE_MAKEFILE) sign       - Create an STM32N6 signed image"
@@ -237,9 +238,6 @@ ai-run: ai-load
 	+$(MAKE) -f "$(SAMPLE_MAKEFILE)" ram-run
 endif
 
-attach:
-	"$(PROJECT_ROOT)/usb_attach.sh"
-
 monitor:
 	sh "$(PROJECT_ROOT)/tools/uart-monitor.sh"
 
@@ -267,8 +265,8 @@ thread-monitor: thread-monitor-dump
 ifeq ($(APP_TARGET),ai-app)
 	MPLCONFIGDIR="$(BUILD_DIR)/matplotlib" \
 	$(if $(strip $(THREAD_MONITOR_LD_PRELOAD)),LD_PRELOAD="$(THREAD_MONITOR_LD_PRELOAD)") \
-	$(THREAD_MONITOR_UV) run --project "$(SAMPLE_DIR)/tools" \
-		python "$(SAMPLE_DIR)/tools/ai_model_monitor/ai_model_monitor.py" all \
+	$(THREAD_MONITOR_UV) run --project "$(HOST_APP_DIR)" \
+		python "$(HOST_APP_DIR)/ai_model_monitor/ai_model_monitor.py" all \
 		"$(THREAD_MONITOR_DUMP)" --json "$(THREAD_MONITOR_JSON)" \
 		--png "$(THREAD_MONITOR_PNG)" --cpu-hz "$(THREAD_MONITOR_CPU_HZ)"
 	@echo "ThreadMonitor PNG written: $(THREAD_MONITOR_PNG)"
@@ -313,8 +311,8 @@ cpu-task-monitor: cpu-task-monitor-dump
 	@mkdir -p "$$(dirname "$(CPU_TASK_MONITOR_PNG)")"
 	MPLCONFIGDIR="$(BUILD_DIR)/matplotlib" UV_CACHE_DIR="$(BUILD_DIR)/uv-cache" \
 	$(if $(strip $(THREAD_MONITOR_LD_PRELOAD)),LD_PRELOAD="$(THREAD_MONITOR_LD_PRELOAD)") \
-	$(THREAD_MONITOR_UV) run --project "$(SAMPLE_DIR)/tools" \
-		python "$(SAMPLE_DIR)/tools/cpu_task_monitor/cpu_task_monitor.py" \
+	$(THREAD_MONITOR_UV) run --project "$(HOST_APP_DIR)" \
+		python "$(HOST_APP_DIR)/cpu_task_monitor/cpu_task_monitor.py" \
 		"$(CPU_TASK_MONITOR_DUMP)" -o "$(CPU_TASK_MONITOR_PNG)" \
 		--json "$(CPU_TASK_MONITOR_JSON)" --cpu-hz "$(THREAD_MONITOR_CPU_HZ)"
 	@echo "CPU task monitor PNG written: $(CPU_TASK_MONITOR_PNG)"

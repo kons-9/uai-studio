@@ -18,7 +18,7 @@ linker script. All output paths are explicit, so invoking the tool never
 modifies the source tree or the `tools` directory.
 
 ```sh
-python3 userspace/ai-app/tools/auto_static_memory_layout all \
+python3 host_app/auto_static_memory_layout all \
   --board userspace/ai-app/config/board_memory.json \
   --application userspace/ai-app/config/application_memory.json \
   --models-dir userspace/ai-app/models \
@@ -46,7 +46,7 @@ before `src/`. The checked-in C++ headers remain available as compatibility
 copies for source browsing, but are not the build source of truth.
 
 The public C++ API is
-`src/middleware/memory/static_memory_layout.hpp`. The generated `key.hpp`
+`kernel/middleware/memory/static_memory_layout.hpp`. The generated `key.hpp`
 contains the layout-specific keys and is included by the public header.
 The generated `raw.hpp`
 contains the static-memory keys and linker-backed layout instance.

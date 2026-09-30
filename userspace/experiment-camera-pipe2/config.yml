@@ -1,2 +1,2 @@
-# experiment-camera-pipe2: isolated STM32N6570-DK camera experiment
-# See README.md for profile switches and the separate build-pipe2-lab command.
+# experiment-camera-pipe2: STM32N6570-DK dual-pipe camera preview experiment
+# See README.md for camera profile switches.

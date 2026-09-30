@@ -22,7 +22,7 @@ The person-only task adapter uses this core for camera Pipe2 inference.
   section installed, the core is suitable only for single-threaded tests.
 
 Run host tests from the repository root with
-`sh userspace/ai-app/src/middleware/ai_runtime/tests/run.sh`.
+`sh kernel/middleware/ai_runtime/tests/run.sh`.
 
 Next integration step: attach RTOS queue wakeups/critical section adapters, an NPU
 IRQ-to-future notification mapping, and nonblocking NPU step transitions. The

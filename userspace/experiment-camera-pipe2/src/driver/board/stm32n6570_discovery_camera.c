@@ -126,8 +126,8 @@
 #include <stdint.h>
 #include <tm/tmonitor.h>
 
-#define CAMERA_LAB_TRACE(message) tm_putstring((UB *) (message))
-#define CAMERA_LAB_TRACE_PTRS(message, a, b, c) \
+#define CAMERA_PIPE2_TRACE(message) tm_putstring((UB *) (message))
+#define CAMERA_PIPE2_TRACE_PTRS(message, a, b, c) \
   tm_printf((const UB *) (message), (uint32_t) (uintptr_t) (a), \
             (uint32_t) (uintptr_t) (b), (uint32_t) (uintptr_t) (c))
 /** @addtogroup BSP
@@ -205,7 +205,7 @@ static int32_t IMX335_Probe(uint32_t Resolution, uint32_t PixelFormat);
   */
 int32_t BSP_CAMERA_Init(uint32_t Instance, uint32_t Resolution, uint32_t PixelFormat)
 {
-  CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: enter\n");
+  CAMERA_PIPE2_TRACE("pipe2 BSP_CAMERA_Init: enter\n");
   int32_t ret = BSP_ERROR_NONE;
   ISP_AppliHelpersTypeDef appliHelpers = {0};
   static const ISP_IQParamTypeDef* ISP_IQParamCacheInit[] = {
@@ -245,7 +245,7 @@ int32_t BSP_CAMERA_Init(uint32_t Instance, uint32_t Resolution, uint32_t PixelFo
       /* DCMIPP Initialization */
       DCMIPP_MspInit(&hcamera_dcmipp);
 #endif /* USE_HAL_DCMIPP_REGISTER_CALLBACKS */
-      CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: MSP initialized\n");
+      CAMERA_PIPE2_TRACE("pipe2 BSP_CAMERA_Init: MSP initialized\n");
       if(MX_DCMIPP_ClockConfig(&hcamera_dcmipp) != HAL_OK)
       {
         ret = BSP_ERROR_PERIPH_FAILURE;
@@ -258,26 +258,26 @@ int32_t BSP_CAMERA_Init(uint32_t Instance, uint32_t Resolution, uint32_t PixelFo
       {
         /* No action */
       }
-      CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: clock/reset complete\n");
+      CAMERA_PIPE2_TRACE("pipe2 BSP_CAMERA_Init: clock/reset complete\n");
 
       if(ret == BSP_ERROR_NONE)
       {
-        CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: before MX_DCMIPP_Init\n");
+        CAMERA_PIPE2_TRACE("pipe2 BSP_CAMERA_Init: before MX_DCMIPP_Init\n");
         if (MX_DCMIPP_Init(&hcamera_dcmipp) != HAL_OK)
         {
           ret = BSP_ERROR_PERIPH_FAILURE;
         }
         else
         {
-          CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: MX_DCMIPP_Init complete\n");
-          CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: before IMX335_Probe\n");
+          CAMERA_PIPE2_TRACE("pipe2 BSP_CAMERA_Init: MX_DCMIPP_Init complete\n");
+          CAMERA_PIPE2_TRACE("pipe2 BSP_CAMERA_Init: before IMX335_Probe\n");
           if (IMX335_Probe(Resolution, PixelFormat) != BSP_ERROR_NONE)
           {
             ret = BSP_ERROR_UNKNOWN_COMPONENT;
           }
           else
           {
-            CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: IMX335_Probe complete\n");
+            CAMERA_PIPE2_TRACE("pipe2 BSP_CAMERA_Init: IMX335_Probe complete\n");
 #if (USE_HAL_DCMIPP_REGISTER_CALLBACKS > 0)
             /* Register DCMIPP LineEvent, FrameEvent and Error callbacks */
             if (HAL_DCMIPP_PIPE_RegisterCallback(&hcamera_dcmipp, HAL_DCMIPP_PIPE_LINE_EVENT_CB_ID, DCMIPP_PIPE_LineEventCallback) != HAL_OK)
@@ -311,14 +311,14 @@ int32_t BSP_CAMERA_Init(uint32_t Instance, uint32_t Resolution, uint32_t PixelFo
               appliHelpers.GetSensorExposure = BSP_GetSensorExposureHelper;
 
               /* Initialize the Image Signal Processing middleware */
-              CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: before ISP_Init\n");
+              CAMERA_PIPE2_TRACE("pipe2 BSP_CAMERA_Init: before ISP_Init\n");
               if(ISP_Init(&hcamera_isp, &hcamera_dcmipp, 0, &appliHelpers, ISP_IQParamCacheInit[0]) != ISP_OK)
               {
                 ret = BSP_ERROR_PERIPH_FAILURE;
               }
               else
               {
-                CAMERA_LAB_TRACE("lab BSP_CAMERA_Init: ISP_Init complete\n");
+                CAMERA_PIPE2_TRACE("pipe2 BSP_CAMERA_Init: ISP_Init complete\n");
                 ret = BSP_ERROR_NONE;
               }
 #if (USE_HAL_DCMIPP_REGISTER_CALLBACKS > 0)
@@ -2010,27 +2010,27 @@ static int32_t IMX335_Probe(uint32_t Resolution, uint32_t PixelFormat)
   IOCtx.WriteReg    = BSP_I2C1_WriteReg16;
   IOCtx.GetTick     = BSP_GetTick;
 
-  CAMERA_LAB_TRACE_PTRS(
-      "lab IMX335_Probe: bus Init=%08x Read=%08x Write=%08x\n",
+  CAMERA_PIPE2_TRACE_PTRS(
+      "pipe2 IMX335_Probe: bus Init=%08x Read=%08x Write=%08x\n",
       IOCtx.Init, IOCtx.ReadReg, IOCtx.WriteReg);
-  CAMERA_LAB_TRACE("lab IMX335_Probe: before RegisterBusIO\n");
+  CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: before RegisterBusIO\n");
   if (IMX335_RegisterBusIO(&IMX335Obj, &IOCtx) != IMX335_OK)
   {
-    CAMERA_LAB_TRACE("lab IMX335_Probe: RegisterBusIO failed\n");
+    CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: RegisterBusIO failed\n");
     return BSP_ERROR_COMPONENT_FAILURE;
   }
-  CAMERA_LAB_TRACE("lab IMX335_Probe: RegisterBusIO complete\n");
-  CAMERA_LAB_TRACE_PTRS(
-      "lab IMX335_Probe: object IO.Read=%08x IO.Write=%08x Ctx.Write=%08x\n",
+  CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: RegisterBusIO complete\n");
+  CAMERA_PIPE2_TRACE_PTRS(
+      "pipe2 IMX335_Probe: object IO.Read=%08x IO.Write=%08x Ctx.Write=%08x\n",
       IMX335Obj.IO.ReadReg, IMX335Obj.IO.WriteReg, IMX335Obj.Ctx.WriteReg);
 
-  CAMERA_LAB_TRACE("lab IMX335_Probe: before ReadID\n");
+  CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: before ReadID\n");
   if (IMX335_ReadID(&IMX335Obj, &id) != IMX335_OK)
   {
-    CAMERA_LAB_TRACE("lab IMX335_Probe: ReadID failed\n");
+    CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: ReadID failed\n");
     return BSP_ERROR_COMPONENT_FAILURE;
   }
-  tm_printf((const UB *) "lab IMX335_Probe: ReadID complete id=%08x\n", id);
+  tm_printf((const UB *) "pipe2 IMX335_Probe: ReadID complete id=%08x\n", id);
 
   if (id != (uint32_t) IMX335_CHIP_ID)
   {
@@ -2039,34 +2039,34 @@ static int32_t IMX335_Probe(uint32_t Resolution, uint32_t PixelFormat)
 
   Camera_Drv = (CAMERA_Drv_t *) &IMX335_CAMERA_Driver;
   Camera_CompObj = &IMX335Obj;
-  CAMERA_LAB_TRACE_PTRS(
-      "lab IMX335_Probe: driver Init=%08x Freq=%08x Caps=%08x\n",
+  CAMERA_PIPE2_TRACE_PTRS(
+      "pipe2 IMX335_Probe: driver Init=%08x Freq=%08x Caps=%08x\n",
       Camera_Drv->Init, Camera_Drv->SetFrequency,
       Camera_Drv->GetCapabilities);
 
-  CAMERA_LAB_TRACE("lab IMX335_Probe: before sensor Init\n");
+  CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: before sensor Init\n");
   if (Camera_Drv->Init(Camera_CompObj, Resolution, PixelFormat) != IMX335_OK)
   {
-    CAMERA_LAB_TRACE("lab IMX335_Probe: sensor Init failed\n");
+    CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: sensor Init failed\n");
     return BSP_ERROR_COMPONENT_FAILURE;
   }
-  CAMERA_LAB_TRACE("lab IMX335_Probe: sensor Init complete\n");
+  CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: sensor Init complete\n");
 
-  CAMERA_LAB_TRACE("lab IMX335_Probe: before SetFrequency\n");
+  CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: before SetFrequency\n");
   if (Camera_Drv->SetFrequency(Camera_CompObj, IMX335_INCK_24MHZ) != IMX335_OK)
   {
-    CAMERA_LAB_TRACE("lab IMX335_Probe: SetFrequency failed\n");
+    CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: SetFrequency failed\n");
     return BSP_ERROR_COMPONENT_FAILURE;
   }
-  CAMERA_LAB_TRACE("lab IMX335_Probe: SetFrequency complete\n");
+  CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: SetFrequency complete\n");
 
-  CAMERA_LAB_TRACE("lab IMX335_Probe: before GetCapabilities\n");
+  CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: before GetCapabilities\n");
   if (Camera_Drv->GetCapabilities(Camera_CompObj, &Camera_Cap) != IMX335_OK)
   {
-    CAMERA_LAB_TRACE("lab IMX335_Probe: GetCapabilities failed\n");
+    CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: GetCapabilities failed\n");
     return BSP_ERROR_COMPONENT_FAILURE;
   }
-  CAMERA_LAB_TRACE("lab IMX335_Probe: GetCapabilities complete\n");
+  CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: GetCapabilities complete\n");
   return ret;
 }
 
