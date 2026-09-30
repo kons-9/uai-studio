@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "middleware/ai_runtime/pipeline_types.hpp"
+#include "driver/driver_ownership.hpp"
 #include "application/pipeline/frame_types.hpp"
 #include "middleware/memory/buffer_types.hpp"
 #include "models/inference_result_types.hpp"
@@ -26,6 +27,7 @@ using PublishCallback = void (*)(void *, const inference::BoxSet &);
 
 struct FutureContext {
     npu::NpuDriver *npu = nullptr;
+    driver::ResourceManagement::Writer *npu_writer = nullptr;
     npu::NpuNetwork *model = nullptr;
     std::uint32_t model_kind_id = 0U;
     cache::CacheDriver *cache = nullptr;

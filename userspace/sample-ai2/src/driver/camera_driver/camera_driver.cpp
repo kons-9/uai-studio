@@ -570,6 +570,15 @@ uai::ai::common::Error CameraDriver::Initialize(memory_manager::MemoryManager &m
                                 cache::CacheDriver &cache)
 {
     if (initialized_) return {uai::ai::common::ErrorCode::kAlreadyInitialized, 0U, "camera.initialize"};
+    uai::ai::common::Error management_status =
+        management_.Initialize("camera.management");
+    if (!management_status.Ok() &&
+        management_status.code != uai::ai::common::ErrorCode::kAlreadyInitialized) {
+        return management_status;
+    }
+    Writer writer;
+    management_status = management_.Acquire(&writer);
+    if (!management_status.Ok()) return management_status;
     memory_allocator::Buffer first{};
     memory_allocator::Buffer second{};
     if (!memory.CaptureBuffer(0U, &first).Ok() ||
@@ -610,12 +619,31 @@ uai::ai::common::Error CameraDriver::Initialize(memory_manager::MemoryManager &m
 
 void CameraDriver::KeepClocksOnSleep() const
 {
+    Writer writer;
+    if (!management_.Acquire(&writer).Ok()) return;
+    KeepClocksOnSleep(writer);
+}
+
+void CameraDriver::KeepClocksOnSleep(const Writer &writer) const
+{
+    if (!management_.Validate(writer, "camera.keep_clocks").Ok()) return;
     __HAL_RCC_DCMIPP_CLK_SLEEP_ENABLE();
     __HAL_RCC_CSI_CLK_SLEEP_ENABLE();
 }
 
 uai::ai::common::Error CameraDriver::Start()
 {
+    Writer writer;
+    uai::ai::common::Error status = management_.Acquire(&writer);
+    if (!status.Ok()) return status;
+    return Start(writer);
+}
+
+uai::ai::common::Error CameraDriver::Start(const Writer &writer)
+{
+    uai::ai::common::Error ownership =
+        management_.Validate(writer, "camera.start");
+    if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr || cache_ == nullptr) return {uai::ai::common::ErrorCode::kNotInitialized, 0U, "camera.start"};
     if (started_) return {uai::ai::common::ErrorCode::kAlreadyInitialized, 0U, "camera.start"};
     memory_allocator::Buffer first_buffer{};
@@ -686,6 +714,17 @@ uai::ai::common::Error CameraDriver::Start()
 
 uai::ai::common::Error CameraDriver::Stop()
 {
+    Writer writer;
+    uai::ai::common::Error status = management_.Acquire(&writer);
+    if (!status.Ok()) return status;
+    return Stop(writer);
+}
+
+uai::ai::common::Error CameraDriver::Stop(const Writer &writer)
+{
+    uai::ai::common::Error ownership =
+        management_.Validate(writer, "camera.stop");
+    if (!ownership.Ok()) return ownership;
     if (!initialized_ || !started_) return {uai::ai::common::ErrorCode::kNotInitialized, 0U, "camera.stop"};
     uai::ai::camera::sensor::registers::Imx335RegisterLayer registers;
     const auto standby = registers.SetStreaming(false);
@@ -701,6 +740,17 @@ uai::ai::common::Error CameraDriver::Stop()
 
 uai::ai::common::Error CameraDriver::Process()
 {
+    Writer writer;
+    uai::ai::common::Error status = management_.Acquire(&writer);
+    if (!status.Ok()) return status;
+    return Process(writer);
+}
+
+uai::ai::common::Error CameraDriver::Process(const Writer &writer)
+{
+    uai::ai::common::Error ownership =
+        management_.Validate(writer, "camera.process");
+    if (!ownership.Ok()) return ownership;
     if (!initialized_ || !started_) return {uai::ai::common::ErrorCode::kNotInitialized, 0U, "camera.process"};
     ProcessRawDump();
     if (g_camera_vsync_event_count != g_last_vsync_count) {
@@ -791,6 +841,18 @@ uai::ai::common::Error CameraDriver::Process()
 
 uai::ai::common::Error CameraDriver::TakeCompletedCapture(pipeline::CaptureFrame *frame)
 {
+    Writer writer;
+    uai::ai::common::Error status = management_.Acquire(&writer);
+    if (!status.Ok()) return status;
+    return TakeCompletedCapture(frame, writer);
+}
+
+uai::ai::common::Error CameraDriver::TakeCompletedCapture(
+    pipeline::CaptureFrame *frame, const Writer &writer)
+{
+    uai::ai::common::Error ownership =
+        management_.Validate(writer, "camera.take_capture");
+    if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr) return {uai::ai::common::ErrorCode::kNotInitialized, 0U, "camera.take_capture"};
     if (frame == nullptr) return {uai::ai::common::ErrorCode::kInvalidArgument, 0U, "camera.take_capture"};
     const std::uintptr_t address = g_completed_frame;
@@ -802,6 +864,18 @@ uai::ai::common::Error CameraDriver::TakeCompletedCapture(pipeline::CaptureFrame
 uai::ai::common::Error CameraDriver::TakeCompletedInference(
     pipeline::InferenceFrame *frame)
 {
+    Writer writer;
+    uai::ai::common::Error status = management_.Acquire(&writer);
+    if (!status.Ok()) return status;
+    return TakeCompletedInference(frame, writer);
+}
+
+uai::ai::common::Error CameraDriver::TakeCompletedInference(
+    pipeline::InferenceFrame *frame, const Writer &writer)
+{
+    uai::ai::common::Error ownership =
+        management_.Validate(writer, "camera.take_inference");
+    if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr) {
         return {uai::ai::common::ErrorCode::kNotInitialized, 0U, "camera.take_inference"};
     }
@@ -831,6 +905,18 @@ uai::ai::common::Error CameraDriver::TakeCompletedInference(
 uai::ai::common::Error CameraDriver::SnapshotInferenceSource(
     pipeline::InferenceFrame *frame)
 {
+    Writer writer;
+    uai::ai::common::Error status = management_.Acquire(&writer);
+    if (!status.Ok()) return status;
+    return SnapshotInferenceSource(frame, writer);
+}
+
+uai::ai::common::Error CameraDriver::SnapshotInferenceSource(
+    pipeline::InferenceFrame *frame, const Writer &writer)
+{
+    uai::ai::common::Error ownership =
+        management_.Validate(writer, "camera.snapshot_inference_source");
+    if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
         return {uai::ai::common::ErrorCode::kNotInitialized, 0U,
                 "camera.snapshot_inference_source"};

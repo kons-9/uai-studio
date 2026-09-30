@@ -78,7 +78,7 @@ common::Error TaskContext::InitializeDrivers()
     constexpr bool initialize_nor = kInferenceMode == InferenceMode::kNpu;
     int nor_status = -1;
     if (initialize_nor) {
-        nor_status = nor.Initialize();
+        nor_status = nor::NorManagement::Instance().Initialize();
     } else {
         UAI_LOG_INFO(reinterpret_cast<const UB *>(
                          "boot: NOR skipped: inference disabled\n"));
@@ -97,7 +97,12 @@ common::Error TaskContext::InitializeDrivers()
 
     cache.KeepClocksOnSleep();
     psram.KeepClocksOnSleep();
-    nor.KeepClocksOnSleep();
+    if (external_nor_ready) {
+        nor::NorManagement::Accessor nor_accessor;
+        status = nor::NorManagement::Instance().Acquire(&nor_accessor);
+        if (!status.Ok()) return status;
+        nor_accessor.KeepClocksOnSleep();
+    }
     uai::ai::npu::NpuDriver::KeepMemoryClocksOnSleep();
     lcd.KeepClocksOnSleep();
     camera.KeepClocksOnSleep();

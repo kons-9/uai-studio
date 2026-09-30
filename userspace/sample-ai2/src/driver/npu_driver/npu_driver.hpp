@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "common/error.hpp"
+#include "driver/driver_ownership.hpp"
 #include "driver/npu_driver/npu_network.hpp"
 #include "driver/npu_driver/registers/npu_registers.hpp"
 
@@ -68,6 +69,8 @@ struct Status {
  */
 class NpuDriver final {
 public:
+    using Writer = driver::ResourceManagement::Writer;
+
     using RunProgressCallback = void (*)(void *context);
     using EpochTraceObserver = void (*)(
         void *context, std::uint32_t model_kind_id, std::uint32_t end_ms,
@@ -79,51 +82,73 @@ public:
     static void KeepMemoryClocksOnSleep();
 
     Status Initialize(NpuNetwork &model);
+    Status Initialize(NpuNetwork &model, const Writer &writer);
     /* Initialize a second generated network while the shared ATON runtime is
      * already alive.  This copies its command blob into its runtime buffer so
      * a later model switch does not have to read the external flash again. */
     Status Preload(NpuNetwork &model);
+    Status Preload(NpuNetwork &model, const Writer &writer);
     Status SelectModel(NpuNetwork &model);
+    Status SelectModel(NpuNetwork &model, const Writer &writer);
     bool IsLoaded(const NpuNetwork &model) const;
 
     Status GetInfo(stai_network_info *info) const;
+    Status GetInfo(stai_network_info *info, const Writer &writer) const;
     Status SetInput(stai_ptr input, stai_size size) const;
+    Status SetInput(stai_ptr input, stai_size size, const Writer &writer) const;
     Status GetOutputs(stai_ptr *outputs, stai_size *count) const;
+    Status GetOutputs(stai_ptr *outputs, stai_size *count,
+                      const Writer &writer) const;
     Status SetOutputs(const stai_ptr *outputs, stai_size count) const;
+    Status SetOutputs(const stai_ptr *outputs, stai_size count,
+                      const Writer &writer) const;
 
     /* StartRun submits the current model and returns while the NPU is
      * executing. WaitRun completes the same submission. Run remains the
      * blocking convenience operation for callers without prefetching. */
     Status StartRun();
+    Status StartRun(const Writer &writer);
     /* Poll only. It never blocks and never calls ContinueRun(). */
     Status PollRun(RunProgressCallback progress = nullptr,
+                   void *progress_context = nullptr);
+    Status PollRun(const Writer &writer,
+                   RunProgressCallback progress = nullptr,
                    void *progress_context = nullptr);
     /* Wait only for the IRQ event. The ISR remains responsible for setting
      * the event; all ST.AI decisions stay in task context. */
     Status WaitForIrq();
+    Status WaitForIrq(const Writer &writer);
     /* Continue one generated epoch from task context. */
     Status ContinueRun();
+    Status ContinueRun(const Writer &writer);
     Status WaitRun(RunProgressCallback progress = nullptr,
                    void *progress_context = nullptr);
+    Status WaitRun(const Writer &writer,
+                   RunProgressCallback progress = nullptr,
+                   void *progress_context = nullptr);
     Status Run();
+    Status Run(const Writer &writer);
     Status NewInference();
+    Status NewInference(const Writer &writer);
     Status Shutdown();
+    Status Shutdown(const Writer &writer);
+
+    common::Error AcquireWriter(Writer *writer, TMO timeout = TMO_FEVR) const
+    { return management_.Acquire(writer, timeout); }
 
     /* Install the low-overhead sink used by the NPU task monitor. The generated
      * model callback is registered internally for every loaded model. */
-    void SetEpochTraceObserver(EpochTraceObserver observer, void *context)
-    {
-        epoch_trace_observer_ = observer;
-        epoch_trace_context_ = context;
-    }
-    void SetEpochTraceModelKindId(std::uint32_t model_kind_id)
-    {
-        epoch_trace_model_kind_id_ = model_kind_id;
-    }
+    void SetEpochTraceObserver(EpochTraceObserver observer, void *context);
+    void SetEpochTraceObserver(EpochTraceObserver observer, void *context,
+                               const Writer &writer);
+    void SetEpochTraceModelKindId(std::uint32_t model_kind_id);
+    void SetEpochTraceModelKindId(std::uint32_t model_kind_id,
+                                  const Writer &writer);
 
     bool Initialized() const { return initialized_; }
     const ExecutionSnapshot &LastExecution() const { return last_execution_; }
 private:
+    driver::ResourceManagement management_{};
     static void EpochTraceThunk(void *context, std::uint32_t callback_type,
                                 std::uint32_t epoch_index,
                                 std::uint32_t epoch_flags,

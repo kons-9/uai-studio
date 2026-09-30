@@ -73,6 +73,15 @@ common::Error CacheDriver::Initialize()
     if (initialized_) {
         return {common::ErrorCode::kAlreadyInitialized, 0U, "cache.initialize"};
     }
+    common::Error management_status = management_.Initialize("cache.management");
+    if (!management_status.Ok() &&
+        management_status.code != common::ErrorCode::kAlreadyInitialized) {
+        return management_status;
+    }
+    Writer writer;
+    management_status = management_.Acquire(&writer);
+    if (!management_status.Ok()) return management_status;
+
     SCB_EnableDCache();
     npu_cache_enable_clocks_and_reset();
     npu_cache_enable();
@@ -82,6 +91,14 @@ common::Error CacheDriver::Initialize()
 
 void CacheDriver::KeepClocksOnSleep() const
 {
+    Writer writer;
+    if (!management_.Acquire(&writer).Ok()) return;
+    KeepClocksOnSleep(writer);
+}
+
+void CacheDriver::KeepClocksOnSleep(const Writer &writer) const
+{
+    if (!management_.Validate(writer, "cache.keep_clocks").Ok()) return;
     __HAL_RCC_CACHEAXI_CLK_SLEEP_ENABLE();
     __HAL_RCC_CACHEAXIRAM_MEM_CLK_SLEEP_ENABLE();
 }
@@ -89,6 +106,17 @@ void CacheDriver::KeepClocksOnSleep() const
 common::Error CacheDriver::PrepareForDmaWrite(
     const memory_allocator::Buffer &buffer) const
 {
+    Writer writer;
+    common::Error status = management_.Acquire(&writer);
+    if (!status.Ok()) return status;
+    return PrepareForDmaWrite(buffer, writer);
+}
+
+common::Error CacheDriver::PrepareForDmaWrite(
+    const memory_allocator::Buffer &buffer, const Writer &writer) const
+{
+    common::Error status = management_.Validate(writer, "cache.dma_write");
+    if (!status.Ok()) return status;
     if (!initialized_) {
         return {common::ErrorCode::kNotInitialized, 0U, "cache.dma_write"};
     }
@@ -98,6 +126,17 @@ common::Error CacheDriver::PrepareForDmaWrite(
 common::Error CacheDriver::PrepareForCpuRead(
     const memory_allocator::Buffer &buffer) const
 {
+    Writer writer;
+    common::Error status = management_.Acquire(&writer);
+    if (!status.Ok()) return status;
+    return PrepareForCpuRead(buffer, writer);
+}
+
+common::Error CacheDriver::PrepareForCpuRead(
+    const memory_allocator::Buffer &buffer, const Writer &writer) const
+{
+    common::Error status = management_.Validate(writer, "cache.cpu_read");
+    if (!status.Ok()) return status;
     if (!initialized_) {
         return {common::ErrorCode::kNotInitialized, 0U, "cache.cpu_read"};
     }
@@ -107,6 +146,18 @@ common::Error CacheDriver::PrepareForCpuRead(
 common::Error CacheDriver::PrepareForPeripheralRead(
     const memory_allocator::Buffer &buffer) const
 {
+    Writer writer;
+    common::Error status = management_.Acquire(&writer);
+    if (!status.Ok()) return status;
+    return PrepareForPeripheralRead(buffer, writer);
+}
+
+common::Error CacheDriver::PrepareForPeripheralRead(
+    const memory_allocator::Buffer &buffer, const Writer &writer) const
+{
+    common::Error status =
+        management_.Validate(writer, "cache.peripheral_read");
+    if (!status.Ok()) return status;
     if (!initialized_) {
         return {common::ErrorCode::kNotInitialized, 0U,
                 "cache.peripheral_read"};

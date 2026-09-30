@@ -148,7 +148,12 @@ endif()
 set(STM32_RAM_ENTRY "$ENV{STM32_RAM_ENTRY}" CACHE STRING
     "RAM image execution address" FORCE)
 if(NOT STM32_RAM_ENTRY)
-    set(STM32_RAM_ENTRY "0x34000800" CACHE STRING
+    if(APP_TARGET STREQUAL "sample-ai2")
+        set(_stm32_default_ram_entry "0x34054001")
+    else()
+        set(_stm32_default_ram_entry "0x34000800")
+    endif()
+    set(STM32_RAM_ENTRY "${_stm32_default_ram_entry}" CACHE STRING
         "RAM image execution address" FORCE)
 endif()
 set(STM32_RAM_STACK "$ENV{STM32_RAM_STACK}" CACHE STRING

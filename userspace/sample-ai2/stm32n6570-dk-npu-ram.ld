@@ -114,7 +114,7 @@ SECTIONS
   /* Keep the launch entry away from the normal code range so the first fetch
    * cannot be satisfied by an instruction-cache line from the old image. */
   /* Leave growth room after .rodata before the cache-sanitizing launch entry. */
-  .text.uai_ram_entry 0x34052000 :
+  .text.uai_ram_entry 0x34054000 :
   {
     . = ALIGN(4);
     KEEP(*(.text.uai_ram_entry))

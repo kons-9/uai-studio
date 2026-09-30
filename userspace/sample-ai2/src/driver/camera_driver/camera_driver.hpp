@@ -5,6 +5,7 @@
 
 #include "common/error.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
+#include "driver/driver_ownership.hpp"
 #include "application/pipeline/frame_types.hpp"
 #include "memory_manager/memory_manager.hpp"
 
@@ -39,18 +40,33 @@ struct Diagnostics {
  * and the backend lifecycle; sensor register details stay in registers/. */
 class CameraDriver final {
 public:
+    using Writer = driver::ResourceManagement::Writer;
+
     common::Error Initialize(memory_manager::MemoryManager &memory,
                              cache::CacheDriver &cache);
+    common::Error AcquireWriter(Writer *writer, TMO timeout = TMO_FEVR) const
+    { return management_.Acquire(writer, timeout); }
     void KeepClocksOnSleep() const;
+    void KeepClocksOnSleep(const Writer &writer) const;
     common::Error Start();
+    common::Error Start(const Writer &writer);
     common::Error Stop();
+    common::Error Stop(const Writer &writer);
     common::Error Process();
+    common::Error Process(const Writer &writer);
     common::Error TakeCompletedCapture(pipeline::CaptureFrame *frame);
+    common::Error TakeCompletedCapture(pipeline::CaptureFrame *frame,
+                                       const Writer &writer);
     common::Error TakeCompletedInference(pipeline::InferenceFrame *frame);
+    common::Error TakeCompletedInference(pipeline::InferenceFrame *frame,
+                                         const Writer &writer);
     common::Error SnapshotInferenceSource(pipeline::InferenceFrame *frame);
+    common::Error SnapshotInferenceSource(pipeline::InferenceFrame *frame,
+                                          const Writer &writer);
     Diagnostics GetDiagnostics() const;
 
 private:
+    driver::ResourceManagement management_{};
     memory_manager::MemoryManager *memory_ = nullptr;
     cache::CacheDriver *cache_ = nullptr;
     bool initialized_ = false;

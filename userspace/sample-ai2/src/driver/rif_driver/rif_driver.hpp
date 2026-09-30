@@ -2,6 +2,7 @@
 #define UAI_AI_RIF_DRIVER_HPP
 
 #include "common/error.hpp"
+#include "driver/driver_ownership.hpp"
 
 namespace uai::ai::rif {
 
@@ -14,9 +15,14 @@ namespace uai::ai::rif {
  */
 class RifDriver final {
 public:
+    using Writer = driver::ResourceManagement::Writer;
+
     common::Error Initialize();
+    common::Error AcquireWriter(Writer *writer, TMO timeout = TMO_FEVR) const
+    { return management_.Acquire(writer, timeout); }
 
 private:
+    driver::ResourceManagement management_{};
     bool initialized_ = false;
 };
 

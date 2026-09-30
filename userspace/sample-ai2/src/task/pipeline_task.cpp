@@ -117,6 +117,7 @@ struct PipelineApplication {
         {"segmentation", 1U, &segmentation_model, {}},
     };
     npu::NpuDriver npu{};
+    npu::NpuDriver::Writer npu_writer{};
     ai_runtime::PipelineRuntime pipeline{};
     ai_runtime::Scheduler scheduler{pipeline};
     models::person::Future person_futures[memory_manager::kInferenceBufferCount]{};
@@ -370,6 +371,14 @@ void RunWorker(ExecutionContext lane)
     }
     ai_runtime::Dispatcher dispatcher(g_app.pipeline, lane);
     TaskContext &task = GetTaskContext();
+    if (lane == ExecutionContext::kNpu) {
+        const common::Error ownership =
+            g_app.npu.AcquireWriter(&g_app.npu_writer);
+        if (!ownership.Ok()) {
+            LogStatus("npu.management", ownership);
+            task.Halt("ai: npu writer acquisition failed\n");
+        }
+    }
     const UINT wake_bit = PipelineWorkBit(lane);
     for (;;) {
         const DispatchResult result = dispatcher.RunOnce();
@@ -479,6 +488,7 @@ void PipelineTask::FrameEntry()
             if (model_index == kFaceModel) {
                 models::face::FutureContext future_context{};
                 future_context.npu = &g_app.npu;
+                future_context.npu_writer = &g_app.npu_writer;
                 future_context.model =
                     g_app.registered_models[kFaceModel].network;
                 future_context.model_kind_id =
@@ -492,6 +502,7 @@ void PipelineTask::FrameEntry()
             } else if (model_index == kSegmentationModel) {
                 models::segmentation::FutureContext future_context{};
                 future_context.npu = &g_app.npu;
+                future_context.npu_writer = &g_app.npu_writer;
                 future_context.model =
                     g_app.registered_models[kSegmentationModel].network;
                 future_context.model_kind_id =
@@ -506,6 +517,7 @@ void PipelineTask::FrameEntry()
             } else {
                 models::person::FutureContext future_context{};
                 future_context.npu = &g_app.npu;
+                future_context.npu_writer = &g_app.npu_writer;
                 future_context.model =
                     g_app.registered_models[kPersonModel].network;
                 future_context.model_kind_id =

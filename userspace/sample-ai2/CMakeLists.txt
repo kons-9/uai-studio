@@ -282,6 +282,7 @@ add_executable(${AI_APP_TARGET}
     src/image_resizer/image_resizer.cpp
     src/driver/board/hal_time.c
     src/driver/cache_driver/cache_driver.cpp
+    src/driver/driver_ownership.cpp
     src/driver/nor_driver/registers/nor_registers.cpp
     src/driver/nor_driver/nor_driver.cpp
     src/driver/psram_driver/registers/psram_registers.cpp

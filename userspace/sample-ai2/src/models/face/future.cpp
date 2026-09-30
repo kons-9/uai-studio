@@ -403,7 +403,8 @@ common::Error Future::Preprocess()
 
 common::Error Future::Infer()
 {
-    if (context_.npu == nullptr || context_.model == nullptr ||
+    if (context_.npu == nullptr || context_.npu_writer == nullptr ||
+        context_.model == nullptr ||
         context_.info == nullptr) {
         return {common::ErrorCode::kNotInitialized, 0U,
                 "face.future.infer.context"};
@@ -414,12 +415,15 @@ common::Error Future::Infer()
                      static_cast<unsigned int>(frame_.capture_sequence));
     }
 
-    npu::Status result = context_.npu->SelectModel(*context_.model);
+    npu::Status result =
+        context_.npu->SelectModel(*context_.model, *context_.npu_writer);
     if (!result.Ok()) return result.error;
-    context_.npu->SetEpochTraceModelKindId(context_.model_kind_id);
+    context_.npu->SetEpochTraceModelKindId(context_.model_kind_id,
+                                           *context_.npu_writer);
 
     result = context_.npu->SetInput(
-        reinterpret_cast<stai_ptr>(frame_.buffer.address), InputBytes());
+        reinterpret_cast<stai_ptr>(frame_.buffer.address), InputBytes(),
+        *context_.npu_writer);
     if (!result.Ok()) return result.error;
 
     stai_ptr outputs[memory_manager::kMemoryConfig.model_output_bytes.size()]{ };
@@ -432,9 +436,10 @@ common::Error Future::Infer()
         }
         outputs[i] = reinterpret_cast<stai_ptr>(output.address);
     }
-    result = context_.npu->SetOutputs(outputs, context_.info->n_outputs);
+    result = context_.npu->SetOutputs(outputs, context_.info->n_outputs,
+                                      *context_.npu_writer);
     if (!result.Ok()) return result.error;
-    result = context_.npu->Run();
+    result = context_.npu->Run(*context_.npu_writer);
     if (!result.Ok()) {
         UAI_LOG_WARN(reinterpret_cast<const UB *>(
                          "ai: face infer failed code=%u detail=%u op=%s\n"),
@@ -449,7 +454,7 @@ common::Error Future::Infer()
                      static_cast<unsigned int>(frame_.capture_sequence));
         infer_stage_logged_ = true;
     }
-    result = context_.npu->NewInference();
+    result = context_.npu->NewInference(*context_.npu_writer);
     return result.error;
 }
 

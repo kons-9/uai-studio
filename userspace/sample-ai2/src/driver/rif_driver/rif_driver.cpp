@@ -57,6 +57,14 @@ common::Error RifDriver::Initialize()
     if (initialized_) {
         return {common::ErrorCode::kAlreadyInitialized, 0U, "rif.initialize"};
     }
+    common::Error management_status = management_.Initialize("rif.management");
+    if (!management_status.Ok() &&
+        management_status.code != common::ErrorCode::kAlreadyInitialized) {
+        return management_status;
+    }
+    Writer writer;
+    management_status = management_.Acquire(&writer);
+    if (!management_status.Ok()) return management_status;
 
     __HAL_RCC_RIFSC_CLK_ENABLE();
     __HAL_RCC_RISAF_CLK_ENABLE();

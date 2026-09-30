@@ -111,7 +111,6 @@ public:
     memory_manager::MemoryManager memory;
     uai::ai::cache::CacheDriver cache;
     uai::ai::psram::PsramDriver psram;
-    uai::ai::nor::NorDriver nor;
     uai::ai::rif::RifDriver rif;
     uai::ai::lcd::LcdDriver lcd;
     uai::ai::camera::CameraDriver camera;
