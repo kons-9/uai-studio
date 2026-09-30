@@ -1,0 +1,1651 @@
+# STM32N6570-DK real-device capture, 2026-09-30
+# ai-app RAM-run; UART opened before RAM loading; Pipe1 and Pipe2 started.
+ai: cpu task monitor started period=1000 ms
+cpu: task_name id=1 name=usermain
+cpu: task_name id=2 name=application_initialize
+boot: external memory init begin
+ai: npu clocks npu=1000000000Hz npu_ram=900000000Hz
+ai: cpu task trace addr=91c48000 bytes=524288 records=8174 version=3
+boot: external memory init result=ok detail=0
+cpu: task_name id=3 name=camera_render
+cpu: task_name id=4 name=pipeline_frame
+ai: model registered=person
+ai: model registered=face
+ai: model registered=segmentation
+ai: 3-model pipeline enabled (person/face/segmentation)
+cpu: task_name id=5 name=pipeline_preprocess
+cpu: task_name id=6 name=pipeline_npu
+cpu: task_name id=7 name=pipeline_postprocess
+ai: model worker started lane=2
+camera: pipe1=started pipe2=started
+camera: irq dcmipp=1/0 csi=1/0
+ai: model worker started lane=0
+ai: model worker started lane=1
+ai: runtime trace addr=91c40000 bytes=32768 records=503 version=5
+cpu: task_name id=8 name=ai_model_monitor
+ai: ai_model_monitor started for ai_runtime npu lane
+cpu: period=1034014253 cycles irq=0% count=120 unknown=0
+cpu: task=1 usage=0% cycles=8706882 dispatch=0 state=4
+cpu: task=2 usage=37% cycles=386326816 dispatch=10 state=4
+cpu: task=3 usage=45% cycles=475164333 dispatch=29 state=4
+cpu: task=4 usage=1% cycles=20182572 dispatch=7 state=4
+cpu: task=5 usage=5% cycles=60662421 dispatch=13 state=4
+cpu: task=6 usage=6% cycles=65251339 dispatch=133 state=2
+cpu: task=7 usage=1% cycles=13588881 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=3890569 dispatch=9 state=4
+cpu: loop id=3 n=17 avg=21622808 max=58562665 last=51861253
+cpu: loop id=5 n=13 avg=15343278 max=68817286 last=532
+cpu: loop id=6 n=7 avg=51112587 max=134348075 last=134348075
+cpu: loop id=7 n=9 avg=1313165 max=4404331 last=475
+cpu: period=697561032 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39874908 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=546337975 dispatch=19 state=4
+cpu: task=4 usage=0% cycles=30992 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45477982 dispatch=10 state=4
+cpu: task=6 usage=6% cycles=47587807 dispatch=129 state=4
+cpu: task=7 usage=2% cycles=17212102 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=811416 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39871177 max=39871177 last=39871177
+cpu: loop id=3 n=10 avg=54638800 max=58971732 last=53058477
+cpu: loop id=5 n=8 avg=19357262 max=73993493 last=532
+cpu: loop id=6 n=4 avg=187641570 max=312195371 last=129609643
+cpu: loop id=7 n=8 avg=2148865 max=9590185 last=475
+cpu: period=700327809 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=5% cycles=39727139 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=548637017 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30962 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45368703 dispatch=7 state=2
+cpu: task=6 usage=6% cycles=48980409 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17257262 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=95115 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39735895 max=39735895 last=39735895
+cpu: loop id=3 n=10 avg=54873081 max=59089890 last=59089890
+cpu: loop id=5 n=6 avg=14913858 max=74239976 last=499
+cpu: loop id=6 n=4 avg=158060461 max=299523581 last=10891484
+cpu: loop id=7 n=8 avg=2154478 max=9636037 last=499
+cpu: period=706363117 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39557698 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=554203353 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=37622 dispatch=5 state=4
+cpu: task=5 usage=6% cycles=45095596 dispatch=8 state=2
+cpu: task=6 usage=7% cycles=49833112 dispatch=128 state=2
+cpu: task=7 usage=2% cycles=17313255 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=92796 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39562345 max=39562345 last=39562345
+cpu: loop id=3 n=10 avg=55429194 max=59860798 last=59860798
+cpu: loop id=5 n=8 avg=24481889 max=73882565 last=499
+cpu: loop id=6 n=4 avg=161844929 max=313525651 last=10868017
+cpu: loop id=7 n=8 avg=2161414 max=9680038 last=499
+cpu: period=670020872 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39549230 dispatch=1 state=4
+cpu: task=3 usage=74% cycles=497032823 dispatch=19 state=4
+cpu: task=4 usage=0% cycles=29813 dispatch=4 state=4
+cpu: task=5 usage=9% cycles=66362843 dispatch=8 state=2
+cpu: task=6 usage=7% cycles=47625497 dispatch=128 state=2
+cpu: task=7 usage=2% cycles=17211555 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=1981536 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39545530 max=39545530 last=39545530
+cpu: loop id=3 n=9 avg=55232502 max=59074900 last=58819996
+cpu: loop id=5 n=9 avg=35996012 max=107995594 last=67469821
+cpu: loop id=6 n=4 avg=176890075 max=315149153 last=120583169
+cpu: loop id=7 n=8 avg=2148755 max=9601024 last=499
+cpu: period=709140513 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39976655 dispatch=1 state=4
+cpu: task=3 usage=77% cycles=549047678 dispatch=18 state=4
+cpu: task=4 usage=0% cycles=30884 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45459444 dispatch=11 state=2
+cpu: task=6 usage=8% cycles=56912350 dispatch=131 state=2
+cpu: task=7 usage=2% cycles=17389125 dispatch=6 state=4
+cpu: task=8 usage=0% cycles=93084 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39972883 max=39972883 last=39972883
+cpu: loop id=3 n=10 avg=54908390 max=58677102 last=57821736
+cpu: loop id=5 n=9 avg=21641513 max=114422734 last=532
+cpu: loop id=6 n=4 avg=178171951 max=257180282 last=129906725
+cpu: loop id=7 n=8 avg=2173672 max=9632482 last=475
+cpu: period=701253693 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39713132 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=547804271 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30113 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45668288 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=50177971 dispatch=128 state=2
+cpu: task=7 usage=2% cycles=17545407 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84357 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39709305 max=39709305 last=39709305
+cpu: loop id=3 n=10 avg=54789181 max=58905544 last=58765309
+cpu: loop id=5 n=7 avg=36404450 max=113686027 last=67519841
+cpu: loop id=6 n=4 avg=174493312 max=304288388 last=69746533
+cpu: loop id=7 n=8 avg=2190463 max=9749842 last=499
+cpu: period=703392471 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39873594 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=548764852 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=30438 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45680864 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=51250748 dispatch=128 state=2
+cpu: task=7 usage=2% cycles=17470825 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=91149 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39877243 max=39877243 last=39877243
+cpu: loop id=3 n=10 avg=54884236 max=58610836 last=58140357
+cpu: loop id=5 n=9 avg=21893030 max=114717182 last=475
+cpu: loop id=6 n=4 avg=175916409 max=309753260 last=68606426
+cpu: loop id=7 n=8 avg=2181082 max=9755245 last=499
+cpu: period=695738610 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39608381 dispatch=1 state=4
+cpu: task=3 usage=77% cycles=542516090 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30389 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45876600 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=49928234 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=17464392 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=86262 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39604432 max=39604432 last=39604432
+cpu: loop id=3 n=10 avg=54260843 max=58777809 last=57853755
+cpu: loop id=5 n=8 avg=24436178 max=113532722 last=475
+cpu: loop id=6 n=4 avg=174048717 max=306335780 last=68589323
+cpu: loop id=7 n=8 avg=2180330 max=9745603 last=499
+cpu: period=694704516 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39609775 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=541190350 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30352 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45561404 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=50599843 dispatch=126 state=2
+cpu: task=7 usage=2% cycles=17392725 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=90870 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39613812 max=39613812 last=39613812
+cpu: loop id=3 n=10 avg=54128206 max=58607118 last=57402336
+cpu: loop id=5 n=8 avg=24335675 max=113736380 last=475
+cpu: loop id=6 n=4 avg=173785748 max=305916157 last=121983053
+cpu: loop id=7 n=8 avg=2171420 max=9674656 last=499
+cpu: period=704672805 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39656117 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=543696308 dispatch=18 state=4
+cpu: task=4 usage=0% cycles=30496 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45900012 dispatch=8 state=2
+cpu: task=6 usage=8% cycles=57628314 dispatch=131 state=2
+cpu: task=7 usage=2% cycles=17440938 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=91650 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39660952 max=39660952 last=39660952
+cpu: loop id=3 n=10 avg=54373357 max=59043015 last=59043015
+cpu: loop id=5 n=8 avg=31345989 max=112771532 last=532
+cpu: loop id=6 n=4 avg=175950479 max=253577062 last=128862500
+cpu: loop id=7 n=8 avg=2178693 max=9721383 last=499
+cpu: period=679170912 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39660920 dispatch=1 state=4
+cpu: task=3 usage=79% cycles=541020024 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=23058 dispatch=3 state=4
+cpu: task=5 usage=3% cycles=24385640 dispatch=6 state=2
+cpu: task=6 usage=8% cycles=56235696 dispatch=126 state=4
+cpu: task=7 usage=2% cycles=17536413 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=82932 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39657025 max=39657025 last=39657025
+cpu: loop id=3 n=10 avg=54110533 max=57954648 last=57954648
+cpu: loop id=5 n=6 avg=30977014 max=114775049 last=499
+cpu: loop id=6 n=4 avg=189749418 max=308782904 last=121625624
+cpu: loop id=7 n=8 avg=2189249 max=9818059 last=499
+cpu: period=704852896 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=5% cycles=39662460 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=550815817 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=37831 dispatch=5 state=4
+cpu: task=5 usage=6% cycles=46359419 dispatch=8 state=2
+cpu: task=6 usage=7% cycles=50133416 dispatch=128 state=2
+cpu: task=7 usage=2% cycles=17518548 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=92826 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39669409 max=39669409 last=39669409
+cpu: loop id=3 n=10 avg=55090768 max=58600709 last=58416267
+cpu: loop id=5 n=8 avg=24539929 max=107044495 last=499
+cpu: loop id=6 n=4 avg=146957872 max=255552412 last=10999874
+cpu: loop id=7 n=8 avg=2187094 max=9791632 last=499
+cpu: period=670700534 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39603188 dispatch=1 state=4
+cpu: task=3 usage=73% cycles=495445360 dispatch=16 state=4
+cpu: task=4 usage=0% cycles=30010 dispatch=4 state=4
+cpu: task=5 usage=9% cycles=67050366 dispatch=11 state=2
+cpu: task=6 usage=7% cycles=50622331 dispatch=128 state=4
+cpu: task=7 usage=2% cycles=17628393 dispatch=6 state=4
+cpu: task=8 usage=0% cycles=86286 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39598993 max=39598993 last=39598993
+cpu: loop id=3 n=9 avg=55053383 max=59006986 last=58831684
+cpu: loop id=5 n=9 avg=35877752 max=106949701 last=67482329
+cpu: loop id=6 n=4 avg=162188706 max=313961645 last=11148704
+cpu: loop id=7 n=8 avg=2203457 max=9851170 last=499
+cpu: period=702687027 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39867036 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=548674371 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=29942 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45494215 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=50814121 dispatch=126 state=2
+cpu: task=7 usage=2% cycles=17494005 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84621 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39864733 max=39864733 last=39864733
+cpu: loop id=3 n=10 avg=54875564 max=58786696 last=51975939
+cpu: loop id=5 n=8 avg=32054766 max=115493591 last=67092275
+cpu: loop id=6 n=4 avg=177427676 max=315101642 last=68870038
+cpu: loop id=7 n=8 avg=2183935 max=9717409 last=499
+cpu: period=702448971 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=5% cycles=39867590 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=547214560 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30354 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46512054 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=51009768 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17492321 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=92319 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39871408 max=39871408 last=39871408
+cpu: loop id=3 n=10 avg=54730938 max=58688526 last=53118574
+cpu: loop id=5 n=9 avg=21752140 max=113745766 last=475
+cpu: loop id=6 n=4 avg=175124475 max=307768511 last=121706465
+cpu: loop id=7 n=8 avg=2183787 max=9723616 last=499
+cpu: period=676554907 cycles irq=0% count=117 unknown=0
+cpu: task=2 usage=5% cycles=39661380 dispatch=2 state=4
+cpu: task=3 usage=80% cycles=545302446 dispatch=19 state=4
+cpu: task=4 usage=0% cycles=23255 dispatch=3 state=4
+cpu: task=5 usage=3% cycles=23955074 dispatch=7 state=4
+cpu: task=6 usage=7% cycles=49730569 dispatch=128 state=4
+cpu: task=7 usage=2% cycles=17576220 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=81132 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39664006 max=39664006 last=39664006
+cpu: loop id=3 n=10 avg=54535280 max=58793988 last=52109826
+cpu: loop id=5 n=8 avg=24318300 max=114177982 last=532
+cpu: loop id=6 n=4 avg=204865102 max=363049513 last=129762671
+cpu: loop id=7 n=8 avg=2194297 max=9767389 last=499
+cpu: period=701905265 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39678924 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=548014987 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30834 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45709913 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=50593172 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17558118 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=89535 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39684846 max=39684846 last=39684846
+cpu: loop id=3 n=10 avg=54810624 max=58859058 last=58607010
+cpu: loop id=5 n=6 avg=14983957 max=74586176 last=499
+cpu: loop id=6 n=4 avg=173309256 max=299055310 last=121323860
+cpu: loop id=7 n=8 avg=2192117 max=9786919 last=499
+cpu: period=698653794 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39603420 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=551877189 dispatch=16 state=4
+cpu: task=4 usage=0% cycles=30616 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45122700 dispatch=10 state=2
+cpu: task=6 usage=6% cycles=42942247 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=15197536 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=3653199 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39600826 max=39600826 last=39600826
+cpu: loop id=3 n=10 avg=55189618 max=59003584 last=59003584
+cpu: loop id=5 n=8 avg=24483172 max=74584022 last=499
+cpu: loop id=6 n=3 avg=211598396 max=309067112 last=256335854
+cpu: loop id=7 n=6 avg=2533383 max=9802480 last=475
+cpu: period=642323550 cycles irq=0% count=74 unknown=0
+cpu: task=2 usage=6% cycles=39766511 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=494018480 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=22889 dispatch=3 state=4
+cpu: task=5 usage=5% cycles=37207598 dispatch=6 state=4
+cpu: task=6 usage=8% cycles=53396823 dispatch=83 state=4
+cpu: task=7 usage=2% cycles=17671598 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=85722 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39771310 max=39771310 last=39771310
+cpu: loop id=3 n=9 avg=54899688 max=59137299 last=53373222
+cpu: loop id=5 n=8 avg=31705048 max=105393728 last=499
+cpu: loop id=6 n=4 avg=178737781 max=257273399 last=257273399
+cpu: loop id=7 n=8 avg=2206380 max=9832252 last=475
+cpu: period=693211863 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39517921 dispatch=2 state=4
+cpu: task=3 usage=79% cycles=550420162 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=5117936 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46185857 dispatch=8 state=4
+cpu: task=6 usage=6% cycles=41949020 dispatch=124 state=4
+cpu: task=7 usage=1% cycles=9704737 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=87348 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39522662 max=39522662 last=39522662
+cpu: loop id=3 n=10 avg=55560069 max=64076329 last=52588606
+cpu: loop id=5 n=8 avg=18987005 max=74663903 last=499
+cpu: loop id=6 n=3 avg=147676854 max=209039975 last=63464335
+cpu: loop id=7 n=6 avg=1614836 max=4832683 last=499
+cpu: period=642664336 cycles irq=0% count=111 unknown=0
+cpu: task=2 usage=6% cycles=39604198 dispatch=1 state=4
+cpu: task=3 usage=77% cycles=500520601 dispatch=17 state=4
+cpu: task=4 usage=0% cycles=30444 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=45379520 dispatch=9 state=4
+cpu: task=6 usage=6% cycles=39075338 dispatch=121 state=4
+cpu: task=7 usage=2% cycles=17763780 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=77310 dispatch=9 state=4
+cpu: loop id=2 n=1 avg=39600250 max=39600250 last=39600250
+cpu: loop id=3 n=9 avg=55617969 max=59184525 last=53500200
+cpu: loop id=5 n=8 avg=19723855 max=74815811 last=499
+cpu: loop id=6 n=4 avg=190947515 max=353684255 last=69614857
+cpu: loop id=7 n=8 avg=2219172 max=7507156 last=499
+cpu: period=654230693 cycles irq=0% count=117 unknown=0
+cpu: task=2 usage=6% cycles=39450998 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=499924025 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=30506 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=47056571 dispatch=5 state=2
+cpu: task=6 usage=7% cycles=49687560 dispatch=126 state=4
+cpu: task=7 usage=2% cycles=17769909 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=85095 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39456814 max=39456814 last=39456814
+cpu: loop id=3 n=9 avg=55556685 max=59668446 last=58279437
+cpu: loop id=5 n=5 avg=30107327 max=74529721 last=67339241
+cpu: loop id=6 n=4 avg=177282823 max=355325135 last=69837199
+cpu: loop id=7 n=8 avg=2218458 max=8035312 last=499
+cpu: period=649362658 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=6% cycles=39768009 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=494658836 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=23352 dispatch=3 state=4
+cpu: task=5 usage=6% cycles=39639502 dispatch=6 state=2
+cpu: task=6 usage=8% cycles=57232008 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17732679 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=81189 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39773313 max=39773313 last=39773313
+cpu: loop id=3 n=9 avg=54970471 max=59525379 last=59226516
+cpu: loop id=5 n=7 avg=26643506 max=74559401 last=532
+cpu: loop id=6 n=4 avg=178521410 max=302493992 last=70256456
+cpu: loop id=7 n=8 avg=2213778 max=8039995 last=499
+cpu: period=702543398 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39502821 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=553313682 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30686 dispatch=4 state=4
+cpu: task=5 usage=5% cycles=37010480 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=54653496 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=17716068 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=91227 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39508726 max=39508726 last=39508726
+cpu: loop id=3 n=10 avg=55340333 max=59286072 last=59110605
+cpu: loop id=5 n=8 avg=31784777 max=107701753 last=532
+cpu: loop id=6 n=3 avg=214535773 max=302887517 last=210610661
+cpu: loop id=7 n=8 avg=2211691 max=8035021 last=475
+cpu: period=707052285 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39656313 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=552779909 dispatch=16 state=4
+cpu: task=4 usage=0% cycles=30089 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45787211 dispatch=10 state=4
+cpu: task=6 usage=7% cycles=50751608 dispatch=128 state=2
+cpu: task=7 usage=2% cycles=17735595 dispatch=6 state=4
+cpu: task=8 usage=0% cycles=83331 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39652729 max=39652729 last=39652729
+cpu: loop id=3 n=10 avg=55279983 max=59417374 last=58982352
+cpu: loop id=5 n=8 avg=27125859 max=74808521 last=499
+cpu: loop id=6 n=4 avg=163707274 max=262659694 last=212895653
+cpu: loop id=7 n=8 avg=2216998 max=8044024 last=475
+cpu: period=663612783 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=5% cycles=39661894 dispatch=2 state=4
+cpu: task=3 usage=75% cycles=498053974 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=30335 dispatch=4 state=4
+cpu: task=5 usage=8% cycles=55174043 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=52665326 dispatch=128 state=4
+cpu: task=7 usage=2% cycles=17712822 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84681 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39664678 max=39664678 last=39664678
+cpu: loop id=3 n=9 avg=55349166 max=58683411 last=58683411
+cpu: loop id=5 n=8 avg=19629112 max=74666312 last=532
+cpu: loop id=6 n=5 avg=155018257 max=261678176 last=69718358
+cpu: loop id=7 n=8 avg=2211402 max=8038591 last=499
+cpu: period=705806568 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39499338 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=554582067 dispatch=25 state=4
+cpu: task=4 usage=0% cycles=37886 dispatch=5 state=4
+cpu: task=5 usage=6% cycles=45259952 dispatch=8 state=2
+cpu: task=6 usage=6% cycles=48377873 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17725101 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=93720 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39504894 max=39504894 last=39504894
+cpu: loop id=3 n=10 avg=55468372 max=58899379 last=58899379
+cpu: loop id=5 n=8 avg=17240918 max=74524388 last=532
+cpu: loop id=6 n=4 avg=161725601 max=300451336 last=121234207
+cpu: loop id=7 n=8 avg=2212936 max=8039308 last=499
+cpu: period=656305647 cycles irq=0% count=121 unknown=0
+cpu: task=2 usage=6% cycles=39609336 dispatch=2 state=4
+cpu: task=3 usage=75% cycles=498460999 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=30850 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=51331924 dispatch=9 state=2
+cpu: task=6 usage=7% cycles=48816584 dispatch=130 state=2
+cpu: task=7 usage=2% cycles=17737779 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84831 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39612136 max=39612136 last=39612136
+cpu: loop id=3 n=9 avg=55394778 max=59440461 last=58120620
+cpu: loop id=5 n=10 avg=25882498 max=107183512 last=475
+cpu: loop id=6 n=4 avg=162414722 max=301059178 last=122790209
+cpu: loop id=7 n=8 avg=2214272 max=8038747 last=499
+cpu: period=691727058 cycles irq=0% count=116 unknown=0
+cpu: task=2 usage=5% cycles=39661181 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=545290008 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=22826 dispatch=3 state=4
+cpu: task=5 usage=5% cycles=39289032 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=49396120 dispatch=125 state=4
+cpu: task=7 usage=2% cycles=17754789 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=89127 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39665904 max=39665904 last=39665904
+cpu: loop id=3 n=10 avg=54537196 max=59534596 last=53187729
+cpu: loop id=5 n=8 avg=31837554 max=74371130 last=561
+cpu: loop id=6 n=4 avg=191480859 max=301025431 last=130800059
+cpu: loop id=7 n=8 avg=2216666 max=8040739 last=475
+cpu: period=696951201 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39614843 dispatch=1 state=4
+cpu: task=3 usage=79% cycles=551384799 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30607 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45227795 dispatch=6 state=2
+cpu: task=6 usage=6% cycles=45109732 dispatch=125 state=2
+cpu: task=7 usage=2% cycles=15274339 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=81075 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39612717 max=39612717 last=39612717
+cpu: loop id=3 n=10 avg=55147298 max=59113815 last=58819426
+cpu: loop id=5 n=6 avg=24610431 max=74336702 last=499
+cpu: loop id=6 n=3 avg=208386476 max=290361347 last=264638498
+cpu: loop id=7 n=6 avg=2543015 max=8032180 last=475
+cpu: period=640991283 cycles irq=0% count=74 unknown=0
+cpu: task=2 usage=6% cycles=39608859 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=493905743 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=22877 dispatch=3 state=4
+cpu: task=5 usage=5% cycles=36838523 dispatch=6 state=4
+cpu: task=6 usage=8% cycles=52644433 dispatch=83 state=4
+cpu: task=7 usage=2% cycles=17739795 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84114 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39613230 max=39613230 last=39613230
+cpu: loop id=3 n=9 avg=54887021 max=59381305 last=53353716
+cpu: loop id=5 n=8 avg=31723416 max=105144196 last=499
+cpu: loop id=6 n=4 avg=178297865 max=260341118 last=213019759
+cpu: loop id=7 n=8 avg=2214832 max=8039644 last=475
+cpu: period=691323900 cycles irq=0% count=104 unknown=0
+cpu: task=2 usage=5% cycles=39514173 dispatch=1 state=4
+cpu: task=3 usage=79% cycles=550417666 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=5117963 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45379731 dispatch=9 state=4
+cpu: task=6 usage=6% cycles=42772369 dispatch=112 state=2
+cpu: task=7 usage=1% cycles=7839261 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=81531 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39512221 max=39512221 last=39512221
+cpu: loop id=3 n=10 avg=55557772 max=64382194 last=52731514
+cpu: loop id=5 n=8 avg=26683005 max=74423789 last=499
+cpu: loop id=6 n=3 avg=163912344 max=222968264 last=63694517
+cpu: loop id=7 n=6 avg=1303903 max=2951737 last=499
+cpu: period=701261557 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39604329 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=549085268 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=5111135 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45515198 dispatch=5 state=2
+cpu: task=6 usage=6% cycles=48970478 dispatch=125 state=2
+cpu: task=7 usage=1% cycles=12654986 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=92427 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39607894 max=39607894 last=39607894
+cpu: loop id=3 n=10 avg=55425937 max=63675595 last=52551340
+cpu: loop id=5 n=5 avg=29308800 max=72450653 last=67708541
+cpu: loop id=6 n=4 avg=189725800 max=359700872 last=121688557
+cpu: loop id=7 n=8 avg=1579120 max=4843636 last=499
+cpu: period=708472658 cycles irq=0% count=123 unknown=0
+cpu: task=2 usage=5% cycles=39972745 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=551479698 dispatch=19 state=4
+cpu: task=4 usage=0% cycles=30222 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45456100 dispatch=9 state=2
+cpu: task=6 usage=7% cycles=53659335 dispatch=131 state=2
+cpu: task=7 usage=2% cycles=17548362 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=89203 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39975484 max=39975484 last=39975484
+cpu: loop id=3 n=10 avg=55153232 max=58649871 last=58123287
+cpu: loop id=5 n=9 avg=21759972 max=114092275 last=475
+cpu: loop id=6 n=4 avg=174975619 max=363025279 last=11125172
+cpu: loop id=7 n=8 avg=2190875 max=9833458 last=499
+cpu: period=698163465 cycles irq=0% count=116 unknown=0
+cpu: task=2 usage=5% cycles=39607907 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=550519642 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=29969 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45324992 dispatch=6 state=2
+cpu: task=6 usage=6% cycles=44881353 dispatch=122 state=4
+cpu: task=7 usage=2% cycles=17492106 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=85473 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39604032 max=39604032 last=39604032
+cpu: loop id=3 n=10 avg=55061368 max=59610279 last=53449252
+cpu: loop id=5 n=7 avg=36273309 max=113476702 last=67574876
+cpu: loop id=6 n=4 avg=161621206 max=310865311 last=64502069
+cpu: loop id=7 n=8 avg=2183786 max=9722971 last=499
+cpu: period=712903629 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39873766 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=551835587 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30704 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45548636 dispatch=7 state=2
+cpu: task=6 usage=8% cycles=57768633 dispatch=128 state=2
+cpu: task=7 usage=2% cycles=17529219 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=88491 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39876256 max=39876256 last=39876256
+cpu: loop id=3 n=10 avg=55192451 max=59715259 last=59048808
+cpu: loop id=5 n=9 avg=28323735 max=114669100 last=532
+cpu: loop id=6 n=4 avg=206688910 max=369844259 last=129520282
+cpu: loop id=7 n=8 avg=2188454 max=9744643 last=499
+cpu: period=683379232 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39662500 dispatch=2 state=4
+cpu: task=3 usage=79% cycles=544166920 dispatch=20 state=4
+cpu: task=4 usage=0% cycles=23024 dispatch=3 state=4
+cpu: task=5 usage=3% cycles=24134180 dispatch=6 state=2
+cpu: task=6 usage=8% cycles=57334996 dispatch=128 state=2
+cpu: task=7 usage=2% cycles=17746112 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=82119 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39666796 max=39666796 last=39666796
+cpu: loop id=3 n=10 avg=54422700 max=58445828 last=58445828
+cpu: loop id=5 n=6 avg=31115104 max=114834749 last=499
+cpu: loop id=6 n=4 avg=176084699 max=308556184 last=11158528
+cpu: loop id=7 n=8 avg=2216798 max=9930094 last=499
+cpu: period=656749751 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=6% cycles=39608721 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=502267849 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=30020 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45530516 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=51482659 dispatch=125 state=4
+cpu: task=7 usage=2% cycles=17520126 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=83691 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39613765 max=39613765 last=39613765
+cpu: loop id=3 n=9 avg=55816823 max=59911996 last=58365423
+cpu: loop id=5 n=8 avg=38836914 max=108209672 last=499
+cpu: loop id=6 n=4 avg=178823560 max=317201342 last=122452028
+cpu: loop id=7 n=8 avg=2187191 max=9681505 last=499
+cpu: period=659175720 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=6% cycles=39610491 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=502021783 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30350 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45214790 dispatch=7 state=2
+cpu: task=6 usage=8% cycles=54298260 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17685393 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=85419 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39618255 max=39618255 last=39618255
+cpu: loop id=3 n=11 avg=45549298 max=59842395 last=58129281
+cpu: loop id=5 n=8 avg=24718214 max=74867519 last=499
+cpu: loop id=6 n=4 avg=164798831 max=268856890 last=121424443
+cpu: loop id=7 n=8 avg=2207974 max=9864760 last=499
+cpu: period=689054688 cycles irq=0% count=74 unknown=0
+cpu: task=2 usage=5% cycles=39609899 dispatch=2 state=4
+cpu: task=3 usage=79% cycles=549929386 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=22658 dispatch=3 state=4
+cpu: task=5 usage=5% cycles=36714965 dispatch=6 state=4
+cpu: task=6 usage=6% cycles=47292568 dispatch=81 state=4
+cpu: task=7 usage=2% cycles=15251434 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=85368 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39617062 max=39617062 last=39617062
+cpu: loop id=3 n=10 avg=55000515 max=59129967 last=53533684
+cpu: loop id=5 n=8 avg=31766121 max=107413654 last=499
+cpu: loop id=6 n=3 avg=232608226 max=311942342 last=255123092
+cpu: loop id=7 n=6 avg=2539051 max=9848974 last=475
+cpu: period=697538016 cycles irq=0% count=110 unknown=0
+cpu: task=2 usage=5% cycles=39563850 dispatch=1 state=4
+cpu: task=3 usage=79% cycles=554078510 dispatch=18 state=4
+cpu: task=4 usage=0% cycles=31160 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46467938 dispatch=10 state=4
+cpu: task=6 usage=6% cycles=42318509 dispatch=120 state=4
+cpu: task=7 usage=2% cycles=14782438 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=84702 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39561690 max=39561690 last=39561690
+cpu: loop id=3 n=10 avg=55411558 max=59708488 last=52810538
+cpu: loop id=5 n=8 avg=26107741 max=75082493 last=499
+cpu: loop id=6 n=3 avg=191332558 max=228878975 last=132348067
+cpu: loop id=7 n=6 avg=2461008 max=7508362 last=499
+cpu: period=654554784 cycles irq=0% count=117 unknown=0
+cpu: task=2 usage=6% cycles=39662118 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=499895333 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=30102 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46640196 dispatch=5 state=2
+cpu: task=6 usage=7% cycles=50249954 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17770687 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=83649 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39664438 max=39664438 last=39664438
+cpu: loop id=3 n=9 avg=55553372 max=59141139 last=58937938
+cpu: loop id=5 n=5 avg=30206542 max=74499596 last=67868305
+cpu: loop id=6 n=4 avg=175856675 max=351135638 last=70158302
+cpu: loop id=7 n=8 avg=2218671 max=8038582 last=499
+cpu: period=655734816 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=6% cycles=39767099 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=500619068 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=29817 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45706469 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=51569627 dispatch=128 state=4
+cpu: task=7 usage=2% cycles=17729235 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84990 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39774120 max=39774120 last=39774120
+cpu: loop id=3 n=9 avg=55633533 max=59048901 last=59041825
+cpu: loop id=5 n=8 avg=32026144 max=74591510 last=68117213
+cpu: loop id=6 n=4 avg=163843921 max=303300388 last=70039475
+cpu: loop id=7 n=8 avg=2213506 max=8038855 last=475
+cpu: period=646515249 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=6% cycles=39767109 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=492255162 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=23237 dispatch=3 state=4
+cpu: task=5 usage=6% cycles=39557340 dispatch=6 state=2
+cpu: task=6 usage=8% cycles=56666736 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17935593 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=82638 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39773682 max=39773682 last=39773682
+cpu: loop id=3 n=9 avg=54703382 max=58694107 last=58627806
+cpu: loop id=5 n=7 avg=26664983 max=74815349 last=532
+cpu: loop id=6 n=4 avg=178071081 max=303088222 last=69831332
+cpu: loop id=7 n=8 avg=2239266 max=8091880 last=475
+cpu: period=697663530 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39498898 dispatch=2 state=4
+cpu: task=3 usage=79% cycles=551743352 dispatch=15 state=4
+cpu: task=4 usage=0% cycles=30414 dispatch=4 state=4
+cpu: task=5 usage=5% cycles=36652122 dispatch=9 state=4
+cpu: task=6 usage=7% cycles=50601640 dispatch=130 state=4
+cpu: task=7 usage=2% cycles=18035187 dispatch=6 state=4
+cpu: task=8 usage=0% cycles=874509 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39504559 max=39504559 last=39504559
+cpu: loop id=3 n=10 avg=55175185 max=58888872 last=58225748
+cpu: loop id=5 n=8 avg=24548772 max=74647385 last=499
+cpu: loop id=6 n=4 avg=176606988 max=300911162 last=69564356
+cpu: loop id=7 n=8 avg=2254147 max=8156023 last=499
+cpu: period=665874083 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=5% cycles=39622802 dispatch=1 state=4
+cpu: task=3 usage=75% cycles=500624572 dispatch=19 state=4
+cpu: task=4 usage=0% cycles=30056 dispatch=4 state=4
+cpu: task=5 usage=8% cycles=55275394 dispatch=9 state=2
+cpu: task=6 usage=7% cycles=51939287 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=18065549 dispatch=6 state=4
+cpu: task=8 usage=0% cycles=87294 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39620703 max=39620703 last=39620703
+cpu: loop id=3 n=9 avg=55631212 max=59693694 last=59693694
+cpu: loop id=5 n=8 avg=27214025 max=74989484 last=499
+cpu: loop id=6 n=4 avg=164195957 max=302349534 last=70976785
+cpu: loop id=7 n=8 avg=2258050 max=8140699 last=475
+cpu: period=704263275 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39502233 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=554322839 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30494 dispatch=4 state=4
+cpu: task=5 usage=5% cycles=37535054 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=54536936 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=18026226 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=81702 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39498379 max=39498379 last=39498379
+cpu: loop id=3 n=10 avg=55441223 max=59774733 last=59774733
+cpu: loop id=5 n=8 avg=31813042 max=107249161 last=532
+cpu: loop id=6 n=3 avg=214880543 max=303379724 last=210221078
+cpu: loop id=7 n=8 avg=2250547 max=8141644 last=499
+cpu: period=644572171 cycles irq=0% count=114 unknown=0
+cpu: task=2 usage=6% cycles=39656986 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=493971986 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=22274 dispatch=3 state=4
+cpu: task=5 usage=7% cycles=46259549 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=48809505 dispatch=121 state=4
+cpu: task=7 usage=2% cycles=15550534 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=81690 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39659446 max=39659446 last=39659446
+cpu: loop id=3 n=9 avg=54894301 max=59088328 last=52672122
+cpu: loop id=5 n=8 avg=27136316 max=74929802 last=499
+cpu: loop id=6 n=4 avg=177423302 max=265614626 last=265614626
+cpu: loop id=7 n=6 avg=2589077 max=8139571 last=475
+cpu: period=641998757 cycles irq=0% count=66 unknown=0
+cpu: task=2 usage=6% cycles=39550609 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=502754186 dispatch=19 state=4
+cpu: task=4 usage=0% cycles=5164784 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=45943313 dispatch=7 state=4
+cpu: task=6 usage=6% cycles=39195519 dispatch=75 state=4
+cpu: task=7 usage=1% cycles=8016558 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=1240224 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39555769 max=39555769 last=39555769
+cpu: loop id=3 n=9 avg=56438201 max=64040629 last=53506579
+cpu: loop id=5 n=8 avg=33668947 max=74842871 last=499
+cpu: loop id=6 n=3 avg=166298542 max=202294706 last=123597700
+cpu: loop id=7 n=6 avg=1333315 max=3010222 last=499
+cpu: period=649856196 cycles irq=0% count=116 unknown=0
+cpu: task=2 usage=6% cycles=39602600 dispatch=1 state=4
+cpu: task=3 usage=76% cycles=500115507 dispatch=18 state=4
+cpu: task=4 usage=0% cycles=5164295 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45382183 dispatch=8 state=4
+cpu: task=6 usage=7% cycles=46342309 dispatch=123 state=4
+cpu: task=7 usage=1% cycles=12927060 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=99441 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39600252 max=39600252 last=39600252
+cpu: loop id=3 n=10 avg=50525958 max=63749767 last=53606545
+cpu: loop id=5 n=8 avg=27657782 max=74787194 last=499
+cpu: loop id=6 n=4 avg=163582047 max=250800328 last=123479450
+cpu: loop id=7 n=8 avg=1614841 max=4924210 last=499
+cpu: period=686336739 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39708543 dispatch=1 state=4
+cpu: task=3 usage=79% cycles=548042363 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=5156609 dispatch=3 state=4
+cpu: task=5 usage=3% cycles=23860568 dispatch=5 state=2
+cpu: task=6 usage=8% cycles=56372547 dispatch=127 state=4
+cpu: task=7 usage=1% cycles=12890001 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=79119 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39706548 max=39706548 last=39706548
+cpu: loop id=3 n=10 avg=55325442 max=63688222 last=58633335
+cpu: loop id=5 n=4 avg=31561947 max=66095123 last=532
+cpu: loop id=6 n=4 avg=205023240 max=357985226 last=69864985
+cpu: loop id=7 n=8 avg=1608549 max=4882699 last=499
+cpu: period=700383321 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39656337 dispatch=2 state=4
+cpu: task=3 usage=79% cycles=554699847 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30127 dispatch=4 state=4
+cpu: task=5 usage=5% cycles=36325295 dispatch=5 state=4
+cpu: task=6 usage=7% cycles=51305840 dispatch=126 state=4
+cpu: task=7 usage=2% cycles=18043907 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=93537 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39664609 max=39664609 last=39664609
+cpu: loop id=3 n=10 avg=55478946 max=59131359 last=58113441
+cpu: loop id=5 n=8 avg=32035745 max=107161384 last=499
+cpu: loop id=6 n=4 avg=177281435 max=311242937 last=121977704
+cpu: loop id=7 n=8 avg=2252820 max=10046635 last=499
+cpu: period=694890550 cycles irq=0% count=74 unknown=0
+cpu: task=2 usage=5% cycles=39726219 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=546828162 dispatch=20 state=4
+cpu: task=4 usage=0% cycles=22744 dispatch=3 state=4
+cpu: task=5 usage=6% cycles=46099721 dispatch=8 state=4
+cpu: task=6 usage=6% cycles=46449132 dispatch=81 state=4
+cpu: task=7 usage=2% cycles=15534595 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=81975 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39724020 max=39724020 last=39724020
+cpu: loop id=3 n=10 avg=54688523 max=59528164 last=53434495
+cpu: loop id=5 n=8 avg=26852789 max=74637443 last=475
+cpu: loop id=6 n=3 avg=231666868 max=310243379 last=252451640
+cpu: loop id=7 n=6 avg=2588328 max=10052113 last=475
+cpu: period=640853316 cycles irq=0% count=112 unknown=0
+cpu: task=2 usage=6% cycles=39569994 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=497354357 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=30461 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46937987 dispatch=7 state=4
+cpu: task=6 usage=6% cycles=41680543 dispatch=121 state=4
+cpu: task=7 usage=2% cycles=14978731 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=84426 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39575353 max=39575353 last=39575353
+cpu: loop id=3 n=9 avg=55271117 max=59226895 last=52274796
+cpu: loop id=5 n=8 avg=26337457 max=74971433 last=499
+cpu: loop id=6 n=3 avg=170644999 max=228798965 last=70290293
+cpu: loop id=7 n=6 avg=2493812 max=7659712 last=499
+cpu: period=702739658 cycles irq=0% count=115 unknown=0
+cpu: task=2 usage=5% cycles=39502201 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=551127719 dispatch=19 state=4
+cpu: task=4 usage=0% cycles=29855 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45329439 dispatch=8 state=2
+cpu: task=6 usage=6% cycles=47819969 dispatch=124 state=4
+cpu: task=7 usage=2% cycles=17993391 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=715407 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39500308 max=39500308 last=39500308
+cpu: loop id=3 n=10 avg=55117126 max=58885796 last=58300165
+cpu: loop id=5 n=5 avg=41746330 max=74602043 last=67068143
+cpu: loop id=6 n=4 avg=174933730 max=353465870 last=11282821
+cpu: loop id=7 n=8 avg=2247666 max=8197576 last=499
+cpu: period=641346864 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=6% cycles=39872425 dispatch=1 state=4
+cpu: task=3 usage=76% cycles=492000090 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=22853 dispatch=3 state=4
+cpu: task=5 usage=6% cycles=39830223 dispatch=6 state=4
+cpu: task=6 usage=8% cycles=51378418 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17941563 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=76635 dispatch=9 state=4
+cpu: loop id=2 n=1 avg=39870210 max=39870210 last=39870210
+cpu: loop id=3 n=9 avg=54675082 max=58700428 last=52191627
+cpu: loop id=5 n=9 avg=28170222 max=74043830 last=532
+cpu: loop id=6 n=4 avg=193211020 max=359441459 last=131070611
+cpu: loop id=7 n=8 avg=2240029 max=8198767 last=475
+cpu: period=697553348 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39518480 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=549094420 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30395 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46515065 dispatch=6 state=2
+cpu: task=6 usage=6% cycles=46617981 dispatch=125 state=2
+cpu: task=7 usage=2% cycles=15464059 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=84474 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39523482 max=39523482 last=39523482
+cpu: loop id=3 n=10 avg=54917942 max=58795414 last=58792384
+cpu: loop id=5 n=6 avg=24728331 max=74284436 last=499
+cpu: loop id=6 n=3 avg=208330300 max=292497371 last=263509204
+cpu: loop id=7 n=6 avg=2574694 max=8140996 last=475
+cpu: period=645780975 cycles irq=0% count=74 unknown=0
+cpu: task=2 usage=6% cycles=39607521 dispatch=1 state=4
+cpu: task=3 usage=76% cycles=494293892 dispatch=17 state=4
+cpu: task=4 usage=0% cycles=23186 dispatch=3 state=4
+cpu: task=5 usage=5% cycles=36570047 dispatch=8 state=4
+cpu: task=6 usage=8% cycles=55748717 dispatch=85 state=4
+cpu: task=7 usage=2% cycles=17940060 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=1450080 dispatch=9 state=4
+cpu: loop id=2 n=1 avg=39603772 max=39603772 last=39603772
+cpu: loop id=3 n=9 avg=54926213 max=59559153 last=53008539
+cpu: loop id=5 n=8 avg=31634173 max=105669496 last=532
+cpu: loop id=6 n=4 avg=179686958 max=208831120 last=208831120
+cpu: loop id=7 n=8 avg=2241002 max=8149828 last=475
+cpu: period=700599849 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39573658 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=547031112 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=5217736 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46360706 dispatch=7 state=4
+cpu: task=6 usage=7% cycles=49375562 dispatch=126 state=2
+cpu: task=7 usage=1% cycles=12718200 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=93489 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39582256 max=39582256 last=39582256
+cpu: loop id=3 n=10 avg=55231064 max=63998026 last=52361178
+cpu: loop id=5 n=8 avg=20273415 max=74973275 last=499
+cpu: loop id=6 n=3 avg=144144778 max=199765589 last=63291403
+cpu: loop id=7 n=8 avg=1587152 max=4768147 last=475
+cpu: period=694806015 cycles irq=0% count=104 unknown=0
+cpu: task=2 usage=5% cycles=39657150 dispatch=2 state=4
+cpu: task=3 usage=79% cycles=550216644 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=30878 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45769011 dispatch=8 state=4
+cpu: task=6 usage=6% cycles=45690493 dispatch=114 state=2
+cpu: task=7 usage=1% cycles=13153752 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=86661 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39659449 max=39659449 last=39659449
+cpu: loop id=3 n=10 avg=55027914 max=59160006 last=53125165
+cpu: loop id=5 n=8 avg=26742222 max=74482067 last=499
+cpu: loop id=6 n=4 avg=190734490 max=309662078 last=64200893
+cpu: loop id=7 n=6 avg=2189642 max=7682680 last=499
+cpu: period=680605602 cycles irq=0% count=117 unknown=0
+cpu: task=2 usage=5% cycles=39555950 dispatch=1 state=4
+cpu: task=3 usage=79% cycles=543768709 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=23268 dispatch=3 state=4
+cpu: task=5 usage=3% cycles=23897510 dispatch=6 state=4
+cpu: task=6 usage=8% cycles=55098762 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17952612 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84186 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39551814 max=39551814 last=39551814
+cpu: loop id=3 n=10 avg=54385435 max=58865722 last=53192955
+cpu: loop id=5 n=6 avg=23082264 max=66024160 last=532
+cpu: loop id=6 n=4 avg=220127718 max=365876768 last=130920475
+cpu: loop id=7 n=8 avg=2241382 max=9998917 last=475
+cpu: period=684364620 cycles irq=0% count=75 unknown=0
+cpu: task=2 usage=5% cycles=39622063 dispatch=2 state=4
+cpu: task=3 usage=79% cycles=545029351 dispatch=16 state=4
+cpu: task=4 usage=0% cycles=5209979 dispatch=3 state=4
+cpu: task=5 usage=5% cycles=36869859 dispatch=8 state=4
+cpu: task=6 usage=6% cycles=47120099 dispatch=85 state=2
+cpu: task=7 usage=1% cycles=10284586 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=79155 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39627177 max=39627177 last=39627177
+cpu: loop id=3 n=10 avg=55023515 max=63806892 last=52988170
+cpu: loop id=5 n=6 avg=24484514 max=74949764 last=499
+cpu: loop id=6 n=3 avg=210489064 max=301710770 last=198698404
+cpu: loop id=7 n=6 avg=1711310 max=4820437 last=475
+cpu: period=689893108 cycles irq=0% count=117 unknown=0
+cpu: task=2 usage=5% cycles=39609365 dispatch=2 state=4
+cpu: task=3 usage=79% cycles=547909968 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=5217185 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45755348 dispatch=7 state=4
+cpu: task=6 usage=5% cycles=41276395 dispatch=123 state=2
+cpu: task=7 usage=1% cycles=9810364 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=86709 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39612799 max=39612799 last=39612799
+cpu: loop id=3 n=10 avg=55318826 max=63633439 last=53241357
+cpu: loop id=5 n=8 avg=19667591 max=74513795 last=499
+cpu: loop id=6 n=3 avg=163988995 max=228108335 last=63396238
+cpu: loop id=7 n=6 avg=1632392 max=4803157 last=499
+cpu: period=695585789 cycles irq=0% count=109 unknown=0
+cpu: task=2 usage=5% cycles=39608246 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=547232591 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=30530 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46235249 dispatch=7 state=2
+cpu: task=6 usage=6% cycles=44201376 dispatch=118 state=2
+cpu: task=7 usage=2% cycles=17984422 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84477 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39604576 max=39604576 last=39604576
+cpu: loop id=3 n=10 avg=54730801 max=59282796 last=59282796
+cpu: loop id=5 n=6 avg=34637879 max=74372378 last=532
+cpu: loop id=6 n=4 avg=218684400 max=359630578 last=131046013
+cpu: loop id=7 n=8 avg=2245412 max=8140933 last=475
+cpu: period=651594552 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=6% cycles=39608992 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=496584431 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=30368 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45334916 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=51813939 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=17909277 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=85323 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39613695 max=39613695 last=39613695
+cpu: loop id=3 n=9 avg=55185793 max=58806777 last=58753444
+cpu: loop id=5 n=7 avg=28206732 max=74714453 last=67533223
+cpu: loop id=6 n=4 avg=162274170 max=298952923 last=69104315
+cpu: loop id=7 n=8 avg=2235946 max=8144011 last=475
+cpu: period=704038128 cycles irq=0% count=121 unknown=0
+cpu: task=2 usage=5% cycles=39762098 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=550074528 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=31040 dispatch=4 state=4
+cpu: task=5 usage=5% cycles=38926794 dispatch=7 state=4
+cpu: task=6 usage=8% cycles=57052020 dispatch=130 state=4
+cpu: task=7 usage=2% cycles=17866556 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=91053 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39767084 max=39767084 last=39767084
+cpu: loop id=3 n=10 avg=55016659 max=58703761 last=58489236
+cpu: loop id=5 n=9 avg=21738371 max=74560016 last=475
+cpu: loop id=6 n=4 avg=177388096 max=300661130 last=69468305
+cpu: loop id=7 n=8 avg=2230501 max=8138857 last=499
+cpu: period=646483614 cycles irq=0% count=117 unknown=0
+cpu: task=2 usage=6% cycles=39555216 dispatch=1 state=4
+cpu: task=3 usage=76% cycles=492059604 dispatch=14 state=4
+cpu: task=4 usage=0% cycles=22788 dispatch=3 state=4
+cpu: task=5 usage=7% cycles=46332789 dispatch=9 state=2
+cpu: task=6 usage=7% cycles=50198079 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=17939406 dispatch=6 state=4
+cpu: task=8 usage=0% cycles=153636 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39551551 max=39551551 last=39551551
+cpu: loop id=3 n=9 avg=54674797 max=59022593 last=59022593
+cpu: loop id=5 n=6 avg=33690711 max=74364110 last=499
+cpu: loop id=6 n=4 avg=161659554 max=300880922 last=11193373
+cpu: loop id=7 n=8 avg=2242455 max=8157970 last=499
+cpu: period=704706369 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39555617 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=550186808 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=30504 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46132492 dispatch=8 state=2
+cpu: task=6 usage=7% cycles=50488886 dispatch=126 state=4
+cpu: task=7 usage=2% cycles=17998815 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=85374 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39551977 max=39551977 last=39551977
+cpu: loop id=3 n=10 avg=55027343 max=59091784 last=58379661
+cpu: loop id=5 n=8 avg=31407907 max=74732522 last=499
+cpu: loop id=6 n=4 avg=191015497 max=361411328 last=121467064
+cpu: loop id=7 n=8 avg=2247164 max=8192770 last=499
+cpu: period=652044513 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=6% cycles=39602405 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=497255933 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=30583 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46252508 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=50623256 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17963322 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=87357 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39608704 max=39608704 last=39608704
+cpu: loop id=3 n=9 avg=55260385 max=59395191 last=57928140
+cpu: loop id=5 n=8 avg=24693401 max=107183359 last=532
+cpu: loop id=6 n=4 avg=163012942 max=300108701 last=69213235
+cpu: loop id=7 n=8 avg=2242641 max=8190439 last=499
+cpu: period=653162157 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=6% cycles=39556209 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=498164373 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=30403 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45359027 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=51771978 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17967534 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84393 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39561748 max=39561748 last=39561748
+cpu: loop id=3 n=9 avg=55361116 max=59704290 last=58151571
+cpu: loop id=5 n=8 avg=24700702 max=107086039 last=532
+cpu: loop id=6 n=4 avg=163295468 max=300839900 last=69460960
+cpu: loop id=7 n=8 avg=2243074 max=8191279 last=499
+cpu: period=650724000 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=6% cycles=39556593 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=499242395 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=30438 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=45618932 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=48016595 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17947392 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=85350 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39562117 max=39562117 last=39562117
+cpu: loop id=3 n=9 avg=55480541 max=59286054 last=58441047
+cpu: loop id=5 n=8 avg=24724254 max=107635691 last=532
+cpu: loop id=6 n=4 avg=162645202 max=301442467 last=122653049
+cpu: loop id=7 n=8 avg=2240777 max=8197093 last=475
+cpu: period=654854838 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=6% cycles=39602724 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=499302982 dispatch=16 state=4
+cpu: task=4 usage=0% cycles=30091 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46025979 dispatch=9 state=2
+cpu: task=6 usage=7% cycles=51629646 dispatch=129 state=4
+cpu: task=7 usage=2% cycles=17952093 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=84303 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39608362 max=39608362 last=39608362
+cpu: loop id=3 n=9 avg=55481364 max=59296602 last=58556691
+cpu: loop id=5 n=8 avg=32026296 max=107831428 last=499
+cpu: loop id=6 n=4 avg=163685324 max=302411974 last=69870764
+cpu: loop id=7 n=8 avg=2242581 max=8157697 last=499
+cpu: period=653182653 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=6% cycles=39549129 dispatch=1 state=4
+cpu: task=3 usage=76% cycles=499826886 dispatch=19 state=4
+cpu: task=4 usage=0% cycles=30179 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46205632 dispatch=8 state=2
+cpu: task=6 usage=7% cycles=49221154 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=18044562 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=80901 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39545386 max=39545386 last=39545386
+cpu: loop id=3 n=9 avg=55542521 max=59419456 last=59167825
+cpu: loop id=5 n=8 avg=32063003 max=107509624 last=499
+cpu: loop id=6 n=3 avg=195178582 max=302506655 last=213300922
+cpu: loop id=7 n=8 avg=2254015 max=8211628 last=475
+cpu: period=654833104 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=6% cycles=39606157 dispatch=1 state=4
+cpu: task=3 usage=76% cycles=500448595 dispatch=20 state=4
+cpu: task=4 usage=0% cycles=30523 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46206480 dispatch=8 state=2
+cpu: task=6 usage=7% cycles=50249454 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17971311 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=90339 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39602556 max=39602556 last=39602556
+cpu: loop id=3 n=9 avg=55613765 max=59184654 last=59184654
+cpu: loop id=5 n=8 avg=25455538 max=111902716 last=505
+cpu: loop id=6 n=5 avg=144471638 max=214749467 last=123280625
+cpu: loop id=7 n=8 avg=2243736 max=8198617 last=499
+cpu: period=702786816 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39607796 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=551272605 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30662 dispatch=4 state=4
+cpu: task=5 usage=5% cycles=37496330 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=56121264 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=17950257 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84555 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39604075 max=39604075 last=39604075
+cpu: loop id=3 n=10 avg=55136437 max=59186016 last=59186016
+cpu: loop id=5 n=8 avg=31809457 max=107840081 last=532
+cpu: loop id=6 n=3 avg=214594362 max=303208231 last=210670531
+cpu: loop id=7 n=8 avg=2240951 max=8140777 last=475
+cpu: period=666046286 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=5% cycles=39656321 dispatch=2 state=4
+cpu: task=3 usage=74% cycles=498338625 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=29945 dispatch=4 state=4
+cpu: task=5 usage=8% cycles=55425665 dispatch=7 state=2
+cpu: task=6 usage=8% cycles=54364971 dispatch=128 state=4
+cpu: task=7 usage=2% cycles=17914941 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84915 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39658735 max=39658735 last=39658735
+cpu: loop id=3 n=9 avg=55380587 max=59346945 last=59346945
+cpu: loop id=5 n=8 avg=27025620 max=74694749 last=499
+cpu: loop id=6 n=5 avg=145008792 max=262592081 last=70533656
+cpu: loop id=7 n=8 avg=2236595 max=8139787 last=475
+cpu: period=701228745 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39502893 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=550946982 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30494 dispatch=4 state=4
+cpu: task=5 usage=5% cycles=37380590 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=55116216 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=17933742 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=90390 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39508572 max=39508572 last=39508572
+cpu: loop id=3 n=10 avg=55103657 max=59100750 last=59100750
+cpu: loop id=5 n=8 avg=31706933 max=107399191 last=532
+cpu: loop id=6 n=3 avg=214104782 max=302814962 last=209621843
+cpu: loop id=7 n=8 avg=2239072 max=8140459 last=475
+cpu: period=701456235 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39661805 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=548072241 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30015 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45859940 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=49628970 dispatch=126 state=2
+cpu: task=7 usage=2% cycles=17882526 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=92760 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39664339 max=39664339 last=39664339
+cpu: loop id=3 n=10 avg=54816630 max=58234219 last=57909510
+cpu: loop id=5 n=8 avg=26841189 max=74220269 last=499
+cpu: loop id=6 n=4 avg=162681023 max=261505790 last=210010316
+cpu: loop id=7 n=8 avg=2232565 max=8138764 last=475
+cpu: period=660584319 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=5% cycles=39607439 dispatch=1 state=4
+cpu: task=3 usage=75% cycles=497815412 dispatch=20 state=4
+cpu: task=4 usage=0% cycles=30143 dispatch=4 state=4
+cpu: task=5 usage=8% cycles=54748727 dispatch=9 state=2
+cpu: task=6 usage=7% cycles=50141613 dispatch=129 state=2
+cpu: task=7 usage=2% cycles=17926674 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=85221 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39603580 max=39603580 last=39603580
+cpu: loop id=3 n=9 avg=55321287 max=59086575 last=58439553
+cpu: loop id=5 n=8 avg=19768827 max=74722757 last=505
+cpu: loop id=6 n=5 avg=142306405 max=260185037 last=64073839
+cpu: loop id=7 n=8 avg=2238186 max=8142892 last=499
+cpu: period=652845504 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=6% cycles=39496878 dispatch=1 state=4
+cpu: task=3 usage=76% cycles=499471927 dispatch=19 state=4
+cpu: task=4 usage=0% cycles=30098 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46118024 dispatch=8 state=2
+cpu: task=6 usage=7% cycles=49449112 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=17967161 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=85371 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39492898 max=39492898 last=39492898
+cpu: loop id=3 n=9 avg=55503306 max=59264011 last=58894149
+cpu: loop id=5 n=8 avg=32025330 max=107643877 last=499
+cpu: loop id=6 n=3 avg=214519474 max=360852896 last=212700554
+cpu: loop id=7 n=8 avg=2243155 max=8144557 last=475
+cpu: period=654856168 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=6% cycles=39608044 dispatch=1 state=4
+cpu: task=3 usage=76% cycles=499677550 dispatch=20 state=4
+cpu: task=4 usage=0% cycles=30502 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46611004 dispatch=9 state=2
+cpu: task=6 usage=7% cycles=50682851 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17926140 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=89733 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39604023 max=39604023 last=39604023
+cpu: loop id=3 n=9 avg=55527917 max=59123106 last=59123106
+cpu: loop id=5 n=8 avg=25439772 max=111701704 last=532
+cpu: loop id=6 n=5 avg=144559563 max=214908695 last=123362644
+cpu: loop id=7 n=8 avg=2238066 max=8145379 last=499
+cpu: period=703810034 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39607411 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=553247676 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30661 dispatch=4 state=4
+cpu: task=5 usage=5% cycles=37324976 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=55345845 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=17944644 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=83058 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39603589 max=39603589 last=39603589
+cpu: loop id=3 n=10 avg=55333892 max=59428080 last=59011340
+cpu: loop id=5 n=8 avg=31864646 max=107952964 last=532
+cpu: loop id=6 n=3 avg=214999155 max=303362381 last=210944897
+cpu: loop id=7 n=8 avg=2240319 max=8142397 last=475
+cpu: period=645337836 cycles irq=0% count=74 unknown=0
+cpu: task=2 usage=6% cycles=39657224 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=492603474 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=22898 dispatch=3 state=4
+cpu: task=5 usage=7% cycles=46279973 dispatch=7 state=4
+cpu: task=6 usage=7% cycles=51068945 dispatch=82 state=4
+cpu: task=7 usage=2% cycles=15478334 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=80673 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39659560 max=39659560 last=39659560
+cpu: loop id=3 n=9 avg=54742377 max=59055219 last=52979859
+cpu: loop id=5 n=8 avg=26820786 max=74895532 last=532
+cpu: loop id=6 n=4 avg=178426297 max=262932232 last=211158770
+cpu: loop id=7 n=6 avg=2576957 max=8142457 last=475
+cpu: period=692443362 cycles irq=0% count=104 unknown=0
+cpu: task=2 usage=5% cycles=39463643 dispatch=2 state=4
+cpu: task=3 usage=79% cycles=550867352 dispatch=18 state=4
+cpu: task=4 usage=0% cycles=5217259 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45868402 dispatch=9 state=4
+cpu: task=6 usage=6% cycles=42742576 dispatch=112 state=2
+cpu: task=7 usage=1% cycles=8002221 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=81234 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39468739 max=39468739 last=39468739
+cpu: loop id=3 n=10 avg=55610319 max=63338352 last=53270617
+cpu: loop id=5 n=8 avg=26250157 max=74828918 last=499
+cpu: loop id=6 n=3 avg=163928406 max=223405736 last=64281838
+cpu: loop id=7 n=6 avg=1332855 max=3009697 last=499
+cpu: period=705775020 cycles irq=0% count=123 unknown=0
+cpu: task=2 usage=5% cycles=39604229 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=549621618 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30859 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45604547 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=52707329 dispatch=132 state=4
+cpu: task=7 usage=2% cycles=17877969 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=92364 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39607653 max=39607653 last=39607653
+cpu: loop id=3 n=10 avg=54971799 max=59643039 last=52550311
+cpu: loop id=5 n=6 avg=4041213 max=8913127 last=475
+cpu: loop id=6 n=4 avg=175922691 max=418775534 last=11247496
+cpu: loop id=7 n=8 avg=2232050 max=9964495 last=499
+cpu: period=699256965 cycles irq=0% count=114 unknown=0
+cpu: task=2 usage=5% cycles=39450305 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=550502332 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30021 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45645932 dispatch=6 state=2
+cpu: task=6 usage=6% cycles=45434575 dispatch=123 state=2
+cpu: task=7 usage=2% cycles=17880541 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=92151 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39453076 max=39453076 last=39453076
+cpu: loop id=3 n=10 avg=55059284 max=58346211 last=52642279
+cpu: loop id=5 n=7 avg=36309664 max=113638306 last=66950411
+cpu: loop id=6 n=4 avg=190145958 max=364373654 last=69673612
+cpu: loop id=7 n=8 avg=2232265 max=9944359 last=499
+cpu: period=706248685 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39867028 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=551595420 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=29948 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45739635 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=50738986 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=17966742 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=82293 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39863212 max=39863212 last=39863212
+cpu: loop id=3 n=10 avg=55166974 max=59590524 last=53407450
+cpu: loop id=5 n=8 avg=31941189 max=114201254 last=67662293
+cpu: loop id=6 n=4 avg=176326926 max=308876624 last=123848789
+cpu: loop id=7 n=8 avg=2243147 max=9971665 last=499
+cpu: period=708160379 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39925554 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=552709362 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=29927 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46361525 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=50801646 dispatch=125 state=2
+cpu: task=7 usage=2% cycles=18014532 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=89373 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39928930 max=39928930 last=39928930
+cpu: loop id=3 n=10 avg=55280249 max=58970281 last=58970281
+cpu: loop id=5 n=8 avg=32054377 max=114491839 last=67768379
+cpu: loop id=6 n=4 avg=190041264 max=364415795 last=121263337
+cpu: loop id=7 n=8 avg=2249204 max=10040683 last=499
+cpu: period=710340741 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39973902 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=553239362 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=30356 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45713342 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=52333305 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=18042921 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=780693 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39979966 max=39979966 last=39979966
+cpu: loop id=3 n=10 avg=55332564 max=59170542 last=58636603
+cpu: loop id=5 n=8 avg=31527850 max=115669883 last=67441409
+cpu: loop id=6 n=4 avg=163162126 max=312810365 last=63657395
+cpu: loop id=7 n=8 avg=2252572 max=10061497 last=499
+cpu: period=709220334 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39978960 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=553931081 dispatch=15 state=4
+cpu: task=4 usage=0% cycles=30386 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45765730 dispatch=11 state=2
+cpu: task=6 usage=7% cycles=51154083 dispatch=128 state=2
+cpu: task=7 usage=2% cycles=18040395 dispatch=8 state=4
+cpu: task=8 usage=0% cycles=90183 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39985204 max=39985204 last=39985204
+cpu: loop id=3 n=10 avg=55393902 max=58928472 last=52688635
+cpu: loop id=5 n=8 avg=24704728 max=114578612 last=67708277
+cpu: loop id=6 n=4 avg=178698913 max=316334269 last=69872854
+cpu: loop id=7 n=8 avg=2257330 max=10049347 last=499
+cpu: period=710267928 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39972552 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=554465323 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=30005 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45983122 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=51487334 dispatch=126 state=2
+cpu: task=7 usage=2% cycles=18015441 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=86211 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39968566 max=39968566 last=39968566
+cpu: loop id=3 n=10 avg=55455020 max=59005164 last=53612812
+cpu: loop id=5 n=8 avg=32004366 max=114582032 last=67522826
+cpu: loop id=6 n=4 avg=177511364 max=311099957 last=123243739
+cpu: loop id=7 n=8 avg=2249263 max=10039294 last=499
+cpu: period=707653695 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39972952 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=552538438 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=29793 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45778247 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=50981818 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=18033732 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=90219 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39976078 max=39976078 last=39976078
+cpu: loop id=3 n=10 avg=55262839 max=59560450 last=59560450
+cpu: loop id=5 n=8 avg=32247952 max=114992996 last=68335562
+cpu: loop id=6 n=4 avg=190001101 max=362750585 last=69957998
+cpu: loop id=7 n=8 avg=2251520 max=10036282 last=499
+cpu: period=708823998 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39925275 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=553471244 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30419 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45901158 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=50094705 dispatch=126 state=2
+cpu: task=7 usage=2% cycles=18047481 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=1123215 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39929941 max=39929941 last=39929941
+cpu: loop id=3 n=11 avg=50323248 max=59587624 last=52722805
+cpu: loop id=5 n=8 avg=24934779 max=115477336 last=68376674
+cpu: loop id=6 n=4 avg=164029039 max=263505455 last=122226070
+cpu: loop id=7 n=8 avg=2253236 max=10053406 last=475
+cpu: period=708055188 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=5% cycles=40077974 dispatch=1 state=4
+cpu: task=3 usage=77% cycles=552061995 dispatch=17 state=4
+cpu: task=4 usage=0% cycles=30386 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46907341 dispatch=9 state=2
+cpu: task=6 usage=7% cycles=50619372 dispatch=129 state=4
+cpu: task=7 usage=2% cycles=18039390 dispatch=6 state=4
+cpu: task=8 usage=0% cycles=88947 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=40074259 max=40074259 last=40074259
+cpu: loop id=3 n=10 avg=55208879 max=59222943 last=52657132
+cpu: loop id=5 n=9 avg=21965154 max=114584225 last=475
+cpu: loop id=6 n=4 avg=176773966 max=311539274 last=121424033
+cpu: loop id=7 n=8 avg=2254603 max=10052275 last=499
+cpu: period=680752267 cycles irq=0% count=134 unknown=0
+cpu: task=2 usage=5% cycles=39714042 dispatch=1 state=4
+cpu: task=3 usage=73% cycles=501401228 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=31312 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46389742 dispatch=8 state=4
+cpu: task=6 usage=9% cycles=66285162 dispatch=147 state=4
+cpu: task=7 usage=3% cycles=22978869 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=3694497 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39710152 max=39710152 last=39710152
+cpu: loop id=3 n=12 avg=41747582 max=59794327 last=52732947
+cpu: loop id=5 n=10 avg=28214699 max=114893126 last=532
+cpu: loop id=6 n=5 avg=164939840 max=270701863 last=213186613
+cpu: loop id=7 n=10 avg=2295178 max=10073566 last=475
+cpu: period=656433698 cycles irq=0% count=112 unknown=0
+cpu: task=2 usage=6% cycles=39934652 dispatch=1 state=4
+cpu: task=3 usage=76% cycles=500515083 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=5217974 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46328218 dispatch=9 state=4
+cpu: task=6 usage=8% cycles=56134775 dispatch=121 state=2
+cpu: task=7 usage=1% cycles=8002876 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=82306 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39932404 max=39932404 last=39932404
+cpu: loop id=3 n=11 avg=45975155 max=64031418 last=52537348
+cpu: loop id=5 n=8 avg=18941864 max=74695154 last=532
+cpu: loop id=6 n=3 avg=153538376 max=177240587 last=137697667
+cpu: loop id=7 n=6 avg=1332717 max=3010963 last=475
+cpu: period=648647145 cycles irq=0% count=110 unknown=0
+cpu: task=2 usage=6% cycles=39655301 dispatch=1 state=4
+cpu: task=3 usage=77% cycles=501427385 dispatch=19 state=4
+cpu: task=4 usage=0% cycles=30007 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=45828571 dispatch=8 state=4
+cpu: task=6 usage=6% cycles=43393985 dispatch=120 state=4
+cpu: task=7 usage=2% cycles=18015321 dispatch=5 state=4
+cpu: task=8 usage=0% cycles=84663 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39651630 max=39651630 last=39651630
+cpu: loop id=3 n=10 avg=50147176 max=59365219 last=53651110
+cpu: loop id=5 n=8 avg=27133355 max=74865236 last=499
+cpu: loop id=6 n=4 avg=175452482 max=354957632 last=123606515
+cpu: loop id=7 n=8 avg=2251043 max=10014940 last=499
+cpu: period=707651788 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39655455 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=553213059 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30082 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45973202 dispatch=5 state=2
+cpu: task=6 usage=7% cycles=50466490 dispatch=127 state=2
+cpu: task=7 usage=2% cycles=18002709 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=82230 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39653208 max=39653208 last=39653208
+cpu: loop id=3 n=10 avg=55330135 max=59764906 last=59764906
+cpu: loop id=5 n=5 avg=28689599 max=68532964 last=68532964
+cpu: loop id=6 n=4 avg=189893896 max=362674694 last=69652870
+cpu: loop id=7 n=8 avg=2247685 max=10009150 last=499
+cpu: period=709325408 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39872725 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=553861848 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30777 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46921088 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=50311039 dispatch=126 state=2
+cpu: task=7 usage=2% cycles=18006881 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=91755 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39877669 max=39877669 last=39877669
+cpu: loop id=3 n=10 avg=55395670 max=59201102 last=59069337
+cpu: loop id=5 n=9 avg=15550099 max=115610029 last=475
+cpu: loop id=6 n=4 avg=177250261 max=313234565 last=121567751
+cpu: loop id=7 n=8 avg=2248131 max=10007215 last=499
+cpu: period=708722226 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=5% cycles=39714552 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=551082397 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=29918 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46298219 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=53234670 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=18037236 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=93786 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39719518 max=39719518 last=39719518
+cpu: loop id=3 n=10 avg=55117499 max=59207914 last=52432924
+cpu: loop id=5 n=7 avg=36770999 max=115090745 last=67786517
+cpu: loop id=6 n=4 avg=149694182 max=259041422 last=63690838
+cpu: loop id=7 n=8 avg=2251944 max=10046539 last=499
+cpu: period=707412591 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39924971 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=552107414 dispatch=16 state=4
+cpu: task=4 usage=0% cycles=30464 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45992639 dispatch=11 state=2
+cpu: task=6 usage=7% cycles=50974552 dispatch=130 state=4
+cpu: task=7 usage=2% cycles=18060564 dispatch=6 state=4
+cpu: task=8 usage=0% cycles=92226 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39921058 max=39921058 last=39921058
+cpu: loop id=3 n=10 avg=55212461 max=58859964 last=53367991
+cpu: loop id=5 n=8 avg=24699305 max=114863645 last=67203220
+cpu: loop id=6 n=4 avg=176751813 max=369128441 last=64379489
+cpu: loop id=7 n=8 avg=2257490 max=10078483 last=499
+cpu: period=712920454 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39971554 dispatch=1 state=4
+cpu: task=3 usage=77% cycles=553346009 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30985 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46017303 dispatch=8 state=2
+cpu: task=6 usage=7% cycles=55182591 dispatch=130 state=2
+cpu: task=7 usage=2% cycles=18060189 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=82662 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39967825 max=39967825 last=39967825
+cpu: loop id=3 n=10 avg=55343553 max=59543652 last=58818756
+cpu: loop id=5 n=9 avg=21946768 max=115040162 last=561
+cpu: loop id=6 n=4 avg=207308020 max=369482884 last=132001457
+cpu: loop id=7 n=8 avg=2254849 max=10064128 last=499
+cpu: period=680367638 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39714869 dispatch=2 state=4
+cpu: task=3 usage=80% cycles=546235379 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=22701 dispatch=3 state=4
+cpu: task=5 usage=3% cycles=23922920 dispatch=5 state=2
+cpu: task=6 usage=7% cycles=52141836 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=18013491 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=90879 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39719851 max=39719851 last=39719851
+cpu: loop id=3 n=10 avg=54629643 max=59084485 last=58113891
+cpu: loop id=5 n=6 avg=31473656 max=114454034 last=499
+cpu: loop id=6 n=4 avg=189125104 max=306286231 last=121915720
+cpu: loop id=7 n=8 avg=2248997 max=10026154 last=499
+cpu: period=690621081 cycles irq=0% count=82 unknown=0
+cpu: task=2 usage=5% cycles=39714143 dispatch=1 state=4
+cpu: task=3 usage=79% cycles=550241255 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=23198 dispatch=3 state=4
+cpu: task=5 usage=5% cycles=37117133 dispatch=6 state=4
+cpu: task=6 usage=6% cycles=47751932 dispatch=89 state=2
+cpu: task=7 usage=2% cycles=15531739 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=79398 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39711462 max=39711462 last=39711462
+cpu: loop id=3 n=10 avg=55032095 max=59589634 last=53265808
+cpu: loop id=5 n=8 avg=32397423 max=107922076 last=505
+cpu: loop id=6 n=3 avg=214875066 max=311805016 last=201204526
+cpu: loop id=7 n=6 avg=2585894 max=10037320 last=475
+cpu: period=649419546 cycles irq=0% count=109 unknown=0
+cpu: task=2 usage=6% cycles=39604025 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=498104049 dispatch=22 state=4
+cpu: task=4 usage=0% cycles=30406 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46882272 dispatch=7 state=4
+cpu: task=6 usage=7% cycles=49446180 dispatch=118 state=4
+cpu: task=7 usage=2% cycles=15060310 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=79908 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39606106 max=39606106 last=39606106
+cpu: loop id=3 n=9 avg=55354263 max=59740155 last=52542279
+cpu: loop id=5 n=8 avg=19755490 max=75004844 last=499
+cpu: loop id=6 n=3 avg=188184094 max=281515733 last=70925783
+cpu: loop id=7 n=6 avg=2507299 max=7674502 last=499
+cpu: period=643476913 cycles irq=0% count=110 unknown=0
+cpu: task=2 usage=6% cycles=39505540 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=500534276 dispatch=18 state=4
+cpu: task=4 usage=0% cycles=30135 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46498901 dispatch=6 state=2
+cpu: task=6 usage=5% cycles=38517507 dispatch=119 state=4
+cpu: task=7 usage=2% cycles=18091458 dispatch=6 state=4
+cpu: task=8 usage=0% cycles=88953 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39509350 max=39509350 last=39509350
+cpu: loop id=3 n=9 avg=55619889 max=59271931 last=59271931
+cpu: loop id=5 n=5 avg=42237227 max=74917226 last=68325896
+cpu: loop id=6 n=4 avg=177005315 max=297846533 last=70445131
+cpu: loop id=7 n=8 avg=2261338 max=7684498 last=499
+cpu: period=643007414 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=6% cycles=39766643 dispatch=1 state=4
+cpu: task=3 usage=76% cycles=493714297 dispatch=19 state=4
+cpu: task=4 usage=0% cycles=22509 dispatch=3 state=4
+cpu: task=5 usage=6% cycles=39471099 dispatch=6 state=2
+cpu: task=6 usage=8% cycles=51657296 dispatch=126 state=2
+cpu: task=7 usage=2% cycles=18068583 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=79818 dispatch=9 state=4
+cpu: loop id=2 n=1 avg=39764538 max=39764538 last=39764538
+cpu: loop id=3 n=9 avg=54864269 max=58933708 last=58652994
+cpu: loop id=5 n=7 avg=26939404 max=74604260 last=499
+cpu: loop id=6 n=4 avg=162597574 max=304398434 last=11310686
+cpu: loop id=7 n=8 avg=2255653 max=8197507 last=499
+cpu: period=702761877 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39451662 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=552773629 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30879 dispatch=4 state=4
+cpu: task=5 usage=5% cycles=36527570 dispatch=7 state=4
+cpu: task=6 usage=7% cycles=55606094 dispatch=128 state=4
+cpu: task=7 usage=2% cycles=18055026 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=89493 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39455830 max=39455830 last=39455830
+cpu: loop id=3 n=10 avg=55286322 max=59451835 last=58165362
+cpu: loop id=5 n=8 avg=24538837 max=74736083 last=532
+cpu: loop id=6 n=4 avg=192530534 max=360084283 last=69559346
+cpu: loop id=7 n=8 avg=2254143 max=8191429 last=499
+cpu: period=644076783 cycles irq=0% count=111 unknown=0
+cpu: task=2 usage=6% cycles=39564797 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=496686050 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=22406 dispatch=3 state=4
+cpu: task=5 usage=7% cycles=45787631 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=46198065 dispatch=117 state=4
+cpu: task=7 usage=2% cycles=15524098 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=80319 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39570246 max=39570246 last=39570246
+cpu: loop id=3 n=9 avg=55195554 max=59999943 last=53308178
+cpu: loop id=5 n=8 avg=27181788 max=74889572 last=499
+cpu: loop id=6 n=3 avg=213567087 max=302577653 last=266915387
+cpu: loop id=7 n=6 avg=2584615 max=8190622 last=475
+cpu: period=644332455 cycles irq=0% count=69 unknown=0
+cpu: task=2 usage=6% cycles=39550765 dispatch=1 state=4
+cpu: task=3 usage=77% cycles=501468032 dispatch=15 state=4
+cpu: task=4 usage=0% cycles=31088 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=45535464 dispatch=11 state=4
+cpu: task=6 usage=6% cycles=44348901 dispatch=81 state=2
+cpu: task=7 usage=2% cycles=13179678 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=80001 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39548239 max=39548239 last=39548239
+cpu: loop id=3 n=9 avg=55721222 max=59741733 last=53642395
+cpu: loop id=5 n=8 avg=19188922 max=75488681 last=532
+cpu: loop id=6 n=3 avg=147855496 max=261505946 last=11184182
+cpu: loop id=7 n=6 avg=2195580 max=8209246 last=499
+cpu: period=709216842 cycles irq=0% count=116 unknown=0
+cpu: task=2 usage=5% cycles=39449403 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=553336408 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30538 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46220072 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=51891739 dispatch=125 state=2
+cpu: task=7 usage=2% cycles=17984025 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=82128 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39445749 max=39445749 last=39445749
+cpu: loop id=3 n=10 avg=55342601 max=59239568 last=59239568
+cpu: loop id=5 n=6 avg=23209293 max=67490588 last=532
+cpu: loop id=6 n=4 avg=206394522 max=362456240 last=130388111
+cpu: loop id=7 n=8 avg=2245237 max=8195242 last=475
+cpu: period=709014675 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=5% cycles=39603825 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=552965754 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30029 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46255160 dispatch=6 state=2
+cpu: task=6 usage=7% cycles=51800511 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=18035286 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=93537 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39608101 max=39608101 last=39608101
+cpu: loop id=3 n=10 avg=55305928 max=59068549 last=52485880
+cpu: loop id=5 n=7 avg=36753669 max=115492127 last=67844576
+cpu: loop id=6 n=4 avg=149012572 max=263074106 last=11296910
+cpu: loop id=7 n=8 avg=2251738 max=8192857 last=499
+cpu: period=710782776 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39872738 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=551534451 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=30516 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45829842 dispatch=7 state=2
+cpu: task=6 usage=7% cycles=55234421 dispatch=128 state=2
+cpu: task=7 usage=2% cycles=17963994 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=89169 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39875197 max=39875197 last=39875197
+cpu: loop id=3 n=10 avg=55162407 max=59548477 last=58125317
+cpu: loop id=5 n=9 avg=28244965 max=114886291 last=532
+cpu: loop id=6 n=4 avg=206918146 max=363812993 last=131464403
+cpu: loop id=7 n=8 avg=2242768 max=8197963 last=475
+cpu: period=677051961 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39655398 dispatch=1 state=4
+cpu: task=3 usage=80% cycles=545174726 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=23181 dispatch=3 state=4
+cpu: task=5 usage=3% cycles=23891756 dispatch=7 state=4
+cpu: task=6 usage=7% cycles=49914974 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=18080772 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=84102 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39651658 max=39651658 last=39651658
+cpu: loop id=3 n=10 avg=54526025 max=59720097 last=53316480
+cpu: loop id=5 n=8 avg=31101464 max=113386027 last=532
+cpu: loop id=6 n=4 avg=190310115 max=262881214 last=130748761
+cpu: loop id=7 n=8 avg=2257417 max=8199796 last=499
+cpu: period=685816629 cycles irq=0% count=74 unknown=0
+cpu: task=2 usage=5% cycles=39674249 dispatch=2 state=4
+cpu: task=3 usage=79% cycles=548643420 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=5209778 dispatch=3 state=4
+cpu: task=5 usage=5% cycles=36968567 dispatch=6 state=4
+cpu: task=6 usage=6% cycles=44691037 dispatch=81 state=4
+cpu: task=7 usage=1% cycles=10397713 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=83049 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39678930 max=39678930 last=39678930
+cpu: loop id=3 n=10 avg=55390804 max=63814404 last=53516784
+cpu: loop id=5 n=6 avg=24542297 max=74700716 last=499
+cpu: loop id=6 n=3 avg=228642549 max=295344071 last=258619268
+cpu: loop id=7 n=6 avg=1730142 max=4888060 last=475
+cpu: period=646616604 cycles irq=0% count=117 unknown=0
+cpu: task=2 usage=6% cycles=39621492 dispatch=1 state=4
+cpu: task=3 usage=76% cycles=497576749 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=30563 dispatch=4 state=4
+cpu: task=5 usage=7% cycles=46288157 dispatch=7 state=4
+cpu: task=6 usage=7% cycles=47820050 dispatch=125 state=4
+cpu: task=7 usage=2% cycles=14978719 dispatch=3 state=4
+cpu: task=8 usage=0% cycles=74715 dispatch=9 state=4
+cpu: loop id=2 n=1 avg=39619233 max=39619233 last=39619233
+cpu: loop id=3 n=10 avg=49765969 max=59248659 last=52456335
+cpu: loop id=5 n=8 avg=26296036 max=74495690 last=499
+cpu: loop id=6 n=3 avg=147594846 max=260625683 last=11203394
+cpu: loop id=7 n=6 avg=2493928 max=10017445 last=499
+cpu: period=654018925 cycles irq=0% count=117 unknown=0
+cpu: task=2 usage=6% cycles=39555697 dispatch=2 state=4
+cpu: task=3 usage=76% cycles=500419484 dispatch=17 state=4
+cpu: task=4 usage=0% cycles=29845 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45297846 dispatch=8 state=2
+cpu: task=6 usage=7% cycles=50368548 dispatch=127 state=4
+cpu: task=7 usage=2% cycles=17993112 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=130038 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39560677 max=39560677 last=39560677
+cpu: loop id=3 n=9 avg=55606777 max=59659473 last=59641867
+cpu: loop id=5 n=7 avg=36704006 max=74564645 last=68427050
+cpu: loop id=6 n=4 avg=163713774 max=244364432 last=69560093
+cpu: loop id=7 n=8 avg=2246447 max=10045141 last=499
+cpu: period=696040490 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39867377 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=547420716 dispatch=14 state=4
+cpu: task=4 usage=0% cycles=22722 dispatch=3 state=4
+cpu: task=5 usage=5% cycles=39288037 dispatch=9 state=4
+cpu: task=6 usage=7% cycles=50716650 dispatch=128 state=4
+cpu: task=7 usage=2% cycles=18062377 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=436533 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39873693 max=39873693 last=39873693
+cpu: loop id=3 n=10 avg=54742414 max=59681970 last=52370163
+cpu: loop id=5 n=9 avg=34116855 max=98815328 last=532
+cpu: loop id=6 n=4 avg=192715978 max=331448342 last=130962221
+cpu: loop id=7 n=8 avg=2255122 max=10114504 last=475
+cpu: period=704133390 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39721099 dispatch=1 state=4
+cpu: task=3 usage=78% cycles=553841078 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=5217701 dispatch=4 state=4
+cpu: task=5 usage=5% cycles=37213769 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=54957275 dispatch=127 state=2
+cpu: task=7 usage=1% cycles=12873135 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=80205 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39719133 max=39719133 last=39719133
+cpu: loop id=3 n=10 avg=55911619 max=64390492 last=59096814
+cpu: loop id=5 n=6 avg=24486926 max=74909444 last=532
+cpu: loop id=6 n=3 avg=212047421 max=289299302 last=216107384
+cpu: loop id=7 n=8 avg=1606334 max=4899451 last=499
+cpu: period=708487944 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39709436 dispatch=2 state=4
+cpu: task=3 usage=78% cycles=553129737 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=5216830 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45836952 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=51418802 dispatch=127 state=2
+cpu: task=7 usage=1% cycles=12858723 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=91512 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39712315 max=39712315 last=39712315
+cpu: loop id=3 n=10 avg=55840803 max=64472350 last=59198052
+cpu: loop id=5 n=8 avg=27793992 max=74658569 last=499
+cpu: loop id=6 n=4 avg=177112226 max=270509231 last=270509231
+cpu: loop id=7 n=8 avg=1604564 max=4855570 last=499
+cpu: period=705364872 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39715436 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=549803220 dispatch=21 state=4
+cpu: task=4 usage=0% cycles=35759 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=46024802 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=51412241 dispatch=129 state=2
+cpu: task=7 usage=2% cycles=18054318 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=91626 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39717564 max=39717564 last=39717564
+cpu: loop id=3 n=10 avg=54987643 max=58802539 last=58339937
+cpu: loop id=5 n=8 avg=26945081 max=74384315 last=499
+cpu: loop id=6 n=4 avg=163537069 max=257946137 last=211754678
+cpu: loop id=7 n=8 avg=2254012 max=7658752 last=475
+cpu: period=665347623 cycles irq=0% count=120 unknown=0
+cpu: task=2 usage=5% cycles=39602082 dispatch=1 state=4
+cpu: task=3 usage=75% cycles=499953153 dispatch=20 state=4
+cpu: task=4 usage=0% cycles=30428 dispatch=4 state=4
+cpu: task=5 usage=8% cycles=54550530 dispatch=8 state=2
+cpu: task=6 usage=7% cycles=51623194 dispatch=128 state=4
+cpu: task=7 usage=2% cycles=17958909 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=1398690 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39598465 max=39598465 last=39598465
+cpu: loop id=3 n=9 avg=55557968 max=59693517 last=58077636
+cpu: loop id=5 n=8 avg=19822974 max=75126412 last=561
+cpu: loop id=6 n=5 avg=155185480 max=261885083 last=69376595
+cpu: loop id=7 n=8 avg=2242093 max=8190130 last=499
+cpu: period=696910359 cycles irq=0% count=118 unknown=0
+cpu: task=2 usage=5% cycles=39608697 dispatch=1 state=4
+cpu: task=3 usage=79% cycles=551894258 dispatch=23 state=4
+cpu: task=4 usage=0% cycles=30266 dispatch=4 state=4
+cpu: task=5 usage=5% cycles=36538402 dispatch=7 state=4
+cpu: task=6 usage=7% cycles=50714483 dispatch=128 state=4
+cpu: task=7 usage=2% cycles=17811798 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=83889 dispatch=10 state=4
+cpu: loop id=2 n=1 avg=39604765 max=39604765 last=39604765
+cpu: loop id=3 n=10 avg=55197667 max=59345823 last=58142670
+cpu: loop id=5 n=8 avg=24536896 max=74226437 last=499
+cpu: loop id=6 n=4 avg=176410546 max=300600521 last=69443872
+cpu: loop id=7 n=8 avg=2223734 max=8138005 last=499
+cpu: period=701291967 cycles irq=0% count=119 unknown=0
+cpu: task=2 usage=5% cycles=39572823 dispatch=2 state=4
+cpu: task=3 usage=77% cycles=547001245 dispatch=24 state=4
+cpu: task=4 usage=0% cycles=29883 dispatch=4 state=4
+cpu: task=5 usage=6% cycles=45997370 dispatch=6 state=4
+cpu: task=6 usage=7% cycles=50574014 dispatch=125 state=2
+cpu: task=7 usage=2% cycles=17797799 dispatch=4 state=4
+cpu: task=8 usage=0% cycles=91605 dispatch=11 state=4
+cpu: loop id=2 n=1 avg=39577804 max=39577804 last=39577804
+cpu: loop id=3 n=10 avg=54709263 max=58937331 last=58544642
+cpu: loop id=5 n=8 avg=26977940 max=74274026 last=499
+cpu: loop id=6 n=3 avg=211278062 max=300994040 last=270293203
+cpu: loop id=7 n=8 avg=2222038 max=8145340 last=499

@@ -6,7 +6,7 @@ set -eu
 : "${CUBEMX_IOC:?CUBEMX_IOC is required}"
 : "${CUBEMX_OUTPUT_DIR:?CUBEMX_OUTPUT_DIR is required}"
 
-repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 
 case "$CUBEMX_IOC" in
     /*) ioc_path=$CUBEMX_IOC ;;

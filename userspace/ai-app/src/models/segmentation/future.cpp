@@ -8,7 +8,7 @@
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
 #include "image_resizer/image_resizer.hpp"
-#include "application/pipeline/image_format.hpp"
+#include "middleware/pipeline/image_format.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
 #include "memory_manager/memory_sizes.hpp"
 #include "middleware/memory/static_memory_layout.hpp"

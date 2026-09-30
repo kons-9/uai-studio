@@ -8,4 +8,4 @@ ENABLE_AI := 0
 ENABLE_THREAD_MONITOR := 0
 ENABLE_CPU_TASK_MONITOR := 0
 
-include $(PROJECT_ROOT)/tools/common.mk
+include $(PROJECT_ROOT)/build-system/make/common.mk

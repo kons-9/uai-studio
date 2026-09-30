@@ -1,5 +1,5 @@
 #include "driver/nor_driver/nor_driver.hpp"
-#include "sample_ai_config.hpp"
+#include "driver/config/ai_board_config.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"

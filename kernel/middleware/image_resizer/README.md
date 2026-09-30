@@ -70,7 +70,7 @@ Pipe1の表示用フレームをCPUで縮小して推論入力にする経路と
 そのまま推論入力になります。そのため、枠の位置を変更する場合は、Pipe2のcropと
 `InferenceDispatcher`のPipe2からPipe1への座標変換を同時に確認してください。
 
-性能を測るときは、`config/sample_ai_config.hpp` の
+性能を測るときは、`kernel/driver/config/ai_board_config.hpp` の
 `kCamera.pipe2_frame_rate` と TaskContext の `diagnostics.inference_fps` を
 記録してください。前者が
 `DCMIPP_FRAME_RATE_1_OVER_2` なら、20 fpsのカメラに対してPipe2の入力上限は約10 fps

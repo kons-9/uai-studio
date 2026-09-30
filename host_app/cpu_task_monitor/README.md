@@ -31,6 +31,10 @@ python3 host_app/cpu_task_monitor/cpu_task_monitor.py \
 make -C userspace/ai-app cpu-task-monitor
 ```
 
+既定ではraw dump、JSON、CSV、PNGを`build-ai-app-person/`へ出力します。
+出力先は`CPU_TASK_MONITOR_DUMP`、`CPU_TASK_MONITOR_JSON`、
+`CPU_TASK_MONITOR_CSV`、`CPU_TASK_MONITOR_PNG`で変更できます。
+
 ダンプだけが必要な場合は`cpu-task-monitor-dump`を使用します。リングは
 `0x91C48000`の512 KiBで、リセット前に取得してください。v3のガント図は
 イベント待ちを除いたループ本体の経過区間です。ループ本体内でブロックした時間や
@@ -55,3 +59,28 @@ uv run --project host_app \
 CPUクロック指定時は100 ms以下の短い隙間をつないで稼働バーストとしてまとめます。
 タスク行には登録名とIDを表示します。
 `--csv` はCPU使用率と集計ループ時間を同じレポート行へ出力します。
+
+## 実機サンプル
+
+[`sample/`](sample/)には2026-09-30にSTM32N6570-DKでRAM runしたai-appから採取した
+CPU trace、JSON、CSV、PNGとUARTログを置いています。リングのraw dumpはversion 3で、
+1秒周期のCPU使用率レポートとタスクループ計測を含みます。再取得して生成物もまとめて更新するには:
+
+```sh
+make -C userspace/ai-app cpu-task-monitor \
+  CPU_TASK_MONITOR_DUMP="$PWD/host_app/cpu_task_monitor/sample/cpu_task_monitor.bin" \
+  CPU_TASK_MONITOR_JSON="$PWD/host_app/cpu_task_monitor/sample/cpu_task_monitor.json" \
+  CPU_TASK_MONITOR_CSV="$PWD/host_app/cpu_task_monitor/sample/cpu_task_monitor.csv" \
+  CPU_TASK_MONITOR_PNG="$PWD/host_app/cpu_task_monitor/sample/cpu_task_monitor.png"
+```
+
+UARTログだけから図と集計ファイルを作る場合:
+
+```sh
+python3 host_app/cpu_task_monitor/cpu_task_monitor.py \
+  host_app/cpu_task_monitor/sample/uart.log \
+  --output /tmp/cpu_task_monitor.png \
+  --csv /tmp/cpu_task_monitor.csv \
+  --json /tmp/cpu_task_monitor.json \
+  --cpu-hz 600000000
+```

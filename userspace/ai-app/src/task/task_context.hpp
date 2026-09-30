@@ -12,10 +12,10 @@
 #include "driver/nor_driver/nor_driver.hpp"
 #include "driver/psram_driver/psram_driver.hpp"
 #include "driver/rif_driver/rif_driver.hpp"
-#include "application/pipeline/frame_types.hpp"
+#include "middleware/pipeline/frame_types.hpp"
 #include "middleware/cpu_task_monitor/cpu_task_monitor.hpp"
 #include "memory_manager/memory_manager.hpp"
-#include "models/inference_result_types.hpp"
+#include "middleware/ai_runtime/inference_result_types.hpp"
 
 namespace uai::ai::task {
 
@@ -56,7 +56,7 @@ inline constexpr bool kCopyInferenceFrames =
  * Pipe2 drops and inference freshness without per-frame UART traffic. */
 struct DiagnosticsConfig {
     bool register_dump = false;
-    bool camera_frame_trace = true;
+    bool camera_frame_trace = false;
     bool camera_brightness = false;
     bool inference_input = false;
     bool inference_input_display = false;

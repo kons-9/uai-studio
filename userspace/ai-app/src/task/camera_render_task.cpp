@@ -8,7 +8,7 @@
 #include "driver/npu_driver/debug.h"
 #include "common/log.hpp"
 #include "memory_manager/memory_sizes.hpp"
-#include "models/inference_result_types.hpp"
+#include "middleware/ai_runtime/inference_result_types.hpp"
 #include "task/camera_render_task.hpp"
 #include "task/task.hpp"
 #include "task/task_context.hpp"

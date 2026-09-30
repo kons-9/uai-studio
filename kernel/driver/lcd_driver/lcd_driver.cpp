@@ -1,6 +1,6 @@
 #include "driver/lcd_driver/lcd_driver.hpp"
 #include "common/log.hpp"
-#include "application/pipeline/image_format.hpp"
+#include "middleware/pipeline/image_format.hpp"
 #include "memory_manager/memory_sizes.hpp"
 
 #include <cstddef>

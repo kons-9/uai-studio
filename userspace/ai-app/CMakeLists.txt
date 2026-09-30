@@ -152,9 +152,9 @@ set(AI_BSP_ROOT
 set(AI_COMPONENT_ROOT
     "${AI_CUBE_ROOT}/Drivers/BSP/Components")
 
-# Resolve the memory map from board/application/model inputs into the ignored
-# sample-generated tree. The generated include root is listed before src/ so
-# the middleware consumes the generated contract directly.
+# Resolve the memory map from board/application/model inputs into the build
+# tree. The generated include root is listed before src/ so the middleware
+# consumes the generated contract directly.
 set(AI_MEMORY_LAYOUT_GENERATOR_DIR
     "${PROJECT_SOURCE_DIR}/host_app/auto_static_memory_layout")
 set(AI_MEMORY_LAYOUT_GENERATOR_SOURCES
@@ -167,7 +167,7 @@ set(AI_MEMORY_LAYOUT_GENERATOR_SOURCES
     "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/model_artifacts.py"
     "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/resolver.py")
 set(AI_MEMORY_LAYOUT_GENERATED_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/generated")
+    "${UAI_GENERATED_INCLUDE_DIR}")
 set(AI_MEMORY_LAYOUT_JSON
     "${AI_MEMORY_LAYOUT_GENERATED_DIR}/memory_layout.json")
 set(AI_MEMORY_LAYOUT_YAML
@@ -221,10 +221,11 @@ add_custom_target(${AI_APP_NAME}-memory-layout
         "${AI_MEMORY_LAYOUT_LINKER}")
 
 # The kernel components include the generated memory contract, so make its
-# generation an explicit prerequisite after both component targets exist.
-add_dependencies(ai-app-middleware ${AI_APP_NAME}-memory-layout)
-add_dependencies(ai-app-drivers ${AI_APP_NAME}-memory-layout)
-target_include_directories(ai-app-drivers PUBLIC
+# generation an explicit prerequisite after the component targets exist.
+add_dependencies(uai-middleware ${AI_APP_NAME}-memory-layout)
+add_dependencies(uai-drivers ${AI_APP_NAME}-memory-layout)
+add_dependencies(uai-driver-overrides ${AI_APP_NAME}-memory-layout)
+target_include_directories(uai-drivers PUBLIC
     "${AI_STEDGEAI_DIR}/Inc"
     "${AI_STEDGEAI_DIR}/Npu/ll_aton"
     "${AI_STEDGEAI_DIR}/Npu/Devices/STM32N6xx")
@@ -271,13 +272,8 @@ set_source_files_properties(${AI_NPU_CACHE_SOURCE} PROPERTIES
     "HAL_CACHEAXI_MspInit=sample_ai_STEDGEAI_HAL_CACHEAXI_MspInit;HAL_CACHEAXI_MspDeInit=sample_ai_STEDGEAI_HAL_CACHEAXI_MspDeInit")
 add_executable(${AI_APP_TARGET}
     src/main.cpp
-    # Keep the HAL time bridge as a direct object in the executable. The
-    # Cube HAL provides weak defaults in an object file that is always linked,
-    # so an override hidden inside a static archive would never be extracted.
-    "${PROJECT_SOURCE_DIR}/kernel/driver/board/hal_time.c"
-    # HAL discovers these DCMIPP callbacks through its callback symbols, so
-    # keep their strong overrides in the executable instead of the archive.
-    "${PROJECT_SOURCE_DIR}/kernel/driver/camera_driver/dcmipp_driver/dcmipp_callbacks.c"
+    # Keep the strong kernel HAL overrides directly in the executable.
+    $<TARGET_OBJECTS:uai-driver-overrides>
     src/task/application_initialize_task.cpp
     src/task/camera_render_task.cpp
     ${AI_INFERENCE_TASK_SOURCES}
@@ -341,7 +337,7 @@ target_compile_options(${AI_APP_TARGET} PRIVATE
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
 target_link_libraries(${AI_APP_TARGET} PRIVATE
     uai::utkernel
-    uai::ai_app_drivers
+    uai::drivers
     uai::stm32n6570_dk
     "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/evision/Lib/libn6-evision-awb_gcc.a"
     "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/evision/Lib/libn6-evision-st-ae_gcc.a"
@@ -479,7 +475,7 @@ target_compile_options(${AI_MODEL_TARGET} PRIVATE
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
 target_link_libraries(${AI_MODEL_TARGET} PRIVATE
     uai::utkernel
-    uai::ai_app_drivers
+    uai::drivers
     uai::stm32n6570_dk)
 target_link_libraries(${AI_APP_TARGET} PRIVATE
     ${AI_MODEL_TARGET}

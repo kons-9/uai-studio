@@ -7,9 +7,8 @@ extern ISP_HandleTypeDef hcamera_isp;
 extern void AiCameraPipe2FrameEventCallback(void);
 
 /* Camera driver callbacks preserve the pipe identity; the stock BSP forwards
- * callbacks from every pipe to the Pipe1 callback.
- * experiment-ai uses Pipe1 for display and Pipe2 for the RGB888 NN input, so the
- * callbacks must retain the pipe identity. */
+ * callbacks from every pipe to the Pipe1 callback. This board integration uses
+ * Pipe1 for display and Pipe2 for the RGB888 NPU input. */
 void HAL_DCMIPP_PIPE_VsyncEventCallback(DCMIPP_HandleTypeDef *hdcmipp,
                                         uint32_t pipe)
 {

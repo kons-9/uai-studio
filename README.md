@@ -37,7 +37,7 @@ sudo apt install build-essential cmake git python3 minicom \
 3. **STEdgeAI 4.0** — `stedgeai`モデル生成CLIとNeural-ARTランタイムを提供します。モデル生成コードとランタイムの`ll_aton`バージョンを一致させてください。ランタイムのライブラリはリポジトリに含まれません。
 4. **STM32CubeProgrammer** — RAMロード用の`STM32_Programmer_CLI`を使います。外部NORへ書く場合はSTM32N6570-DK用External Loaderも必要です。永続Flash起動用イメージを作る場合は`STM32_SigningTool_CLI`も必要です。
 
-標準的なインストール先以外に配置した場合は、次節の`config/local.mk`に実際のパスを設定します。
+標準的なインストール先以外に配置した場合は、次節の`build-system/host-config/local.mk`に実際のパスを設定します。
 
 ## 初回セットアップ
 
@@ -51,13 +51,13 @@ cd uai-studio
 git submodule update --init --recursive
 ```
 
-ホスト固有設定ファイルを用意します。すでに`config/local.mk`がある場合はそのまま編集してください。
+ホスト固有設定ファイルを用意します。すでに`build-system/host-config/local.mk`がある場合はそのまま編集してください。
 
 ```sh
-test -f config/local.mk || cp config/local.mk.example config/local.mk
+test -f build-system/host-config/local.mk || cp build-system/host-config/local.mk.example build-system/host-config/local.mk
 ```
 
-`config/local.mk`で、インストール先と接続するボードに合わせて設定します。
+`build-system/host-config/local.mk`で、インストール先と接続するボードに合わせて設定します。
 
 ```make
 STM32_PROGRAMMER_ROOT = /path/to/STM32CubeProgrammer/tools
@@ -73,6 +73,13 @@ UART_BAUD = 115200
 `STM32_PROGRAMMER_ROOT`はSTM32CubeProgrammerの`tools`ディレクトリを指定します。`STM32_PROGRAM_SERIAL`を設定すると、書き込み先を特定し、`UART_DEVICE = auto`が同じST-LINKの仮想COMポートを選びます。シリアル番号を使わない場合や複数の仮想COMポートがある場合は、`UART_DEVICE`に`/dev/ttyACM0`などを明示してください。UARTは115200 bps、8N1、フロー制御なしです。
 
 `STM32CUBE_N6_DIR`は`Drivers/`を含むSTM32CubeN6パッケージのルートです。`STEDGEAI_LIB_DIR`は`Inc/`、`Npu/`、`Lib/`を含む`Middlewares/ST/AI`ディレクトリです。`STEDGEAI_BIN`は`stedgeai`実行ファイルがあるディレクトリです。一般的な`/opt/ST/STEdgeAI/4.0`へのインストールは自動検出されます。
+
+## ディレクトリの役割
+
+- `kernel/driver` と `kernel/middleware` は、アプリから利用するドライバーと共通処理です。共有ヘッダーも `kernel/` に置きます。
+- `userspace/<sample>/config` は、そのサンプルのボード設定・メモリ設定・CubeMX IOCなど、ファームウェアを構成する入力です。
+- `build-system/` はビルド手順をまとめた場所です。`cmake/` はコンパイラーとSTM32コマンド定義、`make/` は各サンプル共通のMakeレシピ、`scripts/` はCubeMX生成とUART起動、`host-config/` は開発PCごとのツールパスを扱います。
+- `host_app/` はPC上で動かすトレース解析・可視化ツールです。起動例とサンプルデータの場所は[Host側README](host_app/README.md)を参照してください。
 
 ## セットアップ、ビルド、RAM実行
 
@@ -142,7 +149,7 @@ make -C userspace/ai-app ram-run
 
 RAM実行ではアプリ本体を揮発性RAMへ転送します。Flash起動では、FSBL、署名済みアプリ、モデル重み、command blobを外部NORへ保存し、ボードのリセット後にFSBLからアプリを起動します。アプリのRAM転送後も外部NORをモデルデータ置き場として使う点は共通です。
 
-Flash起動には、STM32CubeProgrammer CLI、STM32N6570-DK用External Loader、`STM32_SigningTool_CLI`が必要です。Signing ToolがPATHにない場合は`config/local.mk`の`STM32_SIGNING_TOOL_CLI`で実行ファイルを指定してください。ボードのBOOT0とBOOT1をLOWにします。
+Flash起動には、STM32CubeProgrammer CLI、STM32N6570-DK用External Loader、`STM32_SigningTool_CLI`が必要です。Signing ToolがPATHにない場合は`build-system/host-config/local.mk`の`STM32_SIGNING_TOOL_CLI`で実行ファイルを指定してください。ボードのBOOT0とBOOT1をLOWにします。
 
 UARTモニタを別端末で先に起動したうえで、次を実行します。
 
@@ -156,7 +163,8 @@ Flashからの自動起動が不要で、RAM実行用のモデルデータだけ
 
 ## 関連ファイル
 
-- [ホスト設定テンプレート](config/local.mk.example)
+- [ホスト設定テンプレート](build-system/host-config/local.mk.example)
+- [Host側ツールの起動方法とサンプルデータ](host_app/README.md)
 - [ai-appのモデルと生成手順](userspace/ai-app/models/README.md)
 - [ai-appのCubeMX設定](userspace/ai-app/config/stm32n6570-dk-ai-app.ioc)
 - [Flash起動用FSBLについて](userspace/ai-app/fsbl/README.md)

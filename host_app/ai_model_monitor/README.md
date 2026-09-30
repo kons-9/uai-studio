@@ -9,6 +9,21 @@
 
 - `sample/ai_model_monitor.bin`: raw dump
 - `sample/ai_model_monitor.json`: decode済みJSON
+- `sample/ai_model_monitor.png`: 実機データのタイムライン図
+
+サンプルは2026-09-30にSTM32N6570-DKへai-appをRAM runして採取したものです。
+ThreadMonitor version 5の32 KiBリングから取得し、JSONとPNGも同じraw dumpから生成しています。
+リングは循環式のため、ヘッダーの`dropped_count`は上書きされた古いレコード数です。
+raw dumpには最新のリング容量分のレコードが入っています。
+
+実機からサンプル一式を更新する場合:
+
+```sh
+make -C userspace/ai-app thread-monitor \
+  THREAD_MONITOR_DUMP="$PWD/host_app/ai_model_monitor/sample/ai_model_monitor.bin" \
+  THREAD_MONITOR_JSON="$PWD/host_app/ai_model_monitor/sample/ai_model_monitor.json" \
+  THREAD_MONITOR_PNG="$PWD/host_app/ai_model_monitor/sample/ai_model_monitor.png"
+```
 
 ## トレースヘッダー
 

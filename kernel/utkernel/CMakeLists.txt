@@ -20,7 +20,7 @@ if(STM32CUBE_N6_DIR)
     message(STATUS "Using STM32CubeN6 HAL: ${STM32N6_HAL_INCLUDE_DIR}")
 else()
     set(STM32N6_HAL_INCLUDE_DIR
-        "${CMAKE_CURRENT_LIST_DIR}/../../cmake/stm32n6-minimal/include")
+        "${CMAKE_CURRENT_LIST_DIR}/../../build-system/cmake/stm32n6-minimal/include")
     message(STATUS
         "Using the minimal STM32N6 HAL compatibility header; "
         "set STM32CUBE_N6_DIR to enable the full STM32CubeN6 package")

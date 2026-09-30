@@ -4,7 +4,7 @@
 
 #include "common/error.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
-#include "application/pipeline/frame_types.hpp"
+#include "middleware/pipeline/frame_types.hpp"
 #include "middleware/memory/buffer_types.hpp"
 
 namespace uai::ai::task {

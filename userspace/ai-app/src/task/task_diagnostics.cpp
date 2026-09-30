@@ -4,7 +4,7 @@
 #include "driver/npu_driver/debug.h"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/registers/npu_registers.hpp"
-#include "application/pipeline/image_format.hpp"
+#include "middleware/pipeline/image_format.hpp"
 #include "memory_manager/memory_sizes.hpp"
 
 extern "C" {

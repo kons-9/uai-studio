@@ -8,9 +8,9 @@
 #include "driver/driver_ownership.hpp"
 #include "driver/lcd_driver/registers/lcd_registers.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
-#include "application/pipeline/frame_types.hpp"
+#include "middleware/pipeline/frame_types.hpp"
 #include "memory_manager/memory_manager.hpp"
-#include "models/inference_result_types.hpp"
+#include "middleware/ai_runtime/inference_result_types.hpp"
 
 namespace uai::ai::lcd {
 

@@ -10,7 +10,7 @@
 
 HOST_APP_DIR := $(PROJECT_ROOT)/host_app
 
-CONFIG_FILE ?= $(PROJECT_ROOT)/config/local.mk
+CONFIG_FILE ?= $(PROJECT_ROOT)/build-system/host-config/local.mk
 ifneq ($(filter /%,$(CONFIG_FILE)),)
 else
 CONFIG_FILE := $(PROJECT_ROOT)/$(CONFIG_FILE)
@@ -54,6 +54,7 @@ THREAD_MONITOR_LD_PRELOAD ?= $(firstword $(wildcard \
 CPU_TASK_MONITOR_DUMP ?= $(BUILD_DIR)/cpu_task_monitor.bin
 CPU_TASK_MONITOR_JSON ?= $(BUILD_DIR)/cpu_task_monitor.json
 CPU_TASK_MONITOR_PNG ?= $(BUILD_DIR)/cpu_task_monitor.png
+CPU_TASK_MONITOR_CSV ?= $(BUILD_DIR)/cpu_task_monitor.csv
 
 AI_PROGRAM_CONNECTION := port=$(STM32_PROGRAM_PORT)$(if $(strip $(STM32_PROGRAM_SERIAL)), sn=$(STM32_PROGRAM_SERIAL))
 
@@ -88,7 +89,7 @@ STM32_PROGRAMMER_CLI ?= $(STM32_PROGRAMMER_ROOT)/bin/STM32_Programmer_CLI
 STM32_EXTERNAL_LOADER ?= $(STM32_PROGRAMMER_ROOT)/bin/ExternalLoader/MX66UW1G45G_STM32N6570-DK.stldr
 endif
 
-# Keep host-specific values in config/local.mk while making them available to
+# Keep host-specific values in build-system/host-config/local.mk while making them available to
 # CMake and the helper scripts.
 export ARM_NONE_EABI_TOOLCHAIN_PATH
 export STM32CUBE_N6_DIR
@@ -106,6 +107,7 @@ export AI_MODEL_INPUTS_CH_POSITION AI_MODEL_OUTPUTS_CH_POSITION AI_MODEL_C_API
 export AI_MODEL_CUT_OUTPUT_TENSORS AI_MODEL_NETWORK_ADDRESS AI_MODEL_DOWNLOAD_URL
 
 CMAKE_ARGS := -S "$(PROJECT_ROOT)" -B "$(BUILD_DIR)" -DAPP_TARGET="$(APP_TARGET)"
+CMAKE_ARGS += -DUAI_CPU_TASK_MONITOR=$(if $(filter 1,$(ENABLE_CPU_TASK_MONITOR)),ON,OFF)
 ifneq ($(strip $(STM32CUBE_N6_DIR)),)
 CMAKE_ARGS += -DSTM32CUBE_N6_DIR="$(STM32CUBE_N6_DIR)"
 endif
@@ -157,7 +159,7 @@ ifeq ($(CUBEMX_GENERATOR),script)
 	CUBEMX_EXECUTABLE="$(CUBEMX_EXECUTABLE)" \
 	CUBEMX_IOC="$(CUBEMX_IOC)" \
 	CUBEMX_OUTPUT_DIR="$(CUBEMX_OUTPUT_DIR)" \
-	sh "$(PROJECT_ROOT)/tools/cubemx-generate.sh"
+	sh "$(PROJECT_ROOT)/build-system/scripts/cubemx-generate.sh"
 	+$(MAKE) -f "$(SAMPLE_MAKEFILE)" configure
 else
 	+$(MAKE) -f "$(SAMPLE_MAKEFILE)" cubemx-generate
@@ -176,7 +178,7 @@ cubemx-generate:
 	CUBEMX_EXECUTABLE="$(CUBEMX_EXECUTABLE)" \
 	CUBEMX_IOC="$(CUBEMX_IOC)" \
 	CUBEMX_OUTPUT_DIR="$(CUBEMX_OUTPUT_DIR)" \
-	sh "$(PROJECT_ROOT)/tools/cubemx-generate.sh"
+	sh "$(PROJECT_ROOT)/build-system/scripts/cubemx-generate.sh"
 	+$(MAKE) -f "$(SAMPLE_MAKEFILE)" configure
 
 build: configure
@@ -239,7 +241,7 @@ ai-run: ai-load
 endif
 
 monitor:
-	sh "$(PROJECT_ROOT)/tools/uart-monitor.sh"
+	sh "$(PROJECT_ROOT)/build-system/scripts/uart-monitor.sh"
 
 ifeq ($(ENABLE_THREAD_MONITOR),1)
 thread-monitor-dump: build
@@ -308,14 +310,17 @@ cpu-task-monitor-dump: build
 	echo "CPU task monitor dump written: $(CPU_TASK_MONITOR_DUMP)"
 
 cpu-task-monitor: cpu-task-monitor-dump
-	@mkdir -p "$$(dirname "$(CPU_TASK_MONITOR_PNG)")"
+	@mkdir -p "$(dir $(CPU_TASK_MONITOR_PNG))" \
+		"$(dir $(CPU_TASK_MONITOR_JSON))" "$(dir $(CPU_TASK_MONITOR_CSV))"
 	MPLCONFIGDIR="$(BUILD_DIR)/matplotlib" UV_CACHE_DIR="$(BUILD_DIR)/uv-cache" \
 	$(if $(strip $(THREAD_MONITOR_LD_PRELOAD)),LD_PRELOAD="$(THREAD_MONITOR_LD_PRELOAD)") \
 	$(THREAD_MONITOR_UV) run --project "$(HOST_APP_DIR)" \
 		python "$(HOST_APP_DIR)/cpu_task_monitor/cpu_task_monitor.py" \
 		"$(CPU_TASK_MONITOR_DUMP)" -o "$(CPU_TASK_MONITOR_PNG)" \
-		--json "$(CPU_TASK_MONITOR_JSON)" --cpu-hz "$(THREAD_MONITOR_CPU_HZ)"
+		--json "$(CPU_TASK_MONITOR_JSON)" --csv "$(CPU_TASK_MONITOR_CSV)" \
+		--cpu-hz "$(THREAD_MONITOR_CPU_HZ)"
 	@echo "CPU task monitor PNG written: $(CPU_TASK_MONITOR_PNG)"
+	@echo "CPU task monitor CSV written: $(CPU_TASK_MONITOR_CSV)"
 endif
 
 ram-run: configure

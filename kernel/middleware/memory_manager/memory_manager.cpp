@@ -1,6 +1,6 @@
 #include "memory_manager/memory_manager.hpp"
 
-#include "application/pipeline/frame_types.hpp"
+#include "middleware/pipeline/frame_types.hpp"
 #include "memory_manager/memory_sizes.hpp"
 #include "middleware/memory/static_memory_layout.hpp"
 #include "middleware/memory/generated/static_memory_layout/key.hpp"

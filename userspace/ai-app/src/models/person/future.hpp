@@ -7,9 +7,9 @@
 
 #include "middleware/ai_runtime/pipeline_types.hpp"
 #include "driver/driver_ownership.hpp"
-#include "application/pipeline/frame_types.hpp"
+#include "middleware/pipeline/frame_types.hpp"
 #include "middleware/memory/buffer_types.hpp"
-#include "models/inference_result_types.hpp"
+#include "middleware/ai_runtime/inference_result_types.hpp"
 #include "stai.h"
 
 namespace uai::ai::cache {

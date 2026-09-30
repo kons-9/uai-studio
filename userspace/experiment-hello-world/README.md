@@ -10,8 +10,8 @@ CubeMXの入力設定は[`config/stm32n6570-dk-fullsecure.ioc`](config/stm32n657
 リポジトリルートからの基本的な実行手順は次のとおりです。
 
 ```sh
-cp config/local.mk.example config/local.mk
-# config/local.mkにホスト固有の値を設定
+cp build-system/host-config/local.mk.example build-system/host-config/local.mk
+# build-system/host-config/local.mkにホスト固有の値を設定
 make -C userspace/experiment-hello-world generate
 make -C userspace/experiment-hello-world build
 make -C userspace/experiment-hello-world ram-run

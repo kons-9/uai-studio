@@ -182,7 +182,7 @@ function(uai_add_stm32_cli_targets app_target)
                     "CUBEMX_EXECUTABLE=${CUBEMX_EXECUTABLE}"
                     "CUBEMX_IOC=${CUBEMX_IOC}"
                     "CUBEMX_OUTPUT_DIR=${CUBEMX_OUTPUT_DIR}"
-                    sh "${CMAKE_SOURCE_DIR}/tools/cubemx-generate.sh"
+                    sh "${CMAKE_SOURCE_DIR}/build-system/scripts/cubemx-generate.sh"
             USES_TERMINAL
             VERBATIM
         )

@@ -27,11 +27,11 @@ endif()
 
 # This include must happen before project() so CMake uses the cross compiler
 # during compiler detection, without requiring a separate Makefile.
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchain.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/build-system/cmake/toolchain.cmake")
 
 project(uai_studio LANGUAGES C CXX ASM)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/stm32_cli.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/build-system/cmake/stm32_cli.cmake")
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -60,6 +60,9 @@ if(APP_TARGET STREQUAL "experiment-camera-lcd" OR
 endif()
 add_subdirectory(kernel/pre_kernel/stm32n6570-dk)
 if(APP_TARGET STREQUAL "ai-app")
+    # Generated memory contracts are build outputs shared by the middleware,
+    # drivers, and this userspace application.
+    set(UAI_GENERATED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/generated")
     add_subdirectory(kernel/middleware)
     add_subdirectory(kernel/driver)
 endif()
@@ -67,6 +70,9 @@ add_subdirectory("userspace/${APP_TARGET}")
 
 if(UAI_CPU_TASK_MONITOR AND TARGET ${APP_TARGET}.elf)
     target_compile_definitions(${APP_TARGET}.elf PRIVATE UAI_CPU_TASK_MONITOR=1)
+endif()
+if(UAI_CPU_TASK_MONITOR AND TARGET uai-middleware)
+    target_compile_definitions(uai-middleware PUBLIC UAI_CPU_TASK_MONITOR=1)
 endif()
 
 uai_add_stm32_cli_targets("${APP_TARGET}")

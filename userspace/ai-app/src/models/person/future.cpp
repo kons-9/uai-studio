@@ -6,7 +6,7 @@
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
-#include "application/pipeline/image_format.hpp"
+#include "middleware/pipeline/image_format.hpp"
 #include "middleware/memory/buffer_types.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
 

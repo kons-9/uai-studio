@@ -6,7 +6,7 @@
 #include "common/error.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/driver_ownership.hpp"
-#include "application/pipeline/frame_types.hpp"
+#include "middleware/pipeline/frame_types.hpp"
 #include "memory_manager/memory_manager.hpp"
 
 namespace uai::ai::camera {
