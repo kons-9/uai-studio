@@ -14,7 +14,7 @@
 #include "models/segmentation/future.hpp"
 #include "models/segmentation/npu_model.hpp"
 #include "models/inference_result_types.hpp"
-#include "memory_manager/memory_config.hpp"
+#include "middleware/memory/generated/memory_config.hpp"
 #include "task/task_context.hpp"
 #include "task/task_diagnostics.hpp"
 

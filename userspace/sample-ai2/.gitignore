@@ -6,3 +6,7 @@
 !/third_party/README.md
 !/third_party/vision_models_pp/
 !/third_party/vision_models_pp/**
+
+# auto_static_memory_layout outputs: generated headers, layout snapshots, and
+# the linker script are reproducible from config/ and generated model files.
+/generated/

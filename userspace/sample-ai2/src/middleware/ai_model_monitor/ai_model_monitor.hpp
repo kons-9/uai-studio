@@ -14,7 +14,9 @@
 namespace uai::ai::middleware::ai_model_monitor {
 
 /* The trace is intentionally a raw fixed-layout format. It is stored in the
- * linker-reserved APP RAM region and can be copied with SWD after a halt. */
+ * linker-reserved PSRAM trace region and can be copied with SWD after a halt.
+ * PSRAM avoids taking the model NOR out of memory-mapped mode while the NPU
+ * may still be reading weights. */
 inline constexpr std::uint32_t kThreadMonitorTraceMagic = 0x544D4F4EU;
 inline constexpr std::uint16_t kThreadMonitorTraceVersion = 4U;
 inline constexpr std::uint32_t kThreadMonitorTraceCommitMagic = 0x434D4954U;

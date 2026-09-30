@@ -8,7 +8,7 @@
 #include "driver/npu_driver/npu_network.hpp"
 #include "application/pipeline/image_format.hpp"
 #include "middleware/memory/buffer_types.hpp"
-#include "memory_manager/memory_config.hpp"
+#include "middleware/memory/generated/memory_config.hpp"
 
 namespace uai::ai::models::person {
 

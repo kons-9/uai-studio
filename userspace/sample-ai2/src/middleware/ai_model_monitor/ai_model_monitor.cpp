@@ -3,7 +3,8 @@
 #include <cstring>
 
 #include "common/log.hpp"
-#include "memory_manager/static_memory_layout.hpp"
+#include "middleware/memory/static_memory_layout.hpp"
+#include "middleware/memory/generated/static_memory_layout/key.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
@@ -26,7 +27,7 @@ AiModelMonitor::PendingTraceEvent
 
 bool AiModelMonitor::InitializeTraceBuffer()
 {
-    const auto &region = static_memory_layout::GetRegion(
+    const auto &region = static_memory_layout::Region::GetRegionFromKey(
         static_memory_layout::Key::kThreadMonitor);
     if (region.begin == nullptr ||
         region.size() < sizeof(ThreadMonitorTraceHeader) +

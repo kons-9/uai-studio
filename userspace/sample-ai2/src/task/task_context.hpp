@@ -13,6 +13,7 @@
 #include "driver/psram_driver/psram_driver.hpp"
 #include "driver/rif_driver/rif_driver.hpp"
 #include "application/pipeline/frame_types.hpp"
+#include "middleware/cpu_task_monitor/cpu_task_monitor.hpp"
 #include "memory_manager/memory_manager.hpp"
 #include "models/inference_result_types.hpp"
 
@@ -114,6 +115,7 @@ public:
     uai::ai::rif::RifDriver rif;
     uai::ai::lcd::LcdDriver lcd;
     uai::ai::camera::CameraDriver camera;
+    uai::ai::middleware::cpu_task_monitor::CpuTaskMonitor cpu_task_monitor;
 
     volatile std::uint32_t app_stage;
     volatile bool external_nor_ready;

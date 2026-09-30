@@ -274,19 +274,19 @@ FSBL、LRUN形式のアプリケーション、モデル重み、command blobを
 書き込む場合は、プロジェクトルートで次を実行します。
 
 ```sh
-make APP_TARGET=sample-ai flash
+make -C userspace/sample-ai flash
 ```
 
 FSBLは、動作確認済みのSTM32N6570-DK公式サンプル由来のイメージを
 [`fsbl/stm32n6570-dk-ai_fsbl.hex`](fsbl/stm32n6570-dk-ai_fsbl.hex)として管理しています。
 元の同梱ファイルは`ref/STM32N6_Survivor_Detection/Binaries/ai_fsbl.hex`です。
-`make flash`はこのIntel HEXを外部FlashのFSBL領域へ書き込みます。
+`make -C userspace/sample-ai flash`はこのIntel HEXを外部FlashのFSBL領域へ書き込みます。
 
 このターゲットはFSBLを`0x70000000`、アプリケーションを`0x70100000`へ書き込み、
 person/segmentation/faceの重みとcommand blobもそれぞれの絶対アドレスへ書き込みます。
 書き込み後にリセットして外部Flashから起動するには、STM32N6570-DKのブート設定を
 外部Flash起動（BOOT0: 1-2、BOOT1: 1-2）にしてください。RAM起動へ戻す場合は
-ブート設定を元に戻して`make APP_TARGET=sample-ai ram-run`を実行します。
+ブート設定を元に戻して`make -C userspace/sample-ai ram-run`を実行します。
 
 ## sample-aiだけで完結している範囲
 

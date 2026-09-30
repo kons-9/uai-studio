@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 set(AI_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(AI_APP_NAME sample-ai2)
 set(AI_APP_TARGET ${AI_APP_NAME}.elf)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 # STEdgeAI's Neural-ART runtime is distributed separately from this sample.
 # Do not silently depend on the old, ignored copy under third_party: that made
@@ -151,6 +152,74 @@ set(AI_BSP_ROOT
 set(AI_COMPONENT_ROOT
     "${AI_CUBE_ROOT}/Drivers/BSP/Components")
 
+# Resolve the memory map from board/application/model inputs into the ignored
+# sample-generated tree. The generated include root is listed before src/ so
+# the middleware consumes the generated contract directly.
+set(AI_MEMORY_LAYOUT_GENERATOR_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/auto_static_memory_layout")
+set(AI_MEMORY_LAYOUT_GENERATOR_SOURCES
+    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/__init__.py"
+    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/__main__.py"
+    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/cli.py"
+    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/common.py"
+    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/emitters.py"
+    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/layout_core.py"
+    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/model_artifacts.py"
+    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/resolver.py")
+set(AI_MEMORY_LAYOUT_GENERATED_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/generated")
+set(AI_MEMORY_LAYOUT_JSON
+    "${AI_MEMORY_LAYOUT_GENERATED_DIR}/memory_layout.json")
+set(AI_MEMORY_LAYOUT_YAML
+    "${AI_MEMORY_LAYOUT_GENERATED_DIR}/memory_layout.yml")
+set(AI_MEMORY_LAYOUT_RAW_HEADER
+    "${AI_MEMORY_LAYOUT_GENERATED_DIR}/middleware/memory/generated/static_memory_layout/raw.hpp")
+set(AI_MEMORY_LAYOUT_KEY_HEADER
+    "${AI_MEMORY_LAYOUT_GENERATED_DIR}/middleware/memory/generated/static_memory_layout/key.hpp")
+set(AI_MEMORY_LAYOUT_CONFIG_HEADER
+    "${AI_MEMORY_LAYOUT_GENERATED_DIR}/middleware/memory/generated/memory_config.hpp")
+set(AI_MEMORY_LAYOUT_LINKER
+    "${AI_MEMORY_LAYOUT_GENERATED_DIR}/stm32n6570-dk-npu-ram.ld")
+set(AI_MEMORY_LAYOUT_BASE_LINKER
+    "${CMAKE_CURRENT_SOURCE_DIR}/stm32n6570-dk-npu-ram.ld")
+set(AI_MEMORY_LAYOUT_INPUTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/board_memory.json"
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/application_memory.json"
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/model_layout.json"
+    "${AI_MEMORY_LAYOUT_BASE_LINKER}")
+list(APPEND AI_MEMORY_LAYOUT_INPUTS ${AI_MEMORY_LAYOUT_GENERATOR_SOURCES})
+list(APPEND AI_MEMORY_LAYOUT_INPUTS ${_ai_generated_model_files})
+list(APPEND AI_MEMORY_LAYOUT_INPUTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/person/network_data.xSPI2.bin"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation/network_data.xSPI2.bin"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/face/network_data.xSPI2.bin")
+add_custom_command(
+    OUTPUT
+        "${AI_MEMORY_LAYOUT_JSON}"
+        "${AI_MEMORY_LAYOUT_YAML}"
+        "${AI_MEMORY_LAYOUT_KEY_HEADER}"
+        "${AI_MEMORY_LAYOUT_RAW_HEADER}"
+        "${AI_MEMORY_LAYOUT_CONFIG_HEADER}"
+        "${AI_MEMORY_LAYOUT_LINKER}"
+    COMMAND ${Python3_EXECUTABLE}
+            "${AI_MEMORY_LAYOUT_GENERATOR_DIR}" all
+            --board "${CMAKE_CURRENT_SOURCE_DIR}/config/board_memory.json"
+            --application "${CMAKE_CURRENT_SOURCE_DIR}/config/application_memory.json"
+            --models-dir "${CMAKE_CURRENT_SOURCE_DIR}/models"
+            --model-config "${CMAKE_CURRENT_SOURCE_DIR}/config/model_layout.json"
+            --output-dir "${AI_MEMORY_LAYOUT_GENERATED_DIR}"
+            --linker-base "${AI_MEMORY_LAYOUT_BASE_LINKER}"
+    DEPENDS ${AI_MEMORY_LAYOUT_INPUTS}
+    VERBATIM)
+add_custom_target(${AI_APP_NAME}-memory-layout
+    DEPENDS
+        "${AI_MEMORY_LAYOUT_JSON}"
+        "${AI_MEMORY_LAYOUT_YAML}"
+        "${AI_MEMORY_LAYOUT_KEY_HEADER}"
+        "${AI_MEMORY_LAYOUT_RAW_HEADER}"
+        "${AI_MEMORY_LAYOUT_CONFIG_HEADER}"
+        "${AI_MEMORY_LAYOUT_LINKER}")
+
 # Keep the sample application explicitly optimized even though the common
 # Cortex-M55 toolchain also defaults to -O3. Do not use -Ofast here: its
 # relaxed floating-point rules can change post-processing results and
@@ -205,8 +274,9 @@ add_executable(${AI_APP_TARGET}
     ${AI_INFERENCE_TASK_SOURCES}
     src/task/task_context.cpp
     src/task/task_diagnostics.cpp
+    src/middleware/cpu_task_monitor/cpu_task_monitor.cpp
     src/middleware/ai_model_monitor/ai_model_monitor.cpp
-    src/memory_manager/static_memory_layout.cpp
+    src/middleware/memory/static_memory_layout.cpp
     src/driver/camera_driver/sensor_driver/registers/imx335_registers.cpp
     src/driver/camera_driver/camera_driver.cpp
     src/image_resizer/image_resizer.cpp
@@ -246,6 +316,7 @@ add_executable(${AI_APP_TARGET}
     "${AI_COMPONENT_ROOT}/aps256xx/aps256xx.c")
 
 target_include_directories(${AI_APP_TARGET} PRIVATE
+    "${AI_MEMORY_LAYOUT_GENERATED_DIR}"
     "${AI_SRC_DIR}"
     "${AI_SRC_DIR}/driver/board/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/config"
@@ -264,6 +335,8 @@ target_include_directories(${AI_APP_TARGET} PRIVATE
     "${AI_CUBE_ROOT}/Drivers/CMSIS/Device/ST/STM32N6xx/Include"
     "${AI_CUBE_ROOT}/Drivers/CMSIS/Include"
     "${AI_CUBE_ROOT}/Drivers/CMSIS/DSP/Include")
+
+add_dependencies(${AI_APP_TARGET} ${AI_APP_NAME}-memory-layout)
 
 target_compile_definitions(${AI_APP_TARGET} PRIVATE
     STM32N6570_DK
@@ -288,18 +361,12 @@ target_link_libraries(${AI_APP_TARGET} PRIVATE
     m)
 
 set(AI_LINKER_SCRIPT
-    "${CMAKE_CURRENT_SOURCE_DIR}/stm32n6570-dk-npu-ram.ld")
+    "${AI_MEMORY_LAYOUT_LINKER}")
 target_link_options(${AI_APP_TARGET} PRIVATE
     "-T${AI_LINKER_SCRIPT}"
     "-Wl,--undefined=NPU0_IRQHandler"
     "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/${AI_APP_NAME}.map"
     "-Wl,--print-memory-usage")
-target_link_options(${AI_APP_TARGET} PRIVATE
-    "-Wl,--section-start=.network_blobs_person=0x70500000")
-target_link_options(${AI_APP_TARGET} PRIVATE
-    "-Wl,--section-start=.network_blobs_face=0x70580000")
-target_link_options(${AI_APP_TARGET} PRIVATE
-    "-Wl,--section-start=.network_blobs_segmentation=0x70560000")
 set_target_properties(${AI_APP_TARGET} PROPERTIES
     LINK_DEPENDS "${AI_LINKER_SCRIPT}")
 

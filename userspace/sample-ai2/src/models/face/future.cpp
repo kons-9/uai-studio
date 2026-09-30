@@ -10,7 +10,7 @@
 #include "image_resizer/image_resizer.hpp"
 #include "application/pipeline/image_format.hpp"
 #include "middleware/memory/buffer_types.hpp"
-#include "memory_manager/memory_config.hpp"
+#include "middleware/memory/generated/memory_config.hpp"
 #include "memory_manager/memory_sizes.hpp"
 #include "arm_math.h"
 #include "fd_blazeface_anchors_0.h"

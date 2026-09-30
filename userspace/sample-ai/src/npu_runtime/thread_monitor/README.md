@@ -5,7 +5,7 @@
 実機からThreadMonitorを取得して解析する場合は、リポジトリルートで次を実行します。
 
 ```sh
-make APP_TARGET=sample-ai thread-monitor
+make -C userspace/sample-ai thread-monitor
 ```
 
 このターゲットはsample-aiをビルドし、ELFの
@@ -19,13 +19,13 @@ make APP_TARGET=sample-ai thread-monitor
 生バイナリだけを取得する場合は次を使います。
 
 ```sh
-make APP_TARGET=sample-ai thread-monitor-dump
+make -C userspace/sample-ai thread-monitor-dump
 ```
 
 出力先やCPUクロックはMake変数で変更できます。
 
 ```sh
-make APP_TARGET=sample-ai thread-monitor \
+make -C userspace/sample-ai thread-monitor \
   THREAD_MONITOR_DUMP=/tmp/thread_monitor.bin \
   THREAD_MONITOR_JSON=/tmp/thread_monitor.json \
   THREAD_MONITOR_PNG=/tmp/thread_monitor.png \

@@ -1,7 +1,8 @@
 #include "memory_manager/fixed_pool_allocator.hpp"
 
 #include "memory_manager/memory_sizes.hpp"
-#include "memory_manager/static_memory_layout.hpp"
+#include "middleware/memory/static_memory_layout.hpp"
+#include "middleware/memory/generated/static_memory_layout/key.hpp"
 
 #if defined(__arm__) || defined(__thumb__)
 extern "C" {
@@ -16,23 +17,9 @@ namespace {
 
 using StaticMemoryKey = static_memory_layout::Key;
 
-const static_memory_layout::Region &StaticRegion(StaticMemoryKey key)
+static_memory_layout::Region StaticRegion(StaticMemoryKey key)
 {
-    return static_memory_layout::GetRegion(key);
-}
-
-const static_memory_layout::Region &InferenceRegion(std::size_t index)
-{
-    switch (index) {
-    case 0U:
-        return StaticRegion(StaticMemoryKey::kInference0);
-    case 1U:
-        return StaticRegion(StaticMemoryKey::kInference1);
-    case 2U:
-        return StaticRegion(StaticMemoryKey::kInference2);
-    default:
-        return StaticRegion(StaticMemoryKey::kInference0);
-    }
+    return static_memory_layout::Region::GetRegionFromKey(key);
 }
 
 } // namespace
@@ -460,13 +447,14 @@ common::Error FixedPoolAllocator::Initialize()
         static_cast<std::size_t>(StaticMemoryKey::kCount);
     static_memory_layout::AddressRange ranges[region_count]{};
     for (std::size_t i = 0U; i < region_count; ++i) {
-        const auto &region = static_memory_layout::GetRegionByIndex(i);
-        if (!static_memory_layout::IsValidRegion(region)) {
+        const auto &region = static_memory_layout::Region::GetRegionFromKey(
+            static_cast<StaticMemoryKey>(i));
+        if (!region.is_valid()) {
             return Make(common::ErrorCode::kInvalidArgument,
                         static_cast<std::uint32_t>(i),
                         "memory.initialize.invalid_region");
         }
-        ranges[i] = static_memory_layout::GetAddressRange(region);
+        ranges[i] = region.to_address_range();
         if ((region.address() % memory_manager::kMemoryConfig.buffer_alignment) != 0U) {
             return Make(common::ErrorCode::kInvalidArgument,
                         static_cast<std::uint32_t>(i),
@@ -475,7 +463,7 @@ common::Error FixedPoolAllocator::Initialize()
     }
     for (std::size_t lhs = 0U; lhs < region_count; ++lhs) {
         for (std::size_t rhs = lhs + 1U; rhs < region_count; ++rhs) {
-            if (static_memory_layout::RegionsOverlap(ranges[lhs], ranges[rhs])) {
+            if (ranges[lhs].overlaps(ranges[rhs])) {
                 return Make(common::ErrorCode::kInvalidArgument,
                             static_cast<std::uint32_t>(lhs),
                             "memory.initialize.overlapping_regions");
@@ -491,17 +479,22 @@ common::Error FixedPoolAllocator::Initialize()
         frame_bytes > StaticRegion(StaticMemoryKey::kCapture1).size() ||
         frame_bytes > StaticRegion(StaticMemoryKey::kDisplay0).size() ||
         frame_bytes > StaticRegion(StaticMemoryKey::kDisplay1).size() ||
-        source_bytes >
-            StaticRegion(StaticMemoryKey::kInferenceSource0).size() ||
-        source_bytes >
-            StaticRegion(StaticMemoryKey::kInferenceSource1).size() ||
-        source_bytes >
-            StaticRegion(StaticMemoryKey::kInferenceSource2).size() ||
         scratch_bytes >
             StaticRegion(StaticMemoryKey::kInferenceScratch).size()) {
         return Make(common::ErrorCode::kInvalidArgument,
                     static_cast<std::uint32_t>(inference_bytes),
                     "memory.initialize.layout_capacity");
+    }
+    for (std::size_t i = 0U;
+         i < memory_manager::kInferenceSourceBufferCount; ++i) {
+        if (source_bytes >
+            static_memory_layout::Region::GetRegionFromKey(
+                static_memory_layout::kInferenceSourceRegionKeys[i])
+                .size()) {
+            return Make(common::ErrorCode::kInvalidArgument,
+                        static_cast<std::uint32_t>(source_bytes),
+                        "memory.initialize.layout_capacity");
+        }
     }
 
     display_[0].buffer = {StaticRegion(StaticMemoryKey::kDisplay0).address(),
@@ -511,13 +504,19 @@ common::Error FixedPoolAllocator::Initialize()
                           frame_bytes,
                           1U, Region::kDisplay};
     for (std::size_t i = 0U; i < memory_manager::kInferenceBufferCount; ++i) {
-        if (inference_bytes > InferenceRegion(i).size()) {
+        if (inference_bytes >
+            static_memory_layout::Region::GetRegionFromKey(
+                static_memory_layout::kInferenceRegionKeys[i])
+                .size()) {
             return Make(common::ErrorCode::kInvalidArgument,
                         static_cast<std::uint32_t>(inference_bytes),
                         "memory.initialize.layout_capacity");
         }
-        inference_[i].buffer = {InferenceRegion(i).address(), inference_bytes,
-                                 static_cast<std::uint8_t>(i), Region::kInference};
+        inference_[i].buffer = {
+            static_memory_layout::Region::GetRegionFromKey(
+                static_memory_layout::kInferenceRegionKeys[i])
+                .address(),
+            inference_bytes, static_cast<std::uint8_t>(i), Region::kInference};
     }
     initialized_ = true;
     return Make(common::ErrorCode::kOk, 0U, "memory.initialize");

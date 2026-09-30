@@ -10,7 +10,7 @@ official STM32N6570-DK BSP from the STM32CubeN6 package.
 Build with:
 
 ```sh
-make APP_TARGET=sample-camera-lcd \
+make -C userspace/sample-camera-lcd \
   STM32CUBE_N6_DIR=/home/toshiki/STM32Cube/Repository/STM32Cube_FW_N6_V1.3.0 \
   CUBEMX_EXECUTABLE=/home/toshiki/STM32CubeMX/STM32CubeMX \
   build

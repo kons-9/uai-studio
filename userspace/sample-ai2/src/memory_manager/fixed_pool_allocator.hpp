@@ -3,7 +3,7 @@
 
 #include "middleware/memory/dynamic_memory_allocator.hpp"
 #include "middleware/memory/fixed_pool.hpp"
-#include "memory_manager/memory_config.hpp"
+#include "middleware/memory/generated/memory_config.hpp"
 
 namespace uai::ai::memory_allocator {
 

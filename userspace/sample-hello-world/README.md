@@ -7,13 +7,13 @@ STM32N6570-DK上でµT-Kernel 3.0を起動し、T-MonitorのUSART1へhello world
 [README](../../README.md)を参照してください。
 CubeMXの入力設定は[`config/stm32n6570-dk-fullsecure.ioc`](config/stm32n6570-dk-fullsecure.ioc)です。
 
-リポジトリルートでの基本的な実行手順は次のとおりです。
+リポジトリルートからの基本的な実行手順は次のとおりです。
 
 ```sh
 cp config/local.mk.example config/local.mk
 # config/local.mkにホスト固有の値を設定
-make generate
-make build
-make attach
-make ram-run
+make -C userspace/sample-hello-world generate
+make -C userspace/sample-hello-world build
+make -C userspace/sample-hello-world attach
+make -C userspace/sample-hello-world ram-run
 ```

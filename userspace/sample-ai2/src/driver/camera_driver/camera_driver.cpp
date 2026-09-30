@@ -3,9 +3,10 @@
 #include "sample_ai_config.hpp"
 #include "image_resizer/image_resizer.hpp"
 #include "application/pipeline/image_format.hpp"
-#include "memory_manager/memory_config.hpp"
+#include "middleware/memory/generated/memory_config.hpp"
 #include "memory_manager/memory_sizes.hpp"
-#include "memory_manager/static_memory_layout.hpp"
+#include "middleware/memory/static_memory_layout.hpp"
+#include "middleware/memory/generated/static_memory_layout/key.hpp"
 
 #include "driver/camera_driver/sensor_driver/registers/imx335_registers.hpp"
 
@@ -385,7 +386,8 @@ void PrepareRawDump()
     }
     g_raw_dump_started = false;
     g_raw_dump_reported = false;
-    const auto &raw_dump = uai::ai::static_memory_layout::GetRegion(
+    const auto &raw_dump =
+        uai::ai::static_memory_layout::Region::GetRegionFromKey(
         StaticMemoryKey::kRawDump);
     std::memset(reinterpret_cast<void *>(raw_dump.address()), kRawDumpSentinel,
                 raw_dump.size());
@@ -406,7 +408,7 @@ void StartRawDump()
     if (HAL_DCMIPP_CSI_PIPE_Start(&hcamera_dcmipp, DCMIPP_PIPE0,
                                   DCMIPP_VIRTUAL_CHANNEL0,
                                   static_cast<std::uint32_t>(
-                                      uai::ai::static_memory_layout::GetRegion(
+                                      uai::ai::static_memory_layout::Region::GetRegionFromKey(
                                           StaticMemoryKey::kRawDump)
                                           .address()),
                                   DCMIPP_MODE_SNAPSHOT) != HAL_OK) {

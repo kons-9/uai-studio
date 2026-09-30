@@ -52,6 +52,11 @@ void ApplicationInitializeTask::Run()
                          static_cast<int>(driver_status.detail));
         }
     }
+    const common::Error cpu_trace_status =
+        context.cpu_task_monitor.InitializeTraceBuffer();
+    if (!cpu_trace_status.Ok()) {
+        LogStatus("cpu_task_monitor.trace", cpu_trace_status);
+    }
     context.app_stage = 2U;
     context.app_stage = 3U;
     context.app_stage = 4U;
@@ -100,7 +105,8 @@ void ApplicationInitializeTask::Run()
     context.app_stage = 6U;
 
     for (;;) {
-        tk_slp_tsk(TMO_FEVR);
+        tk_dly_tsk(1000);
+        context.cpu_task_monitor.Report();
     }
 }
 

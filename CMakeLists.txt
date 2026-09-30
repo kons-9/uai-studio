@@ -12,6 +12,14 @@ option(CMAKE_EXPORT_COMPILE_COMMANDS
        "Generate compile_commands.json for IDEs"
        ON)
 
+option(UAI_KERNEL_TRACE_HOOKS
+       "Enable µT-Kernel/DS execution hooks (adds tracing overhead)"
+       OFF)
+
+option(UAI_CPU_TASK_MONITOR
+       "Enable the sample-ai2 CPU task monitor (uses dispatch/interrupt hooks)"
+       OFF)
+
 set(_app_dir "${CMAKE_CURRENT_SOURCE_DIR}/userspace/${APP_TARGET}")
 if(NOT EXISTS "${_app_dir}/CMakeLists.txt")
     message(FATAL_ERROR "Unknown APP_TARGET=${APP_TARGET}")
@@ -33,6 +41,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(kernel/utkernel)
+if(UAI_KERNEL_TRACE_HOOKS OR UAI_CPU_TASK_MONITOR)
+    target_compile_definitions(utkernel PUBLIC USE_DBGSPT_TRACE=1)
+endif()
 if(APP_TARGET STREQUAL "sample-camera-lcd" OR
    APP_TARGET STREQUAL "sample-camera-pipe2" OR
    APP_TARGET STREQUAL "sample-camera-pipe2-lab")
@@ -54,5 +65,9 @@ if((APP_TARGET STREQUAL "sample-ai" OR APP_TARGET STREQUAL "sample-ai2") AND
     add_subdirectory(kernel/driver)
 endif()
 add_subdirectory("userspace/${APP_TARGET}")
+
+if(UAI_CPU_TASK_MONITOR AND TARGET ${APP_TARGET}.elf)
+    target_compile_definitions(${APP_TARGET}.elf PRIVATE UAI_CPU_TASK_MONITOR=1)
+endif()
 
 uai_add_stm32_cli_targets("${APP_TARGET}")

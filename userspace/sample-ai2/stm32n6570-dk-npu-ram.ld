@@ -32,6 +32,8 @@ MEMORY
    * pipeline.  Pipe2 must never overwrite a buffer which CPU preprocessing or
    * the NPU still owns. */
   PSRAM_PIPE2_DROP (rwx) : ORIGIN = 0x91B40000, LENGTH = 0x00100000
+  PSRAM_TRACE (rwx) : ORIGIN = 0x91C40000, LENGTH = 0x00008000
+  PSRAM_CPU_TRACE (rwx) : ORIGIN = 0x91C48000, LENGTH = 0x00008000
   PSRAM_SCRATCH (rwx) : ORIGIN = 0x91D00000, LENGTH = 0x00100000
   /* Immutable Pipe2 snapshots used when a completed frame is reused for the
    * next model. This range is outside the active camera, NPU, and scratch
@@ -216,15 +218,24 @@ SECTIONS
     . = . + 0x1000;
   } >APP
 
-  /* Keep the monitor trace in internal RAM. Unlike mapped PSRAM, this can be
-   * read through SWD after the CPU has been halted following a fault. */
+  /* The generator relocates this section to PSRAM_TRACE. Keep the placeholder
+   * here so the generated linker script can replace it deterministically. */
   .sample_ai_thread_monitor (NOLOAD) :
   {
     . = ALIGN(32);
     __sample_ai_thread_monitor_start__ = .;
-    . = . + 0x00020000;
+    . = . + 0x00008000;
     __sample_ai_thread_monitor_end__ = .;
-  } >APP
+  } >PSRAM_TRACE
+
+  /* The generator relocates this section to PSRAM_CPU_TRACE. */
+  .sample_ai_cpu_task_monitor (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __sample_ai_cpu_task_monitor_start__ = .;
+    . = . + 0x00008000;
+    __sample_ai_cpu_task_monitor_end__ = .;
+  } >PSRAM_CPU_TRACE
 
   __end = .;
   _end = .;

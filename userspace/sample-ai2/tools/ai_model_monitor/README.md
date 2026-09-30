@@ -78,7 +78,7 @@ uv run --project userspace/sample-ai2/tools \
 ボードからのダンプ取得も含めて実行する場合は、リポジトリルートで次を実行します。
 
 ```sh
-make APP_TARGET=sample-ai2 thread-monitor
+make -C userspace/sample-ai2 thread-monitor
 ```
 
 このターゲットは、ダンプ取得後にこのディレクトリの `all` コマンドを呼び出し、

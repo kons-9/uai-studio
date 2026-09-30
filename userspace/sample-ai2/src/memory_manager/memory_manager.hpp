@@ -2,7 +2,7 @@
 #define UAI_AI_MEMORY_MANAGER_HPP
 
 #include "memory_manager/fixed_pool_allocator.hpp"
-#include "memory_manager/memory_config.hpp"
+#include "middleware/memory/generated/memory_config.hpp"
 
 namespace uai::ai::pipeline {
 struct CaptureFrame;

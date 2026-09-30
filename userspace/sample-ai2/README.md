@@ -9,7 +9,7 @@ Pipe1のLCD表示とPipe2のフレーム取得を従来どおり維持し、前�
 command blobが必要です。ビルド先は`build-sample-ai2-person`です。
 
 まずperson/faceのモデル生成物とSTEdgeAI、CubeMXソース、FSBLを準備してから
-`make APP_TARGET=sample-ai2 build`を使います。`setup`と`ai-load`はperson/faceを
+`make -C userspace/sample-ai2 build`を使います。`setup`と`ai-load`はperson/faceを
 初期化失敗時はカメラ表示を継続し、推論のみ無効にします。UARTには
 `ai: face pipeline enabled (pre/npu/post)`が出ます。各ステップのID/時刻は
 `diagnostics.inference_trace`を有効にしたときだけ記録します。
@@ -18,8 +18,8 @@ command blobが必要です。ビルド先は`build-sample-ai2-person`です。
 
 このアプリは sample-ai をコピーした再構築版です。以下のコピー元の実機計測値は
 sample-ai2 の検証結果ではありません。sample-ai2 のモデル生成物は同梱していません。
-リポジトリ直下で、初回は `make APP_TARGET=sample-ai2 setup`（モデル生成と
-CubeMX 生成を含む）、以降は `make APP_TARGET=sample-ai2 build` を使います。
+リポジトリ直下で、初回は `make -C userspace/sample-ai2 setup`（モデル生成と
+CubeMX 生成を含む）、以降は `make -C userspace/sample-ai2 build` を使います。
 face表示構成の既定のビルド先は `build-sample-ai2-person` で、sample-ai の
 `build` と共用しません。以下の3モデル構成・旧ビルド先の記述は旧経路の説明です。
 ボード書き込みの前に UART を用意してください。
@@ -250,7 +250,7 @@ LCD合成します。表示色はperson=赤、face=青、segmentation=緑です�
 
 ## 後で行う configure/build
 
-先に `make APP_TARGET=sample-ai2 setup` でモデルと専用 CubeMX 出力を
+先に `make -C userspace/sample-ai2 setup` でモデルと専用 CubeMX 出力を
 生成してください。手動で再設定する場合は次のように専用のビルドディレクトリを
 使えます。
 
@@ -296,25 +296,33 @@ face: `0x70580000`）へ書き込んでください。主なビルド成果物�
 command blobの書き込み後に`ram-run`を実行します。モデル初期化はNORの
 memory-mapped化後に行われるため、外部Flash上のblobを参照できます。
 
+ThreadMonitorのリングはモデルNORではなく、PSRAMの専用領域
+`0x91C40000`（32 KiB）に置かれます。推論中のNOR重み参照を止めずに記録
+でき、`make -C userspace/sample-ai2 thread-monitor-dump`で停止時に取得できます。
+PSRAMは揮発性なので、リセット前にダンプしてください。
+
+CPU task monitorの1秒周期レポートも別のPSRAM領域`0x91C48000`（32 KiB）へ保存されます。
+`make -C userspace/sample-ai2 cpu-task-monitor`でダンプと可視化を実行できます。
+
 ## 外部Flashからの起動
 
 FSBL、LRUN形式のアプリケーション、モデル重み、command blobをまとめて
 書き込む場合は、プロジェクトルートで次を実行します。
 
 ```sh
-make APP_TARGET=sample-ai2 flash
+make -C userspace/sample-ai2 flash
 ```
 
 FSBLは、動作確認済みのSTM32N6570-DK公式サンプル由来のイメージを
 [`fsbl/stm32n6570-dk-ai_fsbl.hex`](fsbl/stm32n6570-dk-ai_fsbl.hex)として管理しています。
 元の同梱ファイルは`ref/STM32N6_Survivor_Detection/Binaries/ai_fsbl.hex`です。
-`make flash`はこのIntel HEXを外部FlashのFSBL領域へ書き込みます。
+`make -C userspace/sample-ai2 flash`はこのIntel HEXを外部FlashのFSBL領域へ書き込みます。
 
 このターゲットはFSBLを`0x70000000`、アプリケーションを`0x70100000`へ書き込み、
 person/segmentation/faceの重みとcommand blobもそれぞれの絶対アドレスへ書き込みます。
 書き込み後にリセットして外部Flashから起動するには、STM32N6570-DKのブート設定を
 外部Flash起動（BOOT0: 1-2、BOOT1: 1-2）にしてください。RAM起動へ戻す場合は
-ブート設定を元に戻して`make APP_TARGET=sample-ai2 ram-run`を実行します。
+ブート設定を元に戻して`make -C userspace/sample-ai2 ram-run`を実行します。
 
 ## コピー元から継承している範囲
 

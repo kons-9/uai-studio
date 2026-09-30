@@ -1,40 +1,72 @@
 # sample-ai2 memory layout generator
 
-`generate_memory_layout.py` generates the raw C++ static memory layout and the
-fixed-reservation part of the GNU ld script from one layout document. The
-checked-in source is
-[`../config/memory_layout.yml`](../config/memory_layout.yml).
+`auto_static_memory_layout/` resolves the memory layout from three
+inputs:
 
-The input format is selected by the file extension and can be YAML, JSON, or
-TOML.  YAML uses PyYAML when available and has a dependency-free fallback for
-the schema used by this sample.  TOML uses Python 3.11+'s `tomllib`; Python
-3.10 requires `tomli`.
+- `config/board_memory.json`: physical memory regions, model weight addresses,
+  command-blob sections, and linker entry point.
+- `config/application_memory.json`: runtime image sizes/counts and fixed
+  reservations for capture, display, inference, scratch, and diagnostics.
+- `config/model_layout.json` plus the generated model directory: model order,
+  weight files, `stai_network.h` tensor metadata, NPU pool comments, and
+  ECBLOB command arrays.
+
+The resolved JSON is the canonical intermediate representation. YAML is a
+human-readable export of that JSON; it is not an input required by the build.
+The same resolved document generates `raw.hpp`, `memory_config.hpp`, and the
+linker script. All output paths are explicit, so invoking the tool never
+modifies the source tree or the `tools` directory.
 
 ```sh
-mkdir -p /tmp/sample-ai2-memory-layout/memory_manager/static_memory_layout
-python3 userspace/sample-ai2/tools/generate_memory_layout.py \
-  --input userspace/sample-ai2/config/memory_layout.yml \
-  --template userspace/sample-ai2/stm32n6570-dk-npu-ram.ld.in \
-  --raw-header /tmp/sample-ai2-memory-layout/memory_manager/static_memory_layout/raw.hpp \
-  --linker /tmp/sample-ai2-memory-layout/stm32n6570-dk-npu-ram.ld
+python3 userspace/sample-ai2/tools/auto_static_memory_layout all \
+  --board userspace/sample-ai2/config/board_memory.json \
+  --application userspace/sample-ai2/config/application_memory.json \
+  --models-dir userspace/sample-ai2/models \
+  --model-config userspace/sample-ai2/config/model_layout.json \
+  --output-dir /tmp/sample-ai2-memory-layout \
+  --linker-base userspace/sample-ai2/stm32n6570-dk-npu-ram.ld
 ```
 
-The public API is `src/memory_manager/static_memory_layout.hpp`. The
-`static_memory_layout/type.hpp` file contains layout types, while
-`static_memory_layout/raw.hpp` is generated and contains the key and linker
-layout instance. The generated file should not be edited directly.
+For pipeline use, the subcommands are:
 
-This is intentionally a standalone tool: existing source/header/linker files
-are not modified unless they are explicitly passed as output paths. To use
-another format, provide the same schema in `memory_layout.json` or
-`memory_layout.toml`; `--format` can override the extension when needed.
+```sh
+auto_static_memory_layout resolve ...
+auto_static_memory_layout generate_yml --input memory_layout.json --output memory_layout.yml
+auto_static_memory_layout generate_cpp --input memory_layout.json \
+  --linker-base stm32n6570-dk-npu-ram.ld \
+  --key-header generated/middleware/memory/generated/static_memory_layout/key.hpp \
+  --raw-header generated/middleware/memory/generated/static_memory_layout/raw.hpp \
+  --memory-config generated/middleware/memory/generated/memory_config.hpp \
+  --linker generated/stm32n6570-dk-npu-ram.ld
+```
 
-The linker template owns the application code/data sections.  It must contain
-the `@MEMORY_REGIONS@` and `@STATIC_MEMORY_SECTIONS@` markers; the generator
-replaces those markers and validates duplicate names, alignments, unknown
-memory regions, overlaps, and fixed allocations that exceed their region.
+The sample-ai2 CMake target runs `all` into
+`userspace/sample-ai2/generated/` and adds that generated include directory
+before `src/`. The checked-in C++ headers remain available as compatibility
+copies for source browsing, but are not the build source of truth.
+
+The public C++ API is
+`src/middleware/memory/static_memory_layout.hpp`. The generated `key.hpp`
+contains the layout-specific keys and is included by the public header.
+The generated `raw.hpp`
+contains the static-memory keys and linker-backed layout instance.
+
+The sample-ai2 ThreadMonitor ring is placed in the dedicated `PSRAM_TRACE`
+region (`0x91C40000`, 32 KiB), rather than APP RAM or the model NOR. This keeps
+the NPU's memory-mapped weight reads uninterrupted and leaves the trace
+available to `make -C userspace/sample-ai2 thread-monitor-dump` while the CPU is halted. The ring is
+volatile PSRAM; dump it before resetting the board if the trace must be kept.
+
+The CPU task monitor uses a separate `PSRAM_CPU_TRACE` ring at
+`0x91C48000` (32 KiB). Use `make -C userspace/sample-ai2 cpu-task-monitor` to dump and visualize its
+one-second task-usage reports.
 
 AI model monitor tools are collected under
 [`ai_model_monitor/`](ai_model_monitor/).  See
 [`ai_model_monitor/README.md`](ai_model_monitor/README.md) for the CLI and
 visualization usage.
+
+CPU task monitor tools are collected under
+[`cpu_task_monitor/`](cpu_task_monitor/).  They parse the UART output from
+`td_hok_dsp`/`td_hok_int` and generate a task-usage plot. See
+[`cpu_task_monitor/README.md`](cpu_task_monitor/README.md) for the CLI.

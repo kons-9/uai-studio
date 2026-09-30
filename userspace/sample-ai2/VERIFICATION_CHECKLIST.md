@@ -9,7 +9,7 @@
 
 ## 最低限の合格条件
 
-- [ ] **ビルド** — `make APP_TARGET=sample-ai2 build` が成功する。
+- [ ] **ビルド** — `make -C userspace/sample-ai2 build` が成功する。
 - [ ] **RAMロード** — STM32CubeProgrammerがロード完了と検証成功を報告し、指定したPCで実行を開始する。
 - [ ] **起動・メモリー** — UARTに致命的な初期化エラーがなく、PSRAM/NORの初期化とモデルデータ読出しが成功する。
 - [ ] **カメラ入力** — UARTで撮影フレームのsequenceが増加する。

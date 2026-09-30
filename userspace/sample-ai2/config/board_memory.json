@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "board": "STM32N6570-DK",
+  "cpp_namespace": "uai::ai::static_memory_layout",
+  "symbol_prefix": "sample_ai",
+  "header_guard": "UAI_AI_STATIC_MEMORY_LAYOUT_HPP",
+  "raw_header_guard": "UAI_AI_STATIC_MEMORY_LAYOUT_RAW_HPP",
+  "linker_entry": "uai_ram_entry",
+  "memory_regions": [
+    {"name": "APP", "attributes": "rwx", "origin": "0x34000400", "length": "1023K"},
+    {"name": "MODEL_FLASH", "attributes": "rx", "origin": "0x70500000", "length": "0x00E00000"},
+    {"name": "PSRAM_CAPTURE", "attributes": "rwx", "origin": "0x91000000", "length": "0x00200000"},
+    {"name": "PSRAM_DISPLAY", "attributes": "rwx", "origin": "0x91200000", "length": "0x00200000"},
+    {"name": "PSRAM_INFERENCE", "attributes": "rwx", "origin": "0x91400000", "length": "0x00300000"},
+    {"name": "PSRAM_RAW_DUMP", "attributes": "rwx", "origin": "0x91700000", "length": "0x00400000"},
+    {"name": "PSRAM_MASK", "attributes": "rwx", "origin": "0x91B00000", "length": "0x00040000"},
+    {"name": "PSRAM_PIPE2_DROP", "attributes": "rwx", "origin": "0x91B40000", "length": "0x00100000"},
+    {"name": "PSRAM_TRACE", "attributes": "rwx", "origin": "0x91C40000", "length": "0x00008000"},
+    {"name": "PSRAM_CPU_TRACE", "attributes": "rwx", "origin": "0x91C48000", "length": "0x00008000"},
+    {"name": "PSRAM_SCRATCH", "attributes": "rwx", "origin": "0x91D00000", "length": "0x00100000"},
+    {"name": "PSRAM_INFERENCE_SOURCE", "attributes": "rwx", "origin": "0x91E00000", "length": "0x00200000"}
+  ],
+  "command_blobs": [
+    {
+      "model": "person",
+      "section": ".network_blobs_person",
+      "address": "0x70500000",
+      "capacity": "0x00060000",
+      "alignment": 64
+    },
+    {
+      "model": "segmentation",
+      "section": ".network_blobs_segmentation",
+      "address": "0x70560000",
+      "capacity": "0x00020000",
+      "alignment": 64
+    },
+    {
+      "model": "face",
+      "section": ".network_blobs_face",
+      "address": "0x70580000",
+      "capacity": "0x00880000",
+      "alignment": 64
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 #include <cstddef>
 
 #include "application/pipeline/image_format.hpp"
-#include "memory_manager/memory_config.hpp"
+#include "middleware/memory/generated/memory_config.hpp"
 
 namespace uai::ai::memory_manager {
 

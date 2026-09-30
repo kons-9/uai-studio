@@ -9,9 +9,10 @@
 #include "driver/npu_driver/npu_network.hpp"
 #include "image_resizer/image_resizer.hpp"
 #include "application/pipeline/image_format.hpp"
-#include "memory_manager/memory_config.hpp"
+#include "middleware/memory/generated/memory_config.hpp"
 #include "memory_manager/memory_sizes.hpp"
-#include "memory_manager/static_memory_layout.hpp"
+#include "middleware/memory/static_memory_layout.hpp"
+#include "middleware/memory/generated/static_memory_layout/key.hpp"
 
 namespace uai::ai::models::segmentation {
 
@@ -37,9 +38,11 @@ common::Error InitializeDecoder(const stai_network_info &info)
     g_decoder_initialized = false;
     if (info.outputs == nullptr || info.n_outputs != 1U ||
         info.outputs[0].size_bytes != kOutputBytes ||
-        static_memory_layout::GetRegion(StaticMemoryKey::kSegmentationMask0)
+        static_memory_layout::Region::GetRegionFromKey(
+            StaticMemoryKey::kSegmentationMask0)
                 .size() < kMaskBytes ||
-        static_memory_layout::GetRegion(StaticMemoryKey::kSegmentationMask1)
+        static_memory_layout::Region::GetRegionFromKey(
+            StaticMemoryKey::kSegmentationMask1)
                 .size() < kMaskBytes) {
         return Invalid("segmentation.future.decoder.initialize");
     }
@@ -62,7 +65,8 @@ common::Error DecodeMask(const void *output, std::uint8_t mask_index,
 
     const auto key = mask_index == 0U ? StaticMemoryKey::kSegmentationMask0
                                       : StaticMemoryKey::kSegmentationMask1;
-    const auto &region = static_memory_layout::GetRegion(key);
+    const auto &region =
+        static_memory_layout::Region::GetRegionFromKey(key);
     auto *mask = reinterpret_cast<std::uint8_t *>(region.address());
     const auto *logits = reinterpret_cast<const std::int8_t *>(output);
     std::uint32_t foreground_pixels = 0U;

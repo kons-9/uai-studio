@@ -42,6 +42,14 @@ memory_regions:
     attributes: rwx
     origin: 0x91B40000
     length: 0x00100000
+  - name: PSRAM_TRACE
+    attributes: rwx
+    origin: 0x91C40000
+    length: 0x00008000
+  - name: PSRAM_CPU_TRACE
+    attributes: rwx
+    origin: 0x91C48000
+    length: 0x00008000
   - name: PSRAM_SCRATCH
     attributes: rwx
     origin: 0x91D00000
@@ -52,12 +60,20 @@ memory_regions:
     length: 0x00200000
 
 allocations:
-  # Keep the APP reservation before __end in the linker template.
+  # Keep the trace ring in external PSRAM so APP remains available to the
+  # application and the NPU runtime.
   - name: thread_monitor
     key: kThreadMonitor
-    memory: APP
+    memory: PSRAM_TRACE
     section: sample_ai_thread_monitor
-    size: 0x00020000
+    size: 0x00008000
+    alignment: 32
+
+  - name: cpu_task_monitor
+    key: kCpuTaskMonitor
+    memory: PSRAM_CPU_TRACE
+    section: sample_ai_cpu_task_monitor
+    size: 0x00008000
     alignment: 32
 
   - name: capture0

@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "alignment": 32,
+  "runtime": {
+    "capture": {"width": 800, "height": 480, "bytes_per_pixel": 2, "count": 2},
+    "display": {"width": 800, "height": 480, "bytes_per_pixel": 2, "count": 2},
+    "inference": {"width": 480, "height": 480, "bytes_per_pixel": 3, "count": 3},
+    "inference_scratch": {"width": 480, "height": 288, "bytes_per_pixel": 3},
+    "inference_source": {"count": 3}
+  },
+  "reservations": [
+    {
+      "name": "thread_monitor",
+      "key": "kThreadMonitor",
+      "memory": "PSRAM_TRACE",
+      "section": "sample_ai_thread_monitor",
+      "size": "0x00008000",
+      "alignment": 32
+    },
+    {
+      "name": "cpu_task_monitor",
+      "key": "kCpuTaskMonitor",
+      "memory": "PSRAM_CPU_TRACE",
+      "section": "sample_ai_cpu_task_monitor",
+      "size": "0x00008000",
+      "alignment": 32
+    },
+    {
+      "name": "capture",
+      "key": "kCapture{index}",
+      "memory": "PSRAM_CAPTURE",
+      "section": "sample_ai_capture",
+      "count_ref": "runtime.capture.count",
+      "size": "0x00100000",
+      "alignment": 32
+    },
+    {
+      "name": "display",
+      "key": "kDisplay{index}",
+      "memory": "PSRAM_DISPLAY",
+      "section": "sample_ai_display",
+      "count_ref": "runtime.display.count",
+      "size": "0x00100000",
+      "alignment": 32
+    },
+    {
+      "name": "inference",
+      "key": "kInference{index}",
+      "memory": "PSRAM_INFERENCE",
+      "section": "sample_ai_inference",
+      "count_ref": "runtime.inference.count",
+      "size": "0x00100000",
+      "alignment": 32
+    },
+    {
+      "name": "inference_scratch",
+      "key": "kInferenceScratch",
+      "memory": "PSRAM_SCRATCH",
+      "section": "sample_ai_inference_scratch",
+      "size": "0x00100000",
+      "alignment": 32
+    },
+    {
+      "name": "inference_source",
+      "key": "kInferenceSource{index}",
+      "memory": "PSRAM_INFERENCE_SOURCE",
+      "section": "sample_ai_inference_source",
+      "count_ref": "runtime.inference_source.count",
+      "size_ref": "derived.inference_source_bytes",
+      "alignment": 32
+    },
+    {
+      "name": "raw_dump",
+      "key": "kRawDump",
+      "memory": "PSRAM_RAW_DUMP",
+      "section": "sample_ai_raw_dump",
+      "size": "0x00400000",
+      "alignment": 32
+    },
+    {
+      "name": "segmentation_mask",
+      "key": "kSegmentationMask{index}",
+      "memory": "PSRAM_MASK",
+      "section": "sample_ai_segmentation_mask",
+      "count": 2,
+      "size": "0x00020000",
+      "alignment": 32
+    },
+    {
+      "name": "pipe2_drop",
+      "key": "kPipe2Drop",
+      "memory": "PSRAM_PIPE2_DROP",
+      "section": "sample_ai_pipe2_drop",
+      "size": "0x00100000",
+      "alignment": 32
+    }
+  ]
+}

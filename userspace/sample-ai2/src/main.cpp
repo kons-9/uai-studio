@@ -59,6 +59,16 @@ extern "C" INT usermain(void)
         uai::ai::task::DumpCoreRegisters("usermain");
     }
 
+    const uai::ai::common::Error cpu_monitor_status =
+        context.cpu_task_monitor.Start();
+    if (!cpu_monitor_status.Ok()) {
+        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
+                          "ai: cpu task monitor start failed code=%x detail=%x\n"),
+                      static_cast<unsigned int>(cpu_monitor_status.code),
+                      static_cast<unsigned int>(cpu_monitor_status.detail));
+        context.Halt("ai: cpu task monitor start failed\n");
+    }
+
     /* µT-Kernel replaces the startup vector table with its RAM table. Use its
      * HLL wrapper for the NPU IRQ so the handler can signal the inference task
      * through an event flag. */

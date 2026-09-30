@@ -12,6 +12,8 @@
 - セッションヘッダ: magic／format version／record size／build ID／boot ID／CPU 周波数／記録開始・終了／write index／上書き・producer 側欠落件数。イベント: sequence、時刻（取得元と単位を明示）、type、task ID または ISR、frame `capture_sequence`、model ID、必要な payload。イベントごとに使わないフィールドは明示的に無効値とする。
 - v1 イベントは `PIPE1_FRAME`、`PIPE2_FRAME`、`FRAME_DROP(reason)`、`FRAME_ENQUEUE/DEQUEUE`、`NPU_SUBMIT/DONE`、`CSI_ERROR`、`BUFFER_STATE`、`TASK_STATE` に絞る。後続のイベントを追加しても古いデコーダが未知 type を飛ばせるようにする。同一フレームの実際の ID は [TaskContext とカメラ経路](../../userspace/sample-ai/src/task/task_context.hpp) で確認する。
 - まず userspace の queue／ドライバ境界から記録。カーネルのコンテキストスイッチ記録は ISR・再入・割込みマスク・スケジューラとの相互作用を検証してから追加する。ホットパスでは `tk_get_tid()` や printf を毎回呼ばず、分かっている task ID を渡す。
+- µT-Kernel/DS の `td_hok_dsp` と `td_hok_int` を利用できるようにし、ディスパッチ境界と `TA_HLNG` 割込みハンドラ境界をトレースの入力にする。`USE_DBGSPT_TRACE` はコンパイル時定数で既定値を 0 とし、無効ビルドではホットパスのフック呼出し自体を生成しない。`UAI_KERNEL_TRACE_HOOKS=ON` は同じ設定をCMakeから有効化する。
+- STM32N6570-DK の BSP は `TK_TRAP_SVC=FALSE` の直接C関数呼出し方式であるため、`td_hok_svc` の設定APIは提供するが、SVCトラップ経路のイベントは生成しない。SVCフックを使うポートでは、そのポートのSVC入口／出口から同じ保存済み定義を呼び出す。
 - DWT cycle は短い区間に使い、回り込みを跨ぐイベントやクロックの変更は補正可能な情報がある場合だけ復元する。長時間の並びは RTOS の単調時刻と同期点で表現し、どちらもリセットを跨いで連続した時刻とは見なさない。
 - 複数 producer の slot 予約／publish 手順、cache 可視性、commit marker を規定する。ホストは途中書込み・不正ヘッダ・欠落を検出し、その区間の統計を作らない。アプリ停止後の SWD 取得を標準とし、UART の高頻度送信は後述の動的計測で実測後に判断する。
 

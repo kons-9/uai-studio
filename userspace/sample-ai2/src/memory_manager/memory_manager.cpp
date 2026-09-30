@@ -2,7 +2,8 @@
 
 #include "application/pipeline/frame_types.hpp"
 #include "memory_manager/memory_sizes.hpp"
-#include "memory_manager/static_memory_layout.hpp"
+#include "middleware/memory/static_memory_layout.hpp"
+#include "middleware/memory/generated/static_memory_layout/key.hpp"
 
 #if defined(__arm__) || defined(__thumb__)
 extern "C" {
@@ -19,37 +20,9 @@ namespace {
 
 using StaticMemoryKey = static_memory_layout::Key;
 
-const static_memory_layout::Region &StaticRegion(StaticMemoryKey key)
+static_memory_layout::Region StaticRegion(StaticMemoryKey key)
 {
-    return static_memory_layout::GetRegion(key);
-}
-
-const static_memory_layout::Region &InferenceRegion(std::size_t index)
-{
-    switch (index) {
-    case 0U:
-        return StaticRegion(StaticMemoryKey::kInference0);
-    case 1U:
-        return StaticRegion(StaticMemoryKey::kInference1);
-    case 2U:
-        return StaticRegion(StaticMemoryKey::kInference2);
-    default:
-        return StaticRegion(StaticMemoryKey::kInference0);
-    }
-}
-
-const static_memory_layout::Region &InferenceSourceRegion(std::size_t index)
-{
-    switch (index) {
-    case 0U:
-        return StaticRegion(StaticMemoryKey::kInferenceSource0);
-    case 1U:
-        return StaticRegion(StaticMemoryKey::kInferenceSource1);
-    case 2U:
-        return StaticRegion(StaticMemoryKey::kInferenceSource2);
-    default:
-        return StaticRegion(StaticMemoryKey::kInferenceSource0);
-    }
+    return static_memory_layout::Region::GetRegionFromKey(key);
 }
 
 } // namespace
@@ -84,7 +57,9 @@ common::Error MemoryManager::PopulateInferenceFrame(
 
     frame->buffer = slot.buffer;
     frame->source = {
-        InferenceSourceRegion(index).address(),
+        static_memory_layout::Region::GetRegionFromKey(
+            static_memory_layout::kInferenceSourceRegionKeys[index])
+            .address(),
         kInferenceSourceBytes,
         index,
         Region::kInference,
@@ -282,7 +257,9 @@ common::Error MemoryManager::InferenceBuffers(std::uintptr_t *buffers,
                     "memory.inference_buffers.null_output");
     }
     for (std::size_t i = 0U; i < kInferenceBufferCount; ++i) {
-        buffers[i] = InferenceRegion(i).address();
+        buffers[i] = static_memory_layout::Region::GetRegionFromKey(
+                         static_memory_layout::kInferenceRegionKeys[i])
+                         .address();
     }
     return Make(common::ErrorCode::kOk, 0U, "memory.inference_buffers");
 }
@@ -695,7 +672,9 @@ bool MemoryManager::IsInferenceBufferFree(std::uintptr_t address) const
     std::uint8_t index = 0U;
     bool found = false;
     for (std::uint8_t i = 0U; i < kInferenceBufferCount; ++i) {
-        if (address == InferenceRegion(i).address()) {
+        if (address == static_memory_layout::Region::GetRegionFromKey(
+                            static_memory_layout::kInferenceRegionKeys[i])
+                            .address()) {
             index = i;
             found = true;
             break;
