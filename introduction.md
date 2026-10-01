@@ -14,7 +14,7 @@ TRONプログラミングコンテスト2026 開発環境・開発ツール部�
 
 [開発ガイド：μAI-Studio](https://kons-9.github.io/uai-studio/)
 
-カーネル、ドライバー、ミドルウェアの構成と、アプリ開発に必要な資料を公開しています。
+ハードウェアの前提とツールの取得から、カーネル、ドライバー、ミドルウェアの使い方まで、アプリ開発に必要な資料を公開しています。
 
 <!-- 対象ボード: STM32N6570-DK / ライセンス: MIT（自作部分） -->
 
@@ -74,11 +74,14 @@ TRONプログラミングコンテスト2026 開発環境・開発ツール部�
 
 ## 必要なもの
 
-- ネイティブのLinux、STM32N6570-DK（カメラモジュールとLCDは付属）
-- OSのパッケージ：CMake、GNU Armツールチェーン、Python、minicom
-- STの無償ツール（別途入手）：STM32CubeMX 6.x、STM32CubeN6、STEdgeAI 4.0、STM32CubeProgrammer
-- ホストごとのツールのパスは`build-system/host-config/local.mk`に設定するだけ
-- 利用している既存ソフトウェアの一覧は`THIRD_PARTY_NOTICES.md`
+| | 内容 |
+|---|---|
+| ボード | STM32N6570-DK（カメラモジュールとLCDは付属）。USB Type-C 1本で電源、SWD、UART |
+| ホスト | ネイティブのLinux。CMake、GNU Armツールチェーン、Python、minicomはOSのパッケージで導入 |
+| STの無償ツール | STM32CubeMX 6.x、STM32CubeN6、STEdgeAI Core 4.0、STM32CubeProgrammer |
+
+- ツールのパスとボードのシリアル番号は`build-system/host-config/local.mk`の1ファイルに設定するだけ
+- 手順は開発ガイドの[はじめに](https://kons-9.github.io/uai-studio/getting-started/)、利用している既存ソフトウェアは`THIRD_PARTY_NOTICES.md`
 
 ---
 
@@ -126,7 +129,7 @@ make -C userspace/ai-app cpu-task-monitor
 4. CubeMXの設定ファイル（IOC）を`config/`に置く
 5. `make -C userspace/<app> setup`、`ram-run`で動かす
 
-最小例：`userspace/experiment-hello-world`（詳細は`docs/kernel.md`）。`setup`、`ram-run`、`monitor`は共通。AI向け機能を使うには、ルートのCMakeとメモリ配置も設定する。
+最小例：`userspace/experiment-hello-world`（詳細は開発ガイドの[アプリの追加](https://kons-9.github.io/uai-studio/kernel/new-app/)）。`setup`、`ram-run`、`monitor`は共通。AI向け機能を使うには、ルートのCMakeとメモリ配置も設定する。
 
 ---
 
@@ -204,7 +207,7 @@ STEdgeAIの生成物 ───────┘                                   
 
 **上段** タスク別CPU使用率　**中段** タスクの実行状況　**下段** ループ時間
 
-[![h:400](host_app/cpu_task_monitor/sample/cpu_task_monitor.png)](host_app/cpu_task_monitor/sample/cpu_task_monitor.png)
+[![h:340](host_app/cpu_task_monitor/sample/cpu_task_monitor.png)](host_app/cpu_task_monitor/sample/cpu_task_monitor.png)
 
 [元画像を開く（拡大表示）](host_app/cpu_task_monitor/sample/cpu_task_monitor.png)
 
@@ -214,7 +217,7 @@ STEdgeAIの生成物 ───────┘                                   
 
 **上段** モデルごとのCPU（青）・NPU（橙）処理　**下段** 各段階の平均時間
 
-[![h:400](host_app/ai_model_monitor/sample/ai_model_monitor.png)](host_app/ai_model_monitor/sample/ai_model_monitor.png)
+[![h:340](host_app/ai_model_monitor/sample/ai_model_monitor.png)](host_app/ai_model_monitor/sample/ai_model_monitor.png)
 
 [元画像を開く（拡大表示）](host_app/ai_model_monitor/sample/ai_model_monitor.png)
 

@@ -45,4 +45,4 @@ python3 host_app/auto_static_memory_layout all \
   --linker-base userspace/ai-app/stm32n6570-dk-npu-ram.ld
 ```
 
-サブコマンドは`resolve`、`generate_yml`、`generate_cpp`、`all`です。詳細は`--help`で確認できます。生成ヘッダの使い方は[docs/middleware.md](../docs/middleware.md)を参照してください。
+サブコマンドは`resolve`、`generate_yml`、`generate_cpp`、`all`です。詳細は`--help`で確認できます。生成ヘッダの使い方は[docs/middleware/memory.md](../docs/middleware/memory.md)を参照してください。

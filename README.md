@@ -7,7 +7,7 @@ STM32N6570-DKのカメラ映像をLCDへ表示しながら、Neural-ART NPUでpe
 - 前処理CPU、NPU、後処理CPUの3タスクでモデルをパイプライン実行し、検出結果をLCDに重ねて表示します。
 - アプリ本体はRAMへロードして実行します。モデルの重みとcommand blobは外部NOR Flashに置きます。
 
-アプリの内部構成は[userspace/ai-app/README.md](userspace/ai-app/README.md)、カーネル・ドライバー・ミドルウェアの使い方は[docs/index.md](docs/index.md)を参照してください。
+アプリの内部構成は[userspace/ai-app/README.md](userspace/ai-app/README.md)、ハードウェアの前提とツールの取得は[docs/getting-started.md](docs/getting-started.md)、カーネル・ドライバー・ミドルウェアの使い方は[docs/index.md](docs/index.md)を参照してください。
 
 ## 必要な機材とソフトウェア
 
@@ -88,7 +88,7 @@ UART_BAUD = 115200
 | `userspace/experiment-*` | ドライバーなどを実装する際に使った実験用ディレクトリ |
 | `build-system` | CMake・Makeの共通定義、CubeMX生成とUARTのスクリプト、ホスト設定 |
 | `host_app` | PCで動かすトレース解析とメモリ配置生成ツール（[host_app/README.md](host_app/README.md)） |
-| `docs` | カーネル・ドライバー・ミドルウェアの利用ガイド |
+| `docs` | 開発ガイド（ハードウェアの前提とツールの取得、カーネル、ドライバー、ミドルウェア） |
 
 ## セットアップ、ビルド、RAM実行
 

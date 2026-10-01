@@ -1,6 +1,6 @@
 # ドライバー
 
-`kernel/driver`はSTM32N6570-DKの周辺機能をタスクから安全に使うためのドライバーです。CMakeターゲットは`uai::drivers`と`uai::driver_overrides`です（[kernel.md](kernel.md)）。
+`kernel/driver`はSTM32N6570-DKの周辺機能をタスクから安全に使うためのドライバーです。CMakeターゲットは`uai::drivers`と`uai::driver_overrides`です（[ビルド構成](kernel/build.md)）。
 
 ## 共通の形
 
@@ -37,7 +37,7 @@ if (status.Ok()) {
 | --- | --- | --- |
 | 1 | `npu::NpuDriver::InitializeMemory()` | NPUとNPU用RAMのクロックを有効にします |
 | 2 | `cache::CacheManagement::Instance().Initialize()` | Dキャッシュと、NPUが使うCACHEAXIを有効にします |
-| 3 | `memory_manager::MemoryManager::Initialize()` | バッファプールを用意します（[middleware.md](middleware.md#memory_manager)） |
+| 3 | `memory_manager::MemoryManager::Initialize()` | バッファプールを用意します（[memory_manager](middleware/memory_manager.md)） |
 | 4 | `rif::RifManagement::Instance().Initialize()` | XSPI1/XSPI2へのアクセス権を設定します。外部メモリより先に必要です |
 | 5 | `psram::PsramManagement::Instance().Initialize()` | PSRAMをメモリマップします。戻り値は`bool` |
 | 6 | `nor::NorManagement::Instance().Initialize()` | NOR Flashをメモリマップします。戻り値は成功で`0` |
@@ -160,7 +160,7 @@ driver->NewInference(writer);
 - `Run()`は`StartRun()`と`WaitRun()`をまとめたものです。NPUの割り込みを待ち、epochを進め、完了まで戻りません。応答がない場合は`kTimeout`を返します。細かく制御したい場合は`StartRun()`、`PollRun()`、`WaitForIrq()`、`ContinueRun()`を使います。
 - 戻り値の`npu::Status`は`error`（`common::Error`）と実行時間などの`execution`を持ちます。
 - 入出力バッファはアプリが用意します。モデルは`--no-inputs-allocation --no-outputs-allocation`で生成してください。入力は`PrepareForPeripheralRead()`、出力は読む前に`PrepareForCpuRead()`します。
-- NPUの割り込みハンドラ`NPU0_IRQHandler`は、アプリが`tk_def_int()`で登録します（[kernel.md](kernel.md)）。
+- NPUの割り込みハンドラ`NPU0_IRQHandler`は、アプリが`tk_def_int()`で登録します（[μT-Kernel](kernel/utkernel.md)）。
 - `SetEpochTraceObserver()`で生成コードのepochごとのコールバックを受け取れます。`SetEpochTraceModelKindId()`で記録に付けるモデルIDを切り替えます。
 
 ## PSRAM、NOR、RIF

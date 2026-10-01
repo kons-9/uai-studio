@@ -12,10 +12,24 @@ site_dir: site
 
 nav:
   - ホーム: index.md
+  - はじめに: getting-started.md
   - 紹介スライド: https://kons-9.github.io/uai-studio/introduction.html
-  - カーネルとビルド構成: kernel.md
+  - カーネル:
+      - 概要: kernel/index.md
+      - ビルド構成: kernel/build.md
+      - 起動の流れ: kernel/boot.md
+      - μT-Kernel: kernel/utkernel.md
+      - エラー型とログ: kernel/common.md
+      - アプリの追加: kernel/new-app.md
   - ドライバー: driver.md
-  - ミドルウェア: middleware.md
+  - ミドルウェア:
+      - 概要: middleware/index.md
+      - ai_runtime: middleware/ai_runtime.md
+      - memory: middleware/memory.md
+      - memory_manager: middleware/memory_manager.md
+      - ai_model_monitor: middleware/ai_model_monitor.md
+      - cpu_task_monitor: middleware/cpu_task_monitor.md
+      - image_resizer: middleware/image_resizer.md
 
 theme:
   name: material

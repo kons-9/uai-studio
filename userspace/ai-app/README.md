@@ -46,7 +46,7 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | `third_party/` | ST vision-models post-processing（[third_party/README.md](third_party/README.md)） |
 | `fsbl/` | Flash起動用FSBL（[fsbl/README.md](fsbl/README.md)） |
 
-新しいモデルを追加する場合は、`src/models/<model>/`に同じ3種類のファイルを用意し、`pipeline_task.cpp`に登録します。実装の要点は[docs/middleware.md](../../docs/middleware.md)にあります。
+新しいモデルを追加する場合は、`src/models/<model>/`に同じ3種類のファイルを用意し、`pipeline_task.cpp`に登録します。実装の要点は[docs/middleware/ai_runtime.md](../../docs/middleware/ai_runtime.md)にあります。
 
 ## 設定
 
