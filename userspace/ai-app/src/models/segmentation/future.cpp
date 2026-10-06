@@ -7,7 +7,7 @@
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
-#include "image_resizer/image_processing.hpp"
+#include "image_processing/image_processing.hpp"
 #include "middleware/pipeline/image_format.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
 #include "memory_manager/memory_sizes.hpp"
@@ -133,7 +133,7 @@ common::Error Future::Preprocess()
     frame_.input_prepared_by_cpu = true;
     status = context_.cache->PrepareForPeripheralRead(
         {frame_.buffer.address, InputBytes(), frame_.buffer.index,
-         memory_allocator::Region::kInference});
+         buffer::Region::kInference});
     if (!status.Ok()) return status;
 
     if (!preprocess_stage_logged_) {
@@ -199,9 +199,9 @@ common::Error Future::Postprocess()
         return {common::ErrorCode::kNotInitialized};
     }
     const auto &output = frame_.outputs[0];
-    const memory_allocator::Buffer range{
+    const buffer::Buffer range{
         output.address, context_.info->outputs[0].size_bytes, output.index,
-        memory_allocator::Region::kInference};
+        buffer::Region::kInference};
     common::Error status = context_.cache->PrepareForCpuRead(range);
     if (!status.Ok()) return status;
 

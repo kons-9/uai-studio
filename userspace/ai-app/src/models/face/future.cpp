@@ -7,7 +7,7 @@
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
-#include "image_resizer/image_processing.hpp"
+#include "image_processing/image_processing.hpp"
 #include "middleware/pipeline/image_format.hpp"
 #include "middleware/buffer/buffer_types.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
@@ -341,7 +341,7 @@ common::Error Future::Preprocess()
 
     const std::uint32_t source_width = pipeline::kInferenceFormat.width;
     const std::uint32_t source_height = pipeline::kInferenceFormat.height;
-    const memory_allocator::Buffer &input = frame_.buffer;
+    const buffer::Buffer &input = frame_.buffer;
     if (frame_.source_valid) {
         if (!frame_.source || frame_.source.size <
                                   memory_manager::kInferenceSourceBytes) {
@@ -365,15 +365,15 @@ common::Error Future::Preprocess()
         frame_.input_prepared_by_cpu = true;
         status = context_.cache->PrepareForPeripheralRead(
             {input.address, InputBytes(), input.index,
-             memory_allocator::Region::kInference});
+             buffer::Region::kInference});
         if (!status.Ok()) return status;
     } else {
         /* Keep the same fallback contract as person: a caller that supplies
          * an already prepared input may use the inference buffer directly. */
         frame_.input_prepared_by_cpu = false;
-        const memory_allocator::Buffer range{
+        const buffer::Buffer range{
             input.address, InputBytes(), input.index,
-            memory_allocator::Region::kInference};
+            buffer::Region::kInference};
         const common::Error status = context_.cache->PrepareForCpuRead(range);
         if (!status.Ok()) return status;
     }
@@ -446,11 +446,11 @@ common::Error Future::Postprocess()
     view.count = context_.info->n_outputs;
     for (std::uint16_t i = 0U; i < context_.info->n_outputs; ++i) {
         const auto &output = frame_.outputs[i];
-        const memory_allocator::Buffer range{
+        const buffer::Buffer range{
             output.address,
             context_.info->outputs[i].size_bytes,
             output.index,
-            memory_allocator::Region::kInference};
+            buffer::Region::kInference};
         common::Error status = context_.cache->PrepareForCpuRead(range);
         if (!status.Ok()) return status;
         view.tensors[i] = reinterpret_cast<const void *>(output.address);

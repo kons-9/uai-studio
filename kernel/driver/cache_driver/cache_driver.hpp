@@ -17,17 +17,17 @@ public:
     CacheDriver(const CacheDriver &) = delete;
     CacheDriver &operator=(const CacheDriver &) = delete;
     common::Error PrepareForDmaWrite(
-        const memory_allocator::Buffer &buffer) const;
+        const buffer::Buffer &buffer) const;
     common::Error PrepareForDmaWrite(
-        const memory_allocator::Buffer &buffer, const Writer &writer) const;
+        const buffer::Buffer &buffer, const Writer &writer) const;
     common::Error PrepareForCpuRead(
-        const memory_allocator::Buffer &buffer) const;
+        const buffer::Buffer &buffer) const;
     common::Error PrepareForCpuRead(
-        const memory_allocator::Buffer &buffer, const Writer &writer) const;
+        const buffer::Buffer &buffer, const Writer &writer) const;
     common::Error PrepareForPeripheralRead(
-        const memory_allocator::Buffer &buffer) const;
+        const buffer::Buffer &buffer) const;
     common::Error PrepareForPeripheralRead(
-        const memory_allocator::Buffer &buffer, const Writer &writer) const;
+        const buffer::Buffer &buffer, const Writer &writer) const;
     void KeepClocksOnSleep() const;
     void KeepClocksOnSleep(const Writer &writer) const;
 
@@ -67,11 +67,11 @@ public:
     }
     common::Error Validate(const Writer &writer) const
     { return ownership_.Validate(writer); }
-    common::Error PrepareForDmaWrite(const memory_allocator::Buffer &buffer)
+    common::Error PrepareForDmaWrite(const buffer::Buffer &buffer)
     { return WithWriter([&](CacheDriver &d, const Writer &w) { return d.PrepareForDmaWrite(buffer, w); }); }
-    common::Error PrepareForCpuRead(const memory_allocator::Buffer &buffer)
+    common::Error PrepareForCpuRead(const buffer::Buffer &buffer)
     { return WithWriter([&](CacheDriver &d, const Writer &w) { return d.PrepareForCpuRead(buffer, w); }); }
-    common::Error PrepareForPeripheralRead(const memory_allocator::Buffer &buffer)
+    common::Error PrepareForPeripheralRead(const buffer::Buffer &buffer)
     { return WithWriter([&](CacheDriver &d, const Writer &w) { return d.PrepareForPeripheralRead(buffer, w); }); }
     void KeepClocksOnSleep()
     { (void)WithWriter([](CacheDriver &d, const Writer &w) { d.KeepClocksOnSleep(w); return common::Error{common::ErrorCode::kOk}; }); }

@@ -12,7 +12,7 @@ namespace uai::ai::pipeline {
  * application pipeline. This is intentionally separate from allocator
  * storage types; the sequence belongs to the camera pipeline contract. */
 struct CaptureFrame {
-    memory_allocator::Buffer buffer{};
+    buffer::Buffer buffer{};
     std::uint32_t sequence = 0U;
 
     explicit operator bool() const { return static_cast<bool>(buffer); }
@@ -21,7 +21,7 @@ struct CaptureFrame {
 /* A display handoff token. The underlying buffer is owned by MemoryManager,
  * while this object describes its presentation-stage use. */
 struct DisplayBuffer {
-    memory_allocator::Buffer buffer{};
+    buffer::Buffer buffer{};
 
     explicit operator bool() const { return static_cast<bool>(buffer); }
 };
@@ -32,10 +32,10 @@ struct DisplayBuffer {
 struct InferenceFrame {
     static constexpr std::uint8_t kUnknownModelKindId = 0xFFU;
 
-    memory_allocator::Buffer buffer{};
-    memory_allocator::Buffer source{};
-    memory_allocator::Buffer scratch{};
-    memory_allocator::Buffer
+    buffer::Buffer buffer{};
+    buffer::Buffer source{};
+    buffer::Buffer scratch{};
+    buffer::Buffer
         outputs[memory_manager::kMemoryConfig.model_output_bytes.size()]{};
     std::uint8_t output_count = 0U;
     std::uint32_t capture_sequence = 0U;

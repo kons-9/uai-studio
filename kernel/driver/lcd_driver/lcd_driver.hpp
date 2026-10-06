@@ -33,9 +33,9 @@ public:
     common::Error SynchronizeCurrentFrame();
     common::Error SynchronizeCurrentFrame(const Writer &writer);
     common::Error GenerateCoordinatePattern(
-        const memory_allocator::Buffer &destination) const;
+        const buffer::Buffer &destination) const;
     common::Error GenerateCoordinatePattern(
-        const memory_allocator::Buffer &destination,
+        const buffer::Buffer &destination,
         const Writer &writer) const;
     common::Error ComposeAndPresent(
         const pipeline::CaptureFrame &capture,
@@ -93,7 +93,7 @@ public:
     void KeepClocksOnSleep() { (void)WithWriter([](LcdDriver &d, const Writer &w) { d.KeepClocksOnSleep(w); return common::Error{}; }); }
     common::Error ShowInitialFrame(const inference::BoxSet &b, bool p = false) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ShowInitialFrame(b, w, p); }); }
     common::Error SynchronizeCurrentFrame() { return WithWriter([](LcdDriver &d, const Writer &w) { return d.SynchronizeCurrentFrame(w); }); }
-    common::Error GenerateCoordinatePattern(const memory_allocator::Buffer &b) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.GenerateCoordinatePattern(b, w); }); }
+    common::Error GenerateCoordinatePattern(const buffer::Buffer &b) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.GenerateCoordinatePattern(b, w); }); }
     common::Error ComposeAndPresent(const pipeline::CaptureFrame &f, const inference::BoxSet &b, bool crc = false) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ComposeAndPresent(f, b, w, crc); }); }
     common::Error ComposeInferenceAndPresent(const pipeline::InferenceFrame &f) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ComposeInferenceAndPresent(f, w); }); }
     void SetTimingDiagnostics(bool enabled) { (void)WithWriter([&](LcdDriver &d, const Writer &w) { d.SetTimingDiagnostics(enabled, w); return common::Error{}; }); }

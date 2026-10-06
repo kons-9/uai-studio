@@ -361,18 +361,18 @@ common::Error Future::Preprocess()
     // The person network is generated for the 480x480 Pipe2 tensor. Keep its
     // input on the DMA-owned inference buffer, as in experiment-ai; the copied
     // source buffer is reserved for models that need CPU resizing.
-    const memory_allocator::Buffer &input = frame_.buffer;
+    const buffer::Buffer &input = frame_.buffer;
     if (!input || input.size < context_.info->inputs[0].size_bytes) {
         return {common::ErrorCode::kInvalidArgument};
     }
 
     /* Pipe2 wrote this buffer using DMA. A CPU read/invalidate here must not
      * overwrite the DMA image with dirty cache lines. */
-    const memory_allocator::Buffer range{
+    const buffer::Buffer range{
         input.address,
         context_.info->inputs[0].size_bytes,
         input.index,
-        memory_allocator::Region::kInference};
+        buffer::Region::kInference};
     common::Error status = context_.cache->PrepareForCpuRead(range);
     if (status.Ok() && !preprocess_stage_logged_) {
         UAI_LOG_INFO("ai: person preprocess done seq=%u\n",
@@ -393,7 +393,7 @@ common::Error Future::Infer()
         UAI_LOG_INFO("ai: person infer begin seq=%u\n",
                      static_cast<unsigned int>(frame_.capture_sequence));
     }
-    const memory_allocator::Buffer &input = frame_.buffer;
+    const buffer::Buffer &input = frame_.buffer;
     npu::Status result =
         context_.npu->SelectModel(*context_.model, *context_.npu_writer);
     if (!result.Ok()) return result.error;
@@ -442,11 +442,11 @@ common::Error Future::Postprocess()
     view.count = context_.info->n_outputs;
     for (std::uint16_t i = 0U; i < context_.info->n_outputs; ++i) {
         const auto &output = frame_.outputs[i];
-        const memory_allocator::Buffer range{
+        const buffer::Buffer range{
             output.address,
             context_.info->outputs[i].size_bytes,
             output.index,
-            memory_allocator::Region::kInference};
+            buffer::Region::kInference};
         common::Error status = context_.cache->PrepareForCpuRead(range);
         if (!status.Ok()) return status;
         view.tensors[i] = reinterpret_cast<const void *>(output.address);

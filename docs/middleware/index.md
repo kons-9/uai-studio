@@ -7,8 +7,8 @@
   アプリ         |  AiFuture（モデルごとの前処理、NPU、後処理）   |
                  +-----------------------------------------------+
                       |                     |
-  ミドルウェア   ai_runtime            memory_manager        image_resizer
-                 （3レーンの実行）     （バッファの所有権）   （縮小の方針とCPU縮小）
+  ミドルウェア   ai_runtime            memory_manager        image_resizer / image_processing
+                 （3レーンの実行）     （バッファの所有権）   （縮小の方針 / CPU縮小）
                       |                     |
                  ai_model_monitor      memory / pipeline      cpu_task_monitor
                  （ステップの記録）    （配置と型、画像診断） （タスク別CPU使用率）
@@ -32,7 +32,8 @@
 | [memory_manager](memory_manager.md) | キャプチャ、表示、推論バッファの所有権管理と、フレームの型・画像診断（pipeline） |
 | [ai_model_monitor](ai_model_monitor.md) | AIパイプラインの実行トレース |
 | [cpu_task_monitor](cpu_task_monitor.md) | タスク別CPU使用率とループ時間 |
-| [image_resizer](image_resizer.md) | 画像縮小のハードウェア選択とCPU縮小 |
+| [image_resizer](image_resizer.md) | 画像縮小のハードウェア選択 |
+| [image_processing](image_processing.md) | CPUによる画像の縮小と形式変換 |
 
 ## 共通の考え方
 

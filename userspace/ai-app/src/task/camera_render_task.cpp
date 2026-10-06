@@ -79,10 +79,10 @@ void InspectInferenceInput(const CameraRenderContext &context,
         return;
     }
 
-    const memory_allocator::Buffer input_buffer{
+    const buffer::Buffer input_buffer{
         frame.buffer.address,
         memory_manager::kInferenceFrameBytes,
-        frame.buffer.index, memory_allocator::Region::kInference};
+        frame.buffer.index, buffer::Region::kInference};
     const common::Error cache_status =
         context.cache.PrepareForCpuRead(input_buffer);
     if (!cache_status.Ok()) {
@@ -232,9 +232,9 @@ void CameraRenderTask::Run(CameraRenderContext context)
             status.LogStatus("memory");
             common::Task::Halt("ai: diagnostic capture buffers unavailable\n");
         }
-        const uai::ai::memory_allocator::Buffer source_buffer{
+        const uai::ai::buffer::Buffer source_buffer{
             capture0, uai::ai::memory_manager::kCaptureBufferBytes, 0U,
-            uai::ai::memory_allocator::Region::kCapture};
+            uai::ai::buffer::Region::kCapture};
         status = context.cache.PrepareForDmaWrite(source_buffer);
         if (!status.Ok()) {
             status.LogStatus("memory");

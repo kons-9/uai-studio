@@ -1,5 +1,4 @@
 uai_add_host_test(memory_manager_test
-    ../fixed_pool_allocator.cpp
     ../memory_manager.cpp
     memory_manager_test.cpp
 )

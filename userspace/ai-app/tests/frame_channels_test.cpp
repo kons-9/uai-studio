@@ -108,7 +108,7 @@ TEST_F(FrameChannelsTest, FullFrameQueueReleasesOldestLease)
     InferenceFrameChannel channel(memory);
     ASSERT_GT(channel.Create(), 0);
 
-    memory_allocator::Buffer first_buffer{}, second_buffer{};
+    buffer::Buffer first_buffer{}, second_buffer{};
     ASSERT_TRUE(memory.InferenceBuffer(0U, &first_buffer).Ok());
     ASSERT_TRUE(memory.InferenceBuffer(1U, &second_buffer).Ok());
     ASSERT_TRUE(memory.ReserveCompletedInference(first_buffer.address, 1U).Ok());
@@ -229,7 +229,7 @@ TEST_F(FrameChannelsTest, FrameSendFailureReturnsTheInputLease)
 {
     InferenceFrameChannel channel(memory);
     ASSERT_GT(channel.Create(), 0);
-    memory_allocator::Buffer buffer{};
+    buffer::Buffer buffer{};
     ASSERT_TRUE(memory.InferenceBuffer(0U, &buffer).Ok());
     ASSERT_TRUE(memory.ReserveCompletedInference(buffer.address, 1U).Ok());
     pipeline::InferenceFrame frame{};
@@ -248,7 +248,7 @@ TEST_F(FrameChannelsTest, FrameNonOverflowFailureReleasesOldestThenRetries)
     capacity_override = 1;
     InferenceFrameChannel channel(memory);
     ASSERT_GT(channel.Create(), 0);
-    memory_allocator::Buffer first_buffer{}, second_buffer{};
+    buffer::Buffer first_buffer{}, second_buffer{};
     ASSERT_TRUE(memory.InferenceBuffer(0U, &first_buffer).Ok());
     ASSERT_TRUE(memory.InferenceBuffer(1U, &second_buffer).Ok());
     ASSERT_TRUE(memory.ReserveCompletedInference(first_buffer.address, 1U).Ok());
@@ -273,7 +273,7 @@ TEST_F(FrameChannelsTest, FrameReceiveFailureRetainsQueuedLease)
     capacity_override = 1;
     InferenceFrameChannel channel(memory);
     ASSERT_GT(channel.Create(), 0);
-    memory_allocator::Buffer first_buffer{}, second_buffer{};
+    buffer::Buffer first_buffer{}, second_buffer{};
     ASSERT_TRUE(memory.InferenceBuffer(0U, &first_buffer).Ok());
     ASSERT_TRUE(memory.InferenceBuffer(1U, &second_buffer).Ok());
     ASSERT_TRUE(memory.ReserveCompletedInference(first_buffer.address, 1U).Ok());

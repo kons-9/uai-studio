@@ -59,4 +59,4 @@ std::size_t size = region.size();
 
 ## バッファの型
 
-バッファの型は[buffer](buffer.md)へ分離しています。`buffer/buffer_types.hpp`の`memory_allocator::Buffer`は、アドレス、サイズ、アライメント、スロット番号、`Region`（`kCapture`、`kDisplay`、`kInference`）を持つバッファ記述子です。キャッシュ操作（`CacheManagement`）やフレーム型（[memory_manager](memory_manager.md)）はこの型でバッファを受け渡します。割当インターフェースの`dynamic_memory_allocator.hpp`は引き続き`memory`に置いています。
+バッファの型は[buffer](buffer.md)に置いています。`buffer/buffer_types.hpp`の`buffer::Buffer`は、アドレス、サイズ、アライメント、スロット番号、`Region`（`kCapture`、`kDisplay`、`kInference`）を持つバッファ記述子です。キャッシュ操作（`CacheManagement`）やフレーム型（[memory_manager](memory_manager.md)）はこの型でバッファを受け渡します。

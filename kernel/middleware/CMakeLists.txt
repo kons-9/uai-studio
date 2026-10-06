@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-add_library(uai-image-processing STATIC image_resizer/image_processing.cpp)
+add_library(uai-image-processing STATIC image_processing/image_processing.cpp)
 add_library(uai::image_processing ALIAS uai-image-processing)
 target_include_directories(uai-image-processing PUBLIC
     "${PROJECT_SOURCE_DIR}/kernel"
@@ -16,7 +16,6 @@ add_library(uai-middleware STATIC
     cpu_task_monitor/cpu_task_monitor.cpp
     memory/static_memory_layout.cpp
     image_resizer/image_resizer.cpp
-    memory_manager/fixed_pool_allocator.cpp
     memory_manager/memory_manager.cpp)
 add_library(uai::middleware ALIAS uai-middleware)
 

@@ -1,6 +1,6 @@
 # image_resizer
 
-NPUの入力サイズに合わせて画像を縮小するための、ハードウェア選択の方針層とCPUによる縮小です。バッファの確保とキャッシュ操作は呼び出し側が行います。
+NPUの入力サイズに合わせて画像を縮小するときに、DCMIPPとCPUのどちらを使うかを決める方針層です。ハードウェアは操作しません。
 
 ## 方針
 
@@ -30,22 +30,11 @@ common::Error status = image_resizer::Select(request, &selection);
 
 `Select()`は設定値を返すだけで、ハードウェアは操作しません。DCMIPPの設定はカメラドライバーが行います。
 
-## CPUによる縮小
-
-CPU処理は`uai::ai::image_processing`が提供します。`Resize()`の入力形式は`Rgb565Source`と`Rgb888Source`の型で区別します。いずれもnearest-neighborで、メモリを確保しません。
-
-| 関数 | 内容 |
-| --- | --- |
-| `Resize(source, crop_x, crop_y, crop_w, crop_h, destination)` | RGB565の一部を切り出してRGB888へ縮小 |
-| `Resize(source, destination)` | RGB888を`destination`の大きさへ縮小 |
-| `ResizeLetterbox(source, destination, content_w, content_h, pad)` | RGB888を縦横比を保って縮小し、余白を埋める |
-| `FillLetterboxPadding(destination, content_w, content_h, pad)` | letterboxの余白だけを埋める |
-
-ai-appではfaceとsegmentationの前処理（`AiFuture`の前処理ステップ）で、letterbox済みの480x480の入力（`frame.source`）を`Resize()`で縮小しています。縮小先はNPUが読むため、書き終えたら`CacheManagement::PrepareForPeripheralRead()`を呼びます。
+CPUで縮小する場合は[image_processing](image_processing.md)を使います。
 
 ## テスト
 
-ホストPCでハードウェア選択、画素変換、letterboxの書き込み範囲を確認できます。
+ホストPCでDCMIPPのdecimation選択とCPUフォールバックの判定を確認できます。
 
 ```sh
 make -C kernel/middleware/image_resizer/tests test

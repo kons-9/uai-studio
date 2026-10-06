@@ -566,8 +566,8 @@ uai::ai::common::Error CameraDriver::Initialize(memory_manager::MemoryManager &m
     Writer writer;
     management_status = management_->Acquire(&writer);
     if (!management_status.Ok()) return management_status;
-    memory_allocator::Buffer first{};
-    memory_allocator::Buffer second{};
+    buffer::Buffer first{};
+    buffer::Buffer second{};
     if (!memory.CaptureBuffer(0U, &first).Ok() ||
         !memory.CaptureBuffer(1U, &second).Ok()) {
         return {uai::ai::common::ErrorCode::kNotInitialized};
@@ -630,8 +630,8 @@ uai::ai::common::Error CameraDriver::Start(const Writer &writer)
     if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr || cache_ == nullptr) return {uai::ai::common::ErrorCode::kNotInitialized};
     if (started_) return {uai::ai::common::ErrorCode::kAlreadyInitialized};
-    memory_allocator::Buffer first_buffer{};
-    memory_allocator::Buffer second_buffer{};
+    buffer::Buffer first_buffer{};
+    buffer::Buffer second_buffer{};
     uai::ai::common::Error status =
         memory_->CaptureBuffer(0U, &first_buffer);
     if (!status.Ok()) return status;
@@ -641,7 +641,7 @@ uai::ai::common::Error CameraDriver::Start(const Writer &writer)
     if (!status.Ok()) return status;
     status = cache_->PrepareForDmaWrite(second_buffer);
     if (!status.Ok()) return status;
-    memory_allocator::Buffer inference_buffers[
+    buffer::Buffer inference_buffers[
         memory_manager::kInferenceBufferCount]{};
     for (std::size_t i = 0U; i < memory_manager::kInferenceBufferCount; ++i) {
         status = memory_->InferenceBuffer(static_cast<std::uint8_t>(i),
@@ -657,7 +657,7 @@ uai::ai::common::Error CameraDriver::Start(const Writer &writer)
     g_active_frame = g_frame_buffer0;
     g_next_frame = g_frame_buffer1;
     g_completed_frame = 0U;
-    memory_allocator::Buffer inference_drop_buffer{};
+    buffer::Buffer inference_drop_buffer{};
     status = memory_->InferenceDropBuffer(&inference_drop_buffer);
     if (!status.Ok()) return status;
     g_inference_drop_buffer = inference_drop_buffer.address;
@@ -914,9 +914,9 @@ uai::ai::common::Error CameraDriver::SnapshotInferenceSource(
         content_bytes + pad_bytes + pad_bytes > frame->source.size) {
         return {uai::ai::common::ErrorCode::kInvalidArgument};
     }
-    const memory_allocator::Buffer pipe2_content{
+    const buffer::Buffer pipe2_content{
         frame->buffer.address + g_inference_dma_offset, content_bytes,
-        frame->buffer.index, memory_allocator::Region::kInference,
+        frame->buffer.index, buffer::Region::kInference,
         memory_manager::kMemoryConfig.buffer_alignment};
     uai::ai::common::Error status =
         cache_->PrepareForCpuRead(pipe2_content);

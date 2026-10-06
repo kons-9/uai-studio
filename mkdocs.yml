@@ -32,6 +32,7 @@ nav:
       - ai_model_monitor: middleware/ai_model_monitor.md
       - cpu_task_monitor: middleware/cpu_task_monitor.md
       - image_resizer: middleware/image_resizer.md
+      - image_processing: middleware/image_processing.md
 
 theme:
   name: material

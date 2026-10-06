@@ -155,7 +155,7 @@ void LcdDriver::FillInitialFrame(
 }
 
 common::Error LcdDriver::GenerateCoordinatePattern(
-    const memory_allocator::Buffer &destination) const
+    const buffer::Buffer &destination) const
 {
     Writer writer;
     common::Error status = management_->Acquire(&writer);
@@ -164,12 +164,12 @@ common::Error LcdDriver::GenerateCoordinatePattern(
 }
 
 common::Error LcdDriver::GenerateCoordinatePattern(
-    const memory_allocator::Buffer &destination, const Writer &writer) const
+    const buffer::Buffer &destination, const Writer &writer) const
 {
     common::Error ownership =
         management_->Validate(writer);
     if (!ownership.Ok()) return ownership;
-    if (!initialized_ || destination.region != memory_allocator::Region::kCapture ||
+    if (!initialized_ || destination.region != buffer::Region::kCapture ||
         destination.size != memory_manager::kCaptureBufferBytes ||
         destination.address == 0U) {
         return {common::ErrorCode::kInvalidArgument};
@@ -553,9 +553,9 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
         return status;
     }
 
-    const memory_allocator::Buffer input_buffer{
+    const buffer::Buffer input_buffer{
         frame.buffer.address, memory_manager::kInferenceFrameBytes,
-        frame.buffer.index, memory_allocator::Region::kInference};
+        frame.buffer.index, buffer::Region::kInference};
     status = cache_->PrepareForCpuRead(input_buffer);
     if (!status.Ok()) {
         return status;

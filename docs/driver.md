@@ -48,7 +48,7 @@ if (status.Ok()) {
 
 ## キャッシュ
 
-`cache::CacheManagement`は、DMAやNPUとCPUの間でバッファを受け渡すときのキャッシュ操作を提供します。対象は`memory_allocator::Buffer`で、`Region`が`kCapture`、`kDisplay`、`kInference`のものだけを受け付けます。
+`cache::CacheManagement`は、DMAやNPUとCPUの間でバッファを受け渡すときのキャッシュ操作を提供します。対象は`buffer::Buffer`で、`Region`が`kCapture`、`kDisplay`、`kInference`のものだけを受け付けます。
 
 | メソッド | 操作 | 使う場面 |
 | --- | --- | --- |

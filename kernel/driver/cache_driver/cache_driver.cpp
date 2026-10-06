@@ -27,13 +27,13 @@ std::uintptr_t AlignUp(std::uintptr_t value, std::size_t alignment)
     return (value + mask) & ~mask;
 }
 
-common::Error CacheOperation(const memory_allocator::Buffer &buffer,
+common::Error CacheOperation(const buffer::Buffer &buffer,
                              bool invalidate, bool clean)
 {
     const bool valid_region =
-        buffer.region == memory_allocator::Region::kCapture ||
-        buffer.region == memory_allocator::Region::kDisplay ||
-        buffer.region == memory_allocator::Region::kInference;
+        buffer.region == buffer::Region::kCapture ||
+        buffer.region == buffer::Region::kDisplay ||
+        buffer.region == buffer::Region::kInference;
     if (!buffer || !valid_region || buffer.size > static_cast<std::size_t>(
                                      std::numeric_limits<std::int32_t>::max()) ||
         buffer.address > std::numeric_limits<std::uintptr_t>::max() -
@@ -97,7 +97,7 @@ void CacheDriver::KeepClocksOnSleep(const Writer &writer) const
 }
 
 common::Error CacheDriver::PrepareForDmaWrite(
-    const memory_allocator::Buffer &buffer) const
+    const buffer::Buffer &buffer) const
 {
     CacheManagement::Accessor accessor;
     common::Error status = CacheManagement::Instance().Acquire(&accessor);
@@ -106,7 +106,7 @@ common::Error CacheDriver::PrepareForDmaWrite(
 }
 
 common::Error CacheDriver::PrepareForDmaWrite(
-    const memory_allocator::Buffer &buffer, const Writer &writer) const
+    const buffer::Buffer &buffer, const Writer &writer) const
 {
     common::Error status = CacheManagement::Instance().Validate(writer);
     if (!status.Ok()) return status;
@@ -117,7 +117,7 @@ common::Error CacheDriver::PrepareForDmaWrite(
 }
 
 common::Error CacheDriver::PrepareForCpuRead(
-    const memory_allocator::Buffer &buffer) const
+    const buffer::Buffer &buffer) const
 {
     CacheManagement::Accessor accessor;
     common::Error status = CacheManagement::Instance().Acquire(&accessor);
@@ -126,7 +126,7 @@ common::Error CacheDriver::PrepareForCpuRead(
 }
 
 common::Error CacheDriver::PrepareForCpuRead(
-    const memory_allocator::Buffer &buffer, const Writer &writer) const
+    const buffer::Buffer &buffer, const Writer &writer) const
 {
     common::Error status = CacheManagement::Instance().Validate(writer);
     if (!status.Ok()) return status;
@@ -137,7 +137,7 @@ common::Error CacheDriver::PrepareForCpuRead(
 }
 
 common::Error CacheDriver::PrepareForPeripheralRead(
-    const memory_allocator::Buffer &buffer) const
+    const buffer::Buffer &buffer) const
 {
     CacheManagement::Accessor accessor;
     common::Error status = CacheManagement::Instance().Acquire(&accessor);
@@ -146,7 +146,7 @@ common::Error CacheDriver::PrepareForPeripheralRead(
 }
 
 common::Error CacheDriver::PrepareForPeripheralRead(
-    const memory_allocator::Buffer &buffer, const Writer &writer) const
+    const buffer::Buffer &buffer, const Writer &writer) const
 {
     common::Error status =
         CacheManagement::Instance().Validate(writer);

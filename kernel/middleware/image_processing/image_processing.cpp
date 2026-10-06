@@ -1,4 +1,4 @@
-#include "image_resizer/image_processing.hpp"
+#include "image_processing/image_processing.hpp"
 
 #include <cstddef>
 

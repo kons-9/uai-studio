@@ -46,7 +46,7 @@ UARTに`camera: pipe1=started pipe2=started`が出れば、カメラの2系統�
 | --- | --- |
 | `uai::ai::common` | `kernel/middleware/foundation` |
 | `uai::ai::driver`、`uai::ai::driver::board`、`uai::ai::config`、`uai::ai::cache`、`uai::ai::camera`、`uai::ai::lcd`、`uai::ai::npu`、`uai::ai::nor`、`uai::ai::psram`、`uai::ai::rif` | `kernel/driver` |
-| `uai::ai::ai_runtime`、`uai::ai::inference`、`uai::ai::memory_manager`、`uai::ai::memory_allocator`、`uai::ai::static_memory_layout`、`uai::ai::pipeline`、`uai::ai::image_resizer`、`uai::ai::middleware::*` | `kernel/middleware` |
+| `uai::ai::ai_runtime`、`uai::ai::inference`、`uai::ai::memory_manager`、`uai::ai::buffer`、`uai::ai::static_memory_layout`、`uai::ai::pipeline`、`uai::ai::image_resizer`、`uai::ai::middleware::*` | `kernel/middleware` |
 
 インクルードは`kernel/`からの相対パスで書きます（例: `#include "driver/npu_driver/npu_driver.hpp"`、`#include "middleware/ai_runtime/pipeline_dispatcher.hpp"`）。
 
