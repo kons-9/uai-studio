@@ -1,12 +1,11 @@
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/debug.h"
-#include "common/log.hpp"
+#include "middleware/foundation/log.hpp"
 
 #include <tk/tkernel.h>
 
 /* C ABI のST AIランタイム/HAL関数とリンクする宣言。 */
 extern "C" {
-#include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
 #include "ll_aton_NN_interface.h"
 void LL_ATON_NPU0_IRQHandler(void);
@@ -146,8 +145,7 @@ common::Error NpuDriver::InitializeMemory()
                 "npu.memory_initialize"};
     }
     EnableNpuMemory();
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "ai: npu clocks npu=%uHz npu_ram=%uHz\n"),
+    UAI_LOG_INFO("ai: npu clocks npu=%uHz npu_ram=%uHz\n",
                  static_cast<unsigned int>(HAL_RCC_GetNPUClockFreq()),
                  static_cast<unsigned int>(HAL_RCC_GetNPURAMSClockFreq()));
     initialized = true;
@@ -631,8 +629,7 @@ Status NpuDriver::PollRun(const Writer &writer,
         FinishExecutionTiming(last_execution_);
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                          "ai: npu status error=%x irq=%u last=%x\n"),
+        UAI_LOG_ERROR("ai: npu status error=%x irq=%u last=%x\n",
                       static_cast<unsigned int>(code), g_aton_irq_count,
                       g_aton_last_irqs);
         return {common::Error{common::ErrorCode::kNpu, last_error_,
@@ -807,8 +804,7 @@ Status NpuDriver::WaitRun(const Writer &writer,
     last_execution_.stai_status = last_error_;
     const registers::NpuRegisterSnapshot timeout_hardware =
         registers_.ReadSnapshot();
-    UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                      "ai: npu done timeout status=%x irq=%u last=%x epoch=%x/%x bc=%x int=%x bus=%x/%x,%x/%x stream=%x/%x size=%x count=%x/%x/%x/%x\n"),
+    UAI_LOG_ERROR("ai: npu done timeout status=%x irq=%u last=%x epoch=%x/%x bc=%x int=%x bus=%x/%x,%x/%x stream=%x/%x size=%x count=%x/%x/%x/%x\n",
                   static_cast<unsigned int>(last_error_), g_aton_irq_count,
                   g_aton_last_irqs,
                   static_cast<unsigned int>(timeout_hardware.epoch_control),

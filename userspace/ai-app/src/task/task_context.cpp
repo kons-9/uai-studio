@@ -5,13 +5,12 @@
 #include <tk/tkernel.h>
 
 extern "C" {
-#include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
 }
 
 #include "driver/npu_driver/debug.h"
 #include "driver/npu_driver/npu_driver.hpp"
-#include "common/log.hpp"
+#include "middleware/foundation/log.hpp"
 #include "task/task_diagnostics.hpp"
 
 namespace uai::ai::task {
@@ -34,8 +33,7 @@ TaskContext::TaskContext()
 
 [[noreturn]] void TaskContext::Halt(const char *message)
 {
-    UAI_LOG_TEXT(uai::ai::common::LogLevel::kError,
-                 reinterpret_cast<const UB *>(message));
+    UAI_LOG_TEXT(uai::ai::common::LogLevel::kError, message);
     for (;;) {
         tk_dly_tsk(1000);
     }
@@ -85,8 +83,7 @@ common::Error TaskContext::InitializeDrivers()
     if (initialize_nor) {
         nor_status = nor::NorManagement::Instance().Initialize();
     } else {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "boot: NOR skipped: inference disabled\n"));
+        UAI_LOG_INFO("boot: NOR skipped: inference disabled\n");
     }
     external_nor_ready = nor_status == 0;
 
@@ -217,23 +214,20 @@ void TaskContext::StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
     task.bufptr = stack;
     const ID task_id = tk_cre_tsk(&task);
     if (task_id < E_OK) {
-        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                          "error: component=task_context operation=create_%s code=%x detail=0\n"),
+        UAI_LOG_ERROR("error: component=task_context operation=create_%s code=%x detail=0\n",
                       name, static_cast<unsigned int>(task_id));
         Halt("ai: task create failed\n");
     }
     const common::Error name_status = cpu_task_monitor.RegisterTask(task_id, name);
     if (!name_status.Ok()) {
-        UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                         "ai: task name registration failed name=%s code=%u detail=%u\n"),
-                     reinterpret_cast<const UB *>(name),
+        UAI_LOG_WARN("ai: task name registration failed name=%s code=%u detail=%u\n",
+                     name,
                      static_cast<unsigned int>(name_status.code),
                      static_cast<unsigned int>(name_status.detail));
     }
     const ER error = tk_sta_tsk(task_id, 0);
     if (error != E_OK) {
-        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                          "error: component=task_context operation=start_%s code=%x detail=0\n"),
+        UAI_LOG_ERROR("error: component=task_context operation=start_%s code=%x detail=0\n",
                       name, static_cast<unsigned int>(error));
         Halt("ai: task start failed\n");
     }
@@ -263,14 +257,12 @@ bool TaskContext::DrainLatestBoxes(inference::BoxSet *active)
     }
 
     if (received && diagnostics.display_trace) {
-        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                          "lcd: box source=ai sequence=%u capture=%u count=%u\n"),
+        UAI_LOG_DEBUG("lcd: box source=ai sequence=%u capture=%u count=%u\n",
                       static_cast<unsigned int>(active->model_sequence),
                       static_cast<unsigned int>(active->capture_sequence),
                       static_cast<unsigned int>(active->person.count +
                                                  active->face.count));
-        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                          "lcd: boxes person=%u face=%u mask_px=%u\n"),
+        UAI_LOG_DEBUG("lcd: boxes person=%u face=%u mask_px=%u\n",
                       static_cast<unsigned int>(active->person.count),
                       static_cast<unsigned int>(active->face.count),
                       static_cast<unsigned int>(
@@ -321,8 +313,7 @@ void TaskContext::SendInferenceFrame(const pipeline::InferenceFrame &frame)
 
         const common::Error status = memory.ReleaseInferenceBuffer(frame);
         LogStatus("memory", status);
-        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                          "ai: frame dropped reason=queue_full sequence=%u\n"),
+        UAI_LOG_DEBUG("ai: frame dropped reason=queue_full sequence=%u\n",
                       static_cast<unsigned int>(frame.capture_sequence));
         return;
     }

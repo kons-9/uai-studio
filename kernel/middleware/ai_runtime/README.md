@@ -5,5 +5,5 @@
 ホストテスト:
 
 ```sh
-sh kernel/middleware/ai_runtime/tests/run.sh
+make -C kernel/middleware/ai_runtime/tests test
 ```

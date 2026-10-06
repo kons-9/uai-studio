@@ -38,6 +38,14 @@ constexpr bool IsLogEnabled(LogLevel level)
            static_cast<std::uint8_t>(kLogLevel);
 }
 
+inline const UB *ToMonitorText(const char *text)
+{
+    static_assert(sizeof(UB) == sizeof(char));
+    return reinterpret_cast<const UB *>(text);
+}
+
+const UB *ToMonitorText(const UB *) = delete;
+
 } // namespace uai::ai::common
 
 /*
@@ -48,14 +56,14 @@ constexpr bool IsLogEnabled(LogLevel level)
 #define UAI_LOGF(level, format, ...)                                      \
     do {                                                                   \
         if (::uai::ai::common::IsLogEnabled(level)) {                      \
-            tm_printf(format, ##__VA_ARGS__);                             \
+            tm_printf(::uai::ai::common::ToMonitorText(format), ##__VA_ARGS__); \
         }                                                                  \
     } while (false)
 
 #define UAI_LOG_TEXT(level, text)                                         \
     do {                                                                   \
         if (::uai::ai::common::IsLogEnabled(level)) {                      \
-            tm_putstring(text);                                           \
+            tm_putstring(::uai::ai::common::ToMonitorText(text));         \
         }                                                                  \
     } while (false)
 

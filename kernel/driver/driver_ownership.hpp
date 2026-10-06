@@ -5,7 +5,7 @@
 
 #include <tk/tkernel.h>
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 
 namespace uai::ai::driver {
 

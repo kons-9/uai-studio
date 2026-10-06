@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "middleware/pipeline/frame_types.hpp"
 #include "middleware/memory/buffer_types.hpp"

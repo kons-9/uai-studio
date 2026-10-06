@@ -4,7 +4,7 @@
 
 #include <cstring>
 
-#include "common/log.hpp"
+#include "middleware/foundation/log.hpp"
 #include "middleware/memory/static_memory_layout.hpp"
 #include "middleware/memory/generated/static_memory_layout/key.hpp"
 
@@ -119,8 +119,7 @@ common::Error CpuTaskMonitor::InitializeTraceBuffer()
         UpdateTraceTaskName(static_cast<ID>(index));
     }
     FlushTrace(trace_header_, sizeof(*trace_header_));
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "ai: cpu task trace addr=%x bytes=%u records=%u version=%u\n"),
+    UAI_LOG_INFO("ai: cpu task trace addr=%x bytes=%u records=%u version=%u\n",
                  static_cast<unsigned int>(region.address()),
                  static_cast<unsigned int>(region.size()),
                  static_cast<unsigned int>(trace_capacity_),
@@ -210,10 +209,9 @@ common::Error CpuTaskMonitor::RegisterTask(ID task_id, const char *name)
             std::memcpy(registered_name, name, copy_length);
         }
         UpdateTraceTaskName(task_id);
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "cpu: task_name id=%u name=%s\n"),
+        UAI_LOG_INFO("cpu: task_name id=%u name=%s\n",
                      static_cast<unsigned int>(task_id),
-                     reinterpret_cast<const UB *>(registered_name));
+                     registered_name);
     }
     return {common::ErrorCode::kOk, 0U,
             "ai2.cpu_task_monitor.register_task"};
@@ -327,8 +325,7 @@ common::Error CpuTaskMonitor::Start()
                 "ai2.cpu_task_monitor.hok_int"};
     }
 
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "ai: cpu task monitor started period=%u ms\n"),
+    UAI_LOG_INFO("ai: cpu task monitor started period=%u ms\n",
                  static_cast<unsigned int>(kReportPeriodMs));
     return {common::ErrorCode::kOk, 0U, "ai2.cpu_task_monitor.start"};
 }
@@ -582,8 +579,7 @@ void CpuTaskMonitor::Report()
         AppendTraceRecord(loop_record);
     }
 
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "cpu: period=%u cycles irq=%u%% count=%u unknown=%u\n"),
+    UAI_LOG_INFO("cpu: period=%u cycles irq=%u%% count=%u unknown=%u\n",
                  static_cast<unsigned int>(period_cycles),
                  static_cast<unsigned int>(interrupt_percent),
                  static_cast<unsigned int>(interrupt_count),
@@ -592,8 +588,7 @@ void CpuTaskMonitor::Report()
         if (snapshot.task_id <= 0 || snapshot.cycles == 0U) {
             continue;
         }
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "cpu: task=%d usage=%u%% cycles=%u dispatch=%u state=%x\n"),
+        UAI_LOG_INFO("cpu: task=%d usage=%u%% cycles=%u dispatch=%u state=%x\n",
                      static_cast<int>(snapshot.task_id),
                      static_cast<unsigned int>(percentage(snapshot.cycles)),
                      static_cast<unsigned int>(snapshot.cycles),
@@ -606,8 +601,7 @@ void CpuTaskMonitor::Report()
         }
         const std::uint32_t average =
             snapshot.loop_total_cycles / snapshot.loop_count;
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "cpu: loop id=%u n=%u avg=%u max=%u last=%u\n"),
+        UAI_LOG_INFO("cpu: loop id=%u n=%u avg=%u max=%u last=%u\n",
                      static_cast<unsigned int>(snapshot.task_id),
                      static_cast<unsigned int>(snapshot.loop_count),
                      static_cast<unsigned int>(average),

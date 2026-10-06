@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "common/log.hpp"
+#include "middleware/foundation/log.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
@@ -338,8 +338,7 @@ common::Error Future::Preprocess()
                 "face.future.preprocess.context"};
     }
     if (!preprocess_stage_logged_) {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: face preprocess begin seq=%u buffer=%x\n"),
+        UAI_LOG_INFO("ai: face preprocess begin seq=%u buffer=%x\n",
                      static_cast<unsigned int>(frame_.capture_sequence),
                      static_cast<unsigned int>(frame_.buffer.address));
     }
@@ -393,8 +392,7 @@ common::Error Future::Preprocess()
     }
 
     if (!preprocess_stage_logged_) {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: face preprocess done seq=%u\n"),
+        UAI_LOG_INFO("ai: face preprocess done seq=%u\n",
                      static_cast<unsigned int>(frame_.capture_sequence));
         preprocess_stage_logged_ = true;
     }
@@ -410,8 +408,7 @@ common::Error Future::Infer()
                 "face.future.infer.context"};
     }
     if (!infer_stage_logged_) {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: face infer begin seq=%u\n"),
+        UAI_LOG_INFO("ai: face infer begin seq=%u\n",
                      static_cast<unsigned int>(frame_.capture_sequence));
     }
 
@@ -441,16 +438,14 @@ common::Error Future::Infer()
     if (!result.Ok()) return result.error;
     result = context_.npu->Run(*context_.npu_writer);
     if (!result.Ok()) {
-        UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                         "ai: face infer failed code=%u detail=%u op=%s\n"),
+        UAI_LOG_WARN("ai: face infer failed code=%u detail=%u op=%s\n",
                      static_cast<unsigned int>(result.error.code),
                      static_cast<unsigned int>(result.error.detail),
                      result.error.operation);
         return result.error;
     }
     if (!infer_stage_logged_) {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: face infer done seq=%u\n"),
+        UAI_LOG_INFO("ai: face infer done seq=%u\n",
                      static_cast<unsigned int>(frame_.capture_sequence));
         infer_stage_logged_ = true;
     }
@@ -498,8 +493,7 @@ common::Error Future::Postprocess()
     if (!status.Ok()) return status;
     context_.publish(context_.publish_context, boxes);
     if (!postprocess_stage_logged_) {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: face postprocess done seq=%u boxes=%u\n"),
+        UAI_LOG_INFO("ai: face postprocess done seq=%u boxes=%u\n",
                      static_cast<unsigned int>(frame_.capture_sequence),
                      static_cast<unsigned int>(boxes.face.count));
         postprocess_stage_logged_ = true;

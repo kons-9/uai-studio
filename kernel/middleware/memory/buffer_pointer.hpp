@@ -4,7 +4,7 @@
 #include <atomic>
 #include <cstdint>
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 #include "middleware/memory/buffer_types.hpp"
 
 namespace uai::ai::memory_allocator {

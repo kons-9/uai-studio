@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/driver_ownership.hpp"
 #include "middleware/pipeline/frame_types.hpp"

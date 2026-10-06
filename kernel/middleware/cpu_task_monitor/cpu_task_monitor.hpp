@@ -7,7 +7,7 @@
 #include <tk/dbgspt.h>
 #include <tk/tkernel.h>
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 
 #ifndef UAI_CPU_TASK_MONITOR
 #define UAI_CPU_TASK_MONITOR 0

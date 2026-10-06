@@ -55,7 +55,7 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | 推論モード（`kNpu`、`kCopyOnly`、`kDisabled`）、表示診断モード | `src/task/task_context.hpp` |
 | UART診断（`DiagnosticsConfig`） | `src/task/task_context.hpp` |
 | カメラの診断設定、Pipe2のフレームレート | `kernel/driver/config/ai_board_config.hpp` |
-| ログレベル | `kernel/common/log.hpp`の`kLogLevel` |
+| ログレベル | `kernel/middleware/foundation/log.hpp`の`kLogLevel` |
 | メモリ配置 | `config/board_memory.json`、`config/application_memory.json`、`config/model_layout.json` |
 
 `DiagnosticsConfig`は既定で`inference_fps`だけが有効です。T-MonitorのUART出力は遅いため、フレーム単位の診断（`inference_trace`、`inference_input`など）は調査時だけ有効にしてください。`inference_input_display`を有効にすると、LCDにNPUへ渡す入力画像を表示します。

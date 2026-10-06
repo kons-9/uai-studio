@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 
 namespace uai::ai::ai_runtime {
 

@@ -1,7 +1,7 @@
 #ifndef UAI_AI_CACHE_DRIVER_HPP
 #define UAI_AI_CACHE_DRIVER_HPP
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 #include "driver/driver_ownership.hpp"
 #include "middleware/memory/buffer_types.hpp"
 

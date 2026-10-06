@@ -1,12 +1,11 @@
 #include "driver/nor_driver/registers/nor_registers.hpp"
-#include "common/log.hpp"
+#include "middleware/foundation/log.hpp"
 
 #include <cstdio>
 
 extern "C" {
 #include "driver/c_bsp/xspi_bsp.h"
 #include "stm32n6xx_hal.h"
-#include <tm/tmonitor.h>
 }
 
 namespace uai::ai::nor::registers {
@@ -14,7 +13,7 @@ namespace {
 
 void DebugPrint(const char *message)
 {
-    UAI_LOG_TEXT(uai::ai::common::LogLevel::kDebug, reinterpret_cast<UB *>(const_cast<char *>(message)));
+    UAI_LOG_TEXT(uai::ai::common::LogLevel::kDebug, message);
 }
 
 } // namespace

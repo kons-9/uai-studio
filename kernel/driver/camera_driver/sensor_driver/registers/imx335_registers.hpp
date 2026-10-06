@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 
 namespace uai::ai::camera::sensor::registers {
 

@@ -66,3 +66,11 @@ PSRAM上のバッファはDキャッシュの対象です。所有権が移る�
 | DMA/NPUが書いた → CPUが読む | `PrepareForCpuRead()` |
 | CPUが書いた → DMA/NPUが読む | `PrepareForPeripheralRead()` |
 | CPUが使った → DMA/NPUに書かせる | `PrepareForDmaWrite()` |
+
+## テスト
+
+ホストPCで表示バッファの切り替えと、推論バッファの予約・lease照合を確認できます。テスト用の生成レイアウトfixtureを使い、実際のメモリ管理実装をリンクします。ISRとタスクの同時実行はこのテストの対象外です。
+
+```sh
+make -C kernel/middleware/memory_manager/tests test
+```

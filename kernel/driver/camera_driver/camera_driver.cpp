@@ -1,5 +1,5 @@
 #include "driver/camera_driver/camera_driver.hpp"
-#include "common/log.hpp"
+#include "middleware/foundation/log.hpp"
 #include "driver/config/ai_board_config.hpp"
 #include "image_resizer/image_resizer.hpp"
 #include "middleware/pipeline/image_format.hpp"
@@ -18,7 +18,6 @@
 extern "C" {
 #include "stm32n6570_discovery_camera.h"
 #include "stm32n6xx_hal.h"
-#include <tm/tmonitor.h>
 
 extern DCMIPP_HandleTypeDef hcamera_dcmipp;
 extern ISP_HandleTypeDef hcamera_isp;
@@ -214,8 +213,7 @@ uai::ai::common::Error ConfigurePipe()
     if (status != HAL_OK) {
         return Hardware("camera.pipe.configure", status);
     }
-    UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                  "image_resizer: pipe=1 hw=%s decimation=%u input=%ux%u output=%ux%u\n"),
+    UAI_LOG_DEBUG("image_resizer: pipe=1 hw=%s decimation=%u input=%ux%u output=%ux%u\n",
               uai::ai::image_resizer::HardwareName(resize.hardware),
               static_cast<unsigned int>(resize.dcmipp_decimation),
               static_cast<unsigned int>(resize.dcmipp_input_width),
@@ -325,16 +323,14 @@ uai::ai::common::Error ConfigureInferencePipe(std::uint32_t inference_width,
             HAL_OK) {
         return Hardware("camera.pipe2.configure");
     }
-    UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                  "camera: pipe2 input crop x=%u y=%u w=%u h=%u output=%ux%u\n"),
+    UAI_LOG_DEBUG("camera: pipe2 input crop x=%u y=%u w=%u h=%u output=%ux%u\n",
               static_cast<unsigned int>(crop.HStart),
               static_cast<unsigned int>(crop.VStart),
               static_cast<unsigned int>(crop.HSize),
               static_cast<unsigned int>(crop.VSize),
               static_cast<unsigned int>(inference_width),
               static_cast<unsigned int>(content_height));
-    UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                  "image_resizer: pipe=2 hw=%s decimation=%u input=%ux%u output=%ux%u pad_top=%u model=%ux%u\n"),
+    UAI_LOG_DEBUG("image_resizer: pipe=2 hw=%s decimation=%u input=%ux%u output=%ux%u pad_top=%u model=%ux%u\n",
               uai::ai::image_resizer::HardwareName(resize.hardware),
               static_cast<unsigned int>(resize.dcmipp_decimation),
               static_cast<unsigned int>(resize.dcmipp_input_width),
@@ -534,9 +530,8 @@ void LogCameraLinkState(
     const std::uint32_t dcmipp_status2 = hcamera_dcmipp.Instance->CMSR2;
     const std::uint32_t pipe_status = hcamera_dcmipp.Instance->P1SR;
 
-    UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                  "camera: diag t=%u f=%u v=%u imx=%x/%u "
-                  "csi=%x/%x dcmipp=%x/%x p1=%x\n"),
+    UAI_LOG_DEBUG("camera: diag t=%u f=%u v=%u imx=%x/%u "
+                  "csi=%x/%x dcmipp=%x/%x p1=%x\n",
               static_cast<unsigned int>(HAL_GetTick()),
               g_camera_frame_event_count, g_camera_vsync_event_count,
               static_cast<unsigned int>(mode),
@@ -559,8 +554,7 @@ void InstallExposureWorkaround()
     const ISP_StatusTypeDef gain_status =
         AiSetImx335Gain(0U, kStartupGainMilliDb);
     if (exposure_status != ISP_OK || gain_status != ISP_OK) {
-        UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                         "camera: exposure seed failed exposure=%d gain=%d\n"),
+        UAI_LOG_WARN("camera: exposure seed failed exposure=%d gain=%d\n",
                      static_cast<int>(exposure_status),
                      static_cast<int>(gain_status));
     }
@@ -697,8 +691,7 @@ uai::ai::common::Error CameraDriver::Start(const Writer &writer)
                                   DCMIPP_MODE_CONTINUOUS) != HAL_OK) {
         return Hardware("camera.pipe2.start");
     }
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "camera: pipe1=started pipe2=started\n"));
+    UAI_LOG_INFO("camera: pipe1=started pipe2=started\n");
     status = ApplyDemosaicDiagnostic();
     if (!status.Ok()) return status;
     uai::ai::camera::sensor::registers::Imx335RegisterLayer registers;
@@ -766,8 +759,7 @@ uai::ai::common::Error CameraDriver::Process(const Writer &writer)
     if (timed_out &&
         (!g_camera_recovery_attempted ||
          now - g_last_recovery_tick >= kRecoveryRetryMs)) {
-        UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                         "camera: no frame for %u ms; starting recovery #%u\n"),
+        UAI_LOG_WARN("camera: no frame for %u ms; starting recovery #%u\n",
                      static_cast<unsigned int>(now - g_last_frame_tick),
                      g_camera_recovery_count + 1U);
         uai::ai::camera::sensor::registers::Imx335RegisterLayer registers;
@@ -820,8 +812,7 @@ uai::ai::common::Error CameraDriver::Process(const Writer &writer)
             !ApplyDemosaicDiagnostic().Ok() || !StartStream(registers).Ok()) {
             ++g_camera_recovery_error_count;
             LogCameraLinkState(registers);
-            UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                              "camera: recovery failed attempts=%u failed=%u\n"),
+            UAI_LOG_ERROR("camera: recovery failed attempts=%u failed=%u\n",
                           g_camera_recovery_count, g_camera_recovery_error_count);
         } else {
             InstallExposureWorkaround();
@@ -831,8 +822,7 @@ uai::ai::common::Error CameraDriver::Process(const Writer &writer)
             g_last_frame_tick = now;
             g_last_vsync_count = g_camera_vsync_event_count;
             LogCameraLinkState(registers);
-            UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                             "camera: recovery done attempts=%u frames=%u\n"),
+            UAI_LOG_WARN("camera: recovery done attempts=%u frames=%u\n",
                          g_camera_recovery_count, g_camera_frame_event_count);
         }
     }

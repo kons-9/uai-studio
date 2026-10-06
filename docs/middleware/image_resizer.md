@@ -42,3 +42,11 @@ common::Error status = image_resizer::Select(request, &selection);
 | `FillRgb888LetterboxPadding(destination, content_w, content_h, pad)` | letterboxの余白だけを埋める |
 
 ai-appではfaceとsegmentationの前処理（`AiFuture`の前処理ステップ）で、letterbox済みの480x480の入力（`frame.source`）を`ResizeRgb888()`で縮小しています。縮小先はNPUが読むため、書き終えたら`CacheManagement::PrepareForPeripheralRead()`を呼びます。
+
+## テスト
+
+ホストPCでハードウェア選択、画素変換、letterboxの書き込み範囲を確認できます。
+
+```sh
+make -C kernel/middleware/image_resizer/tests test
+```

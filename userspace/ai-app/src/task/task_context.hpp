@@ -5,7 +5,7 @@
 
 #include <tk/tkernel.h>
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/camera_driver/camera_driver.hpp"
 #include "driver/lcd_driver/lcd_driver.hpp"

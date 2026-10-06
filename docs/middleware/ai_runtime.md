@@ -114,5 +114,7 @@ for (;;) {
 ホストPCでビルドして実行できます。μT-Kernelやドライバーには依存していません。
 
 ```sh
-sh kernel/middleware/ai_runtime/tests/run.sh
+make -C kernel/middleware/ai_runtime/tests test
 ```
+
+並列投入と3レーンの実行もホストスレッドで確認します。データ競合を調べる場合は`make -C kernel/middleware/ai_runtime/tests tsan`を使用します。CMake、GoogleTest、C++コンパイラが必要です。組み込み側の割り込み禁止やAIモデル監視（ホストではスタブ）は、このテストでは再現しません。

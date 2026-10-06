@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 #include "driver/driver_ownership.hpp"
 #include "driver/npu_driver/npu_network.hpp"
 #include "driver/npu_driver/registers/npu_registers.hpp"

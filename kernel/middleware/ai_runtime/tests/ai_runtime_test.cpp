@@ -1,7 +1,11 @@
 #include "middleware/ai_runtime/pipeline_dispatcher.hpp"
 
-#include <cassert>
+#include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <mutex>
+#include <thread>
 
 using namespace uai::ai;
 using namespace uai::ai::ai_runtime;
@@ -26,8 +30,8 @@ struct FakeFuture final : AiFuture {
         }
         const NextStep next = steps[index++];
         if (notify_during_evaluate != nullptr) {
-            assert(notify_during_evaluate->Signal(*this,
-                                                  WaitBitFlag::kNpuCompletion).Ok());
+            EXPECT_TRUE(notify_during_evaluate->Signal(*this,
+                                                       WaitBitFlag::kNpuCompletion).Ok());
             notify_during_evaluate = nullptr;
         }
         return {{}, next, index == count};
@@ -72,7 +76,7 @@ void Done(void *context, AiFuture &, common::Error error)
     observed.error = error;
 }
 
-void ThreeQueuesAndTargetedWakeup()
+TEST(AiRuntime, ThreeQueuesAndTargetedWakeup)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
@@ -88,26 +92,32 @@ void ThreeQueuesAndTargetedWakeup()
     future.steps[0] = {ExecutionContext::kNpu};
     future.steps[1] = {ExecutionContext::kPostprocessCpu,
                        WaitBitFlag::kNpuCompletion};
-    assert(scheduler.Submit(future).Ok());
-    assert(post.RunOnce() == DispatchResult::kIdle);
-    assert(pre.RunOnce() == DispatchResult::kRan);
-    assert(future.index == 1 && observed.inference_id != 0);
-    assert(observed.step == 10 && observed.start < observed.finish);
-    assert(npu.RunOnce() == DispatchResult::kRan);
-    assert(future.index == 2 && observed.done == 0);
-    assert(post.RunOnce() == DispatchResult::kIdle);
+    ASSERT_TRUE(scheduler.Submit(future).Ok());
+    EXPECT_EQ(post.RunOnce(), DispatchResult::kIdle);
+    EXPECT_EQ(pre.RunOnce(), DispatchResult::kRan);
+    EXPECT_EQ(future.index, 1U);
+    EXPECT_NE(observed.inference_id, 0U);
+    EXPECT_EQ(observed.step, 10U);
+    EXPECT_LT(observed.start, observed.finish);
+    EXPECT_EQ(npu.RunOnce(), DispatchResult::kRan);
+    EXPECT_EQ(future.index, 2U);
+    EXPECT_EQ(observed.done, 0);
+    EXPECT_EQ(post.RunOnce(), DispatchResult::kIdle);
     FakeFuture stranger;
-    assert(runtime.Signal(stranger, WaitBitFlag::kNpuCompletion).code ==
-           common::ErrorCode::kInvalidState);
-    assert(post.RunOnce() == DispatchResult::kIdle);
-    assert(runtime.Signal(future, WaitBitFlag::kNpuCompletion).Ok());
-    assert(post.RunOnce() == DispatchResult::kRan);
-    assert(future.index == 3 && observed.done == 1 && observed.error.Ok());
-    assert(observed.begin == 3 && observed.end == 3);
-    assert(runtime.RunOne(ExecutionContext::kPreprocessCpu) == DispatchResult::kIdle);
+    EXPECT_EQ(runtime.Signal(stranger, WaitBitFlag::kNpuCompletion).code,
+              common::ErrorCode::kInvalidState);
+    EXPECT_EQ(post.RunOnce(), DispatchResult::kIdle);
+    ASSERT_TRUE(runtime.Signal(future, WaitBitFlag::kNpuCompletion).Ok());
+    EXPECT_EQ(post.RunOnce(), DispatchResult::kRan);
+    EXPECT_EQ(future.index, 3U);
+    EXPECT_EQ(observed.done, 1);
+    EXPECT_TRUE(observed.error.Ok());
+    EXPECT_EQ(observed.begin, 3);
+    EXPECT_EQ(observed.end, 3);
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kIdle);
 }
 
-void AnyWaitReleasesOnlyRequestedFuture()
+TEST(AiRuntime, AnyWaitReleasesOnlyRequestedFuture)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
@@ -118,18 +128,20 @@ void AnyWaitReleasesOnlyRequestedFuture()
                       WaitBitFlag::kNpuCompletion | WaitBitFlag::kExternal,
                       WaitMode::kAny};
     second.steps[0] = first.steps[0];
-    assert(scheduler.Submit(first).Ok() && scheduler.Submit(second).Ok());
-    assert(runtime.RunOne(ExecutionContext::kPreprocessCpu) == DispatchResult::kRan);
-    assert(runtime.RunOne(ExecutionContext::kPreprocessCpu) == DispatchResult::kRan);
-    assert(runtime.Signal(first, WaitBitFlag::kExternal).Ok());
-    assert(runtime.RunOne(ExecutionContext::kPostprocessCpu) == DispatchResult::kRan);
-    assert(first.index == 2 && second.index == 1);
-    assert(runtime.RunOne(ExecutionContext::kPostprocessCpu) == DispatchResult::kIdle);
-    assert(runtime.Signal(second, WaitBitFlag::kNpuCompletion).Ok());
-    assert(runtime.RunOne(ExecutionContext::kPostprocessCpu) == DispatchResult::kRan);
+    ASSERT_TRUE(scheduler.Submit(first).Ok());
+    ASSERT_TRUE(scheduler.Submit(second).Ok());
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kRan);
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kRan);
+    ASSERT_TRUE(runtime.Signal(first, WaitBitFlag::kExternal).Ok());
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPostprocessCpu), DispatchResult::kRan);
+    EXPECT_EQ(first.index, 2U);
+    EXPECT_EQ(second.index, 1U);
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPostprocessCpu), DispatchResult::kIdle);
+    ASSERT_TRUE(runtime.Signal(second, WaitBitFlag::kNpuCompletion).Ok());
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPostprocessCpu), DispatchResult::kRan);
 }
 
-void NotificationDuringEvaluateIsNotLost()
+TEST(AiRuntime, NotificationDuringEvaluateIsNotLost)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
@@ -137,13 +149,13 @@ void NotificationDuringEvaluateIsNotLost()
     future.count = 2;
     future.steps[0] = {ExecutionContext::kNpu, WaitBitFlag::kNpuCompletion};
     future.notify_during_evaluate = &runtime;
-    assert(scheduler.Submit(future).Ok());
-    assert(runtime.RunOne(ExecutionContext::kPreprocessCpu) == DispatchResult::kRan);
-    assert(runtime.RunOne(ExecutionContext::kNpu) == DispatchResult::kRan);
-    assert(future.index == 2);
+    ASSERT_TRUE(scheduler.Submit(future).Ok());
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kRan);
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kNpu), DispatchResult::kRan);
+    EXPECT_EQ(future.index, 2U);
 }
 
-void MultipleWaitsAndErrors()
+TEST(AiRuntime, MultipleWaitsAndErrors)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
@@ -154,36 +166,37 @@ void MultipleWaitsAndErrors()
     future.steps[0] = {ExecutionContext::kPostprocessCpu,
                        WaitBitFlag::kNpuCompletion | WaitBitFlag::kExternal,
                        WaitMode::kAll};
-    assert(scheduler.Submit(future).Ok());
-    assert(runtime.RunOne(ExecutionContext::kPreprocessCpu) == DispatchResult::kRan);
-    assert(runtime.Signal(future, WaitBitFlag::kNpuCompletion).Ok());
-    assert(runtime.RunOne(ExecutionContext::kPostprocessCpu) == DispatchResult::kIdle);
-    assert(runtime.Signal(future, WaitBitFlag::kExternal).Ok());
+    ASSERT_TRUE(scheduler.Submit(future).Ok());
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kRan);
+    ASSERT_TRUE(runtime.Signal(future, WaitBitFlag::kNpuCompletion).Ok());
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPostprocessCpu), DispatchResult::kIdle);
+    ASSERT_TRUE(runtime.Signal(future, WaitBitFlag::kExternal).Ok());
     future.fail = true;
-    assert(runtime.RunOne(ExecutionContext::kPostprocessCpu) == DispatchResult::kFailed);
-    assert(observed.done == 1 && observed.error.code == common::ErrorCode::kModel);
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPostprocessCpu), DispatchResult::kFailed);
+    EXPECT_EQ(observed.done, 1);
+    EXPECT_EQ(observed.error.code, common::ErrorCode::kModel);
 }
 
-void NotReadyAndCapacity()
+TEST(AiRuntime, NotReadyAndCapacity)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
     FakeFuture future;
     future.count = 1;
     future.ready = false;
-    assert(scheduler.Submit(future).Ok());
-    assert(scheduler.Submit(future).code == common::ErrorCode::kInvalidState);
-    assert(runtime.RunOne(ExecutionContext::kPreprocessCpu) == DispatchResult::kNotReady);
-    assert(future.index == 0);
+    ASSERT_TRUE(scheduler.Submit(future).Ok());
+    EXPECT_EQ(scheduler.Submit(future).code, common::ErrorCode::kInvalidState);
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kNotReady);
+    EXPECT_EQ(future.index, 0U);
     future.ready = true;
-    assert(runtime.RunOne(ExecutionContext::kPreprocessCpu) == DispatchResult::kRan);
-    assert(scheduler.Submit(future).Ok()); // terminal future can be reused
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kRan);
+    ASSERT_TRUE(scheduler.Submit(future).Ok()); // terminal future can be reused
     FakeFuture others[PipelineRuntime::kCapacity];
     for (std::size_t i = 0; i < PipelineRuntime::kCapacity - 1; ++i) {
-        assert(scheduler.Submit(others[i]).Ok());
+        ASSERT_TRUE(scheduler.Submit(others[i]).Ok());
     }
-    assert(scheduler.Submit(others[PipelineRuntime::kCapacity - 1]).code ==
-           common::ErrorCode::kQueueFull);
+    EXPECT_EQ(scheduler.Submit(others[PipelineRuntime::kCapacity - 1]).code,
+              common::ErrorCode::kQueueFull);
 }
 
 struct FrameOwner {
@@ -194,12 +207,12 @@ struct FrameOwner {
 void ReleaseFrame(void *context, AiFuture &future, common::Error error)
 {
     auto &owner = *static_cast<FrameOwner *>(context);
-    assert(error.Ok());
+    EXPECT_TRUE(error.Ok());
     ++owner.completed;
     owner.last = &future;
 }
 
-void PersonFramesKeepOwnershipThroughPostprocess()
+TEST(AiRuntime, PersonFramesKeepOwnershipThroughPostprocess)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
@@ -213,28 +226,95 @@ void PersonFramesKeepOwnershipThroughPostprocess()
     first.count = second.count = 3;
     first.steps[0] = second.steps[0] = {ExecutionContext::kNpu};
     first.steps[1] = second.steps[1] = {ExecutionContext::kPostprocessCpu};
-    assert(scheduler.Submit(first).Ok());
-    assert(scheduler.Submit(second).Ok());
-    assert(preprocess.RunOnce() == DispatchResult::kRan);
-    assert(preprocess.RunOnce() == DispatchResult::kRan);
-    assert(npu.RunOnce() == DispatchResult::kRan);
-    assert(owner.completed == 0 && first.index == 2 && second.index == 1);
-    assert(postprocess.RunOnce() == DispatchResult::kRan);
-    assert(owner.completed == 1 && owner.last == &first);
-    assert(npu.RunOnce() == DispatchResult::kRan);
-    assert(owner.completed == 1);
-    assert(postprocess.RunOnce() == DispatchResult::kRan);
-    assert(owner.completed == 2 && owner.last == &second);
+    ASSERT_TRUE(scheduler.Submit(first).Ok());
+    ASSERT_TRUE(scheduler.Submit(second).Ok());
+    EXPECT_EQ(preprocess.RunOnce(), DispatchResult::kRan);
+    EXPECT_EQ(preprocess.RunOnce(), DispatchResult::kRan);
+    EXPECT_EQ(npu.RunOnce(), DispatchResult::kRan);
+    EXPECT_EQ(owner.completed, 0);
+    EXPECT_EQ(first.index, 2U);
+    EXPECT_EQ(second.index, 1U);
+    EXPECT_EQ(postprocess.RunOnce(), DispatchResult::kRan);
+    EXPECT_EQ(owner.completed, 1);
+    EXPECT_EQ(owner.last, &first);
+    EXPECT_EQ(npu.RunOnce(), DispatchResult::kRan);
+    EXPECT_EQ(owner.completed, 1);
+    EXPECT_EQ(postprocess.RunOnce(), DispatchResult::kRan);
+    EXPECT_EQ(owner.completed, 2);
+    EXPECT_EQ(owner.last, &second);
+}
+
+void Lock(void *context)
+{
+    static_cast<std::mutex *>(context)->lock();
+}
+
+void Unlock(void *context)
+{
+    static_cast<std::mutex *>(context)->unlock();
+}
+
+void CountDone(void *context, AiFuture &, common::Error error)
+{
+    EXPECT_TRUE(error.Ok());
+    ++*static_cast<std::atomic<int> *>(context);
+}
+
+TEST(AiRuntime, ConcurrentSubmissionAndDispatch)
+{
+    PipelineRuntime runtime;
+    Scheduler scheduler(runtime);
+    std::mutex mutex;
+    std::atomic<int> completed{0};
+    runtime.SetCriticalSection(&Lock, &Unlock, &mutex);
+    runtime.SetObserver(&CountDone, &completed);
+    constexpr std::size_t kJobs = 6U;
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(5);
+    FakeFuture futures[kJobs];
+    for (auto &future : futures) {
+        future.count = 3U;
+        future.steps[0] = {ExecutionContext::kNpu};
+        future.steps[1] = {ExecutionContext::kPostprocessCpu};
+    }
+    std::thread workers[]{
+        std::thread([&] {
+            Dispatcher dispatcher(runtime, ExecutionContext::kPreprocessCpu);
+            while (completed < static_cast<int>(kJobs) &&
+                   std::chrono::steady_clock::now() < deadline) {
+                if (dispatcher.RunOnce() == DispatchResult::kIdle) std::this_thread::yield();
+            }
+        }),
+        std::thread([&] {
+            Dispatcher dispatcher(runtime, ExecutionContext::kNpu);
+            while (completed < static_cast<int>(kJobs) &&
+                   std::chrono::steady_clock::now() < deadline) {
+                if (dispatcher.RunOnce() == DispatchResult::kIdle) std::this_thread::yield();
+            }
+        }),
+        std::thread([&] {
+            Dispatcher dispatcher(runtime, ExecutionContext::kPostprocessCpu);
+            while (completed < static_cast<int>(kJobs) &&
+                   std::chrono::steady_clock::now() < deadline) {
+                if (dispatcher.RunOnce() == DispatchResult::kIdle) std::this_thread::yield();
+            }
+        }),
+    };
+    std::thread producers[]{
+        std::thread([&] {
+            for (std::size_t index = 0U; index < kJobs / 2U; ++index) {
+                EXPECT_TRUE(scheduler.Submit(futures[index]).Ok());
+            }
+        }),
+        std::thread([&] {
+            for (std::size_t index = kJobs / 2U; index < kJobs; ++index) {
+                EXPECT_TRUE(scheduler.Submit(futures[index]).Ok());
+            }
+        }),
+    };
+    for (auto &producer : producers) producer.join();
+    for (auto &worker : workers) worker.join();
+    EXPECT_EQ(completed.load(), static_cast<int>(kJobs));
 }
 
 } // namespace
-
-int main()
-{
-    ThreeQueuesAndTargetedWakeup();
-    AnyWaitReleasesOnlyRequestedFuture();
-    NotificationDuringEvaluateIsNotLost();
-    MultipleWaitsAndErrors();
-    NotReadyAndCapacity();
-    PersonFramesKeepOwnershipThroughPostprocess();
-}

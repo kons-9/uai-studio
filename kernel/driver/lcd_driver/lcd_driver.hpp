@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 #include "driver/driver_status.hpp"
 #include "driver/driver_ownership.hpp"
 #include "driver/lcd_driver/registers/lcd_registers.hpp"

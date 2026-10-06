@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "common/log.hpp"
+#include "middleware/foundation/log.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
@@ -130,8 +130,7 @@ common::Error Future::Preprocess()
                 "segmentation.future.preprocess.context"};
     }
     if (!preprocess_stage_logged_) {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: segmentation preprocess begin seq=%u buffer=%x\n"),
+        UAI_LOG_INFO("ai: segmentation preprocess begin seq=%u buffer=%x\n",
                      static_cast<unsigned int>(frame_.capture_sequence),
                      static_cast<unsigned int>(frame_.buffer.address));
     }
@@ -165,8 +164,7 @@ common::Error Future::Preprocess()
     if (!status.Ok()) return status;
 
     if (!preprocess_stage_logged_) {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: segmentation preprocess done seq=%u\n"),
+        UAI_LOG_INFO("ai: segmentation preprocess done seq=%u\n",
                      static_cast<unsigned int>(frame_.capture_sequence));
         preprocess_stage_logged_ = true;
     }
@@ -182,8 +180,7 @@ common::Error Future::Infer()
                 "segmentation.future.infer.context"};
     }
     if (!infer_stage_logged_) {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: segmentation infer begin seq=%u\n"),
+        UAI_LOG_INFO("ai: segmentation infer begin seq=%u\n",
                      static_cast<unsigned int>(frame_.capture_sequence));
     }
 
@@ -212,16 +209,14 @@ common::Error Future::Infer()
     if (!result.Ok()) return result.error;
     result = context_.npu->Run(*context_.npu_writer);
     if (!result.Ok()) {
-        UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                         "ai: segmentation infer failed code=%u detail=%u op=%s\n"),
+        UAI_LOG_WARN("ai: segmentation infer failed code=%u detail=%u op=%s\n",
                      static_cast<unsigned int>(result.error.code),
                      static_cast<unsigned int>(result.error.detail),
                      result.error.operation);
         return result.error;
     }
     if (!infer_stage_logged_) {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: segmentation infer done seq=%u\n"),
+        UAI_LOG_INFO("ai: segmentation infer done seq=%u\n",
                      static_cast<unsigned int>(frame_.capture_sequence));
         infer_stage_logged_ = true;
     }
@@ -249,8 +244,7 @@ common::Error Future::Postprocess()
     if (!status.Ok()) return status;
     context_.publish(context_.publish_context, boxes);
     if (!postprocess_stage_logged_) {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: segmentation postprocess done seq=%u mask_px=%u\n"),
+        UAI_LOG_INFO("ai: segmentation postprocess done seq=%u mask_px=%u\n",
                      static_cast<unsigned int>(frame_.capture_sequence),
                      static_cast<unsigned int>(
                          boxes.segmentation.mask_foreground_pixels));

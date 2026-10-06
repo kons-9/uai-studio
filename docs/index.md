@@ -17,16 +17,15 @@
 
 ```text
 userspace/<app>        アプリ（usermain、タスク、モデル）
-kernel/middleware      ai_runtime、memory_manager、モニター、image_resizer
+kernel/middleware      ai_runtime、memory_manager、モニター、image_resizer、foundation（エラー型・ログ）
 kernel/driver          カメラ、LCD、NPU、PSRAM、NOR、RIF、キャッシュ
-kernel/common          エラー型、ログ
 kernel/utkernel        μT-Kernel 3.0 BSP2
 kernel/pre_kernel      CubeMX生成コードとRAM起動
 build-system           CMake・Makeの共通定義、CubeMX生成とUARTのスクリプト、ホスト設定
 host_app               PCで動かすメモリ配置の生成とモニターの解析ツール
 ```
 
-上の層は下の層だけを使います。`kernel/driver`と`kernel/middleware`は現在ai-appのビルドでだけ有効です。
+ドライバーもミドルウェアの`foundation`を利用します。`kernel/driver`と`kernel/middleware`は現在ai-appのビルドでだけ有効です。
 
 ## 開発の流れ
 
@@ -45,7 +44,7 @@ UARTに`camera: pipe1=started pipe2=started`が出れば、カメラの2系統�
 
 | 名前空間 | 場所 |
 | --- | --- |
-| `uai::ai::common` | `kernel/common` |
+| `uai::ai::common` | `kernel/middleware/foundation` |
 | `uai::ai::driver`、`uai::ai::config`、`uai::ai::cache`、`uai::ai::camera`、`uai::ai::lcd`、`uai::ai::npu`、`uai::ai::nor`、`uai::ai::psram`、`uai::ai::rif` | `kernel/driver` |
 | `uai::ai::ai_runtime`、`uai::ai::inference`、`uai::ai::memory_manager`、`uai::ai::memory_allocator`、`uai::ai::static_memory_layout`、`uai::ai::pipeline`、`uai::ai::image_resizer`、`uai::ai::middleware::*` | `kernel/middleware` |
 

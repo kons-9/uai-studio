@@ -1,7 +1,7 @@
 #ifndef UAI_AI_RIF_DRIVER_HPP
 #define UAI_AI_RIF_DRIVER_HPP
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 #include "driver/driver_ownership.hpp"
 
 namespace uai::ai::rif {

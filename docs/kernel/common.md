@@ -1,10 +1,10 @@
 # エラー型とログ
 
-`kernel/common`は、ドライバーとミドルウェアが共有するエラー型とログマクロです。名前空間は`uai::ai::common`です。
+`kernel/middleware/foundation`は、ドライバーとミドルウェアが共有するエラー型とログマクロです。名前空間は`uai::ai::common`です。
 
 ## common::Error
 
-`kernel/common/error.hpp`の`common::Error`をドライバーとミドルウェアの戻り値に使います。例外は使いません。
+`kernel/middleware/foundation/error.hpp`の`common::Error`をドライバーとミドルウェアの戻り値に使います。例外は使いません。
 
 ```cpp
 struct Error {
@@ -36,17 +36,17 @@ struct Error {
 ```cpp
 common::Error status = camera.Start();
 if (!status.Ok()) {
-    UAI_LOG_ERROR(reinterpret_cast<const UB *>("camera: %s failed detail=%u\n"),
+    UAI_LOG_ERROR("camera: %s failed detail=%u\n",
                   status.operation, static_cast<unsigned int>(status.detail));
 }
 ```
 
 ## ログ
 
-`kernel/common/log.hpp`はレベル付きのログマクロを提供します。出力先はT-Monitorの`tm_printf()`です。
+`kernel/middleware/foundation/log.hpp`はレベル付きのログマクロを提供します。文字列は`const char*`で渡し、出力先のT-Monitorが要求する`UB*`への変換はログ層の中だけで行います。
 
 ```cpp
-UAI_LOG_INFO(reinterpret_cast<const UB *>("ai: model registered=%s\n"), name);
+UAI_LOG_INFO("ai: model registered=%s\n", name);
 ```
 
 | マクロ | 用途 |

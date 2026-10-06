@@ -1,5 +1,5 @@
 #include "driver/lcd_driver/lcd_driver.hpp"
-#include "common/log.hpp"
+#include "middleware/foundation/log.hpp"
 #include "middleware/pipeline/image_format.hpp"
 #include "memory_manager/memory_sizes.hpp"
 
@@ -7,7 +7,6 @@
 #include <cstring>
 
 extern "C" {
-#include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
 }
 
@@ -466,17 +465,12 @@ common::Error LcdDriver::ComposeAndPresent(
             copy_max_ms = copy_elapsed_ms;
         }
         if (copy_now - copy_window_start >= 1000U) {
-            UB line[128] = {};
-            (void)tm_sprintf(
-                line,
-                reinterpret_cast<const UB *>(
-                    "lcd: cpu_copy count=%u total_ms=%u max_ms=%u "
-                    "window_ms=%u\n"),
-                static_cast<unsigned int>(copy_count),
-                static_cast<unsigned int>(copy_total_ms),
-                static_cast<unsigned int>(copy_max_ms),
-                static_cast<unsigned int>(copy_now - copy_window_start));
-            UAI_LOG_TEXT(uai::ai::common::LogLevel::kDebug, line);
+            UAI_LOG_DEBUG("lcd: cpu_copy count=%u total_ms=%u max_ms=%u "
+                          "window_ms=%u\n",
+                          static_cast<unsigned int>(copy_count),
+                          static_cast<unsigned int>(copy_total_ms),
+                          static_cast<unsigned int>(copy_max_ms),
+                          static_cast<unsigned int>(copy_now - copy_window_start));
             copy_window_start = copy_now;
             copy_count = 0U;
             copy_total_ms = 0U;
@@ -512,8 +506,7 @@ common::Error LcdDriver::ComposeAndPresent(
             (void)memory_->ReleaseDisplayBuffer(display);
             return status;
         }
-        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                      "lcd: copy crc bytes=%u source=%x copied=%x psram=%x\n"),
+        UAI_LOG_DEBUG("lcd: copy crc bytes=%u source=%x copied=%x psram=%x\n",
                   static_cast<unsigned int>(memory_manager::kCaptureBufferBytes),
                   static_cast<unsigned int>(source_crc),
                   static_cast<unsigned int>(copied_crc),

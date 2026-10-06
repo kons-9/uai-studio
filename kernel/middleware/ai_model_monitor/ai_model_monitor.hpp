@@ -4,10 +4,10 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "common/error.hpp"
+#include "middleware/foundation/error.hpp"
 #include "middleware/ai_runtime/pipeline_types.hpp"
 
-#if defined(__arm__) || defined(__thumb__)
+#if defined(__arm__) || defined(__thumb__) || defined(UAI_AI_MODEL_MONITOR_HOST_TEST)
 
 #include <tk/tkernel.h>
 

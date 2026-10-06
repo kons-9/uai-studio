@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "common/log.hpp"
+#include "middleware/foundation/log.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
 #include "middleware/ai_runtime/pipeline_dispatcher.hpp"
@@ -68,8 +68,7 @@ void WakePipelineWorker(void *, ExecutionContext lane)
     const ER status = tk_set_flg(task.pipeline_work_ready,
                                  PipelineWorkBit(lane));
     if (status != E_OK) {
-        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                          "ai: pipeline worker wake failed lane=%u code=%x\n"),
+        UAI_LOG_ERROR("ai: pipeline worker wake failed lane=%u code=%x\n",
                       static_cast<unsigned int>(lane),
                       static_cast<unsigned int>(status));
     }
@@ -160,10 +159,9 @@ struct PipelineApplication {
         }
         if (now - report_tick < 1000U) return;
         const auto camera = context.camera.GetDiagnostics();
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: model stats person=%u/%u face=%u/%u "
+        UAI_LOG_INFO("ai: model stats person=%u/%u face=%u/%u "
                          "seg=%u/%u post=%u boxes=%u capture=%u pipe2=%u "
-                         "drops=%u csi=%u\n"),
+                         "drops=%u csi=%u\n",
                      static_cast<unsigned int>(submitted_count[kPersonModel] -
                                                report_submitted),
                      static_cast<unsigned int>(completed_count[kPersonModel] -
@@ -238,9 +236,8 @@ struct PipelineApplication {
         npu.SetEpochTraceModelKindId(registered_models[kPersonModel].kind_id);
 
         for (const RegisteredModel &model : registered_models) {
-            UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                             "ai: model registered=%s\n"),
-                         reinterpret_cast<const UB *>(model.name));
+            UAI_LOG_INFO("ai: model registered=%s\n",
+                         model.name);
         }
         pipeline.SetCriticalSection(&EnterCritical, &LeaveCritical, nullptr);
         pipeline.SetObserver(&OnDone, &context);
@@ -264,14 +261,13 @@ struct PipelineApplication {
     {
         auto &task = *static_cast<TaskContext *>(context);
         if (task.diagnostics.inference_trace) {
-            const UB *name =
+            const char *name =
                 trace.model_id == static_cast<ai_runtime::AiModelId>(2U)
-                    ? reinterpret_cast<const UB *>("face")
+                    ? "face"
                     : trace.model_id == static_cast<ai_runtime::AiModelId>(1U)
-                          ? reinterpret_cast<const UB *>("segmentation")
-                          : reinterpret_cast<const UB *>("person");
-            UAI_LOG_TRACE(reinterpret_cast<const UB *>(
-                "ai: %s inference=%u model=%u step=%u lane=%u time=%u begin=%u\n"),
+                          ? "segmentation"
+                          : "person";
+            UAI_LOG_TRACE("ai: %s inference=%u model=%u step=%u lane=%u time=%u begin=%u\n",
                 name,
                 static_cast<unsigned int>(trace.inference_id),
                 static_cast<unsigned int>(trace.model_id),
@@ -301,8 +297,7 @@ struct PipelineApplication {
                                                 : "person_pipeline",
                       error);
             application.enabled.store(false);
-            UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                "ai: model pipeline disabled; camera remains live\n"));
+            UAI_LOG_WARN("ai: model pipeline disabled; camera remains live\n");
         }
         if (is_face) {
             auto &future = static_cast<models::face::Future &>(base);
@@ -359,8 +354,7 @@ void PublishBoxes(void *context, const inference::BoxSet &source)
 
 void RunWorker(ExecutionContext lane)
 {
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                 "ai: model worker started lane=%u\n"),
+    UAI_LOG_INFO("ai: model worker started lane=%u\n",
                  static_cast<unsigned int>(lane));
     if (lane == ExecutionContext::kNpu) {
         for (const RegisteredModel &model : g_app.registered_models) {
@@ -377,8 +371,7 @@ void RunWorker(ExecutionContext lane)
         if (!monitor_status.Ok()) {
             LogStatus("ai_model_monitor.start", monitor_status);
         } else {
-            UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                             "ai: ai_model_monitor started for ai_runtime npu lane\n"));
+            UAI_LOG_INFO("ai: ai_model_monitor started for ai_runtime npu lane\n");
         }
     }
     ai_runtime::Dispatcher dispatcher(g_app.pipeline, lane);
@@ -397,8 +390,7 @@ void RunWorker(ExecutionContext lane)
             task.pipeline_work_ready, wake_bit, TWF_ANDW | TWF_BITCLR,
             &pattern, TMO_FEVR);
         if (wait_status != E_OK) {
-            UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                              "ai: pipeline worker wait failed lane=%u code=%x\n"),
+            UAI_LOG_ERROR("ai: pipeline worker wait failed lane=%u code=%x\n",
                           static_cast<unsigned int>(lane),
                           static_cast<unsigned int>(wait_status));
             task.Halt("ai: pipeline worker event wait failed\n");
@@ -428,15 +420,13 @@ void PipelineTask::FrameEntry()
         task.Halt("ai: model pipeline memory wait failed\n");
     }
     if (!task.external_nor_ready) {
-        UAI_LOG_WARN(reinterpret_cast<const UB *>(
-            "ai: registered models unavailable; camera remains live\n"));
+        UAI_LOG_WARN("ai: registered models unavailable; camera remains live\n");
     } else {
         const common::Error status = g_app.Initialize(task);
         if (!status.Ok()) {
             LogStatus("model_pipeline.init", status);
         } else {
-            UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                "ai: 3-model pipeline enabled (person/face/segmentation)\n"));
+            UAI_LOG_INFO("ai: 3-model pipeline enabled (person/face/segmentation)\n");
             task.StartPreprocessTask(
                 reinterpret_cast<FP>(PipelineTask::PreprocessEntry));
             task.StartNpuTask(reinterpret_cast<FP>(PipelineTask::NpuEntry));
@@ -544,14 +534,12 @@ void PipelineTask::FrameEntry()
             if (status.Ok()) {
                 ++g_app.submitted_count[model_index];
                 if (g_app.submitted_count[model_index] == 1U) {
-                    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                                     "ai: %s submit ok seq=%u\n"),
-                                 reinterpret_cast<const UB *>(
-                                     model_index == kFaceModel
-                                         ? "face"
-                                         : model_index == kSegmentationModel
-                                               ? "segmentation"
-                                               : "person"),
+                    UAI_LOG_INFO("ai: %s submit ok seq=%u\n",
+                                 model_index == kFaceModel
+                                     ? "face"
+                                     : model_index == kSegmentationModel
+                                           ? "segmentation"
+                                           : "person",
                                  static_cast<unsigned int>(
                                      message.frame.capture_sequence));
                 }

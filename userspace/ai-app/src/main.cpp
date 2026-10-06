@@ -3,7 +3,6 @@
 #include <tk/tkernel.h>
 
 extern "C" {
-#include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
 
 void NPU0_IRQHandler(UINT intno);
@@ -13,7 +12,7 @@ void IAC_IRQHandler(void);
 #include "task/application_initialize_task.hpp"
 #include "task/task_context.hpp"
 #include "task/task_diagnostics.hpp"
-#include "common/log.hpp"
+#include "middleware/foundation/log.hpp"
 
 /* HAL time-bridge state is a C ABI surface used by the board support code. */
 extern "C" {
@@ -33,8 +32,7 @@ extern "C" void IAC_IRQHandler(void)
     const std::uint32_t flags3 = IAC->ISR[3];
     const std::uint32_t flags4 = IAC->ISR[4];
     if ((flags0 | flags1 | flags2 | flags3 | flags4) != 0U) {
-        UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                         "ai: IAC flags=%x,%x,%x,%x,%x\n"),
+        UAI_LOG_WARN("ai: IAC flags=%x,%x,%x,%x,%x\n",
                      static_cast<unsigned int>(flags0),
                      static_cast<unsigned int>(flags1),
                      static_cast<unsigned int>(flags2),
@@ -42,8 +40,7 @@ extern "C" void IAC_IRQHandler(void)
                      static_cast<unsigned int>(flags4));
     }
     if ((flags4 & 0x00400000U) != 0U) {
-        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                          "ai: RISAF12 iasr=%x iaesr=%x iaddr=%x\n"),
+        UAI_LOG_ERROR("ai: RISAF12 iasr=%x iaesr=%x iaddr=%x\n",
                       static_cast<unsigned int>(RISAF12->IASR),
                       static_cast<unsigned int>(RISAF12->IAR->IAESR),
                       static_cast<unsigned int>(RISAF12->IAR->IADDR));
@@ -62,8 +59,7 @@ extern "C" INT usermain(void)
     const uai::ai::common::Error cpu_monitor_status =
         context.cpu_task_monitor.Start();
     if (!cpu_monitor_status.Ok()) {
-        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                          "ai: cpu task monitor start failed code=%x detail=%x\n"),
+        UAI_LOG_ERROR("ai: cpu task monitor start failed code=%x detail=%x\n",
                       static_cast<unsigned int>(cpu_monitor_status.code),
                       static_cast<unsigned int>(cpu_monitor_status.detail));
         context.Halt("ai: cpu task monitor start failed\n");
@@ -84,8 +80,7 @@ extern "C" INT usermain(void)
     iac_interrupt.inthdr = reinterpret_cast<FP>(IAC_IRQHandler);
     const ER iac_interrupt_status =
         tk_def_int(static_cast<UINT>(IAC_IRQn), &iac_interrupt);
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "ai: kernel interrupts npu=%x iac=%x\n"),
+    UAI_LOG_INFO("ai: kernel interrupts npu=%x iac=%x\n",
                  static_cast<unsigned int>(npu_interrupt_status),
                  static_cast<unsigned int>(iac_interrupt_status));
     if (npu_interrupt_status != E_OK || iac_interrupt_status != E_OK) {

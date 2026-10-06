@@ -41,3 +41,14 @@ ST-LINKのHot Plug接続でCPUを一時停止してリングを読み出し、�
 | PNG | `build-ai-app-person/thread_monitor.png` |
 
 JSONにはモデルごとのステップ時間の集計が含まれるため、スクリプトやAIエージェントがボトルネックを探す入力にも使えます。CLIのオプションとトレース形式は[host_app/ai_model_monitor/README.md](https://github.com/kons-9/uai-studio/blob/main/host_app/ai_model_monitor/README.md)を参照してください。
+
+## ホストテスト
+
+最小限のμT-Kernel、HAL、メモリ配置、T-Monitorモックと実物の`foundation/log.hpp`で監視の実装本体をリンクし、推論の交錯と複数スレッドからの記録を確認します。
+
+```sh
+make -C kernel/middleware/ai_model_monitor/tests test
+make -C kernel/middleware/ai_model_monitor/tests tsan
+```
+
+現状は交錯した推論の所要時間が失われるため、通常テストは失敗します。TSANも共有状態の競合を検出します。モックは監視タスクを実行しないため、周期的なサンプリングや実機のキャッシュ動作は対象外です。

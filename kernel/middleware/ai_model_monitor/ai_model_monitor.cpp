@@ -2,7 +2,7 @@
 
 #include <cstring>
 
-#include "common/log.hpp"
+#include "middleware/foundation/log.hpp"
 #include "middleware/cpu_task_monitor/cpu_task_monitor.hpp"
 #include "middleware/memory/static_memory_layout.hpp"
 #include "middleware/memory/generated/static_memory_layout/key.hpp"
@@ -67,8 +67,7 @@ bool AiModelMonitor::InitializeTraceBuffer()
         static_cast<std::uint32_t>(monitored_task_id_);
     trace_header_->monitor_task_id = 0U;
     FlushTrace(trace_header_, sizeof(*trace_header_));
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "ai: runtime trace addr=%x bytes=%u records=%u version=%u\n"),
+    UAI_LOG_INFO("ai: runtime trace addr=%x bytes=%u records=%u version=%u\n",
                  static_cast<unsigned int>(region.address()),
                  static_cast<unsigned int>(region.size()),
                  static_cast<unsigned int>(trace_capacity_),
@@ -236,8 +235,7 @@ common::Error AiModelMonitor::Start()
         cpu_task_monitor::CpuTaskMonitor::RegisterTaskForActiveMonitor(
             monitor_task_id_, "ai_model_monitor");
     if (!task_name_status.Ok()) {
-        UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                         "ai: CPU task name registration failed name=ai_model_monitor code=%u detail=%u\n"),
+        UAI_LOG_WARN("ai: CPU task name registration failed name=ai_model_monitor code=%u detail=%u\n",
                      static_cast<unsigned int>(task_name_status.code),
                      static_cast<unsigned int>(task_name_status.detail));
     }
@@ -498,8 +496,7 @@ void AiModelMonitor::ReportFault(std::uint32_t now,
     const unsigned int wait_factor =
         task_status == nullptr ? 0U
                                : static_cast<unsigned int>(task_status->tskwait);
-    UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                      "ai: ai_model_monitor fault task=%d ref=%x state=%x wait=%x now=%u last=%u\n"),
+    UAI_LOG_ERROR("ai: ai_model_monitor fault task=%d ref=%x state=%x wait=%x now=%u last=%u\n",
                   static_cast<int>(monitored_task_id_),
                   static_cast<unsigned int>(reference_status), task_state,
                   wait_factor, static_cast<unsigned int>(now),

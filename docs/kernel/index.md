@@ -4,17 +4,13 @@
 
 ```text
 userspace/<app>        アプリ（usermain、タスク、モデル）
-  |
-kernel/middleware      ai_runtime、memory_manager、モニター、image_resizer
-  |
+kernel/middleware      ai_runtime、memory_manager、モニター、image_resizer、foundation（エラー型・ログ）
 kernel/driver          カメラ、LCD、NPU、PSRAM、NOR、RIF、キャッシュ
-  |
-kernel/common          エラー型、ログ
 kernel/utkernel        μT-Kernel 3.0 BSP2（サブモジュール）
 kernel/pre_kernel      CubeMX生成コードとRAM起動
 ```
 
-上の層は下の層だけを使います。`kernel/driver`と`kernel/middleware`は現在ai-appのビルドでだけ有効です。
+ドライバーもミドルウェアの`foundation`を利用します。`kernel/driver`と`kernel/middleware`は現在ai-appのビルドでだけ有効です。
 
 ## このセクションの内容
 
