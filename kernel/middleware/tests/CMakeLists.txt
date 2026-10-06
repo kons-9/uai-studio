@@ -31,10 +31,13 @@ add_subdirectory("${UAI_ROOT}/kernel/middleware/ai_runtime/tests" ai_runtime)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/ai_model_monitor/tests" ai_model_monitor)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/image_resizer/tests" image_resizer)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/image_processing/tests" image_processing)
+add_subdirectory("${UAI_ROOT}/kernel/middleware/memory/tests" memory)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/memory_manager/tests" memory_manager)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/foundation/tests" foundation)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/buffer/tests" buffer)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/message_channel/tests" message_channel)
+add_subdirectory("${UAI_ROOT}/kernel/middleware/resource_ownership/tests" resource_ownership)
+add_subdirectory("${UAI_ROOT}/kernel/middleware/trace_format/tests" trace_format)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/pipeline/tests" pipeline)
 
 uai_add_host_test(frame_channels_test

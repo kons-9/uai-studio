@@ -103,7 +103,7 @@ for (;;) {
 - 複数のタスクや割り込みから使う場合、`SetCriticalSection()`は必須です。キューの操作だけを保護し、`Evaluate()`やコールバックはその外で実行します。
 - `AiFuture`と入出力バッファは完了コールバックが呼ばれるまで利用側が保持します。ai-appではモデルごとに推論バッファ数と同じ数の`Future`を静的に持ち、空いているものを使います。
 - 同時に投入できる推論は8件です。超えると`Submit()`は`kQueueFull`を返します。
-- `RegisterModelName()`と`StartAiModelMonitor()`はNPUレーンのタスクから呼びます（[ai_model_monitor](ai_model_monitor.md)）。
+- ステップの記録は`SetTrace()`の1経路だけです。`AiModelMonitor`を使う場合はアプリが所有し、trace関数から`ObserveAiRuntimeStep()`へ転送します（[ai_model_monitor](ai_model_monitor.md)）。`PipelineRuntime`は監視器やOSのヘッダに依存しません。
 - カメラタスクからのフレームと、後処理からLCDへの結果は、[message_channel](message_channel.md)の`message_channel::MessageChannel`で受け渡します。ai-appではフレームの送信失敗時に古いフレームを返却してから入れ直し、結果キューが満杯（`kBufferOverflow`）なら最古の結果を捨てて再送します。カメラタスクは待たずに最新の結果だけを取り出します（`userspace/ai-app/src/task/pipeline_task.hpp`）。
 
 ## 推論結果の型

@@ -1,0 +1,1 @@
+uai_add_host_test(resource_ownership_test resource_ownership_test.cpp)

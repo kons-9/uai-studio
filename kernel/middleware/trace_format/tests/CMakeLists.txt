@@ -1,0 +1,1 @@
+uai_add_host_test(trace_format_test trace_format_test.cpp)

@@ -76,6 +76,69 @@ void Done(void *context, AiFuture &, common::Error error)
     observed.error = error;
 }
 
+TEST(AiRuntime, TraceBracketsEvaluateAndReadsClockOncePerEvent)
+{
+    struct Sequence {
+        std::uint32_t clock = 0U;
+        std::uint32_t clock_reads = 0U;
+        std::uint32_t begin_clock = 0U;
+        std::uint32_t end_clock = 0U;
+        std::uint32_t evaluate_reads = 0U;
+        bool begin_before_evaluate = false;
+        bool end_after_evaluate = false;
+        std::uint32_t evaluated = 0U;
+    } sequence;
+    struct TracedFuture final : AiFuture {
+        Sequence *sequence = nullptr;
+        AiModelId model_id() const override { return static_cast<AiModelId>(1U); }
+        std::uint32_t step_id() const override { return 7U; }
+        bool is_ready() const override { return true; }
+        AiRuntimeResult Evaluate() override
+        {
+            sequence->evaluate_reads = sequence->clock_reads;
+            ++sequence->evaluated;
+            return {{}, {}, true};
+        }
+    } future;
+    future.sequence = &sequence;
+
+    PipelineRuntime runtime;
+    runtime.SetTrace(
+        [](void *context, const StepTrace &event) {
+            auto &s = *static_cast<Sequence *>(context);
+            if (event.begin) {
+                s.begin_before_evaluate = s.evaluated == 0U;
+                s.begin_clock = event.timestamp;
+            } else {
+                s.end_after_evaluate = s.evaluated == 1U;
+                s.end_clock = event.timestamp;
+            }
+        },
+        &sequence,
+        [](void *context) {
+            auto &s = *static_cast<Sequence *>(context);
+            ++s.clock_reads;
+            return s.clock += 10U;
+        },
+        &sequence);
+    ASSERT_TRUE(runtime.Submit(future).Ok());
+    EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kRan);
+    EXPECT_TRUE(sequence.begin_before_evaluate);
+    EXPECT_TRUE(sequence.end_after_evaluate);
+    EXPECT_EQ(sequence.evaluate_reads, 1U);
+    EXPECT_EQ(sequence.clock_reads, 2U);
+    EXPECT_EQ(sequence.begin_clock, 10U);
+    EXPECT_EQ(sequence.end_clock, 20U);
+
+    PipelineRuntime untraced;
+    std::uint32_t clock_reads = 0U;
+    untraced.SetTrace(
+        [](void *, const StepTrace &event) { EXPECT_EQ(event.timestamp, 0U); },
+        nullptr, nullptr, &clock_reads);
+    ASSERT_TRUE(untraced.Submit(future).Ok());
+    EXPECT_EQ(untraced.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kRan);
+}
+
 TEST(AiRuntime, ThreeQueuesAndTargetedWakeup)
 {
     PipelineRuntime runtime;

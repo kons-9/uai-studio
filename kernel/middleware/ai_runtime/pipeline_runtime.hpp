@@ -5,14 +5,15 @@
 #include <cstdint>
 
 #include "middleware/ai_runtime/pipeline_types.hpp"
-#include "middleware/ai_model_monitor/ai_model_monitor.hpp"
 
 namespace uai::ai::ai_runtime {
 
 /* Fixed-capacity routing engine. Scheduler submits to the first lane; three
  * dispatchers each consume a different lane. Host tests call RunOne directly.
  * When driven by concurrent RTOS tasks/ISRs, install an enter/exit critical
- * section before submitting; callbacks and Evaluate run outside that section. */
+ * section before submitting; callbacks and Evaluate run outside that section.
+ * Step tracing goes through SetTrace() only; whoever owns a monitor forwards
+ * the events from that callback. */
 class PipelineRuntime final {
 public:
     static constexpr std::size_t kCapacity = 8U;
@@ -28,10 +29,6 @@ public:
     void SetWakeCallback(WakeCallback callback, void *context);
     void SetCriticalSection(CriticalSection enter, CriticalSection exit,
                             void *context);
-    /* Called by the NPU lane after it enters its RTOS task. The monitor uses
-     * that task as the owner for periodic state samples. */
-    common::Error RegisterModelName(AiModelId model_id, const char *name);
-    common::Error StartAiModelMonitor();
     common::Error Submit(AiFuture &future);
     /* Events belong to a specific future, not to every NPU waiter. */
     common::Error Signal(AiFuture &future, WaitBitFlag flags);
@@ -86,7 +83,6 @@ private:
     CriticalSection enter_ = nullptr;
     CriticalSection exit_ = nullptr;
     void *lock_context_ = nullptr;
-    middleware::ai_model_monitor::AiModelMonitor ai_model_monitor_{};
 };
 
 } // namespace uai::ai::ai_runtime

@@ -8,6 +8,7 @@
 #include "middleware/ai_runtime/inference_result_types.hpp"
 #include "middleware/foundation/log.hpp"
 #include "middleware/message_channel/latest_value_channel.hpp"
+#include "middleware/message_channel/utkernel_backend.hpp"
 #include "middleware/buffer/stable_aligned_bytes.hpp"
 #include "middleware/pipeline/frame_types.hpp"
 #include "task/task_config.hpp"
@@ -38,14 +39,14 @@ struct PipelineWorkerContext {
 
 class InferenceResultChannel final {
 public:
-    ID Create() { return channel_.Create(); }
+    common::Error Create() { return channel_.Create(); }
 
     common::Error PublishLatest(const inference::BoxSet &boxes)
     {
         return channel_.SendReplacingOldestOnce(boxes);
     }
 
-    bool DrainLatest(inference::BoxSet *active)
+    message_channel::DrainResult DrainLatest(inference::BoxSet *active)
     {
         return channel_.DrainLatest(active, [](const inference::BoxSet &boxes) {
             return boxes.person_valid || boxes.face_valid ||
@@ -54,7 +55,9 @@ public:
     }
 
 private:
-    message_channel::LatestValueChannel<inference::BoxSet, kResultQueueDepth>
+    message_channel::LatestValueChannel<
+        inference::BoxSet, kResultQueueDepth,
+        message_channel::MicroTKernelBackend<inference::BoxSet, kResultQueueDepth>>
         channel_;
 };
 
@@ -65,7 +68,7 @@ public:
     explicit InferenceFrameChannel(memory_manager::MemoryManager &memory)
         : memory_(memory) {}
 
-    ID Create() { return channel_.Create(); }
+    common::Error Create() { return channel_.Create(); }
 
     void Send(const pipeline::InferenceFrame &frame)
     {
@@ -86,7 +89,10 @@ public:
 
 private:
     memory_manager::MemoryManager &memory_;
-    message_channel::LatestValueChannel<pipeline::InferenceFrame, kFrameQueueDepth>
+    message_channel::LatestValueChannel<
+        pipeline::InferenceFrame, kFrameQueueDepth,
+        message_channel::MicroTKernelBackend<pipeline::InferenceFrame,
+                                             kFrameQueueDepth>>
         channel_;
 };
 
@@ -108,12 +114,12 @@ public:
     void StartNpu(middleware::cpu_task_monitor::CpuTaskMonitor &monitor);
     void StartPostprocess(middleware::cpu_task_monitor::CpuTaskMonitor &monitor);
     InferenceFrameChannel &InferenceFrames() { return inference_frames_; }
-    ID CreateResultQueue() { return results_.Create(); }
+    common::Error CreateResultQueue() { return results_.Create(); }
     common::Error PublishResult(const inference::BoxSet &boxes)
     {
         return results_.PublishLatest(boxes);
     }
-    bool TryGetLatestResult(inference::BoxSet *active)
+    message_channel::DrainResult TryGetLatestResult(inference::BoxSet *active)
     {
         return results_.DrainLatest(active);
     }

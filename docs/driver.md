@@ -8,7 +8,7 @@
 
 - `<Name>Management::Instance()`で唯一のインスタンスを取得します。
 - `Initialize()`でハードウェアを初期化します。二回目以降は`kAlreadyInitialized`を返します。
-- ドライバーの状態を変える操作には所有権（`Writer`）が必要です。`Writer`は`ResourceManagement`が持つミューテックスを表し、スコープを抜けると解放されます。
+- ドライバーの状態を変える操作には所有権（`Writer`）が必要です。`Writer`は`ResourceManagement`が持つミューテックスを表し、スコープを抜けると解放されます。`ResourceManagement`は[resource_ownership](middleware/resource_ownership.md)の`ResourceOwnership<MicroTKernelMutexBackend>`の別名です。
 
 操作には2つの呼び方があります。
 

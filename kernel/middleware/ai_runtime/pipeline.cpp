@@ -84,17 +84,6 @@ void PipelineRuntime::Wake(ExecutionContext lane) const
     if (wake_ != nullptr) wake_(wake_context_, lane);
 }
 
-common::Error PipelineRuntime::RegisterModelName(AiModelId model_id,
-                                                 const char *name)
-{
-    return ai_model_monitor_.RegisterModelName(model_id, name);
-}
-
-common::Error PipelineRuntime::StartAiModelMonitor()
-{
-    return ai_model_monitor_.Start();
-}
-
 common::Error PipelineRuntime::Submit(AiFuture &future)
 {
     {
@@ -182,13 +171,11 @@ DispatchResult PipelineRuntime::RunOne(ExecutionContext lane)
     const StepTrace event{inference_id, future->model_id(), future->step_id(),
                           lane, clock_ == nullptr ? 0U : clock_(clock_context_),
                           true};
-    ai_model_monitor_.ObserveAiRuntimeStep(event);
     if (trace_ != nullptr) trace_(trace_context_, event);
     const AiRuntimeResult result = future->Evaluate();
     StepTrace end = event;
     end.begin = false;
     end.timestamp = clock_ == nullptr ? 0U : clock_(clock_context_);
-    ai_model_monitor_.ObserveAiRuntimeStep(end);
     if (trace_ != nullptr) trace_(trace_context_, end);
 
     const bool terminal = !result.Ok() || result.completed;

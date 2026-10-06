@@ -222,6 +222,7 @@ add_custom_target(${AI_APP_NAME}-memory-layout
 
 # The kernel components include the generated memory contract, so make its
 # generation an explicit prerequisite after the component targets exist.
+add_dependencies(uai-memory-layout ${AI_APP_NAME}-memory-layout)
 add_dependencies(uai-middleware ${AI_APP_NAME}-memory-layout)
 add_dependencies(uai-drivers ${AI_APP_NAME}-memory-layout)
 add_dependencies(uai-driver-overrides ${AI_APP_NAME}-memory-layout)

@@ -33,7 +33,7 @@ struct MessageBuffer {
 std::vector<MessageBuffer> buffers;
 SZ capacity_override = 0;
 std::deque<ER> send_failures;
-std::deque<INT> receive_failures;
+std::deque<INT> receive_results;
 std::size_t send_calls = 0U;
 
 } // namespace
@@ -70,13 +70,13 @@ ER tk_snd_mbf(ID queue, const void *message, SZ size, TMO)
 
 INT tk_rcv_mbf(ID queue, void *message, TMO)
 {
-    if (!receive_failures.empty()) {
-        const INT error = receive_failures.front();
-        receive_failures.pop_front();
-        return error;
+    if (!receive_results.empty()) {
+        const INT result = receive_results.front();
+        receive_results.pop_front();
+        if (result != E_OK) return result;
     }
     auto &buffer = buffers.at(static_cast<std::size_t>(queue - 1));
-    if (buffer.messages.empty()) return -1;
+    if (buffer.messages.empty()) return E_TMOUT;
     const auto data = buffer.messages.front();
     std::memcpy(message, data.data(), data.size());
     buffer.messages.pop_front();
@@ -94,7 +94,7 @@ protected:
         buffers.clear();
         capacity_override = 0;
         send_failures.clear();
-        receive_failures.clear();
+        receive_results.clear();
         send_calls = 0U;
         ASSERT_TRUE(memory.Initialize().Ok());
     }
@@ -106,7 +106,7 @@ TEST_F(FrameChannelsTest, FullFrameQueueReleasesOldestLease)
 {
     capacity_override = 1;
     InferenceFrameChannel channel(memory);
-    ASSERT_GT(channel.Create(), 0);
+    ASSERT_TRUE(channel.Create().Ok());
 
     buffer::Buffer first_buffer{}, second_buffer{};
     ASSERT_TRUE(memory.InferenceBuffer(0U, &first_buffer).Ok());
@@ -130,11 +130,11 @@ TEST_F(FrameChannelsTest, FullFrameQueueReleasesOldestLease)
 TEST_F(FrameChannelsTest, ResultQueueKeepsNewestAndDrainIgnoresInvalidResult)
 {
     InferenceResultChannel channel;
-    ASSERT_GT(channel.Create(), 0);
+    ASSERT_TRUE(channel.Create().Ok());
     EXPECT_EQ(buffers.front().capacity, kResultQueueDepth);
     inference::BoxSet active{};
     active.model_sequence = 99U;
-    EXPECT_FALSE(channel.DrainLatest(&active));
+    EXPECT_EQ(channel.DrainLatest(&active).error.Code(), common::ErrorCode::kNoFrame);
 
     for (std::uint32_t sequence = 1U; sequence <= 5U; ++sequence) {
         inference::BoxSet boxes{};
@@ -142,9 +142,9 @@ TEST_F(FrameChannelsTest, ResultQueueKeepsNewestAndDrainIgnoresInvalidResult)
         boxes.person_valid = sequence != 5U;
         ASSERT_TRUE(channel.PublishLatest(boxes).Ok());
     }
-    ASSERT_TRUE(channel.DrainLatest(&active));
+    ASSERT_TRUE(channel.DrainLatest(&active).error.Ok());
     EXPECT_EQ(active.model_sequence, 4U);
-    EXPECT_FALSE(channel.DrainLatest(&active));
+    EXPECT_EQ(channel.DrainLatest(&active).error.Code(), common::ErrorCode::kNoFrame);
     EXPECT_EQ(active.model_sequence, 4U);
 }
 
@@ -153,10 +153,13 @@ TEST_F(FrameChannelsTest, ResultRetriesOnlyOnceOnOverflow)
     capacity_override = 1;
     InferenceResultChannel channel;
     inference::BoxSet active{};
+    const message_channel::DrainResult uninitialized = channel.DrainLatest(&active);
+    EXPECT_EQ(uninitialized.error.Code(), common::ErrorCode::kNotInitialized);
+    EXPECT_FALSE(uninitialized.updated);
     EXPECT_EQ(channel.PublishLatest(active).Code(),
               common::ErrorCode::kNotInitialized);
     EXPECT_EQ(send_calls, 0U);
-    ASSERT_GT(channel.Create(), 0);
+    ASSERT_TRUE(channel.Create().Ok());
     active.person_valid = true;
     active.model_sequence = 1U;
     ASSERT_TRUE(channel.PublishLatest(active).Ok());
@@ -168,16 +171,19 @@ TEST_F(FrameChannelsTest, ResultRetriesOnlyOnceOnOverflow)
     EXPECT_EQ(channel.PublishLatest(active).Code(),
               common::ErrorCode::kBufferOverflow);
     EXPECT_EQ(send_calls - calls_before, 2U);
-    EXPECT_FALSE(channel.DrainLatest(nullptr));
+    const message_channel::DrainResult invalid = channel.DrainLatest(nullptr);
+    EXPECT_EQ(invalid.error.Code(),
+              common::ErrorCode::kInvalidArgument);
+    EXPECT_FALSE(invalid.updated);
     inference::BoxSet received{};
-    EXPECT_FALSE(channel.DrainLatest(&received));
+    EXPECT_EQ(channel.DrainLatest(&received).error.Code(), common::ErrorCode::kNoFrame);
 
     active.model_sequence = 3U;
     ASSERT_TRUE(channel.PublishLatest(active).Ok());
     send_failures.push_back(static_cast<ER>(-42));
     EXPECT_EQ(channel.PublishLatest(active).Code(), common::ErrorCode::kHardware);
     EXPECT_EQ(buffers.front().messages.size(), 1U);
-    ASSERT_TRUE(channel.DrainLatest(&received));
+    ASSERT_TRUE(channel.DrainLatest(&received).error.Ok());
     EXPECT_EQ(received.model_sequence, 3U);
 }
 
@@ -185,7 +191,7 @@ TEST_F(FrameChannelsTest, ConsecutiveFullResultsKeepNewest)
 {
     capacity_override = 1;
     InferenceResultChannel channel;
-    ASSERT_GT(channel.Create(), 0);
+    ASSERT_TRUE(channel.Create().Ok());
     inference::BoxSet result{};
     result.person_valid = true;
     for (std::uint32_t sequence = 1U; sequence <= 3U; ++sequence) {
@@ -194,20 +200,22 @@ TEST_F(FrameChannelsTest, ConsecutiveFullResultsKeepNewest)
     }
     EXPECT_EQ(send_calls, 5U);
     inference::BoxSet active{};
-    ASSERT_TRUE(channel.DrainLatest(&active));
+    ASSERT_TRUE(channel.DrainLatest(&active).error.Ok());
     EXPECT_EQ(active.model_sequence, 3U);
 }
 
 TEST_F(FrameChannelsTest, DrainLatestKeepsLastValidResult)
 {
     InferenceResultChannel channel;
-    ASSERT_GT(channel.Create(), 0);
+    ASSERT_TRUE(channel.Create().Ok());
     inference::BoxSet active{};
     active.model_sequence = 99U;
     inference::BoxSet result{};
     result.model_sequence = 1U;
     ASSERT_TRUE(channel.PublishLatest(result).Ok());
-    EXPECT_FALSE(channel.DrainLatest(&active));
+    const message_channel::DrainResult rejected = channel.DrainLatest(&active);
+    EXPECT_EQ(rejected.error.Code(), common::ErrorCode::kNoFrame);
+    EXPECT_FALSE(rejected.updated);
     EXPECT_EQ(active.model_sequence, 99U);
 
     result.person_valid = true;
@@ -219,23 +227,60 @@ TEST_F(FrameChannelsTest, DrainLatestKeepsLastValidResult)
     result.face_valid = true;
     result.model_sequence = 4U;
     ASSERT_TRUE(channel.PublishLatest(result).Ok());
-    ASSERT_TRUE(channel.DrainLatest(&active));
+    const message_channel::DrainResult drained = channel.DrainLatest(&active);
+    ASSERT_TRUE(drained.error.Ok());
+    EXPECT_TRUE(drained.updated);
     EXPECT_EQ(active.model_sequence, 4U);
-    EXPECT_FALSE(channel.DrainLatest(&active));
+    const message_channel::DrainResult empty = channel.DrainLatest(&active);
+    EXPECT_EQ(empty.error.Code(), common::ErrorCode::kNoFrame);
+    EXPECT_FALSE(empty.updated);
     EXPECT_EQ(active.model_sequence, 4U);
+}
+
+TEST_F(FrameChannelsTest, DrainLatestReportsErrorsWithoutLosingUpdateState)
+{
+    InferenceResultChannel channel;
+    ASSERT_TRUE(channel.Create().Ok());
+    inference::BoxSet active{};
+    active.model_sequence = 99U;
+    for (std::uint32_t sequence = 1U; sequence <= 3U; ++sequence) {
+        inference::BoxSet boxes{};
+        boxes.model_sequence = sequence;
+        boxes.person_valid = sequence != 2U;
+        ASSERT_TRUE(channel.PublishLatest(boxes).Ok());
+    }
+
+    receive_results = {static_cast<INT>(-42)};
+    const message_channel::DrainResult failed = channel.DrainLatest(&active);
+    EXPECT_EQ(failed.error.Code(), common::ErrorCode::kHardware);
+    EXPECT_FALSE(failed.updated);
+    EXPECT_EQ(active.model_sequence, 99U);
+    EXPECT_EQ(buffers.front().messages.size(), 3U);
+
+    receive_results = {E_OK, E_OK, static_cast<INT>(-42)};
+    const message_channel::DrainResult partial = channel.DrainLatest(&active);
+    EXPECT_EQ(partial.error.Code(), common::ErrorCode::kHardware);
+    EXPECT_TRUE(partial.updated);
+    EXPECT_EQ(active.model_sequence, 1U);
+    EXPECT_EQ(buffers.front().messages.size(), 1U);
+
+    const message_channel::DrainResult recovered = channel.DrainLatest(&active);
+    EXPECT_TRUE(recovered.error.Ok());
+    EXPECT_TRUE(recovered.updated);
+    EXPECT_EQ(active.model_sequence, 3U);
 }
 
 TEST_F(FrameChannelsTest, FrameSendFailureReturnsTheInputLease)
 {
     InferenceFrameChannel channel(memory);
-    ASSERT_GT(channel.Create(), 0);
+    ASSERT_TRUE(channel.Create().Ok());
     buffer::Buffer buffer{};
     ASSERT_TRUE(memory.InferenceBuffer(0U, &buffer).Ok());
     ASSERT_TRUE(memory.ReserveCompletedInference(buffer.address, 1U).Ok());
     pipeline::InferenceFrame frame{};
     ASSERT_TRUE(memory.ImportCompletedInference(buffer.address, 1U, &frame).Ok());
     send_failures.push_back(static_cast<ER>(-42));
-    receive_failures.push_back(static_cast<INT>(-42));
+    receive_results.push_back(static_cast<INT>(-42));
 
     channel.Send(frame);
     EXPECT_EQ(send_calls, 1U);
@@ -247,7 +292,7 @@ TEST_F(FrameChannelsTest, FrameNonOverflowFailureReleasesOldestThenRetries)
 {
     capacity_override = 1;
     InferenceFrameChannel channel(memory);
-    ASSERT_GT(channel.Create(), 0);
+    ASSERT_TRUE(channel.Create().Ok());
     buffer::Buffer first_buffer{}, second_buffer{};
     ASSERT_TRUE(memory.InferenceBuffer(0U, &first_buffer).Ok());
     ASSERT_TRUE(memory.InferenceBuffer(1U, &second_buffer).Ok());
@@ -272,7 +317,7 @@ TEST_F(FrameChannelsTest, FrameReceiveFailureRetainsQueuedLease)
 {
     capacity_override = 1;
     InferenceFrameChannel channel(memory);
-    ASSERT_GT(channel.Create(), 0);
+    ASSERT_TRUE(channel.Create().Ok());
     buffer::Buffer first_buffer{}, second_buffer{};
     ASSERT_TRUE(memory.InferenceBuffer(0U, &first_buffer).Ok());
     ASSERT_TRUE(memory.InferenceBuffer(1U, &second_buffer).Ok());
@@ -282,7 +327,7 @@ TEST_F(FrameChannelsTest, FrameReceiveFailureRetainsQueuedLease)
     ASSERT_TRUE(memory.ImportCompletedInference(first_buffer.address, 1U, &first).Ok());
     ASSERT_TRUE(memory.ImportCompletedInference(second_buffer.address, 2U, &second).Ok());
     channel.Send(first);
-    receive_failures.push_back(static_cast<INT>(-42));
+    receive_results.push_back(static_cast<INT>(-42));
     channel.Send(second);
 
     EXPECT_EQ(send_calls, 2U);
@@ -296,7 +341,7 @@ TEST_F(FrameChannelsTest, FrameReceiveFailureRetainsQueuedLease)
 TEST_F(FrameChannelsTest, ResultOwnsMaskAfterSourceIsReused)
 {
     InferenceResultChannel channel;
-    ASSERT_GT(channel.Create(), 0);
+    ASSERT_TRUE(channel.Create().Ok());
 
     std::uint8_t source[inference::kSegmentationMaskWidth *
                         inference::kSegmentationMaskHeight]{};
@@ -311,7 +356,7 @@ TEST_F(FrameChannelsTest, ResultOwnsMaskAfterSourceIsReused)
     source[0] = 0U;
     result.segmentation.mask.bytes[0] = 0U;
     inference::BoxSet displayed{};
-    ASSERT_TRUE(channel.DrainLatest(&displayed));
+    ASSERT_TRUE(channel.DrainLatest(&displayed).error.Ok());
     EXPECT_EQ(displayed.segmentation.mask.data()[0], 1U);
     EXPECT_EQ(displayed.segmentation.mask.CopyFrom(source, sizeof(source) + 1U).Code(),
               common::ErrorCode::kBufferOverflow);

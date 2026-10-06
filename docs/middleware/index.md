@@ -26,7 +26,9 @@
 | --- | --- |
 | [foundation](../kernel/common.md) | `common::Error`、`UAI_LOG_*`、タスクの起動とループ |
 | [buffer](buffer.md) | 固定容量・固定アドレスの格納領域、バッファ記述子、貸出ポインタ |
-| [message_channel](message_channel.md) | 型付きメッセージの固定領域、μT-Kernel送受信、送信失敗時の置換方針 |
+| [message_channel](message_channel.md) | 型付きメッセージのFIFOと最新値優先の送受信。OS依存はバックエンドに閉じる |
+| [resource_ownership](resource_ownership.md) | 移動のみ可能な操作権トークンと、OSミューテックスのバックエンド |
+| [trace_format](trace_format.md) | AI/CPU監視器がPSRAMに書く記録の形式。ホストデコーダとの契約 |
 | [ai_runtime](ai_runtime.md) | 推論を前処理CPU、NPU、後処理CPUの3レーンで実行するパイプラインと、推論結果の型 |
 | [memory](memory.md) | 生成したメモリ配置へのアクセスと、割当インターフェース |
 | [memory_manager](memory_manager.md) | キャプチャ、表示、推論バッファの所有権管理と、フレームの型・画像診断（pipeline） |

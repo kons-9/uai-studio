@@ -8,7 +8,7 @@ AIパイプラインの各ステップ（前処理、NPU、後処理）の開始
 
 ## 仕組み
 
-`PipelineRuntime`が内部に持ち、`Dispatcher::RunOnce()`が`Evaluate()`を呼ぶ前後で記録します。アプリ側で計測コードを書く必要はありません。記録先は`Key::kThreadMonitor`の領域（ai-appではPSRAMの32 KiB）で、満杯になると古い記録から上書きします。
+`AiModelMonitor`はアプリが所有し、`PipelineRuntime::SetTrace()`に渡すtrace関数から`ObserveAiRuntimeStep()`を呼びます。`Dispatcher::RunOnce()`が`Evaluate()`の前後でtraceを発行するので、アプリ側で計測コードを書く必要はありません。`PipelineRuntime`自体は監視器の型を知りません。記録先は`Key::kThreadMonitor`の領域（ai-appではPSRAMの32 KiB）で、満杯になると古い記録から上書きします。
 
 CPUの時間は`Evaluate()`の開始と終了の差なので、同じレーンの他の推論を待つ時間は含みませんが、割り込みや高優先度タスクによる中断は含みます。
 
@@ -16,17 +16,25 @@ CPUの時間は`Evaluate()`の開始と終了の差なので、同じレーン�
 
 ## アプリがすること
 
-1. NPUレーンのタスクで`pipeline.RegisterModelName(id, "name")`を呼び、モデル名を登録する（最大16モデル、名前は27 byteまで）。
-2. 同じタスクで`pipeline.StartAiModelMonitor()`を呼ぶ。監視用のタスクが作られ、呼んだタスクの状態を定期的に記録します。
+1. `AiModelMonitor`を`PipelineRuntime`と同じ寿命の場所に置き、`SetTrace()`にtrace関数を登録する。trace関数の先頭で`ObserveAiRuntimeStep(trace)`を呼び、その後にログなど他の処理を行う。
+2. NPUレーンのタスクで`monitor.RegisterModelName(id, "name")`を呼び、モデル名を登録する（最大16モデル、名前は27 byteまで）。
+3. 同じタスクで`monitor.Start()`を呼ぶ。監視用のタスクが作られ、呼んだタスクの状態を定期的に記録します。
 
 ```cpp
+static void OnTrace(void *context, const ai_runtime::StepTrace &trace)
+{
+    monitor.ObserveAiRuntimeStep(trace);
+    // 必要ならUARTログなど
+}
+pipeline.SetTrace(&OnTrace, &context, &Now, &context);
+
 // NPUレーンのタスク
-pipeline.RegisterModelName(kPersonModelId, "person");
-pipeline.RegisterModelName(kFaceModelId, "face");
-pipeline.StartAiModelMonitor();
+monitor.RegisterModelName(kPersonModelId, "person");
+monitor.RegisterModelName(kFaceModelId, "face");
+monitor.Start();
 ```
 
-モデル名を登録しておくと、ホスト側のツールを変更せずに新しいモデルを表示できます。ホストビルド（テスト）では何もしない実装になります。
+モデル名を登録しておくと、ホスト側のツールを変更せずに新しいモデルを表示できます。ホストテストはμT-KernelのLinuxスタブと同じ実装をビルドします。
 
 ## 取得と可視化
 

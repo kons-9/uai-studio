@@ -32,6 +32,17 @@ ID tk_cre_mbf(const T_CMBF *config);
 ER tk_snd_mbf(ID queue, const void *message, SZ size, TMO timeout);
 INT tk_rcv_mbf(ID queue, void *message, TMO timeout);
 
+inline constexpr int TA_INHERIT = 0x02;
+struct T_CMTX {
+    void *exinf = nullptr;
+    int mtxatr = 0;
+    PRI ceilpri = 0;
+};
+/* Defined by the test that needs mutex behaviour. */
+ID tk_cre_mtx(const T_CMTX *config);
+ER tk_loc_mtx(ID mutex, TMO timeout);
+ER tk_unl_mtx(ID mutex);
+
 struct T_CTSK {
     void *exinf = nullptr;
     int tskatr = 0;

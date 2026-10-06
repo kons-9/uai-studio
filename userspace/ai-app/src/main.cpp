@@ -103,10 +103,10 @@ extern "C" INT usermain(void)
         uai::ai::common::Task::Halt("ai: pipeline event flag create failed\n");
     }
 
-    if (context.pipeline_task.InferenceFrames().Create() < E_OK) {
+    if (!context.pipeline_task.InferenceFrames().Create().Ok()) {
         uai::ai::common::Task::Halt("ai: frame queue create failed\n");
     }
-    if (context.pipeline_task.CreateResultQueue() < E_OK) {
+    if (!context.pipeline_task.CreateResultQueue().Ok()) {
         uai::ai::common::Task::Halt("ai: box queue create failed\n");
     }
     context.application_task.Start(context.cpu_task_monitor);

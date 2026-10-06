@@ -1,42 +1,56 @@
 #pragma once
 
 #include <cstddef>
+#include <type_traits>
 
-#include <tk/tkernel.h>
-
-#include "middleware/message_channel/fixed_message_slots.hpp"
+#include "middleware/foundation/error.hpp"
 
 namespace uai::ai::message_channel {
 
-template <typename Message, std::size_t Depth>
+/*
+ * Typed FIFO of Depth trivially-copyable messages. The Backend owns the
+ * storage and talks to the OS; this header never includes OS types.
+ *
+ * Errors: kNotInitialized before Create(), kBufferOverflow when a non-waiting
+ * send finds the queue full, kNoFrame when a non-waiting receive finds it
+ * empty, kHardware for anything else the backend reports.
+ */
+template <typename Message, std::size_t Depth, typename Backend>
 class MessageChannel final {
+    static_assert(std::is_trivially_copyable_v<Message>);
+    static_assert(Depth > 0U);
+
 public:
-    ID Create()
+    static constexpr std::size_t kDepth = Depth;
+
+    MessageChannel() = default;
+    MessageChannel(const MessageChannel &) = delete;
+    MessageChannel &operator=(const MessageChannel &) = delete;
+
+    common::Error Create() { return backend_.Create(); }
+    bool created() const { return backend_.created(); }
+
+    common::Error TrySend(const Message &message)
     {
-        T_CMBF config{};
-        config.mbfatr = TA_TFIFO | TA_USERBUF;
-        config.bufsz = static_cast<SZ>(slots_.size_bytes());
-        config.maxmsz = static_cast<INT>(slots_.message_bytes());
-        config.bufptr = slots_.data();
-        id_ = tk_cre_mbf(&config);
-        return id_;
+        return backend_.Send(message, false);
     }
-
-    ID id() const { return id_; }
-
-    ER Send(const Message &message, TMO timeout)
+    common::Error Send(const Message &message)
     {
-        return tk_snd_mbf(id_, &message, sizeof(message), timeout);
+        return backend_.Send(message, true);
     }
-
-    INT Receive(Message *message, TMO timeout)
+    common::Error TryReceive(Message *message)
     {
-        return tk_rcv_mbf(id_, message, timeout);
+        if (message == nullptr) return {common::ErrorCode::kInvalidArgument};
+        return backend_.Receive(message, false);
+    }
+    common::Error Receive(Message *message)
+    {
+        if (message == nullptr) return {common::ErrorCode::kInvalidArgument};
+        return backend_.Receive(message, true);
     }
 
 private:
-    ID id_ = -1;
-    FixedMessageSlots<Message, Depth> slots_;
+    Backend backend_;
 };
 
 } // namespace uai::ai::message_channel

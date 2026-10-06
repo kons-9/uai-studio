@@ -26,6 +26,8 @@ nav:
       - 概要: middleware/index.md
       - buffer: middleware/buffer.md
       - message_channel: middleware/message_channel.md
+      - resource_ownership: middleware/resource_ownership.md
+      - trace_format: middleware/trace_format.md
       - ai_runtime: middleware/ai_runtime.md
       - memory: middleware/memory.md
       - memory_manager: middleware/memory_manager.md

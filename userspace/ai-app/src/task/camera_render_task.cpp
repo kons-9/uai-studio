@@ -509,7 +509,13 @@ void CameraRenderTask::Run(CameraRenderContext context)
                    pipe2_status.Code() != common::ErrorCode::kNoBuffer) {
             pipe2_status.LogStatus("camera");
         }
-        if (context.pipeline_task.TryGetLatestResult(&active_boxes)) {
+        const message_channel::DrainResult drain_result =
+            context.pipeline_task.TryGetLatestResult(&active_boxes);
+        if (!drain_result.error.Ok() &&
+            drain_result.error.Code() != common::ErrorCode::kNoFrame) {
+            drain_result.error.LogStatus("results");
+        }
+        if (drain_result.updated) {
             if (context.diagnostics.display_trace) {
                 UAI_LOG_DEBUG("lcd: box source=ai sequence=%u capture=%u count=%u\n",
                               static_cast<unsigned int>(active_boxes.model_sequence),

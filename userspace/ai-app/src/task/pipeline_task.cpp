@@ -6,6 +6,7 @@
 #include "middleware/foundation/log.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
+#include "middleware/ai_model_monitor/ai_model_monitor.hpp"
 #include "middleware/ai_runtime/pipeline_dispatcher.hpp"
 #include "models/face/future.hpp"
 #include "models/face/npu_model.hpp"
@@ -144,6 +145,7 @@ struct PipelineApplication {
     npu::NpuManagement::Accessor npu_accessor{};
     ai_runtime::PipelineRuntime pipeline{};
     ai_runtime::Scheduler scheduler{pipeline};
+    middleware::ai_model_monitor::AiModelMonitor ai_model_monitor{};
     models::person::Future person_futures[memory_manager::kInferenceBufferCount]{};
     models::face::Future face_futures[memory_manager::kInferenceBufferCount]{};
     models::segmentation::Future
@@ -281,8 +283,11 @@ struct PipelineApplication {
     static void LeaveCritical(void *) { __set_PRIMASK(interrupt_state_); }
     static std::uint32_t interrupt_state_;
 
+    /* The monitor sees every step first so the trace ring stays complete
+     * even when UART tracing is disabled. */
     static void OnTrace(void *context, const ai_runtime::StepTrace &trace)
     {
+        App().ai_model_monitor.ObserveAiRuntimeStep(trace);
         auto &task = *static_cast<PipelineFrameContext *>(context);
         if (task.diagnostics.inference_trace) {
             const char *name =
@@ -383,7 +388,7 @@ void RunWorker(ai_runtime::ExecutionContext lane)
     if (lane == ai_runtime::ExecutionContext::kNpu) {
         for (const RegisteredModel &model : g_app.registered_models) {
             const common::Error name_status =
-                g_app.pipeline.RegisterModelName(
+                g_app.ai_model_monitor.RegisterModelName(
                     static_cast<ai_runtime::AiModelId>(model.kind_id),
                     model.name);
             if (!name_status.Ok()) {
@@ -391,7 +396,7 @@ void RunWorker(ai_runtime::ExecutionContext lane)
             }
         }
         const common::Error monitor_status =
-            g_app.pipeline.StartAiModelMonitor();
+            g_app.ai_model_monitor.Start();
         if (!monitor_status.Ok()) {
             monitor_status.LogStatus("ai_model_monitor.start");
         } else {

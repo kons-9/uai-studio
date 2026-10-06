@@ -9,7 +9,6 @@ set(UAI_DRIVER_SOURCES
     c_bsp/stm32n6570_discovery_xspi.c
     board/register_diagnostics.cpp
     board/interrupt_priority.cpp
-    driver_ownership.cpp
     cache_driver/cache_driver.cpp
     camera_driver/board_driver/stm32n6570_discovery_camera.c
     camera_driver/camera_diagnostics.cpp
