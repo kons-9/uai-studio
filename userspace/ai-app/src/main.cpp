@@ -12,7 +12,7 @@ void IAC_IRQHandler(void);
 #include "task/application_initialize_task.hpp"
 #include "driver/board/register_diagnostics.hpp"
 #include "task/task_context.hpp"
-#include "middleware/foundation/task.hpp"
+#include "middleware/task/task.hpp"
 #include "middleware/foundation/log.hpp"
 
 /* HAL time-bridge state is a C ABI surface used by the board support code. */

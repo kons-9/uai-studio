@@ -13,7 +13,7 @@
 #include "middleware/pipeline/image_diagnostics.hpp"
 #include "middleware/pipeline/image_format.hpp"
 #include "task/camera_render_task.hpp"
-#include "middleware/foundation/task.hpp"
+#include "middleware/task/task.hpp"
 #include "task/task_context.hpp"
 
 extern "C" {

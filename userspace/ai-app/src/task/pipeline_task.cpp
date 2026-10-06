@@ -17,7 +17,7 @@
 #include "middleware/ai_runtime/inference_result_types.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
 #include "task/task_context.hpp"
-#include "middleware/foundation/task.hpp"
+#include "middleware/task/task.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
@@ -463,7 +463,13 @@ void PipelineTask::FrameEntry()
     }
     for (;;) {
         pipeline::InferenceFrame frame{};
-        if (!task.pipeline_task.InferenceFrames().Receive(&frame)) continue;
+        const common::Error receive_status =
+            task.pipeline_task.InferenceFrames().Receive(&frame);
+        if (receive_status.Code() == common::ErrorCode::kNoFrame) continue;
+        if (!receive_status.Ok()) {
+            receive_status.LogStatus("pipeline.frame.receive");
+            common::Task::Halt("ai: pipeline frame receive failed\n");
+        }
         common::Error status = task.memory.ClaimInferenceBuffer(frame);
         if (!status.Ok()) {
                 status.LogStatus("memory");

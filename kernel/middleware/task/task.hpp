@@ -1,4 +1,5 @@
-#pragma once
+#ifndef UAI_AI_MIDDLEWARE_TASK_TASK_HPP
+#define UAI_AI_MIDDLEWARE_TASK_TASK_HPP
 
 #include <cstdint>
 #include <limits>
@@ -15,7 +16,7 @@ class Task final {
 public:
     [[noreturn]] static void Halt(const char *message)
     {
-        UAI_LOG_TEXT(LogLevel::kError, message);
+        UAI_LOG_TEXT(common::LogLevel::kError, message);
         for (;;) tk_dly_tsk(1000);
     }
 
@@ -26,9 +27,9 @@ public:
     }
 
     template <typename Monitor, std::size_t StackBytes>
-    static void Start(Monitor &monitor,
-                      FP entry, StableAlignedBytes<StackBytes> &stack, PRI priority,
-                      const char *name)
+    static void Start(Monitor &monitor, FP entry,
+                      common::StableAlignedBytes<StackBytes> &stack,
+                      PRI priority, const char *name)
     {
         static_assert(StackBytes >= 128U);
         static_assert(StackBytes <= std::numeric_limits<SZ>::max());
@@ -44,10 +45,8 @@ public:
                           name, static_cast<unsigned int>(task_id));
             Halt("ai: task create failed\n");
         }
-        const Error status = monitor.RegisterTask(task_id, name);
-        if (!status.Ok()) {
-            status.LogStatus(name, LogLevel::kWarn);
-        }
+        const common::Error status = monitor.RegisterTask(task_id, name);
+        if (!status.Ok()) status.LogStatus(name, common::LogLevel::kWarn);
         const ER error = tk_sta_tsk(task_id, 0);
         if (error != E_OK) {
             UAI_LOG_ERROR("error: component=task_context operation=start_%s code=%x detail=0\n",
@@ -58,11 +57,12 @@ public:
 
     template <typename Monitor, typename WaitForEvent, typename ProcessOne>
     [[noreturn]] static void RunForever(
-        Monitor &monitor,
-        const char *name, WaitForEvent wait_for_event, ProcessOne process_one)
+        Monitor &monitor, const char *name, WaitForEvent wait_for_event,
+        ProcessOne process_one)
     {
         const ID task_id = tk_get_tid();
-        (void)monitor.RegisterTask(task_id, name);
+        const common::Error status = monitor.RegisterTask(task_id, name);
+        if (!status.Ok()) status.LogStatus(name, common::LogLevel::kWarn);
         for (;;) {
             wait_for_event();
             const std::uint32_t loop_start = monitor.BeginTaskLoop();
@@ -73,3 +73,5 @@ public:
 };
 
 } // namespace uai::ai::common
+
+#endif

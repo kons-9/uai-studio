@@ -1,4 +1,5 @@
 #include "middleware/message_channel/message_channel.hpp"
+#include "middleware/message_channel/latest_value_channel.hpp"
 #include "middleware/message_channel/utkernel_backend.hpp"
 
 #include <cstdint>
@@ -11,6 +12,38 @@ namespace {
 
 struct Payload {
     std::uint8_t bytes[5];
+};
+
+/* Script for ScriptedBackend: Send fails with kBufferOverflow while
+ * send_failures > 0, Receive always returns receive_status. */
+struct Script {
+    unsigned int send_failures = 0U;
+    uai::ai::common::Error receive_status{};
+    unsigned int send_calls = 0U;
+};
+Script script;
+
+struct ScriptedBackend {
+    bool is_created = false;
+
+    uai::ai::common::Error Create()
+    {
+        is_created = true;
+        return {};
+    }
+    bool created() const { return is_created; }
+    uai::ai::common::Error Send(const Payload &, bool)
+    {
+        ++script.send_calls;
+        if (script.send_failures == 0U) return {};
+        --script.send_failures;
+        return {uai::ai::common::ErrorCode::kBufferOverflow};
+    }
+    uai::ai::common::Error Receive(Payload *payload, bool)
+    {
+        *payload = {};
+        return script.receive_status;
+    }
 };
 
 constexpr ER kOtherError = -17;  // any non-E_OK, non-E_TMOUT code
@@ -121,6 +154,53 @@ TEST_F(MessageChannelTest, MapsOsResultsToErrorCodes)
     EXPECT_EQ(channel.TryReceive(&payload).Code(), common::ErrorCode::kHardware);
     ::receive_result = static_cast<INT>(sizeof(Payload) - 1U);
     EXPECT_EQ(channel.TryReceive(&payload).Code(), common::ErrorCode::kHardware);
+}
+
+using ScriptedLatestChannel = LatestValueChannel<Payload, 3U, ScriptedBackend>;
+
+class LatestValueChannelTest : public ::testing::Test {
+protected:
+    void SetUp() override
+    {
+        script = {};
+        ASSERT_TRUE(channel.Create().Ok());
+    }
+    ScriptedLatestChannel channel;
+};
+
+TEST_F(LatestValueChannelTest, GivesUpAgainstEndlesslyRefillingProducer)
+{
+    script.send_failures = 100U;
+    Payload latest{};
+    const DrainResult drain = channel.DrainLatest(
+        &latest, [](const Payload &) { return true; });
+    EXPECT_EQ(drain.error.Code(), common::ErrorCode::kTimeout);
+    EXPECT_TRUE(drain.updated);
+
+    unsigned int discarded = 0U;
+    const common::Error send = channel.SendReplacingOldest(
+        Payload{}, [&discarded](const Payload &) { ++discarded; });
+    EXPECT_EQ(send.Code(), common::ErrorCode::kBufferOverflow);
+    EXPECT_EQ(discarded, 4U);
+}
+
+TEST_F(LatestValueChannelTest, RetriesSendAfterConsumerDrainedTheQueue)
+{
+    script.send_failures = 1U;
+    script.receive_status = {common::ErrorCode::kNoFrame};
+    unsigned int discarded = 0U;
+    EXPECT_TRUE(channel.SendReplacingOldest(
+        Payload{}, [&discarded](const Payload &) { ++discarded; }).Ok());
+    EXPECT_EQ(discarded, 0U);
+    EXPECT_EQ(script.send_calls, 2U);
+
+    script.send_failures = 1U;
+    EXPECT_TRUE(channel.SendReplacingOldestOnce(Payload{}).Ok());
+
+    script.send_failures = 1U;
+    script.receive_status = {common::ErrorCode::kHardware};
+    EXPECT_EQ(channel.SendReplacingOldestOnce(Payload{}).Code(),
+              common::ErrorCode::kHardware);
 }
 
 } // namespace

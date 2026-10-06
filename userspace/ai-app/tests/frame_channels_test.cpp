@@ -121,9 +121,9 @@ TEST_F(FrameChannelsTest, FullFrameQueueReleasesOldestLease)
     channel.Send(second);
     EXPECT_TRUE(memory.IsInferenceBufferFree(first_buffer.address));
     EXPECT_FALSE(memory.IsInferenceBufferFree(second_buffer.address));
-    ASSERT_TRUE(channel.Receive(&received));
+    ASSERT_TRUE(channel.Receive(&received).Ok());
     EXPECT_EQ(received.lease_token, second.lease_token);
-    EXPECT_FALSE(channel.Receive(&received));
+    EXPECT_EQ(channel.Receive(&received).Code(), common::ErrorCode::kNoFrame);
     EXPECT_TRUE(memory.ReleaseInferenceBuffer(received).Ok());
 }
 
@@ -308,7 +308,7 @@ TEST_F(FrameChannelsTest, FrameNonOverflowFailureReleasesOldestThenRetries)
     EXPECT_EQ(send_calls, 3U);
     EXPECT_TRUE(memory.IsInferenceBufferFree(first_buffer.address));
     EXPECT_FALSE(memory.IsInferenceBufferFree(second_buffer.address));
-    ASSERT_TRUE(channel.Receive(&received));
+    ASSERT_TRUE(channel.Receive(&received).Ok());
     EXPECT_EQ(received.lease_token, second.lease_token);
     EXPECT_TRUE(memory.ReleaseInferenceBuffer(received).Ok());
 }
@@ -333,7 +333,7 @@ TEST_F(FrameChannelsTest, FrameReceiveFailureRetainsQueuedLease)
     EXPECT_EQ(send_calls, 2U);
     EXPECT_FALSE(memory.IsInferenceBufferFree(first_buffer.address));
     EXPECT_TRUE(memory.IsInferenceBufferFree(second_buffer.address));
-    ASSERT_TRUE(channel.Receive(&received));
+    ASSERT_TRUE(channel.Receive(&received).Ok());
     EXPECT_EQ(received.lease_token, first.lease_token);
     EXPECT_TRUE(memory.ReleaseInferenceBuffer(received).Ok());
 }

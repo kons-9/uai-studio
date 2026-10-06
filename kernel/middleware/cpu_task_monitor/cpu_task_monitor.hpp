@@ -67,7 +67,7 @@ private:
     void UpdateTraceTaskName(ID task_id);
     void ResetCounters();
     bool TraceHeaderValid() const;
-    void AppendTraceRecord(CpuTaskMonitorTraceRecord record);
+    void AppendTraceRecord(const CpuTaskMonitorTraceRecord &record);
     void FlushTrace(const void *address, std::size_t size) const;
 
     static CpuTaskMonitor *volatile active_instance_;

@@ -302,8 +302,8 @@ common::Error MemoryManager::AcquireDisplayBuffer(DisplayBuffer *buffer)
 common::Error MemoryManager::CommitDisplayBuffer(const DisplayBuffer &buffer)
 {
     DisplayPool::Slot *slot = nullptr;
-    const common::Error status = LookupDisplay(buffer.buffer, &slot);
-    if (!status.Ok()) return status;
+    if (const common::Error status = LookupDisplay(buffer.buffer, &slot);
+        !status.Ok()) return status;
     if (slot->state != BufferState::kFilling) {
         return {common::ErrorCode::kInvalidState};
     }
@@ -341,8 +341,8 @@ common::Error MemoryManager::CompleteDisplayHandoff()
 common::Error MemoryManager::ReleaseDisplayBuffer(const DisplayBuffer &buffer)
 {
     DisplayPool::Slot *slot = nullptr;
-    const common::Error status = LookupDisplay(buffer.buffer, &slot);
-    if (!status.Ok()) return status;
+    if (const common::Error status = LookupDisplay(buffer.buffer, &slot);
+        !status.Ok()) return status;
     if (slot->state != BufferState::kFilling) {
         return {common::ErrorCode::kInvalidState};
     }
@@ -428,8 +428,8 @@ bool MemoryManager::IsInferenceBufferFree(std::uintptr_t address) const
 common::Error MemoryManager::ClaimInferenceBuffer(const InferenceFrame &frame)
 {
     InferencePool::Slot *slot = nullptr;
-    const common::Error status = LookupInference(frame, &slot);
-    if (!status.Ok()) return status;
+    if (const common::Error status = LookupInference(frame, &slot);
+        !status.Ok()) return status;
     if (slot->state != BufferState::kReadyForAi) {
         return {common::ErrorCode::kInvalidState};
     }
@@ -441,8 +441,8 @@ common::Error MemoryManager::ClaimInferenceBuffer(const InferenceFrame &frame)
 common::Error MemoryManager::ReleaseInferenceBuffer(const InferenceFrame &frame)
 {
     InferencePool::Slot *slot = nullptr;
-    const common::Error status = LookupInference(frame, &slot);
-    if (!status.Ok()) return status;
+    if (const common::Error status = LookupInference(frame, &slot);
+        !status.Ok()) return status;
     if (!InferenceLeased(slot->state)) {
         return {common::ErrorCode::kInvalidState};
     }

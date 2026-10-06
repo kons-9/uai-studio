@@ -62,8 +62,3 @@ foreach(level IN ITEMS Error Debug)
         UAI_EXPECT_ROUTINE_LOG=$<STREQUAL:${level},Debug>
     )
 endforeach()
-
-uai_add_host_test(task_test task_test.cpp ../error.cpp)
-target_include_directories(task_test BEFORE PRIVATE
-    "${UAI_ROOT}/kernel/utkernel/linux/include"
-)

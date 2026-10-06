@@ -1,12 +1,13 @@
 #ifndef UAI_AI2_MIDDLEWARE_AI_MODEL_MONITOR_HPP
 #define UAI_AI2_MIDDLEWARE_AI_MODEL_MONITOR_HPP
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 
-#include "middleware/foundation/error.hpp"
+#include "middleware/ai_model_monitor/trace_step_correlator.hpp"
 #include "middleware/ai_runtime/pipeline_types.hpp"
+#include "middleware/foundation/error.hpp"
+#include "middleware/message_channel/fixed_event_queue.hpp"
 #include "middleware/trace_format/ai_model_trace.hpp"
 
 #include <tk/tkernel.h>
@@ -31,6 +32,8 @@ public:
     bool Active() const { return monitor_task_id_ != 0; }
 
 private:
+    static constexpr std::size_t kPendingTraceEventCapacity = 128U;
+
     struct PendingTraceEvent {
         std::uint32_t timestamp_ms = 0U;
         std::uint32_t elapsed_ms = 0U;
@@ -42,12 +45,9 @@ private:
         bool timing_valid = false;
     };
 
-    struct ActiveStep {
-        std::uint32_t inference_id = 0U;
-        std::uint32_t step_id = 0U;
-        std::uint32_t begin_ms = 0U;
-        bool valid = false;
-    };
+    using PendingTraceQueue =
+        message_channel::FixedEventQueue<PendingTraceEvent,
+                                         kPendingTraceEventCapacity>;
 
     static void Entry(INT stacd, void *exinf);
     void Run();
@@ -57,7 +57,7 @@ private:
     bool TraceHeaderValid() const;
     bool TraceModelNamesMatch() const;
     void UpdateTraceModelNames();
-    bool QueueTraceEvent(const PendingTraceEvent &event);
+    void QueueTraceEvent(const PendingTraceEvent &event);
     void FlushPendingTraceEvents();
     void RecordSample(std::uint32_t now, const T_RTSK &task_status);
     void WriteRecord(std::uint32_t now, TraceRecordType type,
@@ -74,13 +74,8 @@ private:
     volatile bool faulted_ = false;
     volatile std::uint32_t last_progress_tick_ = 0U;
 
-    static constexpr std::uint32_t kPendingTraceEventCapacity = 128U;
-    static constexpr std::size_t kActiveStepCapacity = 16U;
-    std::array<ActiveStep, kActiveStepCapacity> active_steps_{};
-    static PendingTraceEvent pending_trace_events_[kPendingTraceEventCapacity];
-    std::uint32_t pending_write_index_ = 0U;
-    std::uint32_t pending_read_index_ = 0U;
-    std::uint32_t pending_dropped_count_ = 0U;
+    TraceStepCorrelator step_correlator_{};
+    static PendingTraceQueue pending_queue_;
     ThreadMonitorTraceModelName
         registered_model_names_[kThreadMonitorModelNameCapacity]{};
     ThreadMonitorTraceHeader *trace_header_ = nullptr;

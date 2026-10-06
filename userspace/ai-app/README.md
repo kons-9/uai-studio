@@ -43,7 +43,7 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | `src/task/task_config.hpp` | 動作モード、診断設定、キュー・スタックのサイズ |
 | `kernel/middleware/foundation/error_code.hpp` | ログ・OS非依存のエラーコードとコード名 |
 | `kernel/middleware/foundation/error.hpp` | ログ・OS非依存のエラー構造体と判定。`LogStatus()`の実装は`error.cpp`に配置 |
-| `kernel/middleware/foundation/task.hpp` | タスクの起動、停止、ループの共通処理 |
+| `kernel/middleware/task/task.hpp` | μT-Kernelタスクの起動、ループ、停止の共通処理 |
 | `kernel/middleware/buffer/stable_aligned_bytes.hpp` | サイズと8バイト整列を保証し、コピー・移動を禁止する固定アドレスのバイト領域 |
 | `kernel/middleware/message_channel/message_channel.hpp` | メッセージバッファの領域所有、生成と型付き送受信 |
 | `src/models/<model>/` | 生成コードのラッパー（`*_model_runtime.c`、`c_wrapper.h`）、`NpuNetwork`実装（`npu_model.*`）、`AiFuture`実装（`future.*`） |

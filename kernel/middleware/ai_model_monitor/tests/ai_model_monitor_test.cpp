@@ -3,8 +3,11 @@
 #include <gtest/gtest.h>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -20,6 +23,28 @@ alignas(32) std::uint8_t trace_memory[65536]{};
 std::mutex interrupt_mutex;
 thread_local std::uint32_t interrupt_mask = 0U;
 unsigned int monitor_delays = 0U;
+
+template <typename Predicate>
+bool WaitUntil(Predicate predicate)
+{
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(3);
+    while (!predicate()) {
+        if (std::chrono::steady_clock::now() >= deadline) return false;
+        std::this_thread::yield();
+    }
+    return true;
+}
+
+bool WriteDumpIfRequested()
+{
+    const char *path = std::getenv("UAI_AI_TRACE_TEST_DUMP");
+    if (path == nullptr) return true;
+    std::ofstream output(path, std::ios::binary);
+    output.write(reinterpret_cast<const char *>(trace_memory),
+                 sizeof(trace_memory));
+    return output.good();
+}
 
 void RunMonitorCycle()
 {
@@ -132,20 +157,26 @@ TEST(AiModelMonitor, ConcurrentProducers)
     ASSERT_TRUE(monitor.Start().Ok());
     std::atomic<int> ready{0};
     std::atomic<bool> go{false};
+    std::atomic<bool> synchronization_failed{false};
     const auto produce = [&](std::uint32_t first_id) {
         ++ready;
-        while (!go.load()) std::this_thread::yield();
+        if (!WaitUntil([&] { return go.load(); })) {
+            synchronization_failed = true;
+            return;
+        }
         for (std::uint32_t index = 0U; index < 40U; ++index) {
             monitor.ObserveAiRuntimeStep(Step(first_id + index, index, true));
         }
     };
     std::thread first(produce, 1U);
     std::thread second(produce, 41U);
-    while (ready.load() != 2) std::this_thread::yield();
+    const bool producers_ready = WaitUntil([&] { return ready.load() == 2; });
     go = true;
     first.join();
     second.join();
     ASSERT_TRUE(monitor.Stop().Ok());
+    EXPECT_TRUE(producers_ready);
+    EXPECT_FALSE(synchronization_failed.load());
     const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(
         trace_memory);
     EXPECT_EQ(header->record_count, 80U);
@@ -203,6 +234,7 @@ TEST(AiModelMonitor, ConcurrentProducersAndConsumerAcrossWraps)
     ASSERT_TRUE(monitor.Start().Ok());
     std::atomic<unsigned int> completed_batches{0U};
     std::atomic<unsigned int> released_batches{0U};
+    std::atomic<bool> synchronization_failed{false};
     const auto produce = [&](std::uint32_t first_id) {
         for (std::uint32_t batch = 0U; batch < 16U; ++batch) {
             for (std::uint32_t offset = 0U; offset < 16U; ++offset) {
@@ -210,8 +242,9 @@ TEST(AiModelMonitor, ConcurrentProducersAndConsumerAcrossWraps)
                 monitor.ObserveAiRuntimeStep(Step(inference_id, inference_id, true));
             }
             ++completed_batches;
-            while (released_batches.load() <= batch) {
-                std::this_thread::yield();
+            if (!WaitUntil([&] { return released_batches.load() > batch; })) {
+                synchronization_failed = true;
+                return;
             }
         }
     };
@@ -219,15 +252,20 @@ TEST(AiModelMonitor, ConcurrentProducersAndConsumerAcrossWraps)
     std::thread second(produce, 257U);
     for (unsigned int batch = 0U; batch < 16U; ++batch) {
         RunMonitorCycle();
-        while (completed_batches.load() < 2U * (batch + 1U)) {
-            std::this_thread::yield();
+        if (!WaitUntil([&] {
+                return completed_batches.load() >= 2U * (batch + 1U);
+            })) {
+            synchronization_failed = true;
+            break;
         }
         RunMonitorCycle();
         ++released_batches;
     }
+    released_batches = 16U;
     first.join();
     second.join();
     ASSERT_TRUE(monitor.Stop().Ok());
+    EXPECT_FALSE(synchronization_failed.load());
 
     const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(
         trace_memory);
@@ -267,4 +305,5 @@ TEST(AiModelMonitor, FullQueueRejectsMessagesAcrossWraps)
     for (std::size_t index = 0U; index < records.size(); ++index) {
         EXPECT_EQ(records[index].task_state, index + 1U);
     }
+    EXPECT_TRUE(WriteDumpIfRequested());
 }

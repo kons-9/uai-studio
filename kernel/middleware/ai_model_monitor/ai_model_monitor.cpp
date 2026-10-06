@@ -6,6 +6,7 @@
 #include "middleware/cpu_task_monitor/cpu_task_monitor.hpp"
 #include "middleware/memory/static_memory_layout.hpp"
 #include "middleware/memory/generated/static_memory_layout/key.hpp"
+#include "middleware/trace_format/trace_ring.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
@@ -34,8 +35,7 @@ alignas(8) INT g_monitor_stack[kMonitorStackSize / sizeof(INT)];
 
 } // namespace
 
-AiModelMonitor::PendingTraceEvent
-    AiModelMonitor::pending_trace_events_[AiModelMonitor::kPendingTraceEventCapacity];
+AiModelMonitor::PendingTraceQueue AiModelMonitor::pending_queue_;
 
 bool AiModelMonitor::InitializeTraceBuffer()
 {
@@ -203,10 +203,8 @@ common::Error AiModelMonitor::Start()
     operation_active_ = false;
     faulted_ = false;
     last_progress_tick_ = Now();
-    active_steps_.fill({});
-    __atomic_store_n(&pending_write_index_, 0U, __ATOMIC_RELEASE);
-    __atomic_store_n(&pending_read_index_, 0U, __ATOMIC_RELEASE);
-    __atomic_store_n(&pending_dropped_count_, 0U, __ATOMIC_RELEASE);
+    step_correlator_.Reset();
+    pending_queue_.Reset();
     if (!InitializeTraceBuffer()) {
         monitored_task_id_ = 0;
         return {common::ErrorCode::kInvalidState};
@@ -290,33 +288,21 @@ void AiModelMonitor::ObserveAiRuntimeStep(const ai_runtime::StepTrace &trace)
     }
 
     if (operation_active_ && !faulted_) last_progress_tick_ = trace.timestamp;
-    (void)QueueTraceEvent({trace.timestamp,
-                           0U,
-                           trace.inference_id,
-                           static_cast<std::uint32_t>(trace.model_id),
-                           trace.step_id,
-                           static_cast<std::uint32_t>(trace.context),
-                           trace.begin});
+    QueueTraceEvent({trace.timestamp,
+                     0U,
+                     trace.inference_id,
+                     static_cast<std::uint32_t>(trace.model_id),
+                     trace.step_id,
+                     static_cast<std::uint32_t>(trace.context),
+                     trace.begin});
 
     if (!trace.begin && trace.step_id == 2U) operation_active_ = false;
 }
 
-bool AiModelMonitor::QueueTraceEvent(const PendingTraceEvent &event)
+void AiModelMonitor::QueueTraceEvent(const PendingTraceEvent &event)
 {
     ProducerGuard guard;
-    const std::uint32_t write =
-        __atomic_load_n(&pending_write_index_, __ATOMIC_RELAXED);
-    const std::uint32_t read =
-        __atomic_load_n(&pending_read_index_, __ATOMIC_ACQUIRE);
-    const std::uint32_t next =
-        (write + 1U) % kPendingTraceEventCapacity;
-    if (next == read) {
-        __atomic_fetch_add(&pending_dropped_count_, 1U, __ATOMIC_RELAXED);
-        return false;
-    }
-    pending_trace_events_[write] = event;
-    __atomic_store_n(&pending_write_index_, next, __ATOMIC_RELEASE);
-    return true;
+    (void)pending_queue_.Push(event);
 }
 
 void AiModelMonitor::RecordSample(std::uint32_t now,
@@ -337,9 +323,7 @@ void AiModelMonitor::WriteRecord(std::uint32_t now, TraceRecordType type,
         return;
     }
 
-    const std::uint32_t sequence = trace_header_->next_sequence;
     ThreadMonitorTraceRecord record{};
-    record.sequence = sequence;
     record.timestamp_ms = now;
     record.monitored_task_id = static_cast<std::uint32_t>(monitored_task_id_);
     record.monitor_task_id = static_cast<std::uint32_t>(monitor_task_id_);
@@ -373,76 +357,37 @@ void AiModelMonitor::WriteRecord(std::uint32_t now, TraceRecordType type,
             record.flags |= kTraceFlagTimingValid;
         }
     }
-    record.commit_marker = kThreadMonitorTraceCommitMagic ^ sequence;
-
-    ThreadMonitorTraceRecord &slot = trace_records_[trace_header_->write_index];
-    slot = record;
-    FlushTrace(&slot, sizeof(slot));
-    if (trace_header_->record_count < trace_capacity_) {
-        ++trace_header_->record_count;
-    } else {
-        ++trace_header_->dropped_count;
-    }
-    trace_header_->write_index =
-        (trace_header_->write_index + 1U) % trace_capacity_;
-    trace_header_->next_sequence = sequence + 1U;
-    if (type == TraceRecordType::kFault) {
-        ++trace_header_->fault_count;
-        trace_header_->last_fault_code =
-            static_cast<std::uint32_t>(fault_code);
-    }
-    FlushTrace(trace_header_, sizeof(*trace_header_));
+    trace_format::AppendTraceRecord(
+        trace_header_, trace_records_, trace_capacity_, record,
+        kThreadMonitorTraceCommitMagic,
+        [this](const void *address, std::size_t size) {
+            FlushTrace(address, size);
+        },
+        [type, fault_code](ThreadMonitorTraceHeader &header,
+                           const ThreadMonitorTraceRecord &) {
+            if (type == TraceRecordType::kFault) {
+                ++header.fault_count;
+                header.last_fault_code =
+                    static_cast<std::uint32_t>(fault_code);
+            }
+        });
 }
 
 void AiModelMonitor::FlushPendingTraceEvents()
 {
     if (trace_header_ == nullptr || trace_records_ == nullptr) return;
 
-    const std::uint32_t dropped =
-        __atomic_exchange_n(&pending_dropped_count_, 0U, __ATOMIC_ACQ_REL);
+    const std::uint32_t dropped = pending_queue_.TakeDroppedCount();
     trace_header_->dropped_count += dropped;
 
-    std::uint32_t read =
-        __atomic_load_n(&pending_read_index_, __ATOMIC_RELAXED);
-    for (;;) {
-        const std::uint32_t write =
-            __atomic_load_n(&pending_write_index_, __ATOMIC_ACQUIRE);
-        if (read == write) break;
-        PendingTraceEvent event = pending_trace_events_[read];
-        ActiveStep *match = nullptr;
-        ActiveStep *free_step = nullptr;
-        ActiveStep *oldest = nullptr;
-        for (ActiveStep &step : active_steps_) {
-            if (step.valid && step.inference_id == event.inference_id &&
-                step.step_id == event.step_id) {
-                match = &step;
-                break;
-            }
-            if (!step.valid && free_step == nullptr) free_step = &step;
-            if (step.valid &&
-                (oldest == nullptr ||
-                 event.timestamp_ms - step.begin_ms >
-                     event.timestamp_ms - oldest->begin_ms)) {
-                oldest = &step;
-            }
-        }
-        if (event.begin) {
-            ActiveStep *step = match != nullptr ? match
-                               : free_step != nullptr ? free_step : oldest;
-            if (step != nullptr) {
-                *step = {event.inference_id, event.step_id,
-                         event.timestamp_ms, true};
-            }
-        } else if (match != nullptr) {
-            event.elapsed_ms = event.timestamp_ms - match->begin_ms;
-            event.timing_valid = true;
-            match->valid = false;
-        }
+    pending_queue_.Drain([this](const PendingTraceEvent &queued_event) {
+        PendingTraceEvent event = queued_event;
+        event.timing_valid = step_correlator_.Observe(
+            event.inference_id, event.step_id, event.timestamp_ms,
+            event.begin, &event.elapsed_ms);
         WriteRecord(event.timestamp_ms, TraceRecordType::kAiRuntimeStep,
                     nullptr, E_OK, TraceFaultCode::kNone, &event);
-        read = (read + 1U) % kPendingTraceEventCapacity;
-        __atomic_store_n(&pending_read_index_, read, __ATOMIC_RELEASE);
-    }
+    });
     if (dropped != 0U) FlushTrace(trace_header_, sizeof(*trace_header_));
 }
 

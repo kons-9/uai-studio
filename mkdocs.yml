@@ -27,6 +27,7 @@ nav:
       - buffer: middleware/buffer.md
       - message_channel: middleware/message_channel.md
       - resource_ownership: middleware/resource_ownership.md
+      - task: middleware/task.md
       - trace_format: middleware/trace_format.md
       - ai_runtime: middleware/ai_runtime.md
       - memory: middleware/memory.md

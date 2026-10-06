@@ -7,6 +7,7 @@
 #include "middleware/foundation/log.hpp"
 #include "middleware/memory/static_memory_layout.hpp"
 #include "middleware/memory/generated/static_memory_layout/key.hpp"
+#include "middleware/trace_format/trace_ring.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
@@ -140,7 +141,8 @@ bool CpuTaskMonitor::TraceHeaderValid() const
            trace_header_->record_count <= trace_header_->capacity;
 }
 
-void CpuTaskMonitor::AppendTraceRecord(CpuTaskMonitorTraceRecord record)
+void CpuTaskMonitor::AppendTraceRecord(
+    const CpuTaskMonitorTraceRecord &record)
 {
     if (trace_header_ == nullptr || trace_records_ == nullptr ||
         trace_capacity_ == 0U) {
@@ -149,27 +151,21 @@ void CpuTaskMonitor::AppendTraceRecord(CpuTaskMonitorTraceRecord record)
 
     InterruptMaskGuard guard;
 
-    const std::uint32_t sequence = trace_header_->next_sequence;
-    record.sequence = sequence;
-    record.commit_marker = kCpuTaskMonitorTraceCommitMagic ^ sequence;
-    CpuTaskMonitorTraceRecord &slot =
-        trace_records_[trace_header_->write_index];
-    slot = record;
-    FlushTrace(&slot, sizeof(slot));
-    if (trace_header_->record_count < trace_capacity_) {
-        ++trace_header_->record_count;
-    } else {
-        ++trace_header_->dropped_count;
-    }
-    trace_header_->write_index =
-        (trace_header_->write_index + 1U) % trace_header_->capacity;
-    trace_header_->next_sequence = sequence + 1U;
-    if (record.type == static_cast<std::uint8_t>(
-                           CpuTaskMonitorTraceRecordType::kReport)) {
-        trace_header_->last_period_cycles = record.period_cycles;
-        trace_header_->last_interrupt_percent = record.interrupt_percent;
-    }
-    FlushTrace(trace_header_, sizeof(*trace_header_));
+    trace_format::AppendTraceRecord(
+        trace_header_, trace_records_, trace_capacity_, record,
+        kCpuTaskMonitorTraceCommitMagic,
+        [this](const void *address, std::size_t size) {
+            FlushTrace(address, size);
+        },
+        [](CpuTaskMonitorTraceHeader &header,
+           const CpuTaskMonitorTraceRecord &appended) {
+            if (appended.type == static_cast<std::uint8_t>(
+                                     CpuTaskMonitorTraceRecordType::kReport)) {
+                header.last_period_cycles = appended.period_cycles;
+                header.last_interrupt_percent =
+                    appended.interrupt_percent;
+            }
+        });
 }
 
 void CpuTaskMonitor::FlushTrace(const void *address, std::size_t size) const

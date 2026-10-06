@@ -30,7 +30,7 @@ monitor.Report();                         // 1秒ごとに呼ぶと使用率を�
 - `RegisterTask()`でタスクIDに名前を付けます。付けていないタスクはIDで表示されます。
 - `Report()`はどのタスクから呼んでも構いません。ai-appでは初期化タスクが1秒周期で呼んでいます。
 
-ループ時間を記録するには、ループ本体を`BeginTaskLoop()`と`RecordTaskLoop()`で囲みます。foundationの`common::Task::RunForever()`（[共通基盤](../kernel/common.md)）がこれを行う雛形で、`common::Task::Start()`で起動したタスクは`RegisterTask()`も済んでいます。
+ループ時間を記録するには、ループ本体を`BeginTaskLoop()`と`RecordTaskLoop()`で囲みます。[task](task.md)の`common::Task::RunForever()`がこれを行う雛形で、`common::Task::Start()`で起動したタスクは`RegisterTask()`も済んでいます。
 
 ```cpp
 common::Task::RunForever(monitor, "camera",
@@ -49,3 +49,11 @@ make -C userspace/ai-app cpu-task-monitor
 ## 読み方の例
 
 ai-appの3モデル同時推論では、カメラ表示タスク（`camera`）がCPU時間の大半を使い、前処理と後処理のタスクはNPUの完了を待つ間に短く走ることが分かります。NPUレーンのタスクの使用率が低いのに推論が遅い場合は、CPUではなくNPUの処理時間がボトルネックなので、[ai_model_monitor](ai_model_monitor.md)でモデルごとのNPU時間を確認します。
+
+## ホストテスト
+
+`UAI_CPU_TASK_MONITOR=1`で実装本体をビルドし、μT-Kernelのフック登録とDWTをモックに置き換えます。登録されたフック関数を直接呼んで、タスク時間、割り込み時間、ループ時間がリングのレコードとヘッダに集計されることを確認します。
+
+```sh
+make -C kernel/middleware/cpu_task_monitor/tests test
+```

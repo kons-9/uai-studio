@@ -19,7 +19,7 @@ kernel/pre_kernel      CubeMX生成コードとRAM起動
 | [ビルド構成](build.md) | CMakeターゲット、CMakeオプション、Makeターゲット、`local.mk` |
 | [起動の流れ](boot.md) | `ram-run`からμT-Kernel起動、`usermain()`までの手順 |
 | [μT-Kernel](utkernel.md) | BSP2の設定、割り込み登録、T-Monitor、フックAPI |
-| [共通基盤（foundation）](common.md) | `common::Error`、`UAI_LOG_*`、`common::Task` |
+| [共通基盤（foundation）](common.md) | `common::Error`、`UAI_LOG_*` |
 | [アプリの追加](new-app.md) | 新しい`userspace/<app>`を作る手順 |
 
 ## 設計の方針

@@ -178,16 +178,19 @@ DispatchResult PipelineRuntime::RunOne(ExecutionContext lane)
     end.timestamp = clock_ == nullptr ? 0U : clock_(clock_context_);
     if (trace_ != nullptr) trace_(trace_context_, end);
 
-    const bool terminal = !result.Ok() || result.completed;
-    const common::Error error = result.error;
+    const bool finished = !result.Ok() || result.completed;
+    const bool invalid_lane =
+        !finished && LaneIndex(result.next.context) >= 3U;
+    const bool terminal = finished || invalid_lane;
+    const common::Error error =
+        invalid_lane ? common::Error{common::ErrorCode::kInvalidArgument}
+                     : result.error;
     bool wake = false;
     ExecutionContext wake_lane = ExecutionContext::kPreprocessCpu;
     {
         Guard guard(*this);
         Slot &slot = slots_[index];
         if (terminal) {
-            slot = {};
-        } else if (LaneIndex(result.next.context) >= 3U) {
             slot = {};
         } else {
             slot.next = result.next;
@@ -201,13 +204,6 @@ DispatchResult PipelineRuntime::RunOne(ExecutionContext lane)
         }
     }
     if (wake) Wake(wake_lane);
-    if (!terminal && LaneIndex(result.next.context) >= 3U) {
-        if (done_ != nullptr) {
-            done_(done_context_, *future,
-                  common::Error{common::ErrorCode::kInvalidArgument});
-        }
-        return DispatchResult::kFailed;
-    }
     if (terminal && done_ != nullptr) done_(done_context_, *future, error);
     return error.Ok() ? DispatchResult::kRan : DispatchResult::kFailed;
 }

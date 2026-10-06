@@ -1,5 +1,6 @@
 #include "middleware/trace_format/ai_model_trace.hpp"
 #include "middleware/trace_format/cpu_task_trace.hpp"
+#include "middleware/trace_format/trace_ring.hpp"
 
 #include <cstddef>
 #include <type_traits>
@@ -20,6 +21,44 @@ using ai_model_monitor::ThreadMonitorTraceRecord;
 using cpu_task_monitor::CpuTaskMonitorTraceHeader;
 using cpu_task_monitor::CpuTaskMonitorTraceRecord;
 using cpu_task_monitor::CpuTaskMonitorTraceTaskName;
+
+TEST(TraceFormat, RingWriterWrapsAndCommitsBothTraceFormats)
+{
+    ThreadMonitorTraceHeader ai_header{};
+    ai_header.capacity = 1U;
+    ThreadMonitorTraceRecord ai_records[1]{};
+    unsigned int ai_flushes = 0U;
+    const auto flush = [&ai_flushes](const void *, std::size_t) {
+        ++ai_flushes;
+    };
+    EXPECT_TRUE(trace_format::AppendTraceRecord(
+        &ai_header, ai_records, 1U, ThreadMonitorTraceRecord{},
+        ai_model_monitor::kThreadMonitorTraceCommitMagic, flush,
+        [](ThreadMonitorTraceHeader &, const ThreadMonitorTraceRecord &) {}));
+    EXPECT_TRUE(trace_format::AppendTraceRecord(
+        &ai_header, ai_records, 1U, ThreadMonitorTraceRecord{},
+        ai_model_monitor::kThreadMonitorTraceCommitMagic, flush,
+        [](ThreadMonitorTraceHeader &, const ThreadMonitorTraceRecord &) {}));
+    EXPECT_EQ(ai_records[0].sequence, 1U);
+    EXPECT_EQ(ai_records[0].commit_marker,
+              ai_model_monitor::kThreadMonitorTraceCommitMagic ^ 1U);
+    EXPECT_EQ(ai_header.record_count, 1U);
+    EXPECT_EQ(ai_header.dropped_count, 1U);
+    EXPECT_EQ(ai_header.next_sequence, 2U);
+    EXPECT_EQ(ai_header.write_index, 0U);
+    EXPECT_EQ(ai_flushes, 4U);
+
+    CpuTaskMonitorTraceHeader cpu_header{};
+    cpu_header.capacity = 1U;
+    CpuTaskMonitorTraceRecord cpu_records[1]{};
+    EXPECT_TRUE(trace_format::AppendTraceRecord(
+        &cpu_header, cpu_records, 1U, CpuTaskMonitorTraceRecord{},
+        cpu_task_monitor::kCpuTaskMonitorTraceCommitMagic,
+        [](const void *, std::size_t) {},
+        [](CpuTaskMonitorTraceHeader &, const CpuTaskMonitorTraceRecord &) {}));
+    EXPECT_EQ(cpu_records[0].commit_marker,
+              cpu_task_monitor::kCpuTaskMonitorTraceCommitMagic);
+}
 
 TEST(TraceFormat, AiModelLayoutMatchesDecoder)
 {

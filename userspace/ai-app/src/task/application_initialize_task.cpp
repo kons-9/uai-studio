@@ -6,7 +6,7 @@
 #include "driver/board/interrupt_priority.hpp"
 #include "middleware/foundation/log.hpp"
 #include "task/task_context.hpp"
-#include "middleware/foundation/task.hpp"
+#include "middleware/task/task.hpp"
 #include "task/camera_render_task.hpp"
 #include "task/pipeline_task.hpp"
 

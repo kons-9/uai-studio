@@ -6,7 +6,6 @@
 | --- | --- |
 | `error.hpp` | 戻り値の`common::Error`とエラーコード、エラーのログ出力 |
 | `log.hpp` | レベル付きのログマクロ`UAI_LOG_*` |
-| `task.hpp` | μT-Kernelタスクの起動、ループ、停止の共通処理`common::Task` |
 
 ## common::Error
 
@@ -66,35 +65,11 @@ UAI_LOG_INFO("ai: model registered=%s\n", name);
 
 `kLogLevel`より詳細なレベルはコンパイル時に除かれ、引数の評価も行われません。`kLogLevel`は`log.hpp`で変更します（既定は`kInfo`）。レベルを実行時の値で選ぶときは`UAI_LOGF(level, ...)`、出力の前に重い処理を省きたいときは`common::IsLogEnabled(level)`を使います。T-Monitorの出力は1文字ずつ送るため、周期的なログは1秒程度の間隔にとどめてください。
 
-## タスク
-
-`task.hpp`の`common::Task`は、μT-Kernelのタスクを扱う定型をまとめたものです。
-
-| 関数 | 内容 |
-| --- | --- |
-| `Start(monitor, entry, stack, priority, name)` | `TA_USERBUF`で呼び出し側のスタックを使ってタスクを作り、`monitor.RegisterTask()`に名前を登録して起動します。失敗したら`Halt()`します |
-| `RunForever(monitor, name, wait_for_event, process_one)` | 待機と1回分の処理を繰り返す無限ループです。`process_one`の時間を`BeginTaskLoop()`と`RecordTaskLoop()`で記録します（[cpu_task_monitor](../middleware/cpu_task_monitor.md)） |
-| `Now()` | `tk_get_otm()`のミリ秒（下位32 bit） |
-| `Halt(message)` | エラーを出力して、そのタスクを永久に待たせます |
-
-```cpp
-#include "middleware/buffer/stable_aligned_bytes.hpp"
-
-common::StableAlignedBytes<4096U> stack;  // タスクより長生きする場所に置く
-common::Task::Start(monitor, reinterpret_cast<FP>(Entry), stack, 5, "camera");
-
-common::Task::RunForever(monitor, "camera",
-                         [] { /* イベントを待つ。この時間は計測しない */ },
-                         [] { /* 1回分の処理 */ });
-```
-
-`monitor`は`RegisterTask()`、`BeginTaskLoop()`、`RecordTaskLoop()`を持つ型であればよく、ホストテストではモックに置き換えます。
-
-`StableAlignedBytes`と`OwnedBuffer`は[buffer](../middleware/buffer.md)の型です。タスクは固定領域を利用しますが、格納型そのものにタスクの動作は含まれません。
+μT-Kernelタスクの起動とループは、OSに依存するため[task](../middleware/task.md)に分けています。
 
 ## ホストテスト
 
-`common::Error`のログ分類、`Task`の起動とループを、`kernel/utkernel/linux`のμT-Kernelモックで確認します。格納型は[buffer](../middleware/buffer.md)、メッセージの容量と送受信は[message_channel](../middleware/message_channel.md)のテストで確認します。
+`common::Error`のログ分類をホストで確認します。格納型は[buffer](../middleware/buffer.md)、メッセージの容量と送受信は[message_channel](../middleware/message_channel.md)のテストで確認します。
 
 ```sh
 make -C kernel/middleware/foundation/tests test

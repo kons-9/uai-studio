@@ -15,7 +15,7 @@
                  -----------------------------------------------------------
                  message_channel（格納、配送、送信方針）
                  buffer（領域の格納、記述、貸出所有）
-                 foundation（Error、ログ、Task）
+                 foundation（Error、ログ）   task（タスクの起動とループ）
                       |                     |
   ドライバー     NPU                   カメラ、LCD、キャッシュ
 ```
@@ -24,11 +24,12 @@
 
 | モジュール | 内容 |
 | --- | --- |
-| [foundation](../kernel/common.md) | `common::Error`、`UAI_LOG_*`、タスクの起動とループ |
+| [foundation](../kernel/common.md) | `common::Error`、`UAI_LOG_*` |
+| [task](task.md) | μT-Kernelタスクの起動とループ計測 |
 | [buffer](buffer.md) | 固定容量・固定アドレスの格納領域、バッファ記述子、貸出ポインタ |
 | [message_channel](message_channel.md) | 型付きメッセージのFIFOと最新値優先の送受信。OS依存はバックエンドに閉じる |
 | [resource_ownership](resource_ownership.md) | 移動のみ可能な操作権トークンと、OSミューテックスのバックエンド |
-| [trace_format](trace_format.md) | AI/CPU監視器がPSRAMに書く記録の形式。ホストデコーダとの契約 |
+| [trace_format](trace_format.md) | AI/CPU監視器がPSRAMに書く記録の形式と、リングへの追記。ホストデコーダとの契約 |
 | [ai_runtime](ai_runtime.md) | 推論を前処理CPU、NPU、後処理CPUの3レーンで実行するパイプラインと、推論結果の型 |
 | [memory](memory.md) | 生成したメモリ配置へのアクセスと、割当インターフェース |
 | [memory_manager](memory_manager.md) | キャプチャ、表示、推論バッファの所有権管理と、フレームの型・画像診断（pipeline） |
@@ -51,7 +52,7 @@
 各モジュールの`tests/`にあるMakefileから実行します。ビルド先は`build/middleware-tests`です。
 
 ```sh
-make -C kernel/middleware/ai_runtime/tests test        # foundation、memory_manager、image_resizer、ai_model_monitor、pipelineも同様
+make -C kernel/middleware/ai_runtime/tests test        # foundation、task、memory_manager、image_resizer、ai_model_monitor、cpu_task_monitor、pipelineも同様
 make -C kernel/middleware/ai_runtime/tests tsan        # ThreadSanitizer付き（build/middleware-tests-tsan）
 cmake -S kernel/middleware/tests -B build/middleware-tests && cmake --build build/middleware-tests && ctest --test-dir build/middleware-tests
 ```

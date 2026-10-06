@@ -72,17 +72,18 @@ public:
 
     void Send(const pipeline::InferenceFrame &frame)
     {
-        const bool sent = channel_.SendReplacingOldest(
+        const common::Error status = channel_.SendReplacingOldest(
             frame, [this](const pipeline::InferenceFrame &discarded) {
                 memory_.ReleaseInferenceBuffer(discarded).LogStatus("memory");
             });
-        if (sent) return;
+        if (status.Ok()) return;
         memory_.ReleaseInferenceBuffer(frame).LogStatus("memory");
-        UAI_LOG_DEBUG("ai: frame dropped reason=queue_full sequence=%u\n",
+        UAI_LOG_DEBUG("ai: frame dropped reason=%s sequence=%u\n",
+                      common::ErrorCodeName(status.Code()),
                       static_cast<unsigned int>(frame.capture_sequence));
     }
 
-    bool Receive(pipeline::InferenceFrame *frame)
+    common::Error Receive(pipeline::InferenceFrame *frame)
     {
         return channel_.ReceiveBlocking(frame);
     }

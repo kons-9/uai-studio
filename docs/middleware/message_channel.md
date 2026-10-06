@@ -7,6 +7,7 @@
 | `message_channel.hpp` | `MessageChannel<Message, Depth, Backend>`: 型付きFIFOのコア。`common::Error`で結果を返す |
 | `utkernel_backend.hpp` | `MicroTKernelBackend<Message, Depth>`: μT-Kernelのメッセージバッファ（`tk_cre_mbf`、`TA_TFIFO | TA_USERBUF`）を所有し、ER/INT/TMOを`common::Error`に変換する |
 | `fixed_message_slots.hpp` | `FixedMessageSlots<Message, Depth>`: μT-Kernelの4 byteヘッダと4 byte丸めを含む領域を8 byte境界で確保する。バックエンドが使う |
+| `fixed_event_queue.hpp` | `FixedEventQueue<Event, Capacity>`: OSを使わない固定容量のリング。単一の消費者と、呼び出し側で直列化した生産者向け。満杯なら捨てて数える |
 | `latest_value_channel.hpp` | `LatestValueChannel<Message, Depth, Backend>`: 最新値優先の送信と、溜まった中から最新だけを取る受信 |
 
 ## MessageChannel
@@ -39,11 +40,11 @@ frames.Receive(&received);             // 永久待ち。TryReceive() は空な�
 | --- | --- |
 | `TrySend(message)` | `MessageChannel::TrySend()`と同じ |
 | `SendReplacingOldestOnce(message)` | 満杯のときだけ最古を一件捨てて一回再送する |
-| `SendReplacingOldest(message, on_discard)` | 失敗の種類を問わず最古を捨てて再送する。捨てた要素は`on_discard`に渡す。何も捨てられなければ`false` |
+| `SendReplacingOldest(message, on_discard)` | 失敗の種類を問わず最古を捨てて再送する。捨てた要素は`on_discard`に渡す。再送は`Depth + 1`回までで、送れなければ最後の送信または受信のエラーを返す |
 | `DrainLatest(latest, accept)` | 空になるまで消費し、`accept`が真の最後の要素を`*latest`へ書く。戻り値の`DrainResult`は`error`と`updated`を別々に持つ |
-| `TryReceive(message)`、`ReceiveBlocking(message)` | 1件受信 |
+| `TryReceive(message)`、`ReceiveBlocking(message)` | 1件受信。`common::Error`を返す |
 
-`DrainResult::error`は、正常に空になるまで受信できた場合、更新があれば`kOk`、なければ`kNoFrame`です。途中の受信エラーはそのまま返します。`updated`は出力を書き換えたかを表し、更新後に受信エラーが起きた場合も`true`です。取得済みの最新値は保持します。ai-appの`TryGetLatestResult()`もこの結果型を返し、描画側でエラー処理と更新判定を分けます。
+`DrainResult::error`は、正常に空になるまで受信できた場合、更新があれば`kOk`、なければ`kNoFrame`です。途中の受信エラーはそのまま返します。`Depth + 1`件受信しても空にならない（送信側が補充し続けている）ときは`kTimeout`です。`updated`は出力を書き換えたかを表し、更新後に受信エラーが起きた場合も`true`です。取得済みの最新値は保持します。ai-appの`TryGetLatestResult()`もこの結果型を返し、描画側でエラー処理と更新判定を分けます。
 
 排他やこれら複合操作の原子性は保証しません。ai-appでは結果の有効判定（`*_valid`）とフレームの貸出返却・ログを[アプリ側](https://github.com/kons-9/uai-studio/blob/main/userspace/ai-app/src/task/pipeline_task.hpp)に残します。
 
