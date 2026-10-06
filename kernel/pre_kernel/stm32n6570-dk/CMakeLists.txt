@@ -55,7 +55,8 @@ add_library(stm32n6570_dk OBJECT
 )
 
 if(APP_TARGET STREQUAL "experiment-camera-lcd" OR
-   APP_TARGET STREQUAL "experiment-camera-pipe2")
+   APP_TARGET STREQUAL "experiment-camera-pipe2" OR
+   APP_TARGET STREQUAL "experiment-camera-lcd-touch")
     target_include_directories(stm32n6570_dk BEFORE PUBLIC
         "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Inc")
 endif()
@@ -83,7 +84,8 @@ target_include_directories(stm32n6570_dk
 )
 
 if(NOT APP_TARGET STREQUAL "experiment-camera-lcd" AND
-   NOT APP_TARGET STREQUAL "experiment-camera-pipe2")
+   NOT APP_TARGET STREQUAL "experiment-camera-pipe2" AND
+   NOT APP_TARGET STREQUAL "experiment-camera-lcd-touch")
     set(_ai_board_config_app experiment-ai)
     if(APP_TARGET STREQUAL "ai-app")
         set(_ai_board_config_app ai-app)
@@ -108,7 +110,8 @@ target_compile_definitions(stm32n6570_dk PRIVATE
 if(APP_TARGET STREQUAL "experiment-ai" OR
    APP_TARGET STREQUAL "ai-app" OR
    APP_TARGET STREQUAL "experiment-camera-lcd" OR
-   APP_TARGET STREQUAL "experiment-camera-pipe2")
+   APP_TARGET STREQUAL "experiment-camera-pipe2" OR
+   APP_TARGET STREQUAL "experiment-camera-lcd-touch")
     target_compile_definitions(stm32n6570_dk PRIVATE
         UAI_CAMERA_LCD_CLOCKS)
 endif()

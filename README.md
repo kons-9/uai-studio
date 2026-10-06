@@ -90,6 +90,8 @@ UART_BAUD = 115200
 | `host_app` | PCで動かすトレース解析とメモリ配置生成ツール（[host_app/README.md](host_app/README.md)） |
 | `docs` | 開発ガイド（ハードウェアの前提とツールの取得、カーネル、ドライバー、ミドルウェア） |
 
+タッチパネルと複数ボタンの透過オーバーレイを試す場合は、[experiment-camera-lcd-touch](userspace/experiment-camera-lcd-touch/README.md)を使います。
+
 ## セットアップ、ビルド、RAM実行
 
 リポジトリルートから、ai-appのMakefileを指定して操作します。

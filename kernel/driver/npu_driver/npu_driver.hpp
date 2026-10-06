@@ -194,7 +194,7 @@ public:
     void SetEpochTraceModelKindId(std::uint32_t id) { driver_.SetEpochTraceModelKindId(id); }
     common::Error Acquire(Accessor *a, TMO timeout = TMO_FEVR)
     { if (!a) return {common::ErrorCode::kInvalidArgument}; *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout); if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w)); return s; }
-    common::Error Validate(const Writer &w, const char *op) const { return ownership_.Validate(w, op); }
+    common::Error Validate(const Writer &w) const { return ownership_.Validate(w); }
     NpuManagement(const NpuManagement &) = delete;
     NpuManagement &operator=(const NpuManagement &) = delete;
 private:

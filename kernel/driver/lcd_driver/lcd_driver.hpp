@@ -89,7 +89,7 @@ public:
         if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w));
         return s;
     }
-    common::Error Validate(const Writer &w, const char *op) const { return ownership_.Validate(w, op); }
+    common::Error Validate(const Writer &w) const { return ownership_.Validate(w); }
     void KeepClocksOnSleep() { (void)WithWriter([](LcdDriver &d, const Writer &w) { d.KeepClocksOnSleep(w); return common::Error{}; }); }
     common::Error ShowInitialFrame(const inference::BoxSet &b, bool p = false) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ShowInitialFrame(b, w, p); }); }
     common::Error SynchronizeCurrentFrame() { return WithWriter([](LcdDriver &d, const Writer &w) { return d.SynchronizeCurrentFrame(w); }); }

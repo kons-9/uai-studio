@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.16)
 set(APP_TARGET "experiment-hello-world" CACHE STRING "Userspace application to build")
 set_property(CACHE APP_TARGET PROPERTY STRINGS
     experiment-hello-world experiment-camera-lcd experiment-ai ai-app
-    experiment-camera-pipe2)
+    experiment-camera-pipe2 experiment-camera-lcd-touch)
 
 option(CMAKE_EXPORT_COMPILE_COMMANDS
        "Generate compile_commands.json for IDEs"
@@ -45,7 +45,8 @@ if(UAI_KERNEL_TRACE_HOOKS OR UAI_CPU_TASK_MONITOR)
     target_compile_definitions(utkernel PUBLIC USE_DBGSPT_TRACE=1)
 endif()
 if(APP_TARGET STREQUAL "experiment-camera-lcd" OR
-   APP_TARGET STREQUAL "experiment-camera-pipe2")
+   APP_TARGET STREQUAL "experiment-camera-pipe2" OR
+   APP_TARGET STREQUAL "experiment-camera-lcd-touch")
     target_include_directories(utkernel PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/userspace/${APP_TARGET}/src/driver/board/include"
         "${STM32CUBE_N6_DIR}/Drivers/CMSIS/Device/ST/STM32N6xx/Include"

@@ -96,7 +96,7 @@ public:
         }
         return s;
     }
-    common::Error Validate(const Writer &w, const char *op) const { return ownership_.Validate(w, op); }
+    common::Error Validate(const Writer &w) const { return ownership_.Validate(w); }
     common::Error Start() { return WithWriter([](CameraDriver &d, const Writer &w) { return d.Start(w); }); }
     common::Error Stop() { return WithWriter([](CameraDriver &d, const Writer &w) { return d.Stop(w); }); }
     common::Error Process() { return WithWriter([](CameraDriver &d, const Writer &w) { return d.Process(w); }); }
