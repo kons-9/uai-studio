@@ -128,7 +128,7 @@ common::Error Future::Preprocess()
     const uai::image_processing::Rgb888Destination destination{
         reinterpret_cast<std::uint8_t *>(frame_.buffer.address), kInputWidth,
         kInputHeight, kInputWidth * 3U};
-    status = uai::image_processing::ResizeRgb888(source, destination);
+    status = uai::image_processing::Resize(source, destination);
     if (!status.Ok()) return status;
     frame_.input_prepared_by_cpu = true;
     status = context_.cache->PrepareForPeripheralRead(

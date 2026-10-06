@@ -30,20 +30,20 @@ struct Rgb888Source {
 
 // Buffers are caller-owned and must not overlap. Strides are in pixels for
 // RGB565 and in bytes for RGB888; no cache maintenance is performed here.
-ai::common::Error ResizeRgb565ToRgb888(
+ai::common::Error Resize(
     const Rgb565Source &source, std::uint32_t crop_x, std::uint32_t crop_y,
     std::uint32_t crop_width, std::uint32_t crop_height,
     const Rgb888Destination &destination);
 
-ai::common::Error ResizeRgb888Letterbox(
+ai::common::Error ResizeLetterbox(
     const Rgb888Source &source, const Rgb888Destination &destination,
     std::uint32_t content_width, std::uint32_t content_height,
     std::uint8_t pad_value = 0U);
 
-ai::common::Error ResizeRgb888(const Rgb888Source &source,
-                               const Rgb888Destination &destination);
+ai::common::Error Resize(const Rgb888Source &source,
+                         const Rgb888Destination &destination);
 
-ai::common::Error FillRgb888LetterboxPadding(
+ai::common::Error FillLetterboxPadding(
     const Rgb888Destination &destination, std::uint32_t content_width,
     std::uint32_t content_height, std::uint8_t pad_value = 0U);
 
