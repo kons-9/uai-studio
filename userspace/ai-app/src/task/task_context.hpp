@@ -5,144 +5,74 @@
 
 #include <tk/tkernel.h>
 
-#include "middleware/foundation/error.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/camera_driver/camera_driver.hpp"
 #include "driver/lcd_driver/lcd_driver.hpp"
 #include "driver/nor_driver/nor_driver.hpp"
 #include "driver/psram_driver/psram_driver.hpp"
 #include "driver/rif_driver/rif_driver.hpp"
-#include "middleware/pipeline/frame_types.hpp"
-#include "middleware/cpu_task_monitor/cpu_task_monitor.hpp"
-#include "memory_manager/memory_manager.hpp"
 #include "middleware/ai_runtime/inference_result_types.hpp"
+#include "middleware/cpu_task_monitor/cpu_task_monitor.hpp"
+#include "middleware/foundation/error.hpp"
+#include "middleware/pipeline/frame_types.hpp"
+#include "memory_manager/memory_manager.hpp"
+#include "task/application_initialize_task.hpp"
+#include "task/camera_render_task.hpp"
+#include "task/pipeline_task.hpp"
+#include "task/task_config.hpp"
 
 namespace uai::ai::task {
 
-inline constexpr UINT kExternalMemoryReady = 0x01U;
-/* Dispatch every completed Pipe2 frame immediately. The NPU task already
- * blocks on completion and consumes a prefetched frame without an extra
- * delay; this value only prevents the camera task from adding a software
- * interval between queued inference frames. */
-inline constexpr std::uint32_t kInferencePeriod = 0U;
-
-enum class InferenceMode : std::uint8_t {
-    kDisabled,
-    kCopyOnly,
-    kNpu,
-};
-
-enum class DisplayDiagnosticMode : std::uint8_t {
-    kCameraPreview,
-    kStaticPattern,
-    kSyntheticCompose,
-    kLiveCaptureFreeze,
-};
-
-inline constexpr InferenceMode kInferenceMode = InferenceMode::kNpu;
-inline constexpr DisplayDiagnosticMode kDisplayDiagnosticMode =
-    DisplayDiagnosticMode::kCameraPreview;
-inline constexpr bool kDisplayCoordinatePatternDiagnostic =
-    kDisplayDiagnosticMode == DisplayDiagnosticMode::kStaticPattern;
-inline constexpr bool kSyntheticComposeDiagnostic =
-    kDisplayDiagnosticMode == DisplayDiagnosticMode::kSyntheticCompose;
-inline constexpr bool kLiveCaptureFreezeDiagnostic =
-    kDisplayDiagnosticMode == DisplayDiagnosticMode::kLiveCaptureFreeze;
-inline constexpr bool kCopyInferenceFrames =
-    kInferenceMode != InferenceMode::kDisabled;
-
-/* Runtime diagnostics. Per-frame diagnostics remain disabled in normal
- * operation; the low-rate inference_fps aggregate is enabled to expose
- * Pipe2 drops and inference freshness without per-frame UART traffic. */
-struct DiagnosticsConfig {
-    bool register_dump = false;
-    bool camera_frame_trace = false;
-    bool camera_brightness = false;
-    bool inference_input = false;
-    bool inference_input_display = false;
-    bool inference_trace = false;
-    /* Keep the low-rate aggregate enabled while measuring Pipe2/NPU
-     * freshness. Per-frame trace remains opt-in because UART is intrusive. */
-    bool inference_fps = true;
-    bool display_trace = false;
-    bool display_timing = false;
-};
-
-inline constexpr std::size_t kFrameQueueDepth = 4U;
-inline constexpr std::size_t kBoxQueueDepth = 4U;
-inline constexpr SZ kInitializationTaskStackSize = 32U * 1024U;
-inline constexpr SZ kCameraTaskStackSize = 32U * 1024U;
-inline constexpr SZ kPipelineTaskStackSize = 16U * 1024U;
-inline constexpr SZ kPipelinePostprocessTaskStackSize = 16U * 1024U;
-
-struct InferenceMessage {
-    pipeline::InferenceFrame frame{};
-};
-
-struct BoxMessage {
-    inference::BoxSet boxes{};
-};
-
-/* Owns all application-wide resources shared by the task objects. The
- * resources are exposed as members because their ownership is explicit here;
- * tasks no longer depend on unrelated linker-visible global variables. */
+/* References to the live tasks and resources shared by the application. */
 class TaskContext final {
 public:
-    TaskContext();
-
-    [[noreturn]] void Halt(const char *message);
-    bool IsBestEffort(common::ErrorCode code) const;
-    std::uint32_t Now() const;
-
-    common::Error InitializeDrivers();
-    void ConfigureReferenceInterruptPriorities();
-    void CreateKernelObjects();
-    void StartApplicationTask(FP entry);
-    void StartCameraTask(FP entry);
-    void StartFrameTask(FP entry);
-    void StartPreprocessTask(FP entry);
-    void StartNpuTask(FP entry);
-    void StartPostprocessTask(FP entry);
-
-    bool DrainLatestBoxes(inference::BoxSet *active);
-    void SendLatestBoxes(const inference::BoxSet &boxes);
-    void SendInferenceFrame(const pipeline::InferenceFrame &frame);
-
     memory_manager::MemoryManager memory;
-    uai::ai::cache::CacheManagement &cache;
-    uai::ai::psram::PsramManagement &psram;
-    uai::ai::rif::RifManagement &rif;
-    uai::ai::lcd::LcdManagement &lcd;
-    uai::ai::camera::CameraManagement &camera;
+    ApplicationInitializeTask &application_task = ApplicationInitializeTask::Instance();
+    CameraRenderTask &camera_task = CameraRenderTask::Instance();
+    PipelineTask &pipeline_task = PipelineTask::Instance(memory);
+    uai::ai::cache::CacheManagement &cache = cache::CacheManagement::Instance();
+    uai::ai::psram::PsramManagement &psram = psram::PsramManagement::Instance();
+    uai::ai::rif::RifManagement &rif = rif::RifManagement::Instance();
+    uai::ai::lcd::LcdManagement &lcd = lcd::LcdManagement::Instance();
+    uai::ai::camera::CameraManagement &camera = camera::CameraManagement::Instance();
     uai::ai::middleware::cpu_task_monitor::CpuTaskMonitor cpu_task_monitor;
 
-    volatile std::uint32_t app_stage;
-    volatile bool external_nor_ready;
-    ID external_memory_ready;
-    ID pipeline_work_ready;
-    ID frame_queue;
-    ID box_queue;
+    volatile std::uint32_t app_stage = 0U;
+    volatile bool external_nor_ready = false;
+    ID external_memory_ready = -1;
+    ID pipeline_work_ready = -1;
     DiagnosticsConfig diagnostics;
 
-private:
-    void StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
-                   const char *name);
+    CameraRenderContext CameraContext()
+    {
+        return {memory, cache, camera, lcd, cpu_task_monitor, pipeline_task,
+                external_nor_ready, diagnostics};
+    }
 
-    alignas(8) UB frame_queue_storage[
-        sizeof(InferenceMessage) * kFrameQueueDepth];
-    alignas(8) UB box_queue_storage[sizeof(BoxMessage) * kBoxQueueDepth];
-    INT initialization_task_stack[
-        kInitializationTaskStackSize / sizeof(INT)];
-    INT camera_task_stack[kCameraTaskStackSize / sizeof(INT)];
-    INT pipeline_frame_task_stack[kPipelineTaskStackSize / sizeof(INT)];
-    INT pipeline_preprocess_task_stack[kPipelineTaskStackSize / sizeof(INT)];
-    INT pipeline_npu_task_stack[kPipelineTaskStackSize / sizeof(INT)];
-    INT pipeline_postprocess_task_stack[
-        kPipelinePostprocessTaskStackSize / sizeof(INT)];
+    PipelineFrameContext FrameContext()
+    {
+        return {memory, cache, camera, cpu_task_monitor, pipeline_task,
+            external_nor_ready, external_memory_ready,
+                diagnostics};
+    }
+
+    PipelineWorkerContext WorkerContext()
+    {
+        return {cpu_task_monitor, pipeline_work_ready};
+    }
+
+    ApplicationInitializeContext InitializationContext()
+    {
+        return {memory, cache, psram, rif, lcd, camera, cpu_task_monitor,
+                camera_task, pipeline_task, app_stage, external_nor_ready,
+                external_memory_ready, diagnostics};
+    }
 };
 
-/* The storage is private to task_context.cpp; this function is the only
- * application-wide access point exported by the task layer. */
-TaskContext &GetTaskContext();
+inline TaskContext &GetTaskContext()
+{
+    static TaskContext context;
+    return context;
+}
 
 } // namespace uai::ai::task

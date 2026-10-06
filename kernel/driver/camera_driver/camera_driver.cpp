@@ -491,31 +491,31 @@ volatile unsigned int g_camera_csi_sot_dl1_count = 0U;
 
 namespace uai::ai::camera {
 
-Diagnostics CameraDriver::GetDiagnostics() const
-{
-    return {
-        g_camera_vsync_event_count,
-        g_camera_frame_event_count,
-        g_camera_recovery_count,
-        g_camera_recovery_error_count,
-        g_camera_isp_error_count,
-        g_camera_dcmipp_last_status,
-        g_camera_dcmipp_error_count,
-        g_camera_camera_error_count,
-        g_camera_pipe2_frame_event_count,
-        g_camera_pipe2_drop_count,
-        g_inference_sequence,
-        g_camera_csi_last_status,
-        g_camera_csi_last_status1,
-        g_camera_csi_last_pending_status,
-        g_camera_csi_last_pending_status1,
-        g_camera_csi_error_count,
-        g_camera_csi_last_error_code,
-        g_camera_csi_sot_sync_dl0_count,
-        g_camera_csi_sot_sync_dl1_count,
-        g_camera_csi_sot_dl0_count,
-        g_camera_csi_sot_dl1_count};
-}
+Diagnostics::Diagnostics()
+    : vsync_event_count(g_camera_vsync_event_count),
+      frame_event_count(g_camera_frame_event_count),
+      recovery_count(g_camera_recovery_count),
+      recovery_error_count(g_camera_recovery_error_count),
+      isp_error_count(g_camera_isp_error_count),
+      dcmipp_last_status(g_camera_dcmipp_last_status),
+      dcmipp_error_count(g_camera_dcmipp_error_count),
+      camera_error_count(g_camera_camera_error_count),
+      pipe2_frame_event_count(g_camera_pipe2_frame_event_count),
+      pipe2_drop_count(g_camera_pipe2_drop_count),
+      pipe2_latest_capture_sequence(g_inference_sequence),
+      csi_last_status(g_camera_csi_last_status),
+      csi_last_status1(g_camera_csi_last_status1),
+      csi_last_pending_status(g_camera_csi_last_pending_status),
+      csi_last_pending_status1(g_camera_csi_last_pending_status1),
+      csi_error_count(g_camera_csi_error_count),
+      csi_last_error_code(g_camera_csi_last_error_code),
+      csi_sot_sync_dl0_count(g_camera_csi_sot_sync_dl0_count),
+      csi_sot_sync_dl1_count(g_camera_csi_sot_sync_dl1_count),
+      csi_sot_dl0_count(g_camera_csi_sot_dl0_count),
+      csi_sot_dl1_count(g_camera_csi_sot_dl1_count)
+{}
+
+Diagnostics CameraDriver::GetDiagnostics() const { return Diagnostics{}; }
 
 namespace {
 

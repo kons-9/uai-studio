@@ -1,6 +1,7 @@
 #ifndef UAI_AI2_MIDDLEWARE_AI_MODEL_MONITOR_HPP
 #define UAI_AI2_MIDDLEWARE_AI_MODEL_MONITOR_HPP
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -126,6 +127,14 @@ private:
         std::uint32_t step_id = 0U;
         std::uint32_t lane = 0U;
         bool begin = false;
+        bool timing_valid = false;
+    };
+
+    struct ActiveStep {
+        std::uint32_t inference_id = 0U;
+        std::uint32_t step_id = 0U;
+        std::uint32_t begin_ms = 0U;
+        bool valid = false;
     };
 
     static void Entry(INT stacd, void *exinf);
@@ -152,12 +161,10 @@ private:
     volatile bool operation_active_ = false;
     volatile bool faulted_ = false;
     volatile std::uint32_t last_progress_tick_ = 0U;
-    volatile std::uint32_t last_step_begin_ms_ = 0U;
-    volatile std::uint32_t last_step_id_ = 0U;
-    volatile std::uint32_t last_inference_id_ = 0U;
-    volatile bool last_step_begin_valid_ = false;
 
     static constexpr std::uint32_t kPendingTraceEventCapacity = 128U;
+    static constexpr std::size_t kActiveStepCapacity = 16U;
+    std::array<ActiveStep, kActiveStepCapacity> active_steps_{};
     static PendingTraceEvent pending_trace_events_[kPendingTraceEventCapacity];
     std::uint32_t pending_write_index_ = 0U;
     std::uint32_t pending_read_index_ = 0U;

@@ -14,6 +14,17 @@ extern "C" {
 namespace uai::ai::middleware::ai_model_monitor {
 namespace {
 
+class ProducerGuard final {
+public:
+    ProducerGuard() : primask_(__get_PRIMASK()) { __disable_irq(); }
+    ~ProducerGuard() { __set_PRIMASK(primask_); }
+    ProducerGuard(const ProducerGuard &) = delete;
+    ProducerGuard &operator=(const ProducerGuard &) = delete;
+
+private:
+    std::uint32_t primask_;
+};
+
 constexpr PRI kMonitorPriority = 4;
 constexpr RELTIM kMonitorPeriodTicks = 100U;
 constexpr std::uint32_t kOperationTimeoutTicks = 6000U;
@@ -200,10 +211,7 @@ common::Error AiModelMonitor::Start()
     operation_active_ = false;
     faulted_ = false;
     last_progress_tick_ = Now();
-    last_step_begin_ms_ = 0U;
-    last_step_id_ = 0U;
-    last_inference_id_ = 0U;
-    last_step_begin_valid_ = false;
+    active_steps_.fill({});
     __atomic_store_n(&pending_write_index_, 0U, __ATOMIC_RELEASE);
     __atomic_store_n(&pending_read_index_, 0U, __ATOMIC_RELEASE);
     __atomic_store_n(&pending_dropped_count_, 0U, __ATOMIC_RELEASE);
@@ -299,23 +307,11 @@ void AiModelMonitor::ObserveAiRuntimeStep(const ai_runtime::StepTrace &trace)
             operation_active_ = true;
             last_progress_tick_ = trace.timestamp;
         }
-        last_step_begin_ms_ = trace.timestamp;
-        last_step_id_ = trace.step_id;
-        last_inference_id_ = trace.inference_id;
-        last_step_begin_valid_ = true;
-    }
-
-    std::uint32_t elapsed_ms = 0U;
-    if (!trace.begin && last_step_begin_valid_ &&
-        trace.step_id == last_step_id_ &&
-        trace.inference_id == last_inference_id_) {
-        elapsed_ms = trace.timestamp - last_step_begin_ms_;
-        last_step_begin_valid_ = false;
     }
 
     if (operation_active_ && !faulted_) last_progress_tick_ = trace.timestamp;
     (void)QueueTraceEvent({trace.timestamp,
-                           elapsed_ms,
+                           0U,
                            trace.inference_id,
                            static_cast<std::uint32_t>(trace.model_id),
                            trace.step_id,
@@ -327,6 +323,7 @@ void AiModelMonitor::ObserveAiRuntimeStep(const ai_runtime::StepTrace &trace)
 
 bool AiModelMonitor::QueueTraceEvent(const PendingTraceEvent &event)
 {
+    ProducerGuard guard;
     const std::uint32_t write =
         __atomic_load_n(&pending_write_index_, __ATOMIC_RELAXED);
     const std::uint32_t read =
@@ -392,7 +389,7 @@ void AiModelMonitor::WriteRecord(std::uint32_t now, TraceRecordType type,
         record.model_kind_id = event->model_kind_id;
         if (event->begin) {
             record.flags |= kTraceFlagAiRuntimeBegin;
-        } else {
+        } else if (event->timing_valid) {
             record.flags |= kTraceFlagTimingValid;
         }
     }
@@ -431,7 +428,36 @@ void AiModelMonitor::FlushPendingTraceEvents()
         const std::uint32_t write =
             __atomic_load_n(&pending_write_index_, __ATOMIC_ACQUIRE);
         if (read == write) break;
-        const PendingTraceEvent event = pending_trace_events_[read];
+        PendingTraceEvent event = pending_trace_events_[read];
+        ActiveStep *match = nullptr;
+        ActiveStep *free_step = nullptr;
+        ActiveStep *oldest = nullptr;
+        for (ActiveStep &step : active_steps_) {
+            if (step.valid && step.inference_id == event.inference_id &&
+                step.step_id == event.step_id) {
+                match = &step;
+                break;
+            }
+            if (!step.valid && free_step == nullptr) free_step = &step;
+            if (step.valid &&
+                (oldest == nullptr ||
+                 event.timestamp_ms - step.begin_ms >
+                     event.timestamp_ms - oldest->begin_ms)) {
+                oldest = &step;
+            }
+        }
+        if (event.begin) {
+            ActiveStep *step = match != nullptr ? match
+                               : free_step != nullptr ? free_step : oldest;
+            if (step != nullptr) {
+                *step = {event.inference_id, event.step_id,
+                         event.timestamp_ms, true};
+            }
+        } else if (match != nullptr) {
+            event.elapsed_ms = event.timestamp_ms - match->begin_ms;
+            event.timing_valid = true;
+            match->valid = false;
+        }
         WriteRecord(event.timestamp_ms, TraceRecordType::kAiRuntimeStep,
                     nullptr, E_OK, TraceFaultCode::kNone, &event);
         read = (read + 1U) % kPendingTraceEventCapacity;

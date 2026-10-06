@@ -277,8 +277,6 @@ add_executable(${AI_APP_TARGET}
     src/task/application_initialize_task.cpp
     src/task/camera_render_task.cpp
     ${AI_INFERENCE_TASK_SOURCES}
-    src/task/task_context.cpp
-    src/task/task_diagnostics.cpp
     ${AI_MODEL_SOURCES}
     # Project-owned ref-compatible BSP with a reset fallback for NOR left in
     # OPI-DTR by the external loader.

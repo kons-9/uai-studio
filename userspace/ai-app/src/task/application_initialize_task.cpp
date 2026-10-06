@@ -1,12 +1,14 @@
 #include "task/application_initialize_task.hpp"
 
 #include "driver/npu_driver/debug.h"
+#include "driver/npu_driver/npu_driver.hpp"
+#include "driver/board/register_diagnostics.hpp"
+#include "driver/board/interrupt_priority.hpp"
 #include "middleware/foundation/log.hpp"
 #include "task/task_context.hpp"
-#include "task/task.hpp"
+#include "middleware/foundation/task.hpp"
 #include "task/camera_render_task.hpp"
 #include "task/pipeline_task.hpp"
-#include "task/task_diagnostics.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
@@ -17,27 +19,91 @@ namespace uai::ai::task {
 namespace {
 constexpr std::uintptr_t kModelDataAddress = 0x70380000UL;
 constexpr const char *kModelDataAddressName = "70380000";
+
+common::Error InitializeDrivers(ApplicationInitializeContext &context)
+{
+    common::Error status = npu::NpuDriver::InitializeMemory();
+    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
+        return status;
+    }
+    status = context.cache.Initialize();
+    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
+        return status;
+    }
+    status = context.memory.Initialize();
+    if (!status.Ok()) return status;
+
+    status = context.rif.Initialize();
+    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
+        return status;
+    }
+
+    /* XSPI1/XSPI2 are RIF-protected on a cold boot. */
+    if (!context.psram.Initialize()) {
+        return {common::ErrorCode::kHardware, 0U, "psram.initialize"};
+    }
+
+    constexpr bool initialize_nor = kInferenceMode == InferenceMode::kNpu;
+    int nor_status = -1;
+    if (initialize_nor) {
+        nor_status = nor::NorManagement::Instance().Initialize();
+    } else {
+        UAI_LOG_INFO("boot: NOR skipped: inference disabled\n");
+    }
+    context.external_nor_ready = nor_status == 0;
+
+    status = context.lcd.Initialize(context.memory, context.cache);
+    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
+        return status;
+    }
+    context.lcd.SetTimingDiagnostics(context.diagnostics.display_timing);
+    status = context.camera.Initialize(context.memory, context.cache);
+    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
+        return status;
+    }
+
+    context.cache.KeepClocksOnSleep();
+    context.psram.KeepClocksOnSleep();
+    if (context.external_nor_ready) {
+        nor::NorManagement::Accessor nor_accessor;
+        status = nor::NorManagement::Instance().Acquire(&nor_accessor);
+        if (!status.Ok()) return status;
+        nor_accessor.KeepClocksOnSleep();
+    }
+    npu::NpuDriver::KeepMemoryClocksOnSleep();
+    context.lcd.KeepClocksOnSleep();
+    context.camera.KeepClocksOnSleep();
+    return {common::ErrorCode::kOk, static_cast<std::uint32_t>(nor_status),
+            "task_context.initialize_drivers"};
+}
 } // namespace
 
 void ApplicationInitializeTask::Entry()
 {
-    ApplicationInitializeTask{}.Run();
+    TaskContext &root = GetTaskContext();
+    root.application_task.Run(root.InitializationContext());
 }
 
-void ApplicationInitializeTask::Run()
+void ApplicationInitializeTask::Start(
+    middleware::cpu_task_monitor::CpuTaskMonitor &monitor)
 {
-    TaskContext &context = GetTaskContext();
+    common::Task::Start(monitor, reinterpret_cast<FP>(Entry), stack_,
+                5, "application_initialize");
+}
+
+void ApplicationInitializeTask::Run(ApplicationInitializeContext context)
+{
     /* Resume the nominal HAL tick after pre-kernel setup. The experiment-ai HAL
      * time bridge uses µT-Kernel time for HAL_GetTick/HAL_Delay. */
     HAL_ResumeTick();
-    context.ConfigureReferenceInterruptPriorities();
+    driver::board::ConfigureReferenceInterruptPriorities();
     context.app_stage = 1U;
     UAI_LOG_INFO("boot: external memory init begin\n");
 
-    const common::Error driver_status = context.InitializeDrivers();
+    const common::Error driver_status = InitializeDrivers(context);
     if (!driver_status.Ok()) {
-        LogStatus("driver", driver_status);
-        context.Halt("ai: driver initialization failed\n");
+        driver_status.LogStatus("driver");
+        common::Task::Halt("ai: driver initialization failed\n");
     }
     /* The XSPI NOR driver emits a long register snapshot on failure.
      * Keep other tasks from writing to the same T-Monitor UART while that
@@ -53,13 +119,13 @@ void ApplicationInitializeTask::Run()
     const common::Error cpu_trace_status =
         context.cpu_task_monitor.InitializeTraceBuffer();
     if (!cpu_trace_status.Ok()) {
-        LogStatus("cpu_task_monitor.trace", cpu_trace_status);
+        cpu_trace_status.LogStatus("cpu_task_monitor.trace");
     }
     context.app_stage = 2U;
     context.app_stage = 3U;
     context.app_stage = 4U;
     if (context.diagnostics.register_dump) {
-        DumpPeripheralRegisters("after_access");
+        driver::board::DumpPeripheralRegisters("after_access");
         UAI_LOG_DEBUG("boot: npu cache init=%x enable=%x invalidate=%x cr1=%x sr=%x\n",
                       g_npu_cache_init_status, g_npu_cache_enable_status,
                       g_npu_cache_invalidate_status, g_npu_cache_cr1,
@@ -83,11 +149,10 @@ void ApplicationInitializeTask::Run()
     /* Keep the hardware initialization ahead of both application tasks, but
      * do the work on a dedicated stack rather than the small µT-Kernel
      * initial-task stack. */
-    context.StartCameraTask(reinterpret_cast<FP>(CameraRenderTask::Entry));
+    context.camera_task.Start(context.cpu_task_monitor);
     context.app_stage = 5U;
     if constexpr (kInferenceMode == InferenceMode::kNpu) {
-        context.StartFrameTask(
-            reinterpret_cast<FP>(PipelineTask::FrameEntry));
+        context.pipeline_task.StartFrame(context.cpu_task_monitor);
     } else if constexpr (kInferenceMode == InferenceMode::kCopyOnly) {
         UAI_LOG_INFO("ai: copy-only snapshot mode; NPU task disabled\n");
     } else {
@@ -95,7 +160,7 @@ void ApplicationInitializeTask::Run()
     }
     context.app_stage = 6U;
 
-    Task::RunForever(context.cpu_task_monitor, "application_initialize",
+    common::Task::RunForever(context.cpu_task_monitor, "application_initialize",
                      [] { tk_dly_tsk(1000); },
                      [&] { context.cpu_task_monitor.Report(); });
 }

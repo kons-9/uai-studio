@@ -1,13 +1,47 @@
 #pragma once
 
+#include <cstdint>
+
+#include <tk/tkernel.h>
+
+#include "middleware/foundation/stable_aligned_bytes.hpp"
+#include "task/task_config.hpp"
+
+namespace uai::ai::middleware::cpu_task_monitor { class CpuTaskMonitor; }
+namespace uai::ai::memory_manager { class MemoryManager; }
+namespace uai::ai::cache { class CacheManagement; }
+namespace uai::ai::camera { class CameraManagement; }
+namespace uai::ai::lcd { class LcdManagement; }
+
 namespace uai::ai::task {
+
+class PipelineTask;
+
+struct CameraRenderContext {
+    memory_manager::MemoryManager &memory;
+    cache::CacheManagement &cache;
+    camera::CameraManagement &camera;
+    lcd::LcdManagement &lcd;
+    middleware::cpu_task_monitor::CpuTaskMonitor &cpu_task_monitor;
+    PipelineTask &pipeline_task;
+    const volatile bool &external_nor_ready;
+    const DiagnosticsConfig &diagnostics;
+};
 
 class CameraRenderTask final {
 public:
+    static CameraRenderTask &Instance()
+    {
+        static CameraRenderTask task;
+        return task;
+    }
+
     static void Entry();
+    void Start(middleware::cpu_task_monitor::CpuTaskMonitor &monitor);
 
 private:
-    void Run();
+    void Run(CameraRenderContext context);
+    common::StableAlignedBytes<kCameraTaskStackSize> stack_;
 };
 
 } // namespace uai::ai::task

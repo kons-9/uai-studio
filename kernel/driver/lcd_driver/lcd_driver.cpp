@@ -250,14 +250,13 @@ void LcdDriver::DrawInferenceRegion(
 void LcdDriver::DrawMask(const pipeline::DisplayBuffer &buffer,
                           const inference::BoxSet &boxes)
 {
-    if (boxes.segmentation.mask_address == 0U ||
-        boxes.segmentation.mask_width == 0U ||
-        boxes.segmentation.mask_height == 0U) {
+    if (!boxes.segmentation_valid ||
+        boxes.segmentation.mask_width != inference::kSegmentationMaskWidth ||
+        boxes.segmentation.mask_height != inference::kSegmentationMaskHeight) {
         return;
     }
 
-    const auto *mask = reinterpret_cast<const std::uint8_t *>(
-        boxes.segmentation.mask_address);
+    const auto *mask = boxes.segmentation.mask.data();
     auto *pixels = reinterpret_cast<std::uint16_t *>(buffer.buffer.address);
     /* A mask is emitted only by the segmentation postprocessor. Pipe2 keeps
      * the complete Pipe1 crop and letterboxes it into the square model input.

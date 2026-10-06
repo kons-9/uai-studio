@@ -38,8 +38,13 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | `src/task/application_initialize_task.cpp` | ドライバー初期化と各タスクの起動 |
 | `src/task/camera_render_task.cpp` | カメラフレームの取得とLCD表示 |
 | `src/task/pipeline_task.cpp` | モデル登録と3レーンのパイプライン実行 |
-| `src/task/task_context.*` | タスク間で共有する資源、キュー、診断設定 |
-| `src/task/task.hpp` | タスクループの共通骨格`Task::RunForever()` |
+| `src/task/task_context.hpp` | 共有資源とタスク参照の保持、各タスク用コンテキストの組み立て |
+| `src/task/application_initialize_task.hpp`、`src/task/camera_render_task.hpp`、`src/task/pipeline_task.hpp` | タスクごとに必要な依存を列挙するコンテキストとスタック。パイプラインのフレーム解放と結果選別 |
+| `src/task/task_config.hpp` | 動作モード、診断設定、キュー・スタックのサイズ |
+| `kernel/middleware/foundation/error.hpp` | エラーコードの分類と共有エラーログのAPI。カメラ固有の診断処理は`camera_render_task.cpp`に配置 |
+| `kernel/middleware/foundation/task.hpp` | タスクの起動、停止、ループの共通処理 |
+| `kernel/middleware/foundation/stable_aligned_bytes.hpp` | サイズと8バイト整列を保証し、コピー・移動を禁止する固定アドレスのバイト領域 |
+| `kernel/middleware/foundation/message_channel.hpp` | メッセージバッファの領域所有、生成と型付き送受信 |
 | `src/models/<model>/` | 生成コードのラッパー（`*_model_runtime.c`、`c_wrapper.h`）、`NpuNetwork`実装（`npu_model.*`）、`AiFuture`実装（`future.*`） |
 | `models/` | モデル生成スクリプト、NPUメモリプール設定、生成物の出力先 |
 | `config/` | CubeMX IOC、HAL設定、メモリ配置の入力 |
@@ -52,11 +57,17 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 
 | 設定 | 場所 |
 | --- | --- |
-| 推論モード（`kNpu`、`kCopyOnly`、`kDisabled`）、表示診断モード | `src/task/task_context.hpp` |
-| UART診断（`DiagnosticsConfig`） | `src/task/task_context.hpp` |
+| 推論モード（`kNpu`、`kCopyOnly`、`kDisabled`）、表示診断モード | `src/task/task_config.hpp` |
+| UART診断（`DiagnosticsConfig`） | `src/task/task_config.hpp` |
 | カメラの診断設定、Pipe2のフレームレート | `kernel/driver/config/ai_board_config.hpp` |
 | ログレベル | `kernel/middleware/foundation/log.hpp`の`kLogLevel` |
 | メモリ配置 | `config/board_memory.json`、`config/application_memory.json`、`config/model_layout.json` |
+
+`task_config.hpp`は「何を選び、いくつ確保するか」を定義し、`TaskContext`は起動後に共有するタスクへの参照と資源を保持します。例えば`kFrameQueueDepth`は設定、`context.pipeline_task.InferenceFrames()`はその深さの保存領域とキューを持つ実体へのアクセサです。推論結果はパイプラインタスクが保持し、カメラタスクが`TryGetLatestResult()`で待たずに最新の有効な結果を取得します。`DiagnosticsConfig`は診断の設定項目と既定値を定義し、`context.diagnostics`は起動中に参照するその設定値です。
+
+実行時は`ApplicationInitializeContext`、`CameraRenderContext`、`PipelineFrameContext`、`PipelineWorkerContext`を各タスクへ渡し、タスクが使わない資源は含めません。これらはタスクのヘッダに定義し、起動入口で`TaskContext`から組み立てます。
+
+セグメンテーションの20x20 maskは推論結果の固定長バッファに値として含めるため、推論出力が再利用されても表示中のmaskは変わりません。結果キューが満杯なら`kBufferOverflow`を返し、パイプラインタスクが最古の結果を捨てて再送します。再送できなかった場合は失敗をログに残します。
 
 `DiagnosticsConfig`は既定で`inference_fps`だけが有効です。T-MonitorのUART出力は遅いため、フレーム単位の診断（`inference_trace`、`inference_input`など）は調査時だけ有効にしてください。`inference_input_display`を有効にすると、LCDにNPUへ渡す入力画像を表示します。
 

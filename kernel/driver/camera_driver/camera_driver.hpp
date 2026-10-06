@@ -14,6 +14,8 @@ namespace uai::ai::camera {
 class CameraManagement;
 
 struct Diagnostics {
+    Diagnostics();
+
     std::uint32_t vsync_event_count = 0U;
     std::uint32_t frame_event_count = 0U;
     std::uint32_t recovery_count = 0U;

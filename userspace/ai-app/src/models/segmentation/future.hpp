@@ -74,7 +74,6 @@ private:
     pipeline::InferenceFrame frame_{};
     Phase phase_ = Phase::kPreprocess;
     std::atomic<bool> occupied_{false};
-    std::uint8_t mask_buffer_index_ = 0U;
     bool preprocess_stage_logged_ = false;
     bool infer_stage_logged_ = false;
     bool postprocess_stage_logged_ = false;

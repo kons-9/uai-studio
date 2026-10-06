@@ -10,8 +10,9 @@ void IAC_IRQHandler(void);
 }
 
 #include "task/application_initialize_task.hpp"
+#include "driver/board/register_diagnostics.hpp"
 #include "task/task_context.hpp"
-#include "task/task_diagnostics.hpp"
+#include "middleware/foundation/task.hpp"
 #include "middleware/foundation/log.hpp"
 
 /* HAL time-bridge state is a C ABI surface used by the board support code. */
@@ -53,7 +54,7 @@ extern "C" INT usermain(void)
 {
     uai::ai::task::TaskContext &context = uai::ai::task::GetTaskContext();
     if (context.diagnostics.register_dump) {
-        uai::ai::task::DumpCoreRegisters("usermain");
+        uai::ai::driver::board::DumpCoreRegisters("usermain");
     }
 
     const uai::ai::common::Error cpu_monitor_status =
@@ -62,7 +63,7 @@ extern "C" INT usermain(void)
         UAI_LOG_ERROR("ai: cpu task monitor start failed code=%x detail=%x\n",
                       static_cast<unsigned int>(cpu_monitor_status.code),
                       static_cast<unsigned int>(cpu_monitor_status.detail));
-        context.Halt("ai: cpu task monitor start failed\n");
+        uai::ai::common::Task::Halt("ai: cpu task monitor start failed\n");
     }
     (void)context.cpu_task_monitor.RegisterTask(tk_get_tid(), "usermain");
 
@@ -84,15 +85,33 @@ extern "C" INT usermain(void)
                  static_cast<unsigned int>(npu_interrupt_status),
                  static_cast<unsigned int>(iac_interrupt_status));
     if (npu_interrupt_status != E_OK || iac_interrupt_status != E_OK) {
-        context.Halt("ai: interrupt registration failed\n");
+        uai::ai::common::Task::Halt("ai: interrupt registration failed\n");
     }
     if (context.diagnostics.register_dump) {
-        uai::ai::task::DumpCoreRegisters("after_interrupts");
+        uai::ai::driver::board::DumpCoreRegisters("after_interrupts");
     }
 
-    context.CreateKernelObjects();
-    context.StartApplicationTask(
-        reinterpret_cast<FP>(uai::ai::task::ApplicationInitializeTask::Entry));
+    T_CFLG flag = {};
+    flag.flgatr = TA_TFIFO | TA_WSGL;
+    context.external_memory_ready = tk_cre_flg(&flag);
+    if (context.external_memory_ready < E_OK) {
+        uai::ai::common::Task::Halt("ai: event flag create failed\n");
+    }
+
+    T_CFLG pipeline_work_flag = {};
+    pipeline_work_flag.flgatr = TA_TFIFO | TA_WMUL;
+    context.pipeline_work_ready = tk_cre_flg(&pipeline_work_flag);
+    if (context.pipeline_work_ready < E_OK) {
+        uai::ai::common::Task::Halt("ai: pipeline event flag create failed\n");
+    }
+
+    if (context.pipeline_task.InferenceFrames().Create() < E_OK) {
+        uai::ai::common::Task::Halt("ai: frame queue create failed\n");
+    }
+    if (context.pipeline_task.CreateResultQueue() < E_OK) {
+        uai::ai::common::Task::Halt("ai: box queue create failed\n");
+    }
+    context.application_task.Start(context.cpu_task_monitor);
 
     for (;;) {
         tk_slp_tsk(TMO_FEVR);

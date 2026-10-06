@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+#include "middleware/foundation/log.hpp"
+
 namespace uai::ai::common {
 
 enum class ErrorCode : std::uint8_t {
@@ -20,6 +22,7 @@ enum class ErrorCode : std::uint8_t {
     kNpu,
     kOwnership,
     kInvalidState,
+    kBufferOverflow,
 };
 
 constexpr const char *ErrorCodeName(ErrorCode code)
@@ -33,6 +36,7 @@ constexpr const char *ErrorCodeName(ErrorCode code)
     case ErrorCode::kCache: return "cache";
     case ErrorCode::kNoFrame: return "no_frame";
     case ErrorCode::kNoBuffer: return "no_buffer";
+    case ErrorCode::kBufferOverflow: return "buffer_overflow";
     case ErrorCode::kQueueFull: return "queue_full";
     case ErrorCode::kTimeout: return "timeout";
     case ErrorCode::kModel: return "model";
@@ -49,6 +53,22 @@ struct Error {
     const char *operation = "ok";
 
     constexpr bool Ok() const { return code == ErrorCode::kOk; }
+    constexpr bool IsRoutine() const
+    {
+        return code == ErrorCode::kNoFrame ||
+               code == ErrorCode::kNoBuffer ||
+               code == ErrorCode::kQueueFull;
+    }
+    void LogStatus(const char *component) const
+    {
+        if (Ok()) return;
+
+        const LogLevel level = IsRoutine() ? LogLevel::kDebug : LogLevel::kError;
+        UAI_LOGF(level, "error: component=%s operation=%s code=%s(%u) detail=%x\n",
+                 component, operation, ErrorCodeName(code),
+                 static_cast<unsigned int>(code),
+                 static_cast<unsigned int>(detail));
+    }
 };
 
 } // namespace uai::ai::common

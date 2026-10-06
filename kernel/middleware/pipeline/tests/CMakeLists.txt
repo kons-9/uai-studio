@@ -1,0 +1,1 @@
+uai_add_host_test(image_diagnostics_test image_diagnostics_test.cpp)

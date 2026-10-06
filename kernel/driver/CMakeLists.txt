@@ -7,9 +7,12 @@ set(AI_ISP_ROOT "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/isp")
 
 set(UAI_DRIVER_SOURCES
     c_bsp/stm32n6570_discovery_xspi.c
+    board/register_diagnostics.cpp
+    board/interrupt_priority.cpp
     driver_ownership.cpp
     cache_driver/cache_driver.cpp
     camera_driver/board_driver/stm32n6570_discovery_camera.c
+    camera_driver/camera_diagnostics.cpp
     camera_driver/camera_driver.cpp
     camera_driver/sensor_driver/imx335_driver.c
     camera_driver/sensor_driver/registers/imx335_registers.cpp

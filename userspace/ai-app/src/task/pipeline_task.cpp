@@ -16,18 +16,43 @@
 #include "middleware/ai_runtime/inference_result_types.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
 #include "task/task_context.hpp"
-#include "task/task.hpp"
-#include "task/task_diagnostics.hpp"
+#include "middleware/foundation/task.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
 }
 
 namespace uai::ai::task {
-namespace {
 
-using ai_runtime::ExecutionContext;
-using ai_runtime::DispatchResult;
+void PipelineTask::StartFrame(
+    middleware::cpu_task_monitor::CpuTaskMonitor &monitor)
+{
+    common::Task::Start(monitor, reinterpret_cast<FP>(FrameEntry), frame_stack_,
+                4, "pipeline_frame");
+}
+
+void PipelineTask::StartPreprocess(
+    middleware::cpu_task_monitor::CpuTaskMonitor &monitor)
+{
+    common::Task::Start(monitor, reinterpret_cast<FP>(PreprocessEntry), preprocess_stack_,
+                5, "pipeline_preprocess");
+}
+
+void PipelineTask::StartNpu(
+    middleware::cpu_task_monitor::CpuTaskMonitor &monitor)
+{
+    common::Task::Start(monitor, reinterpret_cast<FP>(NpuEntry), npu_stack_,
+                5, "pipeline_npu");
+}
+
+void PipelineTask::StartPostprocess(
+    middleware::cpu_task_monitor::CpuTaskMonitor &monitor)
+{
+    common::Task::Start(monitor, reinterpret_cast<FP>(PostprocessEntry), postprocess_stack_,
+                4, "pipeline_postprocess");
+}
+
+namespace {
 
 struct PipelineApplication;
 PipelineApplication &App();
@@ -47,7 +72,7 @@ constexpr std::size_t kModelScheduleLength = 4U;
 constexpr std::size_t kModelSchedule[kModelScheduleLength]{
     kPersonModel, kFaceModel, kSegmentationModel, kFaceModel};
 
-UINT PipelineWorkBit(ExecutionContext lane)
+UINT PipelineWorkBit(ai_runtime::ExecutionContext lane)
 {
     return 1U << static_cast<UINT>(lane);
 }
@@ -62,9 +87,9 @@ Future *ClaimAvailableFuture(Future *futures)
     return nullptr;
 }
 
-void WakePipelineWorker(void *, ExecutionContext lane)
+void WakePipelineWorker(void *, ai_runtime::ExecutionContext lane)
 {
-    TaskContext &task = GetTaskContext();
+    PipelineWorkerContext task = GetTaskContext().WorkerContext();
     const ER status = tk_set_flg(task.pipeline_work_ready,
                                  PipelineWorkBit(lane));
     if (status != E_OK) {
@@ -149,10 +174,10 @@ struct PipelineApplication {
      * prepare the next frame while the NPU worker is waiting for the current
      * inference, and postprocess can consume an older output concurrently. */
 
-    void Report(TaskContext &context)
+    void Report(PipelineFrameContext &context)
     {
         if (!context.diagnostics.inference_fps) return;
-        const std::uint32_t now = context.Now();
+        const std::uint32_t now = common::Task::Now();
         if (report_tick == 0U) {
             report_tick = now;
             return;
@@ -195,7 +220,7 @@ struct PipelineApplication {
         report_postprocess = postprocess_count;
     }
 
-    common::Error Initialize(TaskContext &context)
+    common::Error Initialize(PipelineFrameContext &context)
     {
         npu::Status result =
             npu.Initialize(*registered_models[kPersonModel].network);
@@ -249,9 +274,9 @@ struct PipelineApplication {
         return {};
     }
 
-    static std::uint32_t Now(void *context)
+    static std::uint32_t Now(void *)
     {
-        return static_cast<TaskContext *>(context)->Now();
+        return common::Task::Now();
     }
     static void EnterCritical(void *) { interrupt_state_ = __get_PRIMASK(); __disable_irq(); }
     static void LeaveCritical(void *) { __set_PRIMASK(interrupt_state_); }
@@ -259,7 +284,7 @@ struct PipelineApplication {
 
     static void OnTrace(void *context, const ai_runtime::StepTrace &trace)
     {
-        auto &task = *static_cast<TaskContext *>(context);
+        auto &task = *static_cast<PipelineFrameContext *>(context);
         if (task.diagnostics.inference_trace) {
             const char *name =
                 trace.model_id == static_cast<ai_runtime::AiModelId>(2U)
@@ -280,7 +305,7 @@ struct PipelineApplication {
     static void OnDone(void *context, ai_runtime::AiFuture &base,
                        common::Error error)
     {
-        auto &task = *static_cast<TaskContext *>(context);
+        auto &task = *static_cast<PipelineFrameContext *>(context);
         auto &application = App();
         const auto model_id = base.model_id();
         const bool is_face =
@@ -292,10 +317,9 @@ struct PipelineApplication {
                     : is_segmentation ? kSegmentationModel : kPersonModel;
         ++application.completed_count[model_index];
         if (!error.Ok()) {
-            LogStatus(is_face ? "face_pipeline"
-                              : is_segmentation ? "segmentation_pipeline"
-                                                : "person_pipeline",
-                      error);
+            error.LogStatus(is_face ? "face_pipeline"
+                             : is_segmentation ? "segmentation_pipeline"
+                                               : "person_pipeline");
             application.enabled.store(false);
             UAI_LOG_WARN("ai: model pipeline disabled; camera remains live\n");
         }
@@ -303,19 +327,19 @@ struct PipelineApplication {
             auto &future = static_cast<models::face::Future &>(base);
             const common::Error released =
                 task.memory.ReleaseInferenceBuffer(future.frame());
-            LogStatus("memory", released);
+            released.LogStatus("memory");
             future.ReleaseClaim();
         } else if (is_segmentation) {
             auto &future = static_cast<models::segmentation::Future &>(base);
             const common::Error released =
                 task.memory.ReleaseInferenceBuffer(future.frame());
-            LogStatus("memory", released);
+            released.LogStatus("memory");
             future.ReleaseClaim();
         } else {
             auto &future = static_cast<models::person::Future &>(base);
             const common::Error released =
                 task.memory.ReleaseInferenceBuffer(future.frame());
-            LogStatus("memory", released);
+            released.LogStatus("memory");
             future.ReleaseClaim();
         }
         application.Report(task);
@@ -328,7 +352,7 @@ PipelineApplication &App() { return g_app; }
 
 void PublishBoxes(void *context, const inference::BoxSet &source)
 {
-    auto &task = *static_cast<TaskContext *>(context);
+    auto &task = *static_cast<PipelineFrameContext *>(context);
     auto &application = App();
     auto &boxes = application.latest_boxes;
     if (source.person_valid) {
@@ -348,42 +372,43 @@ void PublishBoxes(void *context, const inference::BoxSet &source)
     ++application.postprocess_count;
     application.last_detection_count = boxes.person.count + boxes.face.count;
     application.last_capture_sequence = boxes.capture_sequence;
-    task.SendLatestBoxes(boxes);
+    const common::Error publish_status = task.pipeline_task.PublishResult(boxes);
+    publish_status.LogStatus("results");
     application.Report(task);
 }
 
-void RunWorker(ExecutionContext lane)
+void RunWorker(ai_runtime::ExecutionContext lane)
 {
     UAI_LOG_INFO("ai: model worker started lane=%u\n",
                  static_cast<unsigned int>(lane));
-    if (lane == ExecutionContext::kNpu) {
+    if (lane == ai_runtime::ExecutionContext::kNpu) {
         for (const RegisteredModel &model : g_app.registered_models) {
             const common::Error name_status =
                 g_app.pipeline.RegisterModelName(
                     static_cast<ai_runtime::AiModelId>(model.kind_id),
                     model.name);
             if (!name_status.Ok()) {
-                LogStatus("ai_model_monitor.register_model_name", name_status);
+                name_status.LogStatus("ai_model_monitor.register_model_name");
             }
         }
         const common::Error monitor_status =
             g_app.pipeline.StartAiModelMonitor();
         if (!monitor_status.Ok()) {
-            LogStatus("ai_model_monitor.start", monitor_status);
+            monitor_status.LogStatus("ai_model_monitor.start");
         } else {
             UAI_LOG_INFO("ai: ai_model_monitor started for ai_runtime npu lane\n");
         }
     }
     ai_runtime::Dispatcher dispatcher(g_app.pipeline, lane);
-    TaskContext &task = GetTaskContext();
+    PipelineWorkerContext task = GetTaskContext().WorkerContext();
     const UINT wake_bit = PipelineWorkBit(lane);
     const char *task_name =
-        lane == ExecutionContext::kPreprocessCpu
+        lane == ai_runtime::ExecutionContext::kPreprocessCpu
             ? "pipeline_preprocess"
-            : lane == ExecutionContext::kNpu ? "pipeline_npu"
+            : lane == ai_runtime::ExecutionContext::kNpu ? "pipeline_npu"
                                                : "pipeline_postprocess";
     bool dispatch_ready = true;
-    Task::RunForever(task.cpu_task_monitor, task_name, [&] {
+    common::Task::RunForever(task.cpu_task_monitor, task_name, [&] {
         if (dispatch_ready) return;
         UINT pattern = 0U;
         const ER wait_status = tk_wai_flg(
@@ -393,12 +418,12 @@ void RunWorker(ExecutionContext lane)
             UAI_LOG_ERROR("ai: pipeline worker wait failed lane=%u code=%x\n",
                           static_cast<unsigned int>(lane),
                           static_cast<unsigned int>(wait_status));
-            task.Halt("ai: pipeline worker event wait failed\n");
+            common::Task::Halt("ai: pipeline worker event wait failed\n");
         }
         dispatch_ready = true;
     }, [&] {
-        const DispatchResult result = dispatcher.RunOnce();
-        dispatch_ready = result == DispatchResult::kRan;
+        const ai_runtime::DispatchResult result = dispatcher.RunOnce();
+        dispatch_ready = result == ai_runtime::DispatchResult::kRan;
         if (dispatch_ready) {
             /* Keep the three same-priority pipeline workers fair. This is
              * especially important after a pre step queues NPU work: the
@@ -413,34 +438,31 @@ void RunWorker(ExecutionContext lane)
 
 void PipelineTask::FrameEntry()
 {
-    TaskContext &task = GetTaskContext();
+    PipelineFrameContext task = GetTaskContext().FrameContext();
     UINT pattern = 0U;
     if (tk_wai_flg(task.external_memory_ready, kExternalMemoryReady,
                    TWF_ANDW, &pattern, TMO_FEVR) != E_OK) {
-        task.Halt("ai: model pipeline memory wait failed\n");
+        common::Task::Halt("ai: model pipeline memory wait failed\n");
     }
     if (!task.external_nor_ready) {
         UAI_LOG_WARN("ai: registered models unavailable; camera remains live\n");
     } else {
         const common::Error status = g_app.Initialize(task);
         if (!status.Ok()) {
-            LogStatus("model_pipeline.init", status);
+            status.LogStatus("model_pipeline.init");
         } else {
             UAI_LOG_INFO("ai: 3-model pipeline enabled (person/face/segmentation)\n");
-            task.StartPreprocessTask(
-                reinterpret_cast<FP>(PipelineTask::PreprocessEntry));
-            task.StartNpuTask(reinterpret_cast<FP>(PipelineTask::NpuEntry));
-            task.StartPostprocessTask(
-                reinterpret_cast<FP>(PipelineTask::PostprocessEntry));
+            task.pipeline_task.StartPreprocess(task.cpu_task_monitor);
+            task.pipeline_task.StartNpu(task.cpu_task_monitor);
+            task.pipeline_task.StartPostprocess(task.cpu_task_monitor);
         }
     }
     for (;;) {
-        InferenceMessage message{};
-        if (tk_rcv_mbf(task.frame_queue, &message, TMO_FEVR) !=
-            static_cast<INT>(sizeof(message))) continue;
-        common::Error status = task.memory.ClaimInferenceBuffer(message.frame);
+        pipeline::InferenceFrame frame{};
+        if (!task.pipeline_task.InferenceFrames().Receive(&frame)) continue;
+        common::Error status = task.memory.ClaimInferenceBuffer(frame);
         if (!status.Ok()) {
-            LogStatus("memory", status);
+                status.LogStatus("memory");
             continue;
         }
         if (g_app.enabled.load(std::memory_order_acquire)) {
@@ -482,8 +504,8 @@ void PipelineTask::FrameEntry()
             }
             if (model_index == kRegisteredModelCount) {
                 const common::Error released =
-                    task.memory.ReleaseInferenceBuffer(message.frame);
-                LogStatus("memory", released);
+                    task.memory.ReleaseInferenceBuffer(frame);
+                released.LogStatus("memory");
                 continue;
             }
 
@@ -499,7 +521,7 @@ void PipelineTask::FrameEntry()
                 future_context.info = &g_app.registered_models[kFaceModel].info;
                 future_context.publish = &PublishBoxes;
                 future_context.publish_context = &task;
-                face_available->Reset(future_context, message.frame);
+                face_available->Reset(future_context, frame);
                 status = g_app.scheduler.Submit(*face_available);
             } else if (model_index == kSegmentationModel) {
                 models::segmentation::FutureContext future_context{};
@@ -514,7 +536,7 @@ void PipelineTask::FrameEntry()
                     &g_app.registered_models[kSegmentationModel].info;
                 future_context.publish = &PublishBoxes;
                 future_context.publish_context = &task;
-                segmentation_available->Reset(future_context, message.frame);
+                segmentation_available->Reset(future_context, frame);
                 status = g_app.scheduler.Submit(*segmentation_available);
             } else {
                 models::person::FutureContext future_context{};
@@ -528,7 +550,7 @@ void PipelineTask::FrameEntry()
                 future_context.info = &g_app.registered_models[kPersonModel].info;
                 future_context.publish = &PublishBoxes;
                 future_context.publish_context = &task;
-                person_available->Reset(future_context, message.frame);
+                person_available->Reset(future_context, frame);
                 status = g_app.scheduler.Submit(*person_available);
             }
             if (status.Ok()) {
@@ -541,7 +563,7 @@ void PipelineTask::FrameEntry()
                                            ? "segmentation"
                                            : "person",
                                  static_cast<unsigned int>(
-                                     message.frame.capture_sequence));
+                                     frame.capture_sequence));
                 }
                 g_app.Report(task);
                 g_app.next_schedule_index =
@@ -556,20 +578,20 @@ void PipelineTask::FrameEntry()
                 person_available->ReleaseClaim();
             }
         }
-        const common::Error released = task.memory.ReleaseInferenceBuffer(message.frame);
-        LogStatus("memory", released);
+        const common::Error released = task.memory.ReleaseInferenceBuffer(frame);
+        released.LogStatus("memory");
     }
 }
 
 void PipelineTask::PreprocessEntry()
 {
-    RunWorker(ExecutionContext::kPreprocessCpu);
+    RunWorker(ai_runtime::ExecutionContext::kPreprocessCpu);
 }
 
-void PipelineTask::NpuEntry() { RunWorker(ExecutionContext::kNpu); }
+void PipelineTask::NpuEntry() { RunWorker(ai_runtime::ExecutionContext::kNpu); }
 void PipelineTask::PostprocessEntry()
 {
-    RunWorker(ExecutionContext::kPostprocessCpu);
+    RunWorker(ai_runtime::ExecutionContext::kPostprocessCpu);
 }
 
 } // namespace uai::ai::task

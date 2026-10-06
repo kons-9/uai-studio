@@ -26,3 +26,19 @@ int main() {
 if(UAI_LOG_ACCEPTS_UB)
     message(FATAL_ERROR "UAI_LOG must reject UB* text")
 endif()
+
+uai_add_host_test(stable_aligned_bytes_test stable_aligned_bytes_test.cpp)
+uai_add_host_test(fixed_message_slots_test fixed_message_slots_test.cpp)
+uai_add_host_test(owned_buffer_test owned_buffer_test.cpp)
+uai_add_host_test(error_test error_test.cpp)
+target_include_directories(error_test BEFORE PRIVATE
+    "${UAI_ROOT}/kernel/utkernel/linux/include"
+)
+uai_add_host_test(message_channel_test message_channel_test.cpp)
+target_include_directories(message_channel_test BEFORE PRIVATE
+    "${UAI_ROOT}/kernel/utkernel/linux/include"
+)
+uai_add_host_test(task_test task_test.cpp)
+target_include_directories(task_test BEFORE PRIVATE
+    "${UAI_ROOT}/kernel/utkernel/linux/include"
+)

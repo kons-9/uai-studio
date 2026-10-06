@@ -4,9 +4,13 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "middleware/foundation/owned_buffer.hpp"
+
 namespace uai::ai::inference {
 
 inline constexpr std::size_t kMaxBoxes = 16U;
+inline constexpr std::size_t kSegmentationMaskWidth = 20U;
+inline constexpr std::size_t kSegmentationMaskHeight = 20U;
 
 struct Box {
     std::int16_t x = 0;
@@ -22,7 +26,8 @@ struct DetectionSet {
 };
 
 struct SegmentationSet {
-    std::uintptr_t mask_address = 0U;
+    common::OwnedBuffer<std::uint8_t,
+                        kSegmentationMaskWidth * kSegmentationMaskHeight> mask{};
     std::uint16_t mask_width = 0U;
     std::uint16_t mask_height = 0U;
     std::uint32_t mask_foreground_pixels = 0U;

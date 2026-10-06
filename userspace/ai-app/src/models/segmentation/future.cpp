@@ -11,20 +11,16 @@
 #include "middleware/pipeline/image_format.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
 #include "memory_manager/memory_sizes.hpp"
-#include "middleware/memory/static_memory_layout.hpp"
-#include "middleware/memory/generated/static_memory_layout/key.hpp"
 
 namespace uai::ai::models::segmentation {
 
 namespace {
 
-constexpr std::size_t kMaskWidth = 20U;
-constexpr std::size_t kMaskHeight = 20U;
+constexpr std::size_t kMaskWidth = inference::kSegmentationMaskWidth;
+constexpr std::size_t kMaskHeight = inference::kSegmentationMaskHeight;
 constexpr std::size_t kMaskBytes = kMaskWidth * kMaskHeight;
 constexpr std::size_t kOutputBytes = kMaskBytes * 2U;
 constexpr std::uint32_t kModelId = 1U;
-
-using StaticMemoryKey = static_memory_layout::Key;
 
 common::Error Invalid(const char *operation)
 {
@@ -37,13 +33,7 @@ common::Error InitializeDecoder(const stai_network_info &info)
 {
     g_decoder_initialized = false;
     if (info.outputs == nullptr || info.n_outputs != 1U ||
-        info.outputs[0].size_bytes != kOutputBytes ||
-        static_memory_layout::Region::GetRegionFromKey(
-            StaticMemoryKey::kSegmentationMask0)
-                .size() < kMaskBytes ||
-        static_memory_layout::Region::GetRegionFromKey(
-            StaticMemoryKey::kSegmentationMask1)
-                .size() < kMaskBytes) {
+        info.outputs[0].size_bytes != kOutputBytes) {
         return Invalid("segmentation.future.decoder.initialize");
     }
     g_decoder_initialized = true;
@@ -51,31 +41,25 @@ common::Error InitializeDecoder(const stai_network_info &info)
             "segmentation.future.decoder.initialize"};
 }
 
-common::Error DecodeMask(const void *output, std::uint8_t mask_index,
-                         inference::BoxSet *boxes)
+common::Error DecodeMask(const void *output, inference::BoxSet *boxes)
 {
     if (!g_decoder_initialized) {
         return {common::ErrorCode::kNotInitialized, 0U,
                 "segmentation.future.decoder.decode"};
     }
-    if (output == nullptr || boxes == nullptr || mask_index > 1U) {
+    if (output == nullptr || boxes == nullptr) {
         return {common::ErrorCode::kInvalidArgument, 0U,
                 "segmentation.future.decoder.decode"};
     }
 
-    const auto key = mask_index == 0U ? StaticMemoryKey::kSegmentationMask0
-                                      : StaticMemoryKey::kSegmentationMask1;
-    const auto &region =
-        static_memory_layout::Region::GetRegionFromKey(key);
-    auto *mask = reinterpret_cast<std::uint8_t *>(region.address());
     const auto *logits = reinterpret_cast<const std::int8_t *>(output);
     std::uint32_t foreground_pixels = 0U;
     for (std::size_t i = 0U; i < kMaskBytes; ++i) {
-        mask[i] = logits[2U * i + 1U] > logits[2U * i] ? 1U : 0U;
-        foreground_pixels += mask[i];
+        boxes->segmentation.mask.bytes[i] =
+            logits[2U * i + 1U] > logits[2U * i] ? 1U : 0U;
+        foreground_pixels += boxes->segmentation.mask.bytes[i];
     }
 
-    boxes->segmentation.mask_address = region.address();
     boxes->segmentation.mask_width = static_cast<std::uint16_t>(kMaskWidth);
     boxes->segmentation.mask_height = static_cast<std::uint16_t>(kMaskHeight);
     boxes->segmentation.mask_foreground_pixels = foreground_pixels;
@@ -239,8 +223,7 @@ common::Error Future::Postprocess()
     if (!status.Ok()) return status;
 
     inference::BoxSet boxes{};
-    status = DecodeMask(reinterpret_cast<const void *>(output.address),
-                        mask_buffer_index_, &boxes);
+    status = DecodeMask(reinterpret_cast<const void *>(output.address), &boxes);
     if (!status.Ok()) return status;
     context_.publish(context_.publish_context, boxes);
     if (!postprocess_stage_logged_) {
@@ -250,7 +233,6 @@ common::Error Future::Postprocess()
                          boxes.segmentation.mask_foreground_pixels));
         postprocess_stage_logged_ = true;
     }
-    mask_buffer_index_ ^= 1U;
     return {};
 }
 
