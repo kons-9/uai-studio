@@ -119,16 +119,16 @@ common::Error Future::Preprocess()
 
     common::Error status = context_.cache->PrepareForCpuRead(frame_.source);
     if (!status.Ok()) return status;
-    const uai::image_processing::Rgb888Source source{
+    const image_processing::Rgb888Source source{
         reinterpret_cast<const std::uint8_t *>(frame_.source.address),
         pipeline::kInferenceFormat.width,
         pipeline::kInferenceFormat.height,
         pipeline::kInferenceFormat.width *
             pipeline::kInferenceFormat.bytes_per_pixel};
-    const uai::image_processing::Rgb888Destination destination{
+    const image_processing::Rgb888Destination destination{
         reinterpret_cast<std::uint8_t *>(frame_.buffer.address), kInputWidth,
         kInputHeight, kInputWidth * 3U};
-    status = uai::image_processing::Resize(source, destination);
+    status = image_processing::Resize(source, destination);
     if (!status.Ok()) return status;
     frame_.input_prepared_by_cpu = true;
     status = context_.cache->PrepareForPeripheralRead(

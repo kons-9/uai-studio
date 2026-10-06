@@ -1,4 +1,4 @@
-#include "middleware/foundation/message_channel.hpp"
+#include "middleware/message_channel/message_channel.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -47,7 +47,7 @@ INT tk_rcv_mbf(ID queue, void *message, TMO timeout)
     return sizeof(queued);
 }
 
-namespace uai::ai::common {
+namespace uai::ai::message_channel {
 namespace {
 
 TEST(MessageChannelTest, OwnsUserBufferAndForwardsTypedMessages)
@@ -77,4 +77,4 @@ TEST(MessageChannelTest, OwnsUserBufferAndForwardsTypedMessages)
 }
 
 } // namespace
-} // namespace uai::ai::common
+} // namespace uai::ai::message_channel

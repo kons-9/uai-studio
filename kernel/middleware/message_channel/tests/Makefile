@@ -3,7 +3,7 @@ CTEST ?= ctest
 HOST_TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../tests)
 BUILD_DIR ?= $(abspath $(HOST_TEST_DIR)/../../../build/middleware-tests)
 TSAN_BUILD_DIR ?= $(abspath $(HOST_TEST_DIR)/../../../build/middleware-tests-tsan)
-TESTS := error_test task_test
+TESTS := fixed_message_slots_test message_channel_test
 TEST_REGEX := ^($(subst $() ,|,$(strip $(TESTS))))$$
 
 .PHONY: all configure build test tsan

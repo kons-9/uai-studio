@@ -4,8 +4,8 @@
 #include <utility>
 
 #include "middleware/foundation/error.hpp"
-#include "middleware/memory/buffer_pointer.hpp"
-#include "middleware/memory/buffer_types.hpp"
+#include "middleware/buffer/buffer_pointer.hpp"
+#include "middleware/buffer/buffer_types.hpp"
 
 namespace uai::ai::memory_allocator {
 

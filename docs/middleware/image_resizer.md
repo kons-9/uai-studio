@@ -32,7 +32,7 @@ common::Error status = image_resizer::Select(request, &selection);
 
 ## CPUによる縮小
 
-CPU処理は`uai::image_processing`が提供します。`Resize()`の入力形式は`Rgb565Source`と`Rgb888Source`の型で区別します。いずれもnearest-neighborで、メモリを確保しません。
+CPU処理は`uai::ai::image_processing`が提供します。`Resize()`の入力形式は`Rgb565Source`と`Rgb888Source`の型で区別します。いずれもnearest-neighborで、メモリを確保しません。
 
 | 関数 | 内容 |
 | --- | --- |

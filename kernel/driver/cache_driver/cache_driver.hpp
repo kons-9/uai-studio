@@ -3,7 +3,7 @@
 
 #include "middleware/foundation/error.hpp"
 #include "driver/driver_ownership.hpp"
-#include "middleware/memory/buffer_types.hpp"
+#include "middleware/buffer/buffer_types.hpp"
 
 namespace uai::ai::cache {
 

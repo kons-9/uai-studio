@@ -2,7 +2,7 @@
 #define UAI_AI_MEMORY_MANAGER_FIXED_POOL_ALLOCATOR_HPP
 
 #include "middleware/memory/dynamic_memory_allocator.hpp"
-#include "middleware/memory/fixed_pool.hpp"
+#include "middleware/buffer/fixed_pool.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
 
 namespace uai::ai::memory_allocator {

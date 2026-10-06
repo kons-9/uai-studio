@@ -32,6 +32,8 @@ add_subdirectory("${UAI_ROOT}/kernel/middleware/ai_model_monitor/tests" ai_model
 add_subdirectory("${UAI_ROOT}/kernel/middleware/image_resizer/tests" image_resizer)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/memory_manager/tests" memory_manager)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/foundation/tests" foundation)
+add_subdirectory("${UAI_ROOT}/kernel/middleware/buffer/tests" buffer)
+add_subdirectory("${UAI_ROOT}/kernel/middleware/message_channel/tests" message_channel)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/pipeline/tests" pipeline)
 
 uai_add_host_test(frame_channels_test

@@ -7,8 +7,8 @@
 #include "memory_manager/memory_manager.hpp"
 #include "middleware/ai_runtime/inference_result_types.hpp"
 #include "middleware/foundation/log.hpp"
-#include "middleware/foundation/message_channel.hpp"
-#include "middleware/foundation/stable_aligned_bytes.hpp"
+#include "middleware/message_channel/latest_value_channel.hpp"
+#include "middleware/buffer/stable_aligned_bytes.hpp"
 #include "middleware/pipeline/frame_types.hpp"
 #include "task/task_config.hpp"
 
@@ -42,58 +42,24 @@ public:
 
     common::Error PublishLatest(const inference::BoxSet &boxes)
     {
-        common::Error status = Send(boxes);
-        if (status.Code() == common::ErrorCode::kBufferOverflow) {
-            DiscardOldest();
-            status = Send(boxes);
-        }
-        return status;
+        return channel_.SendReplacingOldestOnce(boxes);
     }
 
     bool DrainLatest(inference::BoxSet *active)
     {
-        if (active == nullptr) return false;
-        inference::BoxSet message{};
-        bool received = false;
-        for (;;) {
-            const INT size = channel_.Receive(&message, TMO_POL);
-            if (size < 0) break;
-            if (size == static_cast<INT>(sizeof(message)) &&
-                (message.person_valid || message.face_valid ||
-                 message.segmentation_valid)) {
-                *active = message;
-                received = true;
-            }
-        }
-        return received;
+        return channel_.DrainLatest(active, [](const inference::BoxSet &boxes) {
+            return boxes.person_valid || boxes.face_valid ||
+                   boxes.segmentation_valid;
+        });
     }
 
 private:
-    common::Error Send(const inference::BoxSet &boxes)
-    {
-        if (channel_.id() < E_OK) {
-            return {common::ErrorCode::kNotInitialized};
-        }
-        const ER error = channel_.Send(boxes, TMO_POL);
-        if (error == E_TMOUT) {
-            return {common::ErrorCode::kBufferOverflow};
-        }
-        if (error != E_OK) {
-            return {common::ErrorCode::kHardware};
-        }
-        return {};
-    }
-
-    bool DiscardOldest()
-    {
-        inference::BoxSet discarded{};
-        return channel_.Receive(&discarded, TMO_POL) ==
-               static_cast<INT>(sizeof(discarded));
-    }
-
-    common::MessageChannel<inference::BoxSet, kResultQueueDepth> channel_;
+    message_channel::LatestValueChannel<inference::BoxSet, kResultQueueDepth>
+        channel_;
 };
 
+/* Every frame carries an inference buffer lease, so a dropped frame must be
+ * returned to MemoryManager exactly once by whoever drops it. */
 class InferenceFrameChannel final {
 public:
     explicit InferenceFrameChannel(memory_manager::MemoryManager &memory)
@@ -103,34 +69,25 @@ public:
 
     void Send(const pipeline::InferenceFrame &frame)
     {
-        for (;;) {
-            const ER error = channel_.Send(frame, TMO_POL);
-            if (error == E_OK) return;
-
-            pipeline::InferenceFrame discarded{};
-            const INT size = channel_.Receive(&discarded, TMO_POL);
-            if (size == static_cast<INT>(sizeof(discarded))) {
+        const bool sent = channel_.SendReplacingOldest(
+            frame, [this](const pipeline::InferenceFrame &discarded) {
                 memory_.ReleaseInferenceBuffer(discarded).LogStatus("memory");
-                continue;
-            }
-
-            memory_.ReleaseInferenceBuffer(frame).LogStatus("memory");
-            UAI_LOG_DEBUG("ai: frame dropped reason=queue_full sequence=%u\n",
-                          static_cast<unsigned int>(frame.capture_sequence));
-            return;
-        }
+            });
+        if (sent) return;
+        memory_.ReleaseInferenceBuffer(frame).LogStatus("memory");
+        UAI_LOG_DEBUG("ai: frame dropped reason=queue_full sequence=%u\n",
+                      static_cast<unsigned int>(frame.capture_sequence));
     }
 
     bool Receive(pipeline::InferenceFrame *frame)
     {
-        if (frame == nullptr) return false;
-        return channel_.Receive(frame, TMO_FEVR) ==
-               static_cast<INT>(sizeof(*frame));
+        return channel_.ReceiveBlocking(frame);
     }
 
 private:
     memory_manager::MemoryManager &memory_;
-    common::MessageChannel<pipeline::InferenceFrame, kFrameQueueDepth> channel_;
+    message_channel::LatestValueChannel<pipeline::InferenceFrame, kFrameQueueDepth>
+        channel_;
 };
 
 /* Model pipeline tasks. Each worker runs one ai_runtime lane. */

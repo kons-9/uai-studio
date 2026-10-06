@@ -1,0 +1,2 @@
+uai_add_host_test(owned_buffer_test owned_buffer_test.cpp)
+uai_add_host_test(stable_aligned_bytes_test stable_aligned_bytes_test.cpp)

@@ -1,4 +1,4 @@
-#include "middleware/foundation/owned_buffer.hpp"
+#include "middleware/buffer/owned_buffer.hpp"
 
 #include <cstdint>
 

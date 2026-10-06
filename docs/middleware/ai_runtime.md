@@ -104,7 +104,7 @@ for (;;) {
 - `AiFuture`と入出力バッファは完了コールバックが呼ばれるまで利用側が保持します。ai-appではモデルごとに推論バッファ数と同じ数の`Future`を静的に持ち、空いているものを使います。
 - 同時に投入できる推論は8件です。超えると`Submit()`は`kQueueFull`を返します。
 - `RegisterModelName()`と`StartAiModelMonitor()`はNPUレーンのタスクから呼びます（[ai_model_monitor](ai_model_monitor.md)）。
-- カメラタスクからのフレームと、後処理からLCDへの結果は、foundationの`common::MessageChannel`（[共通基盤](../kernel/common.md)）で受け渡します。ai-appではフレームキューが満杯なら古いフレームを返却してから入れ直し、結果キューが満杯（`kBufferOverflow`）なら最古の結果を捨てて再送します。カメラタスクは待たずに最新の結果だけを取り出します（`userspace/ai-app/src/task/pipeline_task.hpp`）。
+- カメラタスクからのフレームと、後処理からLCDへの結果は、[message_channel](message_channel.md)の`message_channel::MessageChannel`で受け渡します。ai-appではフレームの送信失敗時に古いフレームを返却してから入れ直し、結果キューが満杯（`kBufferOverflow`）なら最古の結果を捨てて再送します。カメラタスクは待たずに最新の結果だけを取り出します（`userspace/ai-app/src/task/pipeline_task.hpp`）。
 
 ## 推論結果の型
 

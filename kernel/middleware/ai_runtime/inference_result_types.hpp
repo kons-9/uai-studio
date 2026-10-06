@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "middleware/foundation/owned_buffer.hpp"
+#include "middleware/buffer/owned_buffer.hpp"
 
 namespace uai::ai::inference {
 

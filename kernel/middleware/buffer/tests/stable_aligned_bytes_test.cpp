@@ -1,4 +1,4 @@
-#include "middleware/foundation/stable_aligned_bytes.hpp"
+#include "middleware/buffer/stable_aligned_bytes.hpp"
 
 #include <cstdint>
 #include <type_traits>

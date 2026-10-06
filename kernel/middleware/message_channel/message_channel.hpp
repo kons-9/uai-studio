@@ -4,9 +4,9 @@
 
 #include <tk/tkernel.h>
 
-#include "middleware/foundation/fixed_message_slots.hpp"
+#include "middleware/message_channel/fixed_message_slots.hpp"
 
-namespace uai::ai::common {
+namespace uai::ai::message_channel {
 
 template <typename Message, std::size_t Depth>
 class MessageChannel final {
@@ -39,4 +39,4 @@ private:
     FixedMessageSlots<Message, Depth> slots_;
 };
 
-} // namespace uai::ai::common
+} // namespace uai::ai::message_channel

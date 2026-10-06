@@ -4,7 +4,7 @@
 
 #include <tk/tkernel.h>
 
-#include "middleware/foundation/stable_aligned_bytes.hpp"
+#include "middleware/buffer/stable_aligned_bytes.hpp"
 #include "task/task_config.hpp"
 
 namespace uai::ai::middleware::cpu_task_monitor { class CpuTaskMonitor; }

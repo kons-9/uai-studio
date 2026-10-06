@@ -7,7 +7,7 @@
 
 #include "middleware/foundation/error.hpp"
 #include "middleware/foundation/log.hpp"
-#include "middleware/foundation/stable_aligned_bytes.hpp"
+#include "middleware/buffer/stable_aligned_bytes.hpp"
 
 namespace uai::ai::common {
 

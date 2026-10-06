@@ -9,7 +9,7 @@
 #include "driver/npu_driver/npu_network.hpp"
 #include "image_resizer/image_processing.hpp"
 #include "middleware/pipeline/image_format.hpp"
-#include "middleware/memory/buffer_types.hpp"
+#include "middleware/buffer/buffer_types.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
 #include "memory_manager/memory_sizes.hpp"
 #include "arm_math.h"
@@ -350,17 +350,17 @@ common::Error Future::Preprocess()
         common::Error status = context_.cache->PrepareForCpuRead(frame_.source);
         if (!status.Ok()) return status;
 
-        const uai::image_processing::Rgb888Source source{
+        const image_processing::Rgb888Source source{
             reinterpret_cast<const std::uint8_t *>(frame_.source.address),
             source_width,
             source_height,
             source_width * 3U};
-        const uai::image_processing::Rgb888Destination destination{
+        const image_processing::Rgb888Destination destination{
             reinterpret_cast<std::uint8_t *>(input.address),
             kInputWidth,
             kInputHeight,
             kInputWidth * 3U};
-        status = uai::image_processing::Resize(source, destination);
+        status = image_processing::Resize(source, destination);
         if (!status.Ok()) return status;
         frame_.input_prepared_by_cpu = true;
         status = context_.cache->PrepareForPeripheralRead(

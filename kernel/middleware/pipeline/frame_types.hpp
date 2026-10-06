@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#include "middleware/memory/buffer_types.hpp"
+#include "middleware/buffer/buffer_types.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
 
 namespace uai::ai::pipeline {

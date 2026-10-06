@@ -40,7 +40,7 @@ if (memory.ClaimInferenceBuffer(frame).Ok()) {
 memory.ReleaseInferenceBuffer(frame);
 ```
 
-- 受け取った`InferenceFrame`は、使っても使わなくても必ず`ReleaseInferenceBuffer()`で返します。返さないとPipe2のDMAが書き込み先を失い、フレームが落ちます。ai-appではフレームを渡す`common::MessageChannel`を包む`InferenceFrameChannel`が、キューが満杯のときに捨てたフレームをその場で返却します。
+- 受け取った`InferenceFrame`は、使っても使わなくても必ず`ReleaseInferenceBuffer()`で返します。返さないとPipe2のDMAが書き込み先を失い、フレームが落ちます。ai-appでは`InferenceFrameChannel`が送信失敗時に古いフレームを取り出して返却し、取り出せなければ送信するはずだったフレームを返却します。
 - `ClaimInferenceBuffer()`と`ReleaseInferenceBuffer()`はフレームの`capture_sequence`と`lease_token`を照合します。キューに残った古いメッセージで再利用後のスロットを操作すると`kOwnership`を返します。
 - 推論バッファには入力画像の後ろにモデル出力領域があり、`frame.outputs[]`で参照できます。`frame.source`は`SnapshotInferenceSource()`のコピー先、`frame.scratch`は共有の作業領域です。
 

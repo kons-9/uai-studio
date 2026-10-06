@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-namespace uai::image_processing {
+namespace uai::ai::image_processing {
 namespace {
 
 bool IsValidDimension(std::uint32_t width, std::uint32_t height)
@@ -12,7 +12,7 @@ bool IsValidDimension(std::uint32_t width, std::uint32_t height)
 
 } // namespace
 
-ai::common::Error Resize(
+common::Error Resize(
     const Rgb565Source &source, std::uint32_t crop_x, std::uint32_t crop_y,
     std::uint32_t crop_width, std::uint32_t crop_height,
     const Rgb888Destination &destination)
@@ -26,7 +26,7 @@ ai::common::Error Resize(
         crop_x >= source.width || crop_y >= source.height ||
         crop_width > source.width - crop_x ||
         crop_height > source.height - crop_y) {
-        return ai::common::Error{ai::common::ErrorCode::kInvalidArgument};
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     for (std::uint32_t y = 0U; y < destination.height; ++y) {
@@ -48,10 +48,10 @@ ai::common::Error Resize(
                 (pixel & 0x1FU) * 255U / 31U);
         }
     }
-    return {ai::common::ErrorCode::kOk};
+    return {common::ErrorCode::kOk};
 }
 
-ai::common::Error ResizeLetterbox(
+common::Error ResizeLetterbox(
     const Rgb888Source &source, const Rgb888Destination &destination,
     std::uint32_t content_width, std::uint32_t content_height,
     std::uint8_t pad_value)
@@ -63,7 +63,7 @@ ai::common::Error ResizeLetterbox(
         content_width > destination.width || content_height > destination.height ||
         source.stride_bytes < source.width * 3U ||
         destination.stride_bytes < destination.width * 3U) {
-        return ai::common::Error{ai::common::ErrorCode::kInvalidArgument};
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     for (std::uint32_t y = 0U; y < destination.height; ++y) {
@@ -93,10 +93,10 @@ ai::common::Error ResizeLetterbox(
             destination_pixel[2] = source_pixel[2];
         }
     }
-    return {ai::common::ErrorCode::kOk};
+    return {common::ErrorCode::kOk};
 }
 
-ai::common::Error Resize(const Rgb888Source &source,
+common::Error Resize(const Rgb888Source &source,
                          const Rgb888Destination &destination)
 {
     if (source.pixels == nullptr || destination.pixels == nullptr ||
@@ -104,7 +104,7 @@ ai::common::Error Resize(const Rgb888Source &source,
         !IsValidDimension(destination.width, destination.height) ||
         source.stride_bytes < source.width * 3U ||
         destination.stride_bytes < destination.width * 3U) {
-        return ai::common::Error{ai::common::ErrorCode::kInvalidArgument};
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     for (std::uint32_t y = 0U; y < destination.height; ++y) {
@@ -124,10 +124,10 @@ ai::common::Error Resize(const Rgb888Source &source,
             destination_pixel[2] = source_pixel[2];
         }
     }
-    return {ai::common::ErrorCode::kOk};
+    return {common::ErrorCode::kOk};
 }
 
-ai::common::Error FillLetterboxPadding(
+common::Error FillLetterboxPadding(
     const Rgb888Destination &destination, std::uint32_t content_width,
     std::uint32_t content_height, std::uint8_t pad_value)
 {
@@ -136,7 +136,7 @@ ai::common::Error FillLetterboxPadding(
         content_width == 0U || content_height == 0U ||
         content_width > destination.width || content_height > destination.height ||
         destination.stride_bytes < destination.width * 3U) {
-        return ai::common::Error{ai::common::ErrorCode::kInvalidArgument};
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     const std::uint32_t pad_x = (destination.width - content_width) / 2U;
@@ -154,7 +154,7 @@ ai::common::Error FillLetterboxPadding(
             row[static_cast<std::size_t>(x) * 3U + 2U] = pad_value;
         }
     }
-    return {ai::common::ErrorCode::kOk};
+    return {common::ErrorCode::kOk};
 }
 
-} // namespace uai::image_processing
+} // namespace uai::ai::image_processing

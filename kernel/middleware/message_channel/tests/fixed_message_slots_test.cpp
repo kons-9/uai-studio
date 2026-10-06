@@ -1,11 +1,11 @@
-#include "middleware/foundation/fixed_message_slots.hpp"
+#include "middleware/message_channel/fixed_message_slots.hpp"
 
 #include <cstdint>
 #include <type_traits>
 
 #include <gtest/gtest.h>
 
-namespace uai::ai::common {
+namespace uai::ai::message_channel {
 namespace {
 
 struct OddMessage {
@@ -27,4 +27,4 @@ TEST(FixedMessageSlotsTest, ReservesHeaderAndRoundedPayloadForEachMessage)
 }
 
 } // namespace
-} // namespace uai::ai::common
+} // namespace uai::ai::message_channel

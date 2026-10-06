@@ -1,15 +1,12 @@
 # 共通基盤（foundation）
 
-`kernel/middleware/foundation`は、ドライバー、ミドルウェア、アプリが共有する小さな部品です。名前空間は`uai::ai::common`で、すべてヘッダだけで構成されています。
+`kernel/middleware/foundation`は、ドライバー、ミドルウェア、アプリが共有する小さな部品です。名前空間は`uai::ai::common`です。型付きメッセージ通信は[message_channel](../middleware/message_channel.md)、領域の格納・記述・貸出所有は[buffer](../middleware/buffer.md)に分離しています。
 
 | ヘッダ | 内容 |
 | --- | --- |
 | `error.hpp` | 戻り値の`common::Error`とエラーコード、エラーのログ出力 |
 | `log.hpp` | レベル付きのログマクロ`UAI_LOG_*` |
 | `task.hpp` | μT-Kernelタスクの起動、ループ、停止の共通処理`common::Task` |
-| `stable_aligned_bytes.hpp` | スタックやメッセージバッファ用の、固定アドレスで8 byte整列したバイト領域 |
-| `fixed_message_slots.hpp`、`message_channel.hpp` | 型付きメッセージバッファ`common::MessageChannel` |
-| `owned_buffer.hpp` | 固定長の値バッファ`common::OwnedBuffer` |
 
 ## common::Error
 
@@ -81,6 +78,8 @@ UAI_LOG_INFO("ai: model registered=%s\n", name);
 | `Halt(message)` | エラーを出力して、そのタスクを永久に待たせます |
 
 ```cpp
+#include "middleware/buffer/stable_aligned_bytes.hpp"
+
 common::StableAlignedBytes<4096U> stack;  // タスクより長生きする場所に置く
 common::Task::Start(monitor, reinterpret_cast<FP>(Entry), stack, 5, "camera");
 
@@ -91,29 +90,11 @@ common::Task::RunForever(monitor, "camera",
 
 `monitor`は`RegisterTask()`、`BeginTaskLoop()`、`RecordTaskLoop()`を持つ型であればよく、ホストテストではモックに置き換えます。
 
-## 固定領域とメッセージチャネル
-
-μT-Kernelにスタックやメッセージバッファの領域を渡すときは、アドレスが動かず、整列が保証されたメモリが必要です。`StableAlignedBytes<Bytes>`はコピーとムーブを禁止した8 byte整列の配列で、`size_bytes()`と`data()`だけを持ちます。
-
-`MessageChannel<Message, Depth>`は、`Depth`件分の`Message`が入るメッセージバッファ（`tk_cre_mbf`、`TA_USERBUF`）を領域ごと所有し、型付きで送受信します。`Message`はtrivially copyableである必要があります。
-
-```cpp
-common::MessageChannel<pipeline::InferenceFrame, kFrameQueueDepth> frames;
-frames.Create();                            // 戻り値はメッセージバッファID
-frames.Send(frame, TMO_POL);                // 満杯なら E_TMOUT
-pipeline::InferenceFrame received{};
-if (frames.Receive(&received, TMO_FEVR) == sizeof(received)) { /* ... */ }
-```
-
-領域の大きさはμT-Kernelのメッセージヘッダを含めて`FixedMessageSlots`が計算するため、`Depth`件を必ず収容できます。ai-appではPipe2のフレームと推論結果の受け渡しに使い、満杯のときにフレームを返却する、最古の結果を捨てて再送する、といった方針はチャネルを包むクラス（`userspace/ai-app/src/task/pipeline_task.hpp`）に置いています。
-
-## OwnedBuffer
-
-`OwnedBuffer<Type, Capacity>`はポインタの代わりに値として持ち回る固定長バッファです。`CopyFrom(source, length)`は`Capacity`を超えると`kBufferOverflow`を返します。ai-appではセグメンテーションの20x20マスクを推論結果（`inference::SegmentationSet::mask`）に値として含めるため、推論バッファが再利用されても表示中のマスクは変わりません。
+`StableAlignedBytes`と`OwnedBuffer`は[buffer](../middleware/buffer.md)の型です。タスクは固定領域を利用しますが、格納型そのものにタスクの動作は含まれません。
 
 ## ホストテスト
 
-`common::Error`のログ分類、`Task`の起動とループ、`MessageChannel`の容量と送受信、`OwnedBuffer`のあふれ検出を、`kernel/utkernel/linux`のμT-Kernelモックで確認します。
+`common::Error`のログ分類、`Task`の起動とループを、`kernel/utkernel/linux`のμT-Kernelモックで確認します。格納型は[buffer](../middleware/buffer.md)、メッセージの容量と送受信は[message_channel](../middleware/message_channel.md)のテストで確認します。
 
 ```sh
 make -C kernel/middleware/foundation/tests test

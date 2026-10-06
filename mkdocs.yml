@@ -24,6 +24,8 @@ nav:
   - ドライバー: driver.md
   - ミドルウェア:
       - 概要: middleware/index.md
+      - buffer: middleware/buffer.md
+      - message_channel: middleware/message_channel.md
       - ai_runtime: middleware/ai_runtime.md
       - memory: middleware/memory.md
       - memory_manager: middleware/memory_manager.md

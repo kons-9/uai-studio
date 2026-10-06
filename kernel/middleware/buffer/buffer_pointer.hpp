@@ -1,11 +1,11 @@
-#ifndef UAI_AI_MIDDLEWARE_MEMORY_BUFFER_POINTER_HPP
-#define UAI_AI_MIDDLEWARE_MEMORY_BUFFER_POINTER_HPP
+#ifndef UAI_AI_MIDDLEWARE_BUFFER_BUFFER_POINTER_HPP
+#define UAI_AI_MIDDLEWARE_BUFFER_BUFFER_POINTER_HPP
 
 #include <atomic>
 #include <cstdint>
 
 #include "middleware/foundation/error.hpp"
-#include "middleware/memory/buffer_types.hpp"
+#include "middleware/buffer/buffer_types.hpp"
 
 namespace uai::ai::memory_allocator {
 class DynamicMemoryAllocator;

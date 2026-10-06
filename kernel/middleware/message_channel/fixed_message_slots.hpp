@@ -6,7 +6,7 @@
 #include <limits>
 #include <type_traits>
 
-namespace uai::ai::common {
+namespace uai::ai::message_channel {
 
 template <typename Message, std::size_t Depth>
 class FixedMessageSlots final {
@@ -38,4 +38,4 @@ private:
     alignas(8) std::array<std::byte, size_bytes()> storage_{};
 };
 
-} // namespace uai::ai::common
+} // namespace uai::ai::message_channel

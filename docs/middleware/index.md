@@ -1,6 +1,6 @@
 # ミドルウェア
 
-`kernel/middleware`はドライバーの上で動く共通処理です。NPU推論をμT-Kernelのタスクとして流すランタイム、バッファの所有権管理、実行の記録、画像縮小と、それらが共有する基盤（foundation）を提供します。CMakeターゲットは`uai::middleware`です。
+`kernel/middleware`はドライバーの上で動く共通処理です。NPU推論をμT-Kernelのタスクとして流すランタイム、型付きメッセージ通信、バッファの所有権管理、実行の記録、画像縮小と、それらが共有する基盤（foundation）を提供します。CMakeターゲットは`uai::middleware`です。
 
 ```text
                  +-----------------------------------------------+
@@ -13,7 +13,9 @@
                  ai_model_monitor      memory / pipeline      cpu_task_monitor
                  （ステップの記録）    （配置と型、画像診断） （タスク別CPU使用率）
                  -----------------------------------------------------------
-                 foundation（Error、ログ、Task、MessageChannel、OwnedBuffer）
+                 message_channel（格納、配送、送信方針）
+                 buffer（領域の格納、記述、貸出所有）
+                 foundation（Error、ログ、Task）
                       |                     |
   ドライバー     NPU                   カメラ、LCD、キャッシュ
 ```
@@ -22,9 +24,11 @@
 
 | モジュール | 内容 |
 | --- | --- |
-| [foundation](../kernel/common.md) | `common::Error`、`UAI_LOG_*`、タスクの起動とループ、型付きメッセージチャネル、固定長バッファ |
+| [foundation](../kernel/common.md) | `common::Error`、`UAI_LOG_*`、タスクの起動とループ |
+| [buffer](buffer.md) | 固定容量・固定アドレスの格納領域、バッファ記述子、貸出ポインタ |
+| [message_channel](message_channel.md) | 型付きメッセージの固定領域、μT-Kernel送受信、送信失敗時の置換方針 |
 | [ai_runtime](ai_runtime.md) | 推論を前処理CPU、NPU、後処理CPUの3レーンで実行するパイプラインと、推論結果の型 |
-| [memory](memory.md) | 生成したメモリ配置へのアクセスと、バッファの型 |
+| [memory](memory.md) | 生成したメモリ配置へのアクセスと、割当インターフェース |
 | [memory_manager](memory_manager.md) | キャプチャ、表示、推論バッファの所有権管理と、フレームの型・画像診断（pipeline） |
 | [ai_model_monitor](ai_model_monitor.md) | AIパイプラインの実行トレース |
 | [cpu_task_monitor](cpu_task_monitor.md) | タスク別CPU使用率とループ時間 |
