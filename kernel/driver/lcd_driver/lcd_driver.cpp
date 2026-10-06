@@ -76,28 +76,26 @@ std::uint32_t Crc32(const std::uint8_t *bytes, std::size_t size)
 
 } // namespace
 
-common::Error LcdDriver::FromBackend(uai::driver::DriverStatus status,
-                              const char *operation)
+common::Error LcdDriver::FromBackend(uai::driver::DriverStatus status)
 {
     if (uai::driver::IsOk(status)) {
-        return {common::ErrorCode::kOk, 0U, operation};
+        return {common::ErrorCode::kOk};
     }
     if (status == uai::driver::DriverStatus::kBusy) {
-        return {common::ErrorCode::kNoBuffer, 0U, operation};
+        return {common::ErrorCode::kNoBuffer};
     }
-    return {common::ErrorCode::kHardware, static_cast<std::uint32_t>(status),
-            operation};
+    return {common::ErrorCode::kHardware};
 }
 
 common::Error LcdDriver::Initialize(memory_manager::MemoryManager &memory,
                              cache::CacheManagement &cache)
 {
     if (initialized_) {
-        return {common::ErrorCode::kAlreadyInitialized, 0U, "lcd.initialize"};
+        return {common::ErrorCode::kAlreadyInitialized};
     }
-    common::Error management_status = management_->Initialize("lcd.management");
+    common::Error management_status = management_->Initialize();
     if (!management_status.Ok() &&
-        management_status.code != common::ErrorCode::kAlreadyInitialized) {
+        management_status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return management_status;
     }
     Writer writer;
@@ -108,15 +106,15 @@ common::Error LcdDriver::Initialize(memory_manager::MemoryManager &memory,
     const uai::driver::DriverStatus status = registers_.Initialize();
     if (!uai::driver::IsOk(status)) {
         memory_ = nullptr;
-        return FromBackend(status, "lcd.initialize");
+        return FromBackend(status);
     }
     initialized_ = true;
-    return {common::ErrorCode::kOk, 0U, "lcd.initialize"};
+    return {common::ErrorCode::kOk};
 }
 
 void LcdDriver::SetTimingDiagnostics(bool enabled, const Writer &writer)
 {
-    if (!management_->Validate(writer, "lcd.set_timing_diagnostics").Ok()) return;
+    if (!management_->Validate(writer).Ok()) return;
     timing_diagnostics_ = enabled;
 }
 
@@ -129,7 +127,7 @@ void LcdDriver::KeepClocksOnSleep() const
 
 void LcdDriver::KeepClocksOnSleep(const Writer &writer) const
 {
-    if (!management_->Validate(writer, "lcd.keep_clocks").Ok()) return;
+    if (!management_->Validate(writer).Ok()) return;
     __HAL_RCC_LTDC_CLK_SLEEP_ENABLE();
     __HAL_RCC_DMA2D_CLK_SLEEP_ENABLE();
 }
@@ -169,13 +167,12 @@ common::Error LcdDriver::GenerateCoordinatePattern(
     const memory_allocator::Buffer &destination, const Writer &writer) const
 {
     common::Error ownership =
-        management_->Validate(writer, "lcd.generate_coordinate_pattern");
+        management_->Validate(writer);
     if (!ownership.Ok()) return ownership;
     if (!initialized_ || destination.region != memory_allocator::Region::kCapture ||
         destination.size != memory_manager::kCaptureBufferBytes ||
         destination.address == 0U) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "lcd.generate_coordinate_pattern"};
+        return {common::ErrorCode::kInvalidArgument};
     }
     auto *pixels = reinterpret_cast<std::uint16_t *>(destination.address);
     for (std::size_t y = 0U; y < pipeline::kCaptureFormat.height; ++y) {
@@ -184,7 +181,7 @@ common::Error LcdDriver::GenerateCoordinatePattern(
                 CoordinatePatternPixel(x, y);
         }
     }
-    return {common::ErrorCode::kOk, 0U, "lcd.generate_coordinate_pattern"};
+    return {common::ErrorCode::kOk};
 }
 
 void LcdDriver::DrawBoxes(const pipeline::DisplayBuffer &buffer,
@@ -311,10 +308,10 @@ common::Error LcdDriver::ShowInitialFrame(
     const inference::BoxSet &boxes, const Writer &writer,
     bool coordinate_pattern)
 {
-    common::Error ownership = management_->Validate(writer, "lcd.show_initial");
+    common::Error ownership = management_->Validate(writer);
     if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr) {
-        return {common::ErrorCode::kNotInitialized, 0U, "lcd.show_initial"};
+        return {common::ErrorCode::kNotInitialized};
     }
 
     pipeline::DisplayBuffer first{};
@@ -332,7 +329,7 @@ common::Error LcdDriver::ShowInitialFrame(
         registers_.Present(first.buffer.address);
     if (!uai::driver::IsOk(backend_status)) {
         (void)memory_->ReleaseDisplayBuffer(first);
-        return FromBackend(backend_status, "lcd.show_initial");
+        return FromBackend(backend_status);
     }
     status = memory_->CommitDisplayBuffer(first);
     if (!status.Ok()) {
@@ -353,7 +350,7 @@ common::Error LcdDriver::ShowInitialFrame(
             (void)memory_->ReleaseDisplayBuffer(spare);
         }
     }
-    return status.Ok() ? common::Error{common::ErrorCode::kOk, 0U, "lcd.show_initial"}
+    return status.Ok() ? common::Error{common::ErrorCode::kOk}
                        : status;
 }
 
@@ -368,15 +365,14 @@ common::Error LcdDriver::SynchronizeCurrentFrame()
 common::Error LcdDriver::SynchronizeCurrentFrame(const Writer &writer)
 {
     common::Error ownership =
-        management_->Validate(writer, "lcd.synchronize_current_frame");
+        management_->Validate(writer);
     if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "lcd.synchronize_current_frame"};
+        return {common::ErrorCode::kNotInitialized};
     }
     const uai::driver::DriverStatus status = registers_.Synchronize();
     if (!uai::driver::IsOk(status)) {
-        return FromBackend(status, "lcd.synchronize_current_frame");
+        return FromBackend(status);
     }
     return memory_->CompleteDisplayHandoff();
 }
@@ -397,13 +393,13 @@ common::Error LcdDriver::ComposeAndPresent(
     const inference::BoxSet &boxes, const Writer &writer,
     bool log_copy_crc)
 {
-    common::Error ownership = management_->Validate(writer, "lcd.compose");
+    common::Error ownership = management_->Validate(writer);
     if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr) {
-        return {common::ErrorCode::kNotInitialized, 0U, "lcd.compose"};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (!capture) {
-        return {common::ErrorCode::kInvalidArgument, 0U, "lcd.compose"};
+        return {common::ErrorCode::kInvalidArgument};
     }
     common::Error status{};
 
@@ -411,10 +407,10 @@ common::Error LcdDriver::ComposeAndPresent(
      * the queued VBlank reload has latched the new CFBAR. */
     const uai::driver::DriverStatus sync_status = registers_.Synchronize();
     if (sync_status == uai::driver::DriverStatus::kBusy) {
-        return {common::ErrorCode::kNoBuffer, 0U, "lcd.reload.pending"};
+        return {common::ErrorCode::kNoBuffer};
     }
     if (!uai::driver::IsOk(sync_status)) {
-        return FromBackend(sync_status, "lcd.reload.wait");
+        return FromBackend(sync_status);
     }
     status = memory_->CompleteDisplayHandoff();
     if (!status.Ok()) {
@@ -515,7 +511,7 @@ common::Error LcdDriver::ComposeAndPresent(
         registers_.Present(display.buffer.address);
     if (!uai::driver::IsOk(backend_status)) {
         (void)memory_->ReleaseDisplayBuffer(display);
-        return FromBackend(backend_status, "lcd.present");
+        return FromBackend(backend_status);
     }
     return memory_->CommitDisplayBuffer(display);
 }
@@ -533,24 +529,24 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
     const pipeline::InferenceFrame &frame, const Writer &writer)
 {
     common::Error ownership =
-        management_->Validate(writer, "lcd.compose_inference");
+        management_->Validate(writer);
     if (!ownership.Ok()) return ownership;
     if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
-        return {common::ErrorCode::kNotInitialized, 0U, "lcd.compose_inference"};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (!frame || !frame.from_pipe2 ||
         frame.buffer.size < memory_manager::kInferenceFrameBytes) {
-        return {common::ErrorCode::kInvalidArgument, 0U, "lcd.compose_inference"};
+        return {common::ErrorCode::kInvalidArgument};
     }
 
     /* Ensure the previous reload has latched before reusing the other LCD
      * surface. This is the same handoff discipline as ComposeAndPresent(). */
     const uai::driver::DriverStatus sync_status = registers_.Synchronize();
     if (sync_status == uai::driver::DriverStatus::kBusy) {
-        return {common::ErrorCode::kNoBuffer, 0U, "lcd.inference_reload.pending"};
+        return {common::ErrorCode::kNoBuffer};
     }
     if (!uai::driver::IsOk(sync_status)) {
-        return FromBackend(sync_status, "lcd.inference_reload.wait");
+        return FromBackend(sync_status);
     }
     common::Error status = memory_->CompleteDisplayHandoff();
     if (!status.Ok()) {
@@ -613,7 +609,7 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
         registers_.Present(display.buffer.address);
     if (!uai::driver::IsOk(backend_status)) {
         (void)memory_->ReleaseDisplayBuffer(display);
-        return FromBackend(backend_status, "lcd.present_inference");
+        return FromBackend(backend_status);
     }
     return memory_->CommitDisplayBuffer(display);
 }

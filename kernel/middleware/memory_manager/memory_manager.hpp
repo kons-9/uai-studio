@@ -68,8 +68,6 @@ public:
 
 private:
     memory_allocator::FixedPoolAllocator allocator_{};
-    static common::Error Make(common::ErrorCode code, std::uint32_t detail,
-                              const char *operation);
     static bool SameBuffer(const memory_allocator::Buffer &lhs,
                            const memory_allocator::Buffer &rhs);
     static bool SameLease(

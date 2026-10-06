@@ -32,7 +32,7 @@ public:
     static PsramManagement &Instance() { static PsramManagement m; return m; }
     bool Initialize() { return driver_.Initialize(); }
     common::Error Acquire(Accessor *a, TMO timeout = TMO_FEVR)
-    { if (!a) return {common::ErrorCode::kInvalidArgument, 0U, "psram.management.acquire.null_accessor"}; *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout); if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w)); return s; }
+    { if (!a) return {common::ErrorCode::kInvalidArgument}; *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout); if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w)); return s; }
     void KeepClocksOnSleep() const { driver_.KeepClocksOnSleep(); }
     PsramManagement(const PsramManagement &) = delete;
     PsramManagement &operator=(const PsramManagement &) = delete;

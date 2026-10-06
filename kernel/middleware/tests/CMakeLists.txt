@@ -35,6 +35,7 @@ add_subdirectory("${UAI_ROOT}/kernel/middleware/foundation/tests" foundation)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/pipeline/tests" pipeline)
 
 uai_add_host_test(frame_channels_test
+    "${UAI_ROOT}/kernel/middleware/foundation/error.cpp"
     "${UAI_ROOT}/kernel/middleware/memory_manager/fixed_pool_allocator.cpp"
     "${UAI_ROOT}/kernel/middleware/memory_manager/memory_manager.cpp"
     "${UAI_ROOT}/userspace/ai-app/tests/frame_channels_test.cpp"

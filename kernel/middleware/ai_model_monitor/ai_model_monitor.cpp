@@ -153,12 +153,10 @@ common::Error AiModelMonitor::RegisterModelName(
 {
     const std::uint32_t id = static_cast<std::uint32_t>(model_id);
     if (id == kUnknownModelKindId || name == nullptr || name[0] == '\0') {
-        return {common::ErrorCode::kInvalidArgument, id,
-                "ai2.ai_model_monitor.register_model_name"};
+        return {common::ErrorCode::kInvalidArgument};
     }
     if (trace_header_ != nullptr || monitor_task_id_ != 0) {
-        return {common::ErrorCode::kInvalidState, id,
-                "ai2.ai_model_monitor.register_model_name"};
+        return {common::ErrorCode::kInvalidState};
     }
 
     std::size_t slot = kThreadMonitorModelNameCapacity;
@@ -175,9 +173,7 @@ common::Error AiModelMonitor::RegisterModelName(
         }
     }
     if (slot == kThreadMonitorModelNameCapacity) {
-        return {common::ErrorCode::kQueueFull,
-                static_cast<std::uint32_t>(kThreadMonitorModelNameCapacity),
-                "ai2.ai_model_monitor.register_model_name"};
+        return {common::ErrorCode::kQueueFull};
     }
 
     ThreadMonitorTraceModelName &entry = registered_model_names_[slot];
@@ -189,22 +185,18 @@ common::Error AiModelMonitor::RegisterModelName(
             ? name_length
             : kThreadMonitorModelNameBytes - 1U;
     std::memcpy(entry.name, name, copy_length);
-    return {common::ErrorCode::kOk, 0U,
-            "ai2.ai_model_monitor.register_model_name"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error AiModelMonitor::Start()
 {
     if (monitor_task_id_ != 0) {
-        return {common::ErrorCode::kAlreadyInitialized, 0U,
-                "ai2.ai_model_monitor.start"};
+        return {common::ErrorCode::kAlreadyInitialized};
     }
 
     monitored_task_id_ = tk_get_tid();
     if (monitored_task_id_ < E_OK) {
-        return {common::ErrorCode::kInvalidState,
-                static_cast<std::uint32_t>(monitored_task_id_),
-                "ai2.ai_model_monitor.owner"};
+        return {common::ErrorCode::kInvalidState};
     }
 
     stop_requested_ = false;
@@ -217,8 +209,7 @@ common::Error AiModelMonitor::Start()
     __atomic_store_n(&pending_dropped_count_, 0U, __ATOMIC_RELEASE);
     if (!InitializeTraceBuffer()) {
         monitored_task_id_ = 0;
-        return {common::ErrorCode::kInvalidState, 0U,
-                "ai2.ai_model_monitor.trace_buffer"};
+        return {common::ErrorCode::kInvalidState};
     }
 
     T_CTSK task = {};
@@ -234,18 +225,14 @@ common::Error AiModelMonitor::Start()
         trace_header_->monitor_task_id = 0U;
         FlushTrace(trace_header_, sizeof(*trace_header_));
         monitored_task_id_ = 0;
-        return {common::ErrorCode::kInvalidState,
-                static_cast<std::uint32_t>(monitor_task_id_),
-                "ai2.ai_model_monitor.create"};
+        return {common::ErrorCode::kInvalidState};
     }
 
     const common::Error task_name_status =
         cpu_task_monitor::CpuTaskMonitor::RegisterTaskForActiveMonitor(
             monitor_task_id_, "ai_model_monitor");
     if (!task_name_status.Ok()) {
-        UAI_LOG_WARN("ai: CPU task name registration failed name=ai_model_monitor code=%u detail=%u\n",
-                     static_cast<unsigned int>(task_name_status.code),
-                     static_cast<unsigned int>(task_name_status.detail));
+        task_name_status.LogStatus("ai_model_monitor", common::LogLevel::kWarn);
     }
 
     trace_header_->monitor_task_id =
@@ -258,18 +245,15 @@ common::Error AiModelMonitor::Start()
         FlushTrace(trace_header_, sizeof(*trace_header_));
         monitor_task_id_ = 0;
         monitored_task_id_ = 0;
-        return {common::ErrorCode::kInvalidState,
-                static_cast<std::uint32_t>(start_status),
-                "ai2.ai_model_monitor.start_task"};
+        return {common::ErrorCode::kInvalidState};
     }
-    return {common::ErrorCode::kOk, 0U, "ai2.ai_model_monitor.start"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error AiModelMonitor::Stop()
 {
     if (monitor_task_id_ == 0) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "ai2.ai_model_monitor.stop"};
+        return {common::ErrorCode::kNotInitialized};
     }
 
     stop_requested_ = true;
@@ -286,16 +270,12 @@ common::Error AiModelMonitor::Stop()
     operation_active_ = false;
 
     if (terminate_status != E_OK) {
-        return {common::ErrorCode::kInvalidState,
-                static_cast<std::uint32_t>(terminate_status),
-                "ai2.ai_model_monitor.terminate"};
+        return {common::ErrorCode::kInvalidState};
     }
     if (delete_status != E_OK) {
-        return {common::ErrorCode::kInvalidState,
-                static_cast<std::uint32_t>(delete_status),
-                "ai2.ai_model_monitor.delete"};
+        return {common::ErrorCode::kInvalidState};
     }
-    return {common::ErrorCode::kOk, 0U, "ai2.ai_model_monitor.stop"};
+    return {common::ErrorCode::kOk};
 }
 
 void AiModelMonitor::ObserveAiRuntimeStep(const ai_runtime::StepTrace &trace)

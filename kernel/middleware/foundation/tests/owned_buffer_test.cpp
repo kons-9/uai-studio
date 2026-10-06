@@ -13,7 +13,7 @@ TEST(OwnedBufferTest, CapacityCountsElements)
     const std::uint16_t source[]{100U, 200U, 300U};
     ASSERT_TRUE(values.CopyFrom(source, 2U).Ok());
     EXPECT_EQ(values.data()[1], 200U);
-    EXPECT_EQ(values.CopyFrom(source, 3U).code, ErrorCode::kBufferOverflow);
+    EXPECT_EQ(values.CopyFrom(source, 3U).Code(), ErrorCode::kBufferOverflow);
     EXPECT_EQ(values.data()[1], 200U);
 }
 

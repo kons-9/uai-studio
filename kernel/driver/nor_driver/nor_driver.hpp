@@ -74,9 +74,9 @@ public:
 
     int Initialize()
     {
-        const common::Error status = ownership_.Initialize("nor.management");
+        const common::Error status = ownership_.Initialize();
         if (!status.Ok() &&
-            status.code != common::ErrorCode::kAlreadyInitialized) {
+            status.Code() != common::ErrorCode::kAlreadyInitialized) {
             return -1;
         }
         NorDriver::Writer writer;
@@ -87,8 +87,7 @@ public:
     common::Error Acquire(Accessor *accessor, TMO timeout = TMO_FEVR)
     {
         if (accessor == nullptr) {
-            return {common::ErrorCode::kInvalidArgument, 0U,
-                    "nor.management.acquire.null_accessor"};
+            return {common::ErrorCode::kInvalidArgument};
         }
         *accessor = {};
         NorDriver::Writer writer;
@@ -99,10 +98,9 @@ public:
         return status;
     }
 
-    common::Error Validate(const NorDriver::Writer &writer,
-                           const char *operation) const
+    common::Error Validate(const NorDriver::Writer &writer) const
     {
-        return ownership_.Validate(writer, operation);
+        return ownership_.Validate(writer);
     }
 
     NorManagement(const NorManagement &) = delete;

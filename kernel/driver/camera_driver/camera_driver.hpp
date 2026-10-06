@@ -89,7 +89,7 @@ public:
     { return driver_.Initialize(memory, cache); }
     common::Error Acquire(Accessor *a, TMO timeout = TMO_FEVR)
     {
-        if (!a) return {common::ErrorCode::kInvalidArgument, 0U, "camera.management.acquire.null_accessor"};
+        if (!a) return {common::ErrorCode::kInvalidArgument};
         *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout);
         if (s.Ok()) {
             *a = Accessor(driver_, static_cast<Writer &&>(w));

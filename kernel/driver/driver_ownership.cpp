@@ -3,12 +3,12 @@
 namespace uai::ai::driver {
 namespace {
 
-common::Error MutexError(ER status, const char *operation)
+common::Error MutexError(ER status)
 {
     const common::ErrorCode code =
         status == E_TMOUT ? common::ErrorCode::kTimeout
                           : common::ErrorCode::kOwnership;
-    return {code, static_cast<std::uint32_t>(status), operation};
+    return {code};
 }
 
 } // namespace
@@ -50,11 +50,10 @@ void ResourceManagement::Writer::Release() noexcept
     }
 }
 
-common::Error ResourceManagement::Initialize(const char *name)
+common::Error ResourceManagement::Initialize()
 {
     if (initialized_) {
-        return {common::ErrorCode::kAlreadyInitialized, 0U,
-                name == nullptr ? "driver.management" : name};
+    return {common::ErrorCode::kAlreadyInitialized};
     }
 
     T_CMTX mutex = {};
@@ -62,52 +61,40 @@ common::Error ResourceManagement::Initialize(const char *name)
     const ID created_mutex_id = tk_cre_mtx(&mutex);
     if (created_mutex_id < E_OK) {
         mutex_id_ = 0;
-        return MutexError(created_mutex_id,
-                          name == nullptr ? "driver.management.create"
-                                           : name);
+        return MutexError(created_mutex_id);
     }
     mutex_id_ = created_mutex_id;
     initialized_ = true;
-    return {common::ErrorCode::kOk, static_cast<std::uint32_t>(mutex_id_),
-            name == nullptr ? "driver.management" : name};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error ResourceManagement::Acquire(Writer *writer, TMO timeout) const
 {
     if (writer == nullptr) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "driver.management.acquire.null_writer"};
+        return {common::ErrorCode::kInvalidArgument};
     }
     *writer = {};
     if (!initialized_ || mutex_id_ < E_OK) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "driver.management.acquire.not_initialized"};
+        return {common::ErrorCode::kNotInitialized};
     }
 
     const ER status = tk_loc_mtx(mutex_id_, timeout);
     if (status != E_OK) {
-        return MutexError(status, "driver.management.acquire");
+        return MutexError(status);
     }
     *writer = Writer(this, mutex_id_, &ResourceManagement::ReleaseWriter);
-    return {common::ErrorCode::kOk, static_cast<std::uint32_t>(mutex_id_),
-            "driver.management.acquire"};
+    return {common::ErrorCode::kOk};
 }
 
-common::Error ResourceManagement::Validate(const Writer &writer,
-                                          const char *operation) const
+common::Error ResourceManagement::Validate(const Writer &writer) const
 {
     if (!initialized_ || mutex_id_ < E_OK) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                operation == nullptr ? "driver.management.validate"
-                                     : operation};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (!writer.Matches(*this, mutex_id_)) {
-        return {common::ErrorCode::kOwnership, 0U,
-                operation == nullptr ? "driver.management.validate"
-                                     : operation};
+        return {common::ErrorCode::kOwnership};
     }
-    return {common::ErrorCode::kOk, static_cast<std::uint32_t>(mutex_id_),
-            operation == nullptr ? "driver.management.validate" : operation};
+    return {common::ErrorCode::kOk};
 }
 
 void ResourceManagement::ReleaseWriter(const void *owner, ID mutex_id) noexcept

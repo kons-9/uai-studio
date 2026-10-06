@@ -26,7 +26,7 @@ struct FakeFuture final : AiFuture {
     AiRuntimeResult Evaluate() override
     {
         if (fail) {
-            return {{common::ErrorCode::kModel, 0U, "test.failure"}, {}, false};
+            return {{common::ErrorCode::kModel}, {}, false};
         }
         const NextStep next = steps[index++];
         if (notify_during_evaluate != nullptr) {
@@ -104,7 +104,7 @@ TEST(AiRuntime, ThreeQueuesAndTargetedWakeup)
     EXPECT_EQ(observed.done, 0);
     EXPECT_EQ(post.RunOnce(), DispatchResult::kIdle);
     FakeFuture stranger;
-    EXPECT_EQ(runtime.Signal(stranger, WaitBitFlag::kNpuCompletion).code,
+    EXPECT_EQ(runtime.Signal(stranger, WaitBitFlag::kNpuCompletion).Code(),
               common::ErrorCode::kInvalidState);
     EXPECT_EQ(post.RunOnce(), DispatchResult::kIdle);
     ASSERT_TRUE(runtime.Signal(future, WaitBitFlag::kNpuCompletion).Ok());
@@ -174,7 +174,7 @@ TEST(AiRuntime, MultipleWaitsAndErrors)
     future.fail = true;
     EXPECT_EQ(runtime.RunOne(ExecutionContext::kPostprocessCpu), DispatchResult::kFailed);
     EXPECT_EQ(observed.done, 1);
-    EXPECT_EQ(observed.error.code, common::ErrorCode::kModel);
+    EXPECT_EQ(observed.error.Code(), common::ErrorCode::kModel);
 }
 
 TEST(AiRuntime, NotReadyAndCapacity)
@@ -185,7 +185,7 @@ TEST(AiRuntime, NotReadyAndCapacity)
     future.count = 1;
     future.ready = false;
     ASSERT_TRUE(scheduler.Submit(future).Ok());
-    EXPECT_EQ(scheduler.Submit(future).code, common::ErrorCode::kInvalidState);
+    EXPECT_EQ(scheduler.Submit(future).Code(), common::ErrorCode::kInvalidState);
     EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kNotReady);
     EXPECT_EQ(future.index, 0U);
     future.ready = true;
@@ -195,7 +195,7 @@ TEST(AiRuntime, NotReadyAndCapacity)
     for (std::size_t i = 0; i < PipelineRuntime::kCapacity - 1; ++i) {
         ASSERT_TRUE(scheduler.Submit(others[i]).Ok());
     }
-    EXPECT_EQ(scheduler.Submit(others[PipelineRuntime::kCapacity - 1]).code,
+    EXPECT_EQ(scheduler.Submit(others[PipelineRuntime::kCapacity - 1]).Code(),
               common::ErrorCode::kQueueFull);
 }
 

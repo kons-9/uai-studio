@@ -50,23 +50,23 @@ public:
     }
     common::Error Initialize()
     {
-        common::Error status = ownership_.Initialize("cache.management");
-        if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) return status;
+        common::Error status = ownership_.Initialize();
+        if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized) return status;
         Accessor accessor;
         status = Acquire(&accessor);
         return status.Ok() ? driver_.Initialize(accessor.Ownership()) : status;
     }
     common::Error Acquire(Accessor *accessor, TMO timeout = TMO_FEVR)
     {
-        if (accessor == nullptr) return {common::ErrorCode::kInvalidArgument, 0U, "cache.management.acquire.null_accessor"};
+        if (accessor == nullptr) return {common::ErrorCode::kInvalidArgument};
         *accessor = {};
         CacheDriver::Writer writer;
         const common::Error status = ownership_.Acquire(&writer, timeout);
         if (status.Ok()) *accessor = Accessor(driver_, static_cast<Writer &&>(writer));
         return status;
     }
-    common::Error Validate(const Writer &writer, const char *operation) const
-    { return ownership_.Validate(writer, operation); }
+    common::Error Validate(const Writer &writer) const
+    { return ownership_.Validate(writer); }
     common::Error PrepareForDmaWrite(const memory_allocator::Buffer &buffer)
     { return WithWriter([&](CacheDriver &d, const Writer &w) { return d.PrepareForDmaWrite(buffer, w); }); }
     common::Error PrepareForCpuRead(const memory_allocator::Buffer &buffer)
@@ -74,7 +74,7 @@ public:
     common::Error PrepareForPeripheralRead(const memory_allocator::Buffer &buffer)
     { return WithWriter([&](CacheDriver &d, const Writer &w) { return d.PrepareForPeripheralRead(buffer, w); }); }
     void KeepClocksOnSleep()
-    { (void)WithWriter([](CacheDriver &d, const Writer &w) { d.KeepClocksOnSleep(w); return common::Error{common::ErrorCode::kOk, 0U, "cache.keep_clocks"}; }); }
+    { (void)WithWriter([](CacheDriver &d, const Writer &w) { d.KeepClocksOnSleep(w); return common::Error{common::ErrorCode::kOk}; }); }
     CacheManagement(const CacheManagement &) = delete;
     CacheManagement &operator=(const CacheManagement &) = delete;
 private:

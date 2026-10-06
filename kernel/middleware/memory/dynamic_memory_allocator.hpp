@@ -39,8 +39,7 @@ public:
         memory_manager::SharedPointer *pointer)
     {
         if (pointer == nullptr) {
-            return {common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.pointer.acquire_shared.null_output"};
+            return {common::ErrorCode::kInvalidArgument};
         }
         memory_manager::UniquePointer unique;
         const common::Error status = Acquire(request, &unique);

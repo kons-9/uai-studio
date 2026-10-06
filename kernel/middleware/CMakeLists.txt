@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 add_library(uai-middleware STATIC
+    foundation/error.cpp
     ai_runtime/pipeline.cpp
     ai_model_monitor/ai_model_monitor.cpp
     cpu_task_monitor/cpu_task_monitor.cpp

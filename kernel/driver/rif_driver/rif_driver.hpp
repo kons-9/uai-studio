@@ -36,7 +36,7 @@ public:
     common::Error Initialize() { return driver_.Initialize(); }
     common::Error Acquire(Accessor *a, TMO timeout = TMO_FEVR)
     {
-        if (!a) return {common::ErrorCode::kInvalidArgument, 0U, "rif.management.acquire.null_accessor"};
+        if (!a) return {common::ErrorCode::kInvalidArgument};
         *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout);
         if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w));
         return s;

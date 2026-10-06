@@ -23,24 +23,24 @@ constexpr const char *kModelDataAddressName = "70380000";
 common::Error InitializeDrivers(ApplicationInitializeContext &context)
 {
     common::Error status = npu::NpuDriver::InitializeMemory();
-    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
+    if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return status;
     }
     status = context.cache.Initialize();
-    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
+    if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return status;
     }
     status = context.memory.Initialize();
     if (!status.Ok()) return status;
 
     status = context.rif.Initialize();
-    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
+    if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return status;
     }
 
     /* XSPI1/XSPI2 are RIF-protected on a cold boot. */
     if (!context.psram.Initialize()) {
-        return {common::ErrorCode::kHardware, 0U, "psram.initialize"};
+        return {common::ErrorCode::kHardware};
     }
 
     constexpr bool initialize_nor = kInferenceMode == InferenceMode::kNpu;
@@ -53,12 +53,12 @@ common::Error InitializeDrivers(ApplicationInitializeContext &context)
     context.external_nor_ready = nor_status == 0;
 
     status = context.lcd.Initialize(context.memory, context.cache);
-    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
+    if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return status;
     }
     context.lcd.SetTimingDiagnostics(context.diagnostics.display_timing);
     status = context.camera.Initialize(context.memory, context.cache);
-    if (!status.Ok() && status.code != common::ErrorCode::kAlreadyInitialized) {
+    if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return status;
     }
 
@@ -73,8 +73,7 @@ common::Error InitializeDrivers(ApplicationInitializeContext &context)
     npu::NpuDriver::KeepMemoryClocksOnSleep();
     context.lcd.KeepClocksOnSleep();
     context.camera.KeepClocksOnSleep();
-    return {common::ErrorCode::kOk, static_cast<std::uint32_t>(nor_status),
-            "task_context.initialize_drivers"};
+    return {common::ErrorCode::kOk};
 }
 } // namespace
 
@@ -112,8 +111,7 @@ void ApplicationInitializeTask::Run(ApplicationInitializeContext context)
      * timeouts used by the BSP continue to work. */
     if constexpr (kInferenceMode == InferenceMode::kNpu) {
         if (!context.external_nor_ready) {
-            UAI_LOG_WARN("ai: external NOR unavailable status=%d; inference disabled\n",
-                         static_cast<int>(driver_status.detail));
+            UAI_LOG_WARN("ai: external NOR unavailable; inference disabled\n");
         }
     }
     const common::Error cpu_trace_status =

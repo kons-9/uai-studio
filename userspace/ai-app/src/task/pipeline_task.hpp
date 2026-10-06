@@ -43,7 +43,7 @@ public:
     common::Error PublishLatest(const inference::BoxSet &boxes)
     {
         common::Error status = Send(boxes);
-        if (status.code == common::ErrorCode::kBufferOverflow) {
+        if (status.Code() == common::ErrorCode::kBufferOverflow) {
             DiscardOldest();
             status = Send(boxes);
         }
@@ -72,16 +72,14 @@ private:
     common::Error Send(const inference::BoxSet &boxes)
     {
         if (channel_.id() < E_OK) {
-            return {common::ErrorCode::kNotInitialized, 0U, "results.send"};
+            return {common::ErrorCode::kNotInitialized};
         }
         const ER error = channel_.Send(boxes, TMO_POL);
         if (error == E_TMOUT) {
-            return {common::ErrorCode::kBufferOverflow,
-                    static_cast<std::uint32_t>(error), "results.send"};
+            return {common::ErrorCode::kBufferOverflow};
         }
         if (error != E_OK) {
-            return {common::ErrorCode::kHardware,
-                static_cast<std::uint32_t>(error), "results.send"};
+            return {common::ErrorCode::kHardware};
         }
         return {};
     }

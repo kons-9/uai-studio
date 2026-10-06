@@ -151,7 +151,7 @@ TEST_F(FrameChannelsTest, ResultOwnsMaskAfterSourceIsReused)
     inference::BoxSet displayed{};
     ASSERT_TRUE(channel.DrainLatest(&displayed));
     EXPECT_EQ(displayed.segmentation.mask.data()[0], 1U);
-    EXPECT_EQ(displayed.segmentation.mask.CopyFrom(source, sizeof(source) + 1U).code,
+    EXPECT_EQ(displayed.segmentation.mask.CopyFrom(source, sizeof(source) + 1U).Code(),
               common::ErrorCode::kBufferOverflow);
     EXPECT_EQ(displayed.segmentation.mask.data()[0], 1U);
 }

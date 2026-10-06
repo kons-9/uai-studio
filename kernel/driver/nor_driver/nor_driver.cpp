@@ -9,7 +9,7 @@ namespace uai::ai::nor {
 
 int NorDriver::Initialize(const Writer &writer)
 {
-    if (!NorManagement::Instance().Validate(writer, "nor.initialize").Ok()) {
+    if (!NorManagement::Instance().Validate(writer).Ok()) {
         return -1;
     }
     if (initialized_) {
@@ -36,7 +36,7 @@ int NorDriver::Initialize(const Writer &writer)
 
 void NorDriver::KeepClocksOnSleep(const Writer &writer) const
 {
-    if (!NorManagement::Instance().Validate(writer, "nor.keep_clocks").Ok()) {
+    if (!NorManagement::Instance().Validate(writer).Ok()) {
         return;
     }
     __HAL_RCC_XSPI2_CLK_SLEEP_ENABLE();

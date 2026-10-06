@@ -4,11 +4,6 @@ namespace uai::ai::image_resizer {
 namespace {
 
 
-common::Error Invalid(const char *operation, std::uint32_t detail = 0U)
-{
-    return {common::ErrorCode::kInvalidArgument, detail, operation};
-}
-
 std::uint32_t CeilDivide(std::uint32_t value, std::uint32_t divisor)
 {
     return (value + divisor - 1U) / divisor;
@@ -26,7 +21,7 @@ common::Error Select(const Request &request, Selection *selection)
     if (selection == nullptr ||
         !IsValidDimension(request.input_width, request.input_height) ||
         !IsValidDimension(request.output_width, request.output_height)) {
-        return Invalid("image_resizer.select.invalid_request");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     *selection = {};
@@ -36,7 +31,7 @@ common::Error Select(const Request &request, Selection *selection)
         selection->hardware = Hardware::kCpu;
         selection->dcmipp_input_width = request.input_width;
         selection->dcmipp_input_height = request.input_height;
-        return {common::ErrorCode::kOk, 0U, "image_resizer.select.cpu"};
+        return {common::ErrorCode::kOk};
     }
 
     /* DCMIPP's downsize ratio is limited to 8:1.  Select the smallest common
@@ -53,7 +48,7 @@ common::Error Select(const Request &request, Selection *selection)
         decimation *= 2U;
     }
     if (decimation > kMaxDecimation) {
-        return Invalid("image_resizer.select.dcmipp_ratio", decimation);
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     const std::uint32_t decimated_width =
@@ -63,14 +58,14 @@ common::Error Select(const Request &request, Selection *selection)
     if (decimated_width < request.output_width ||
         decimated_height < request.output_height) {
         /* DCMIPP is a downsize path, not an upscaler. */
-        return Invalid("image_resizer.select.dcmipp_upscale", decimation);
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     selection->hardware = Hardware::kDcmipp;
     selection->dcmipp_decimation = decimation;
     selection->dcmipp_input_width = decimated_width;
     selection->dcmipp_input_height = decimated_height;
-    return {common::ErrorCode::kOk, decimation, "image_resizer.select.dcmipp"};
+    return {common::ErrorCode::kOk};
 }
 
 const char *HardwareName(Hardware hardware)
@@ -98,7 +93,7 @@ common::Error ResizeRgb565ToRgb888(const Rgb565Source &source, std::uint32_t cro
         crop_x >= source.width || crop_y >= source.height ||
         crop_width > source.width - crop_x ||
         crop_height > source.height - crop_y) {
-        return Invalid("image_resizer.cpu.invalid_request");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     for (std::uint32_t y = 0U; y < destination.height; ++y) {
@@ -120,7 +115,7 @@ common::Error ResizeRgb565ToRgb888(const Rgb565Source &source, std::uint32_t cro
                 (pixel & 0x1FU) * 255U / 31U);
         }
     }
-    return {common::ErrorCode::kOk, 0U, "image_resizer.cpu"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error ResizeRgb888Letterbox(const Rgb888Source &source,
@@ -136,7 +131,7 @@ common::Error ResizeRgb888Letterbox(const Rgb888Source &source,
         content_width > destination.width || content_height > destination.height ||
         source.stride_bytes < source.width * 3U ||
         destination.stride_bytes < destination.width * 3U) {
-        return Invalid("image_resizer.cpu.letterbox.invalid_request");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     for (std::uint32_t y = 0U; y < destination.height; ++y) {
@@ -166,7 +161,7 @@ common::Error ResizeRgb888Letterbox(const Rgb888Source &source,
             destination_pixel[2] = source_pixel[2];
         }
     }
-    return {common::ErrorCode::kOk, 0U, "image_resizer.cpu.letterbox"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error ResizeRgb888(const Rgb888Source &source,
@@ -177,7 +172,7 @@ common::Error ResizeRgb888(const Rgb888Source &source,
         !IsValidDimension(destination.width, destination.height) ||
         source.stride_bytes < source.width * 3U ||
         destination.stride_bytes < destination.width * 3U) {
-        return Invalid("image_resizer.cpu.resize.invalid_request");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     for (std::uint32_t y = 0U; y < destination.height; ++y) {
@@ -197,7 +192,7 @@ common::Error ResizeRgb888(const Rgb888Source &source,
             destination_pixel[2] = source_pixel[2];
         }
     }
-    return {common::ErrorCode::kOk, 0U, "image_resizer.cpu.resize"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error FillRgb888LetterboxPadding(
@@ -209,7 +204,7 @@ common::Error FillRgb888LetterboxPadding(
         content_width == 0U || content_height == 0U ||
         content_width > destination.width || content_height > destination.height ||
         destination.stride_bytes < destination.width * 3U) {
-        return Invalid("image_resizer.cpu.letterbox_padding.invalid_request");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     const std::uint32_t pad_x = (destination.width - content_width) / 2U;
@@ -227,8 +222,7 @@ common::Error FillRgb888LetterboxPadding(
             row[static_cast<std::size_t>(x) * 3U + 2U] = pad_value;
         }
     }
-    return {common::ErrorCode::kOk, 0U,
-            "image_resizer.cpu.letterbox_padding"};
+    return {common::ErrorCode::kOk};
 }
 
 } // namespace uai::ai::image_resizer

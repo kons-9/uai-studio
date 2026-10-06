@@ -76,11 +76,6 @@ fd_pp_keyPoints_t g_face_keypoints[kTotalBoxes][kKeypoints]{};
 std::size_t g_output_order[kExpectedOutputs]{};
 bool g_decoder_initialized = false;
 
-common::Error Invalid(const char *operation)
-{
-    return {common::ErrorCode::kModel, 0U, operation};
-}
-
 std::size_t FindOutput(const stai_network_info &info, std::size_t bytes,
                        std::size_t skip)
 {
@@ -97,7 +92,7 @@ common::Error InitializeDecoder(const stai_network_info &info)
     g_decoder_initialized = false;
     if (info.outputs == nullptr || info.n_outputs != kExpectedOutputs ||
         info.n_outputs > memory_manager::kMemoryConfig.model_output_bytes.size()) {
-        return Invalid("face.future.decoder.initialize");
+        return common::Error{common::ErrorCode::kModel};
     }
 
     const std::size_t box0 = FindOutput(info, kBoxes0 * 16U,
@@ -108,7 +103,7 @@ common::Error InitializeDecoder(const stai_network_info &info)
     if (box0 == kExpectedOutputs || score0 == kExpectedOutputs ||
         score1 == kExpectedOutputs || box1 == kExpectedOutputs ||
         score1 == score0 || box1 == score0 || box1 == score1) {
-        return Invalid("face.future.decoder.output_layout");
+        return common::Error{common::ErrorCode::kModel};
     }
 
     g_output_order[0] = box0;
@@ -145,10 +140,10 @@ common::Error InitializeDecoder(const stai_network_info &info)
         g_face_output[i].pKeyPoints = g_face_keypoints[i];
     }
     if (fd_blazeface_pp_reset(&g_face_params) != 0) {
-        return Invalid("face.future.decoder.initialize");
+        return common::Error{common::ErrorCode::kModel};
     }
     g_decoder_initialized = true;
-    return {common::ErrorCode::kOk, 0U, "face.future.decoder.initialize"};
+    return {common::ErrorCode::kOk};
 }
 
 float ClampProjectedCoordinate(float value, std::uint32_t limit)
@@ -163,14 +158,12 @@ common::Error DecodeFace(const ModelOutputView &outputs,
                          ModelResult *result)
 {
     if (!g_decoder_initialized) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "face.future.decoder.decode"};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (result == nullptr || outputs.count < kExpectedOutputs ||
         geometry.frame_width == 0U || geometry.frame_height == 0U ||
         geometry.model_height == 0U || geometry.content_height == 0U) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "face.future.decoder.decode"};
+        return {common::ErrorCode::kInvalidArgument};
     }
 
     const void *raw_box0 = outputs.tensors[g_output_order[0]];
@@ -179,8 +172,7 @@ common::Error DecodeFace(const ModelOutputView &outputs,
     const void *raw_box1 = outputs.tensors[g_output_order[3]];
     if (raw_box0 == nullptr || raw_score0 == nullptr ||
         raw_score1 == nullptr || raw_box1 == nullptr) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "face.future.decoder.outputs"};
+        return {common::ErrorCode::kInvalidArgument};
     }
 
     fd_blazeface_pp_in_t input{
@@ -189,7 +181,7 @@ common::Error DecodeFace(const ModelOutputView &outputs,
     fd_pp_out_t output{g_face_output, 0};
     g_face_params.nb_detect = 0;
     if (fd_blazeface_pp_process_int8(&input, &output, &g_face_params) != 0) {
-        return Invalid("face.future.decoder.postprocess");
+        return common::Error{common::ErrorCode::kModel};
     }
 
     const std::uint32_t available = output.nb_detect > 0
@@ -240,7 +232,7 @@ common::Error DecodeFace(const ModelOutputView &outputs,
             ClampProjectedCoordinate(height, geometry.frame_height);
         result->detections[i].confidence = source.conf;
     }
-    return {common::ErrorCode::kOk, 0U, "face.future.decoder.decode"};
+    return {common::ErrorCode::kOk};
 }
 
 std::int16_t ClampBoxCoordinate(float value, std::int32_t limit)
@@ -256,11 +248,10 @@ common::Error ConvertResult(const ModelResult &source,
                             inference::BoxSet *destination)
 {
     if (destination == nullptr) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "face.future.result_destination"};
+        return {common::ErrorCode::kInvalidArgument};
     }
     if (!source.detections_valid) {
-        return {common::ErrorCode::kModel, 0U, "face.future.result"};
+        return {common::ErrorCode::kModel};
     }
 
     destination->face = {};
@@ -281,8 +272,7 @@ common::Error ConvertResult(const ModelResult &source,
         destination->face.boxes[i].confidence = detection.confidence;
     }
     destination->face_valid = true;
-    return {common::ErrorCode::kOk, destination->face.count,
-            "face.future.result"};
+    return {common::ErrorCode::kOk};
 }
 
 std::uint32_t LetterboxContentHeight()
@@ -334,8 +324,7 @@ std::uint32_t Future::step_id() const
 common::Error Future::Preprocess()
 {
     if (context_.cache == nullptr || context_.info == nullptr) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "face.future.preprocess.context"};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (!preprocess_stage_logged_) {
         UAI_LOG_INFO("ai: face preprocess begin seq=%u buffer=%x\n",
@@ -347,8 +336,7 @@ common::Error Future::Preprocess()
         context_.info->n_inputs != 1U || context_.info->inputs == nullptr ||
         context_.info->inputs[0].size_bytes != InputBytes() ||
         frame_.buffer.size < InputBytes()) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "face.future.frame"};
+        return {common::ErrorCode::kInvalidArgument};
     }
 
     const std::uint32_t source_width = pipeline::kInferenceFormat.width;
@@ -357,8 +345,7 @@ common::Error Future::Preprocess()
     if (frame_.source_valid) {
         if (!frame_.source || frame_.source.size <
                                   memory_manager::kInferenceSourceBytes) {
-            return {common::ErrorCode::kInvalidArgument, 0U,
-                    "face.future.source"};
+            return {common::ErrorCode::kInvalidArgument};
         }
         common::Error status = context_.cache->PrepareForCpuRead(frame_.source);
         if (!status.Ok()) return status;
@@ -404,8 +391,7 @@ common::Error Future::Infer()
     if (context_.npu == nullptr || context_.npu_writer == nullptr ||
         context_.model == nullptr ||
         context_.info == nullptr) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "face.future.infer.context"};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (!infer_stage_logged_) {
         UAI_LOG_INFO("ai: face infer begin seq=%u\n",
@@ -428,8 +414,7 @@ common::Error Future::Infer()
         const auto &output = frame_.outputs[i];
         if (!output || output.size < context_.info->outputs[i].size_bytes ||
             output.alignment == 0U || output.address % output.alignment != 0U) {
-            return {common::ErrorCode::kInvalidArgument, i,
-                    "face.future.output_buffer"};
+            return {common::ErrorCode::kInvalidArgument};
         }
         outputs[i] = reinterpret_cast<stai_ptr>(output.address);
     }
@@ -438,10 +423,7 @@ common::Error Future::Infer()
     if (!result.Ok()) return result.error;
     result = context_.npu->Run(*context_.npu_writer);
     if (!result.Ok()) {
-        UAI_LOG_WARN("ai: face infer failed code=%u detail=%u op=%s\n",
-                     static_cast<unsigned int>(result.error.code),
-                     static_cast<unsigned int>(result.error.detail),
-                     result.error.operation);
+        result.error.LogStatus("face.infer", common::LogLevel::kWarn);
         return result.error;
     }
     if (!infer_stage_logged_) {
@@ -457,8 +439,7 @@ common::Error Future::Postprocess()
 {
     if (context_.cache == nullptr || context_.info == nullptr ||
         context_.publish == nullptr) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "face.future.postprocess.context"};
+        return {common::ErrorCode::kNotInitialized};
     }
 
     ModelOutputView view{};

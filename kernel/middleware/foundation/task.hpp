@@ -46,9 +46,7 @@ public:
         }
         const Error status = monitor.RegisterTask(task_id, name);
         if (!status.Ok()) {
-            UAI_LOG_WARN("ai: task name registration failed name=%s code=%u detail=%u\n",
-                         name, static_cast<unsigned int>(status.code),
-                         static_cast<unsigned int>(status.detail));
+            status.LogStatus(name, LogLevel::kWarn);
         }
         const ER error = tk_sta_tsk(task_id, 0);
         if (error != E_OK) {

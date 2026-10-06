@@ -12,9 +12,9 @@ bool PsramDriver::Initialize()
         return true;
     }
 
-    common::Error management_status = management_->Initialize("psram.management");
+    common::Error management_status = management_->Initialize();
     if (!management_status.Ok() &&
-        management_status.code != common::ErrorCode::kAlreadyInitialized) {
+        management_status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return false;
     }
     Writer writer;
@@ -37,7 +37,7 @@ void PsramDriver::KeepClocksOnSleep() const
 
 void PsramDriver::KeepClocksOnSleep(const Writer &writer) const
 {
-    if (!management_->Validate(writer, "psram.keep_clocks").Ok()) return;
+    if (!management_->Validate(writer).Ok()) return;
     __HAL_RCC_XSPI1_CLK_SLEEP_ENABLE();
 }
 

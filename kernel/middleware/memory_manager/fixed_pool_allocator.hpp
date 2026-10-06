@@ -59,8 +59,6 @@ private:
     const Slot *FindSlot(BufferPoolId pool, std::uint8_t index) const;
     std::uint64_t NextLeaseToken();
     std::uint64_t NextInferenceLeaseToken();
-    static common::Error Make(common::ErrorCode code, std::uint32_t detail,
-                              const char *operation);
     static bool SameBuffer(const Buffer &lhs, const Buffer &rhs);
     static void ReleasePointer(
         void *context,

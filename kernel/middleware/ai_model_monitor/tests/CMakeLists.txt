@@ -1,5 +1,6 @@
 uai_add_host_test(ai_model_monitor_test
     ../ai_model_monitor.cpp
+    ../../foundation/error.cpp
     ai_model_monitor_test.cpp
 )
 target_compile_definitions(ai_model_monitor_test PRIVATE UAI_AI_MODEL_MONITOR_HOST_TEST)

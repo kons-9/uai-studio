@@ -27,12 +27,6 @@ static_memory_layout::Region StaticRegion(StaticMemoryKey key)
 
 } // namespace
 
-common::Error MemoryManager::Make(common::ErrorCode code, std::uint32_t detail,
-                          const char *operation)
-{
-    return {code, detail, operation};
-}
-
 bool MemoryManager::SameBuffer(const Buffer &lhs, const Buffer &rhs)
 {
     return lhs.address == rhs.address && lhs.size == rhs.size &&
@@ -44,8 +38,7 @@ common::Error MemoryManager::PopulateInferenceFrame(
     InferenceFrame *frame) const
 {
     if (frame == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.inference.populate.null_output");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     FixedPoolAllocator::SlotInfo slot{};
@@ -93,8 +86,7 @@ common::Error MemoryManager::PopulateInferenceFrame(
             kMemoryConfig.buffer_alignment};
         output_address += kMemoryConfig.AlignUp(output_size);
     }
-    return Make(common::ErrorCode::kOk, index,
-                "memory.inference.populate");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 
@@ -176,31 +168,27 @@ common::Error MemoryManager::CaptureBuffer(
     std::uint8_t index, Buffer *buffer) const
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.capture.buffer.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (buffer == nullptr || index >= kCaptureBufferCount) {
-        return Make(common::ErrorCode::kInvalidArgument, index,
-                    "memory.capture.buffer.invalid_argument");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     const StaticMemoryKey key = index == 0U
                                     ? StaticMemoryKey::kCapture0
                                     : StaticMemoryKey::kCapture1;
     *buffer = {StaticRegion(key).address(), kCaptureBufferBytes, index,
                Region::kCapture};
-    return Make(common::ErrorCode::kOk, index, "memory.capture.buffer");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::InferenceBuffer(
     std::uint8_t index, Buffer *buffer) const
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.inference.buffer.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (buffer == nullptr || index >= kInferenceBufferCount) {
-        return Make(common::ErrorCode::kInvalidArgument, index,
-                    "memory.inference.buffer.invalid_argument");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     FixedPoolAllocator::SlotInfo slot{};
     const common::Error status =
@@ -209,80 +197,69 @@ common::Error MemoryManager::InferenceBuffer(
         return status;
     }
     *buffer = slot.buffer;
-    return Make(common::ErrorCode::kOk, index, "memory.inference.buffer");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::InferenceDropBuffer(
     Buffer *buffer) const
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.inference.drop_buffer.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (buffer == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.inference.drop_buffer.null_output");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     const auto &region = StaticRegion(StaticMemoryKey::kPipe2Drop);
     *buffer = {region.address(), region.size(), 0U, Region::kInference};
-    return Make(common::ErrorCode::kOk, 0U,
-                "memory.inference.drop_buffer");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::CaptureBuffers(std::uintptr_t *first,
                                     std::uintptr_t *second) const
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.capture_buffers.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (first == nullptr || second == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.capture_buffers.null_output");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     *first = StaticRegion(StaticMemoryKey::kCapture0).address();
     *second = StaticRegion(StaticMemoryKey::kCapture1).address();
-    return Make(common::ErrorCode::kOk, 0U, "memory.capture_buffers");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::InferenceBuffers(std::uintptr_t *buffers,
                                                 std::size_t count) const
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.inference_buffers.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (buffers == nullptr || count < kInferenceBufferCount) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.inference_buffers.null_output");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     for (std::size_t i = 0U; i < kInferenceBufferCount; ++i) {
         buffers[i] = static_memory_layout::Region::GetRegionFromKey(
                          static_memory_layout::kInferenceRegionKeys[i])
                          .address();
     }
-    return Make(common::ErrorCode::kOk, 0U, "memory.inference_buffers");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::ImportCompletedCapture(std::uintptr_t address,
                                             CaptureFrame *frame)
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.capture.import.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (frame == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.capture.import.null_output");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     std::uint8_t index = 0U;
     if (address == StaticRegion(StaticMemoryKey::kCapture1).address()) {
         index = 1U;
     } else if (address != StaticRegion(StaticMemoryKey::kCapture0).address()) {
-        return Make(common::ErrorCode::kInvalidArgument,
-                    static_cast<std::uint32_t>(address),
-                    "memory.capture.import.unknown_address");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     ++capture_sequence_;
@@ -290,22 +267,19 @@ common::Error MemoryManager::ImportCompletedCapture(std::uintptr_t address,
     frame->buffer = {address, kCaptureBufferBytes, index,
                      Region::kCapture};
     frame->sequence = capture_sequence_;
-    return Make(common::ErrorCode::kOk, frame->sequence, "memory.capture.import");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::ValidateCaptureFrame(const CaptureFrame &frame) const
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.capture.validate.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (!frame || frame.buffer.region != Region::kCapture) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.capture.validate.wrong_region_or_empty");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     if (frame.buffer.index >= 2U) {
-        return Make(common::ErrorCode::kInvalidArgument, frame.buffer.index,
-                    "memory.capture.validate.bad_index");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     const std::uintptr_t expected_address =
@@ -314,27 +288,22 @@ common::Error MemoryManager::ValidateCaptureFrame(const CaptureFrame &frame) con
             : StaticRegion(StaticMemoryKey::kCapture1).address();
     if (frame.buffer.address != expected_address ||
         frame.buffer.size != kCaptureBufferBytes) {
-        return Make(common::ErrorCode::kOwnership, frame.buffer.index,
-                    "memory.capture.validate.not_owned");
+        return common::Error{common::ErrorCode::kOwnership};
     }
     if (frame.sequence == 0U ||
         capture_generation_[frame.buffer.index] != frame.sequence) {
-        return Make(common::ErrorCode::kOwnership, frame.sequence,
-                    "memory.capture.validate.stale_generation");
+        return common::Error{common::ErrorCode::kOwnership};
     }
-    return Make(common::ErrorCode::kOk, frame.buffer.index,
-                "memory.capture.validate");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::AcquireDisplayBuffer(DisplayBuffer *buffer)
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.display.acquire.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (buffer == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.display.acquire.null_output");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     for (std::uint8_t i = 0U; i < kDisplayBufferCount; ++i) {
@@ -356,26 +325,22 @@ common::Error MemoryManager::AcquireDisplayBuffer(DisplayBuffer *buffer)
                 return transition_status;
             }
             buffer->buffer = slot.buffer;
-            return Make(common::ErrorCode::kOk, i, "memory.display.acquire");
+            return common::Error{common::ErrorCode::kOk};
         }
     }
-    return Make(common::ErrorCode::kNoBuffer, 0U, "memory.display.acquire.no_free_slot");
+    return common::Error{common::ErrorCode::kNoBuffer};
 }
 
 common::Error MemoryManager::CommitDisplayBuffer(const DisplayBuffer &buffer)
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.display.commit.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (buffer.buffer.region != Region::kDisplay) {
-        return Make(common::ErrorCode::kInvalidArgument,
-                    static_cast<std::uint32_t>(buffer.buffer.region),
-                    "memory.display.commit.wrong_region");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     if (buffer.buffer.index >= 2U) {
-        return Make(common::ErrorCode::kInvalidArgument, buffer.buffer.index,
-                    "memory.display.commit.bad_index");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     FixedPoolAllocator::SlotInfo slot{};
@@ -385,18 +350,13 @@ common::Error MemoryManager::CommitDisplayBuffer(const DisplayBuffer &buffer)
         return inspect_status;
     }
     if (!SameBuffer(slot.buffer, buffer.buffer)) {
-        return Make(common::ErrorCode::kOwnership, buffer.buffer.index,
-                    "memory.display.commit.not_owner");
+        return common::Error{common::ErrorCode::kOwnership};
     }
     if (slot.state != BufferState::kFilling) {
-        return Make(common::ErrorCode::kInvalidState,
-                    static_cast<std::uint32_t>(slot.state),
-                    "memory.display.commit.expected_filling");
+        return common::Error{common::ErrorCode::kInvalidState};
     }
     if (pending_display_ >= 0) {
-        return Make(common::ErrorCode::kNoBuffer,
-                    static_cast<std::uint32_t>(pending_display_),
-                    "memory.display.commit.reload_pending");
+        return common::Error{common::ErrorCode::kNoBuffer};
     }
     const common::Error transition_status = allocator_.Transition(
         FixedPoolAllocator::kDisplayPool, buffer.buffer.index,
@@ -405,17 +365,16 @@ common::Error MemoryManager::CommitDisplayBuffer(const DisplayBuffer &buffer)
         return transition_status;
     }
     pending_display_ = static_cast<std::int8_t>(buffer.buffer.index);
-    return Make(common::ErrorCode::kOk, buffer.buffer.index, "memory.display.commit");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::CompleteDisplayHandoff()
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.display.handoff.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (pending_display_ < 0) {
-        return Make(common::ErrorCode::kOk, 0U, "memory.display.handoff.none");
+        return common::Error{common::ErrorCode::kOk};
     }
 
     const auto pending = static_cast<std::uint8_t>(pending_display_);
@@ -426,9 +385,7 @@ common::Error MemoryManager::CompleteDisplayHandoff()
         return pending_status;
     }
     if (pending_slot.state != BufferState::kReady) {
-        return Make(common::ErrorCode::kInvalidState,
-                    static_cast<std::uint32_t>(pending_slot.state),
-                    "memory.display.handoff.pending_not_ready");
+        return common::Error{common::ErrorCode::kInvalidState};
     }
     if (current_display_ >= 0 && current_display_ != pending_display_) {
         const common::Error release_status = allocator_.Transition(
@@ -447,23 +404,19 @@ common::Error MemoryManager::CompleteDisplayHandoff()
     }
     current_display_ = pending_display_;
     pending_display_ = -1;
-    return Make(common::ErrorCode::kOk, pending, "memory.display.handoff");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::ReleaseDisplayBuffer(const DisplayBuffer &buffer)
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.display.release.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (buffer.buffer.region != Region::kDisplay) {
-        return Make(common::ErrorCode::kInvalidArgument,
-                    static_cast<std::uint32_t>(buffer.buffer.region),
-                    "memory.display.release.wrong_region");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     if (buffer.buffer.index >= 2U) {
-        return Make(common::ErrorCode::kInvalidArgument, buffer.buffer.index,
-                    "memory.display.release.bad_index");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     FixedPoolAllocator::SlotInfo slot{};
@@ -473,13 +426,10 @@ common::Error MemoryManager::ReleaseDisplayBuffer(const DisplayBuffer &buffer)
         return inspect_status;
     }
     if (!SameBuffer(slot.buffer, buffer.buffer)) {
-        return Make(common::ErrorCode::kOwnership, buffer.buffer.index,
-                    "memory.display.release.not_owner");
+        return common::Error{common::ErrorCode::kOwnership};
     }
     if (slot.state != BufferState::kFilling) {
-        return Make(common::ErrorCode::kInvalidState,
-                    static_cast<std::uint32_t>(slot.state),
-                    "memory.display.release.expected_filling");
+        return common::Error{common::ErrorCode::kInvalidState};
     }
     const common::Error transition_status = allocator_.Transition(
         FixedPoolAllocator::kDisplayPool, buffer.buffer.index,
@@ -487,7 +437,7 @@ common::Error MemoryManager::ReleaseDisplayBuffer(const DisplayBuffer &buffer)
     if (!transition_status.Ok()) {
         return transition_status;
     }
-    return Make(common::ErrorCode::kOk, buffer.buffer.index, "memory.display.release");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::AcquireInferenceBuffer(const CaptureFrame &capture,
@@ -498,8 +448,7 @@ common::Error MemoryManager::AcquireInferenceBuffer(const CaptureFrame &capture,
         return capture_status;
     }
     if (frame == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.inference.acquire.null_output");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     for (std::uint8_t i = 0U; i < kInferenceBufferCount; ++i) {
@@ -529,11 +478,10 @@ common::Error MemoryManager::AcquireInferenceBuffer(const CaptureFrame &capture,
                     BufferState::kReadyForAi, BufferState::kFree);
                 return populate_status;
             }
-            return Make(common::ErrorCode::kOk, i, "memory.inference.acquire");
+            return common::Error{common::ErrorCode::kOk};
         }
     }
-    return Make(common::ErrorCode::kNoBuffer, 0U,
-                "memory.inference.acquire.no_free_slot");
+    return common::Error{common::ErrorCode::kNoBuffer};
 }
 
 common::Error MemoryManager::ImportCompletedInference(std::uintptr_t address,
@@ -541,19 +489,15 @@ common::Error MemoryManager::ImportCompletedInference(std::uintptr_t address,
                                                InferenceFrame *frame)
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.inference.import.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (frame == nullptr || sequence == 0U) {
-        return Make(common::ErrorCode::kInvalidArgument, sequence,
-                    "memory.inference.import.invalid_argument");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     std::uint8_t index = 0U;
     if (!FindInferenceIndex(address, &index)) {
-        return Make(common::ErrorCode::kInvalidArgument,
-                    static_cast<std::uint32_t>(address),
-                    "memory.inference.import.unknown_address");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     FixedPoolAllocator::SlotInfo slot{};
@@ -564,35 +508,29 @@ common::Error MemoryManager::ImportCompletedInference(std::uintptr_t address,
     }
     if (slot.state != BufferState::kReadyForAi ||
         inference_capture_sequence_[index] != sequence) {
-        return Make(common::ErrorCode::kOwnership,
-                    static_cast<std::uint32_t>(slot.state),
-                    "memory.inference.import.not_reserved");
+        return common::Error{common::ErrorCode::kOwnership};
     }
     const common::Error populate_status =
         PopulateInferenceFrame(index, sequence, true, frame);
     if (!populate_status.Ok()) {
         return populate_status;
     }
-    return Make(common::ErrorCode::kOk, index, "memory.inference.import");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::ReserveCompletedInference(
     std::uintptr_t address, std::uint32_t sequence)
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.inference.reserve.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (address == 0U || sequence == 0U) {
-        return Make(common::ErrorCode::kInvalidArgument, sequence,
-                    "memory.inference.reserve.invalid_argument");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     std::uint8_t index = 0U;
     if (!FindInferenceIndex(address, &index)) {
-        return Make(common::ErrorCode::kInvalidArgument,
-                    static_cast<std::uint32_t>(address),
-                    "memory.inference.reserve.unknown_address");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     {
@@ -603,9 +541,7 @@ common::Error MemoryManager::ReserveCompletedInference(
             return inspect_status;
         }
         if (slot.state != BufferState::kFree) {
-            return Make(common::ErrorCode::kNoBuffer,
-                        static_cast<std::uint32_t>(slot.state),
-                        "memory.inference.reserve.buffer_busy");
+            return common::Error{common::ErrorCode::kNoBuffer};
         }
         std::uint64_t lease_token = 0U;
         const common::Error reserve_status =
@@ -618,26 +554,22 @@ common::Error MemoryManager::ReserveCompletedInference(
         }
         inference_capture_sequence_[index] = sequence;
     }
-    return Make(common::ErrorCode::kOk, index, "memory.inference.reserve");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::DropCompletedInference(
     std::uintptr_t address, std::uint32_t sequence)
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.inference.drop.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (address == 0U || sequence == 0U) {
-        return Make(common::ErrorCode::kInvalidArgument, sequence,
-                    "memory.inference.drop.invalid_argument");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     std::uint8_t index = 0U;
     if (!FindInferenceIndex(address, &index)) {
-        return Make(common::ErrorCode::kInvalidArgument,
-                    static_cast<std::uint32_t>(address),
-                    "memory.inference.drop.unknown_address");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     {
@@ -649,9 +581,7 @@ common::Error MemoryManager::DropCompletedInference(
         }
         if (slot.state != BufferState::kReadyForAi ||
             inference_capture_sequence_[index] != sequence) {
-            return Make(common::ErrorCode::kOwnership,
-                        static_cast<std::uint32_t>(slot.state),
-                        "memory.inference.drop.not_reserved");
+            return common::Error{common::ErrorCode::kOwnership};
         }
         const common::Error release_status = allocator_.Transition(
             FixedPoolAllocator::kInferencePool, index,
@@ -661,7 +591,7 @@ common::Error MemoryManager::DropCompletedInference(
         }
         inference_capture_sequence_[index] = 0U;
     }
-    return Make(common::ErrorCode::kOk, index, "memory.inference.drop");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 bool MemoryManager::IsInferenceBufferFree(std::uintptr_t address) const
@@ -695,17 +625,13 @@ bool MemoryManager::IsInferenceBufferFree(std::uintptr_t address) const
 common::Error MemoryManager::ClaimInferenceBuffer(const InferenceFrame &frame)
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.inference.claim.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (frame.buffer.region != Region::kInference) {
-        return Make(common::ErrorCode::kInvalidArgument,
-                    static_cast<std::uint32_t>(frame.buffer.region),
-                    "memory.inference.claim.wrong_region");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     if (frame.buffer.index >= kInferenceBufferCount) {
-        return Make(common::ErrorCode::kInvalidArgument, frame.buffer.index,
-                    "memory.inference.claim.bad_index");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     FixedPoolAllocator::SlotInfo slot{};
@@ -718,13 +644,10 @@ common::Error MemoryManager::ClaimInferenceBuffer(const InferenceFrame &frame)
         inference_capture_sequence_[frame.buffer.index] !=
             frame.capture_sequence ||
         !SameLease(frame, slot.lease_token)) {
-        return Make(common::ErrorCode::kOwnership, frame.buffer.index,
-                    "memory.inference.claim.not_owner_or_stale");
+        return common::Error{common::ErrorCode::kOwnership};
     }
     if (slot.state != BufferState::kReadyForAi) {
-        return Make(common::ErrorCode::kInvalidState,
-                    static_cast<std::uint32_t>(slot.state),
-                    "memory.inference.claim.expected_ready");
+        return common::Error{common::ErrorCode::kInvalidState};
     }
     const common::Error transition_status = allocator_.Transition(
         FixedPoolAllocator::kInferencePool, frame.buffer.index,
@@ -732,24 +655,19 @@ common::Error MemoryManager::ClaimInferenceBuffer(const InferenceFrame &frame)
     if (!transition_status.Ok()) {
         return transition_status;
     }
-    return Make(common::ErrorCode::kOk, frame.buffer.index,
-                "memory.inference.claim");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error MemoryManager::ReleaseInferenceBuffer(const InferenceFrame &frame)
 {
     if (!allocator_.IsInitialized()) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.inference.release.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (frame.buffer.region != Region::kInference) {
-        return Make(common::ErrorCode::kInvalidArgument,
-                    static_cast<std::uint32_t>(frame.buffer.region),
-                    "memory.inference.release.wrong_region");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     if (frame.buffer.index >= kInferenceBufferCount) {
-        return Make(common::ErrorCode::kInvalidArgument, frame.buffer.index,
-                    "memory.inference.release.bad_index");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     FixedPoolAllocator::SlotInfo slot{};
@@ -762,14 +680,11 @@ common::Error MemoryManager::ReleaseInferenceBuffer(const InferenceFrame &frame)
         inference_capture_sequence_[frame.buffer.index] !=
             frame.capture_sequence ||
         !SameLease(frame, slot.lease_token)) {
-        return Make(common::ErrorCode::kOwnership, frame.buffer.index,
-                    "memory.inference.release.not_owner_or_stale");
+        return common::Error{common::ErrorCode::kOwnership};
     }
     if (slot.state != BufferState::kInUseByAi &&
         slot.state != BufferState::kReadyForAi) {
-        return Make(common::ErrorCode::kInvalidState,
-                    static_cast<std::uint32_t>(slot.state),
-                    "memory.inference.release.not_in_use");
+        return common::Error{common::ErrorCode::kInvalidState};
     }
     const common::Error release_status = allocator_.Transition(
         FixedPoolAllocator::kInferencePool, frame.buffer.index, slot.state,
@@ -778,8 +693,7 @@ common::Error MemoryManager::ReleaseInferenceBuffer(const InferenceFrame &frame)
         return release_status;
     }
     inference_capture_sequence_[frame.buffer.index] = 0U;
-    return Make(common::ErrorCode::kOk, frame.buffer.index,
-                "memory.inference.release");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 

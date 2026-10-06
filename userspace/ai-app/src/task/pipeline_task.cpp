@@ -111,7 +111,7 @@ common::Error ReadModelInfo(npu::NpuManagement &npu_driver,
             memory_manager::kMemoryConfig.model_output_bytes.size() ||
         model.info.outputs == nullptr ||
         model.info.inputs[0].size_bytes != expected_input_bytes) {
-        return {common::ErrorCode::kModel, 0U, "pipeline.model_info"};
+        return {common::ErrorCode::kModel};
     }
 
     stai_ptr outputs[memory_manager::kMemoryConfig.model_output_bytes.size()]{};
@@ -119,14 +119,13 @@ common::Error ReadModelInfo(npu::NpuManagement &npu_driver,
     result = npu_driver.GetOutputs(outputs, &count);
     if (!result.Ok()) return result.error;
     if (count != model.info.n_outputs) {
-        return {common::ErrorCode::kModel, count, "pipeline.output_count"};
+        return {common::ErrorCode::kModel};
     }
     for (std::uint16_t i = 0U; i < count; ++i) {
         if (outputs[i] != nullptr ||
             model.info.outputs[i].size_bytes >
                 memory_manager::kMemoryConfig.model_output_bytes[i]) {
-            return {common::ErrorCode::kModel, i,
-                    "pipeline.output_ownership"};
+            return {common::ErrorCode::kModel};
         }
     }
     return {};

@@ -60,9 +60,7 @@ extern "C" INT usermain(void)
     const uai::ai::common::Error cpu_monitor_status =
         context.cpu_task_monitor.Start();
     if (!cpu_monitor_status.Ok()) {
-        UAI_LOG_ERROR("ai: cpu task monitor start failed code=%x detail=%x\n",
-                      static_cast<unsigned int>(cpu_monitor_status.code),
-                      static_cast<unsigned int>(cpu_monitor_status.detail));
+        cpu_monitor_status.LogStatus("cpu_task_monitor.start");
         uai::ai::common::Task::Halt("ai: cpu task monitor start failed\n");
     }
     (void)context.cpu_task_monitor.RegisterTask(tk_get_tid(), "usermain");

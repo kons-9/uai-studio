@@ -17,11 +17,10 @@ struct OwnedBuffer {
     Error CopyFrom(const Type *source, std::size_t length)
     {
         if (length > Capacity) {
-            return {ErrorCode::kBufferOverflow, static_cast<std::uint32_t>(length),
-                    "owned_buffer.copy"};
+            return {ErrorCode::kBufferOverflow};
         }
         if (source == nullptr) {
-            return {ErrorCode::kInvalidArgument, 0U, "owned_buffer.copy"};
+            return {ErrorCode::kInvalidArgument};
         }
         for (std::size_t index = 0U; index < length; ++index) {
             bytes[index] = source[index];

@@ -303,7 +303,7 @@ void CameraRenderTask::Run(CameraRenderContext context)
                 }
                 continue;
             }
-            if (status.code != common::ErrorCode::kNoFrame) {
+            if (status.Code() != common::ErrorCode::kNoFrame) {
                 status.LogStatus("camera");
                 common::Task::Halt("ai: frozen capture acquire failed\n");
             }
@@ -329,7 +329,7 @@ void CameraRenderTask::Run(CameraRenderContext context)
             context.camera.TakeCompletedCapture(&latest_capture);
         if (latest_status.Ok()) {
             first_capture = latest_capture;
-        } else if (latest_status.code != common::ErrorCode::kNoFrame) {
+        } else if (latest_status.Code() != common::ErrorCode::kNoFrame) {
             latest_status.LogStatus("camera");
             common::Task::Halt("ai: stopped capture acquire failed\n");
         }
@@ -505,8 +505,8 @@ void CameraRenderTask::Run(CameraRenderContext context)
                     release_status.LogStatus("memory");
                 }
             }
-        } else if (pipe2_status.code != common::ErrorCode::kNoFrame &&
-                   pipe2_status.code != common::ErrorCode::kNoBuffer) {
+        } else if (pipe2_status.Code() != common::ErrorCode::kNoFrame &&
+                   pipe2_status.Code() != common::ErrorCode::kNoBuffer) {
             pipe2_status.LogStatus("camera");
         }
         if (context.pipeline_task.TryGetLatestResult(&active_boxes)) {
@@ -529,7 +529,7 @@ void CameraRenderTask::Run(CameraRenderContext context)
         uai::ai::pipeline::CaptureFrame capture{};
         status = context.camera.TakeCompletedCapture(&capture);
         if (!status.Ok()) {
-            if (status.code != common::ErrorCode::kNoFrame) {
+            if (status.Code() != common::ErrorCode::kNoFrame) {
                 status.LogStatus("camera");
             }
             return;

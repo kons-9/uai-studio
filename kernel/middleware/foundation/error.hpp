@@ -1,74 +1,31 @@
 #ifndef UAI_AI_COMMON_ERROR_HPP
 #define UAI_AI_COMMON_ERROR_HPP
 
-#include <cstdint>
-
-#include "middleware/foundation/log.hpp"
+#include "middleware/foundation/error_code.hpp"
 
 namespace uai::ai::common {
 
-enum class ErrorCode : std::uint8_t {
-    kOk,
-    kInvalidArgument,
-    kNotInitialized,
-    kAlreadyInitialized,
-    kHardware,
-    kCache,
-    kNoFrame,
-    kNoBuffer,
-    kQueueFull,
-    kTimeout,
-    kModel,
-    kNpu,
-    kOwnership,
-    kInvalidState,
-    kBufferOverflow,
-};
+enum class LogLevel : std::uint8_t;
 
-constexpr const char *ErrorCodeName(ErrorCode code)
-{
-    switch (code) {
-    case ErrorCode::kOk: return "ok";
-    case ErrorCode::kInvalidArgument: return "invalid_argument";
-    case ErrorCode::kNotInitialized: return "not_initialized";
-    case ErrorCode::kAlreadyInitialized: return "already_initialized";
-    case ErrorCode::kHardware: return "hardware";
-    case ErrorCode::kCache: return "cache";
-    case ErrorCode::kNoFrame: return "no_frame";
-    case ErrorCode::kNoBuffer: return "no_buffer";
-    case ErrorCode::kBufferOverflow: return "buffer_overflow";
-    case ErrorCode::kQueueFull: return "queue_full";
-    case ErrorCode::kTimeout: return "timeout";
-    case ErrorCode::kModel: return "model";
-    case ErrorCode::kNpu: return "npu";
-    case ErrorCode::kOwnership: return "ownership";
-    case ErrorCode::kInvalidState: return "invalid_state";
-    }
-    return "unknown";
-}
+class Error {
+public:
+	constexpr Error(ErrorCode code = ErrorCode::kOk) : code_(code) {}
 
-struct Error {
-    ErrorCode code = ErrorCode::kOk;
-    std::uint32_t detail = 0U;
-    const char *operation = "ok";
+	constexpr ErrorCode Code() const { return code_; }
 
-    constexpr bool Ok() const { return code == ErrorCode::kOk; }
-    constexpr bool IsRoutine() const
-    {
-        return code == ErrorCode::kNoFrame ||
-               code == ErrorCode::kNoBuffer ||
-               code == ErrorCode::kQueueFull;
-    }
-    void LogStatus(const char *component) const
-    {
-        if (Ok()) return;
+	constexpr bool Ok() const { return code_ == ErrorCode::kOk; }
+	constexpr bool IsRoutine() const
+	{
+		return code_ == ErrorCode::kNoFrame ||
+			   code_ == ErrorCode::kNoBuffer ||
+			   code_ == ErrorCode::kQueueFull;
+	}
+	/* Routine codes log at Debug, all others at Error. */
+	void LogStatus(const char *component) const;
+	void LogStatus(const char *component, LogLevel level) const;
 
-        const LogLevel level = IsRoutine() ? LogLevel::kDebug : LogLevel::kError;
-        UAI_LOGF(level, "error: component=%s operation=%s code=%s(%u) detail=%x\n",
-                 component, operation, ErrorCodeName(code),
-                 static_cast<unsigned int>(code),
-                 static_cast<unsigned int>(detail));
-    }
+private:
+	ErrorCode code_;
 };
 
 } // namespace uai::ai::common

@@ -74,8 +74,7 @@ private:
     {
         if (strong_count_.load(std::memory_order_acquire) == 0U ||
             validate_ == nullptr) {
-            return {common::ErrorCode::kOwnership, 0U,
-                    "memory.pointer.validate.expired"};
+            return {common::ErrorCode::kOwnership};
         }
         return validate_(context_, identity_);
     }
@@ -137,8 +136,7 @@ public:
     {
         return control_ != nullptr
                    ? control_->Validate()
-                   : common::Error{common::ErrorCode::kOwnership, 0U,
-                                   "memory.pointer.validate.empty"};
+                   : common::Error{common::ErrorCode::kOwnership};
     }
 
     SharedPointer Share() &&;
@@ -234,8 +232,7 @@ public:
     {
         return control_ != nullptr
                    ? control_->Validate()
-                   : common::Error{common::ErrorCode::kOwnership, 0U,
-                                   "memory.pointer.validate.empty"};
+                   : common::Error{common::ErrorCode::kOwnership};
     }
 
 private:

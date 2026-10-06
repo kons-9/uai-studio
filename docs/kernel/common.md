@@ -16,13 +16,14 @@
 `error.hpp`の`common::Error`をドライバーとミドルウェアの戻り値に使います。例外は使いません。
 
 ```cpp
-struct Error {
-    ErrorCode code = ErrorCode::kOk;
-    std::uint32_t detail = 0U;     // HALやST.AIの戻り値など
-    const char *operation = "ok";  // 失敗した操作名
+class Error {
+public:
+    constexpr Error(ErrorCode code = ErrorCode::kOk);
+    constexpr ErrorCode Code() const;
     constexpr bool Ok() const;
-    constexpr bool IsRoutine() const;          // kNoFrame、kNoBuffer、kQueueFull
+    constexpr bool IsRoutine() const;           // kNoFrame、kNoBuffer、kQueueFull
     void LogStatus(const char *component) const;
+    void LogStatus(const char *component, LogLevel level) const;
 };
 ```
 
@@ -31,11 +32,11 @@ struct Error {
 | `kOk` | 成功 |
 | `kInvalidArgument` | 引数が不正 |
 | `kNotInitialized`、`kAlreadyInitialized` | 初期化前、または二重初期化 |
-| `kHardware`、`kCache` | HALやキャッシュ操作の失敗。`detail`にHALの戻り値が入ります |
+| `kHardware`、`kCache` | HALやキャッシュ操作の失敗 |
 | `kNoFrame`、`kNoBuffer`、`kQueueFull` | 今は処理対象がない。次のループで再試行すれば済むことがほとんどです |
 | `kBufferOverflow` | 固定長バッファやキューに入りきらない。`OwnedBuffer::CopyFrom()`や、ai-appの結果キューが満杯のときに返します |
 | `kTimeout` | NPUの応答待ちなどのタイムアウト |
-| `kModel`、`kNpu` | STEdgeAIの生成コードやNPUの失敗。`detail`に`stai_return_code`が入ります |
+| `kModel`、`kNpu` | STEdgeAIの生成コードやNPUの失敗 |
 | `kOwnership` | 所有権の不一致（別のタスクが保持している、古いトークンを渡した） |
 | `kInvalidState` | 操作できる状態にない |
 
@@ -43,12 +44,12 @@ struct Error {
 
 - 初期化を二重に呼んだときは`kAlreadyInitialized`を返すので、成功と同じに扱えます。
 - `IsRoutine()`が真になる`kNoFrame`、`kNoBuffer`、`kQueueFull`はエラーログを出さず、次のループへ進みます。
-- 失敗を記録するときは`LogStatus("component")`を呼びます。`IsRoutine()`なら`UAI_LOG_DEBUG`、それ以外は`UAI_LOG_ERROR`で、操作名、コード名、`detail`を1行に出します。成功時は何もしないため、戻り値にそのまま付けられます。
+- 失敗を記録するときは`LogStatus("component")`を呼びます。`IsRoutine()`なら`UAI_LOG_DEBUG`、それ以外は`UAI_LOG_ERROR`で、呼び出し元の`component`とコード名を1行に出します。レベルを変えたいときは`LogStatus("component", LogLevel::kWarn)`のように指定します。成功時は何もしないため、戻り値にそのまま付けられます。
 
 ```cpp
 common::Error status = camera.Start();
 status.LogStatus("camera");
-// error: component=camera operation=camera.start code=hardware(4) detail=1
+// error: component=camera code=hardware(4)
 ```
 
 ## ログ

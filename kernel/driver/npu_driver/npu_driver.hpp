@@ -161,7 +161,7 @@ private:
                            std::uint32_t epoch_flags,
                            std::uintptr_t epoch_address);
     static bool IsError(stai_return_code code);
-    Status InvalidState(const char *operation) const;
+    Status InvalidState() const;
 
     NpuNetwork *model_ = nullptr;
     NpuNetwork *loaded_models_[3] = {};
@@ -193,7 +193,7 @@ public:
     Status GetOutputs(stai_ptr *outputs, stai_size *count) const { return driver_.GetOutputs(outputs, count); }
     void SetEpochTraceModelKindId(std::uint32_t id) { driver_.SetEpochTraceModelKindId(id); }
     common::Error Acquire(Accessor *a, TMO timeout = TMO_FEVR)
-    { if (!a) return {common::ErrorCode::kInvalidArgument, 0U, "npu.management.acquire.null_accessor"}; *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout); if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w)); return s; }
+    { if (!a) return {common::ErrorCode::kInvalidArgument}; *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout); if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w)); return s; }
     common::Error Validate(const Writer &w, const char *op) const { return ownership_.Validate(w, op); }
     NpuManagement(const NpuManagement &) = delete;
     NpuManagement &operator=(const NpuManagement &) = delete;

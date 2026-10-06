@@ -55,11 +55,11 @@ void ConfigureRegion(RISAF_TypeDef *risaf, std::uint32_t end_address,
 common::Error RifDriver::Initialize()
 {
     if (initialized_) {
-        return {common::ErrorCode::kAlreadyInitialized, 0U, "rif.initialize"};
+        return {common::ErrorCode::kAlreadyInitialized};
     }
-    common::Error management_status = management_->Initialize("rif.management");
+    common::Error management_status = management_->Initialize();
     if (!management_status.Ok() &&
-        management_status.code != common::ErrorCode::kAlreadyInitialized) {
+        management_status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return management_status;
     }
     Writer writer;
@@ -141,7 +141,7 @@ common::Error RifDriver::Initialize()
     HAL_NVIC_EnableIRQ(IAC_IRQn);
 
     initialized_ = true;
-    return {common::ErrorCode::kOk, 0U, "rif.initialize"};
+    return {common::ErrorCode::kOk};
 }
 
 } // namespace uai::ai::rif

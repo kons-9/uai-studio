@@ -28,8 +28,7 @@ std::uintptr_t AlignUp(std::uintptr_t value, std::size_t alignment)
 }
 
 common::Error CacheOperation(const memory_allocator::Buffer &buffer,
-                             bool invalidate, bool clean,
-                             const char *operation)
+                             bool invalidate, bool clean)
 {
     const bool valid_region =
         buffer.region == memory_allocator::Region::kCapture ||
@@ -39,7 +38,7 @@ common::Error CacheOperation(const memory_allocator::Buffer &buffer,
                                      std::numeric_limits<std::int32_t>::max()) ||
         buffer.address > std::numeric_limits<std::uintptr_t>::max() -
                              buffer.size) {
-        return {common::ErrorCode::kInvalidArgument, 0U, operation};
+        return {common::ErrorCode::kInvalidArgument};
     }
 
     const std::uintptr_t start =
@@ -47,12 +46,12 @@ common::Error CacheOperation(const memory_allocator::Buffer &buffer,
     const std::uintptr_t unaligned_end = buffer.address + buffer.size;
     if (unaligned_end > std::numeric_limits<std::uintptr_t>::max() -
                             (kCacheLineSize - 1U)) {
-        return {common::ErrorCode::kInvalidArgument, 0U, operation};
+        return {common::ErrorCode::kInvalidArgument};
     }
     const std::uintptr_t end = AlignUp(unaligned_end, kCacheLineSize);
     if (end - start > static_cast<std::uintptr_t>(
                           std::numeric_limits<std::int32_t>::max())) {
-        return {common::ErrorCode::kInvalidArgument, 0U, operation};
+        return {common::ErrorCode::kInvalidArgument};
     }
     const int32_t length = static_cast<int32_t>(end - start);
     auto *address = reinterpret_cast<std::uint32_t *>(start);
@@ -63,7 +62,7 @@ common::Error CacheOperation(const memory_allocator::Buffer &buffer,
     if (invalidate) {
         SCB_InvalidateDCache_by_Addr(address, length);
     }
-    return {common::ErrorCode::kOk, 0U, operation};
+    return {common::ErrorCode::kOk};
 }
 
 } // namespace
@@ -71,17 +70,16 @@ common::Error CacheOperation(const memory_allocator::Buffer &buffer,
 common::Error CacheDriver::Initialize(const Writer &writer)
 {
     if (initialized_) {
-        return {common::ErrorCode::kAlreadyInitialized, 0U, "cache.initialize"};
+        return {common::ErrorCode::kAlreadyInitialized};
     }
-    common::Error management_status = CacheManagement::Instance().Validate(
-        writer, "cache.initialize");
+    common::Error management_status = CacheManagement::Instance().Validate(writer);
     if (!management_status.Ok()) return management_status;
 
     SCB_EnableDCache();
     npu_cache_enable_clocks_and_reset();
     npu_cache_enable();
     initialized_ = true;
-    return {common::ErrorCode::kOk, 0U, "cache.initialize"};
+    return {common::ErrorCode::kOk};
 }
 
 void CacheDriver::KeepClocksOnSleep() const
@@ -93,7 +91,7 @@ void CacheDriver::KeepClocksOnSleep() const
 
 void CacheDriver::KeepClocksOnSleep(const Writer &writer) const
 {
-    if (!CacheManagement::Instance().Validate(writer, "cache.keep_clocks").Ok()) return;
+    if (!CacheManagement::Instance().Validate(writer).Ok()) return;
     __HAL_RCC_CACHEAXI_CLK_SLEEP_ENABLE();
     __HAL_RCC_CACHEAXIRAM_MEM_CLK_SLEEP_ENABLE();
 }
@@ -110,12 +108,12 @@ common::Error CacheDriver::PrepareForDmaWrite(
 common::Error CacheDriver::PrepareForDmaWrite(
     const memory_allocator::Buffer &buffer, const Writer &writer) const
 {
-    common::Error status = CacheManagement::Instance().Validate(writer, "cache.dma_write");
+    common::Error status = CacheManagement::Instance().Validate(writer);
     if (!status.Ok()) return status;
     if (!initialized_) {
-        return {common::ErrorCode::kNotInitialized, 0U, "cache.dma_write"};
+        return {common::ErrorCode::kNotInitialized};
     }
-    return CacheOperation(buffer, true, true, "cache.dma_write");
+    return CacheOperation(buffer, true, true);
 }
 
 common::Error CacheDriver::PrepareForCpuRead(
@@ -130,12 +128,12 @@ common::Error CacheDriver::PrepareForCpuRead(
 common::Error CacheDriver::PrepareForCpuRead(
     const memory_allocator::Buffer &buffer, const Writer &writer) const
 {
-    common::Error status = CacheManagement::Instance().Validate(writer, "cache.cpu_read");
+    common::Error status = CacheManagement::Instance().Validate(writer);
     if (!status.Ok()) return status;
     if (!initialized_) {
-        return {common::ErrorCode::kNotInitialized, 0U, "cache.cpu_read"};
+        return {common::ErrorCode::kNotInitialized};
     }
-    return CacheOperation(buffer, true, false, "cache.cpu_read");
+    return CacheOperation(buffer, true, false);
 }
 
 common::Error CacheDriver::PrepareForPeripheralRead(
@@ -151,13 +149,12 @@ common::Error CacheDriver::PrepareForPeripheralRead(
     const memory_allocator::Buffer &buffer, const Writer &writer) const
 {
     common::Error status =
-        CacheManagement::Instance().Validate(writer, "cache.peripheral_read");
+        CacheManagement::Instance().Validate(writer);
     if (!status.Ok()) return status;
     if (!initialized_) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "cache.peripheral_read"};
+        return {common::ErrorCode::kNotInitialized};
     }
-    return CacheOperation(buffer, false, true, "cache.peripheral_read");
+    return CacheOperation(buffer, false, true);
 }
 
 } // namespace uai::ai::cache

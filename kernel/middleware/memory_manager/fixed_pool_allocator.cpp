@@ -57,12 +57,6 @@ private:
 
 } // namespace
 
-common::Error FixedPoolAllocator::Make(common::ErrorCode code, std::uint32_t detail,
-                          const char *operation)
-{
-    return {code, detail, operation};
-}
-
 bool FixedPoolAllocator::SameBuffer(const Buffer &lhs, const Buffer &rhs)
 {
     return lhs.address == rhs.address && lhs.size == rhs.size &&
@@ -82,8 +76,7 @@ common::Error FixedPoolAllocator::ValidatePointer(
     const memory_manager::PointerIdentity &identity) noexcept
 {
     if (context == nullptr) {
-        return Make(common::ErrorCode::kOwnership, 0U,
-                    "memory.pointer.validate.no_allocator");
+        return common::Error{common::ErrorCode::kOwnership};
     }
     return static_cast<const FixedPoolAllocator *>(context)
         ->Validate(identity);
@@ -147,18 +140,15 @@ common::Error FixedPoolAllocator::Inspect(BufferPoolId pool,
                                           SlotInfo *slot) const
 {
     if (!initialized_) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.pool.inspect.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (slot == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.pool.inspect.null_output");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     const Slot *entry = FindSlot(pool, index);
     if (entry == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, index,
-                    "memory.pool.inspect.invalid_slot");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     slot->buffer = entry->buffer;
@@ -166,7 +156,7 @@ common::Error FixedPoolAllocator::Inspect(BufferPoolId pool,
     slot->lease_token = pool == kInferencePool
                             ? inference_lease_token_[index]
                             : display_lease_token_[index];
-    return Make(common::ErrorCode::kOk, index, "memory.pool.inspect");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error FixedPoolAllocator::Transition(BufferPoolId pool,
@@ -175,20 +165,16 @@ common::Error FixedPoolAllocator::Transition(BufferPoolId pool,
                                              BufferState next)
 {
     if (!initialized_) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.pool.transition.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
 
     StateLock lock;
     Slot *slot = FindSlot(pool, index);
     if (slot == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, index,
-                    "memory.pool.transition.invalid_slot");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     if (slot->state != expected) {
-        return Make(common::ErrorCode::kInvalidState,
-                    static_cast<std::uint32_t>(slot->state),
-                    "memory.pool.transition.unexpected_state");
+        return common::Error{common::ErrorCode::kInvalidState};
     }
     slot->state = next;
     if (next == BufferState::kFree) {
@@ -198,7 +184,7 @@ common::Error FixedPoolAllocator::Transition(BufferPoolId pool,
             display_lease_token_[index] = 0U;
         }
     }
-    return Make(common::ErrorCode::kOk, index, "memory.pool.transition");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error FixedPoolAllocator::ReserveSlot(
@@ -206,27 +192,22 @@ common::Error FixedPoolAllocator::ReserveSlot(
     BufferState next, std::uint64_t *lease_token)
 {
     if (!initialized_) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.pool.reserve.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (lease_token == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.pool.reserve.null_output");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     if (next == BufferState::kFree) {
-        return Make(common::ErrorCode::kInvalidArgument, index,
-                    "memory.pool.reserve.free_target");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     StateLock lock;
     Slot *slot = FindSlot(pool, index);
     if (slot == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, index,
-                    "memory.pool.reserve.invalid_slot");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     if (slot->state != expected) {
-        return Make(common::ErrorCode::kNoBuffer, index,
-                    "memory.pool.reserve.unexpected_state");
+        return common::Error{common::ErrorCode::kNoBuffer};
     }
 
     slot->state = next;
@@ -237,20 +218,17 @@ common::Error FixedPoolAllocator::ReserveSlot(
         display_lease_token_[index] = NextLeaseToken();
         *lease_token = display_lease_token_[index];
     }
-    return Make(common::ErrorCode::kOk, index,
-                "memory.pool.reserve");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error FixedPoolAllocator::Acquire(
     const BufferRequest &request, memory_manager::UniquePointer *pointer)
 {
     if (!initialized_) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.pointer.acquire.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (pointer == nullptr) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.pointer.acquire.null_output");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     *pointer = {};
 
@@ -266,30 +244,25 @@ common::Error FixedPoolAllocator::Acquire(
                 if (display_[candidate].state == BufferState::kFree) {
                     display_[candidate].state = BufferState::kFilling;
                     buffer = display_[candidate].buffer;
-                    status = Make(common::ErrorCode::kOk, candidate,
-                                  "memory.pointer.acquire.display");
+                    status = common::Error{common::ErrorCode::kOk};
                     break;
                 }
             }
             if (!status.Ok()) {
-                status = Make(common::ErrorCode::kNoBuffer, 0U,
-                              "memory.pointer.acquire.display.no_free_slot");
+                status = common::Error{common::ErrorCode::kNoBuffer};
             }
         } else {
             if (request.index >= display_.size()) {
-                return Make(common::ErrorCode::kInvalidArgument, request.index,
-                            "memory.pointer.acquire.display.bad_index");
+                return common::Error{common::ErrorCode::kInvalidArgument};
             }
             StateLock lock;
             Slot &slot = display_[request.index];
             if (slot.state != BufferState::kFree) {
-                return Make(common::ErrorCode::kNoBuffer, request.index,
-                            "memory.pointer.acquire.display.busy");
+                return common::Error{common::ErrorCode::kNoBuffer};
             }
             slot.state = BufferState::kFilling;
             buffer = slot.buffer;
-            status = Make(common::ErrorCode::kOk, request.index,
-                           "memory.pointer.acquire.display");
+            status = common::Error{common::ErrorCode::kOk};
         }
         if (!status.Ok()) {
             return status;
@@ -300,8 +273,7 @@ common::Error FixedPoolAllocator::Acquire(
             (request.alignment != 0U &&
              (buffer.address % request.alignment) != 0U)) {
             display_[index].state = BufferState::kFree;
-            return Make(common::ErrorCode::kInvalidArgument, index,
-                        "memory.pointer.acquire.display.requirements");
+            return common::Error{common::ErrorCode::kInvalidArgument};
         }
         display_lease_token_[index] = NextLeaseToken();
         identity = {buffer, kDisplayPool, display_lease_token_[index]};
@@ -318,94 +290,75 @@ common::Error FixedPoolAllocator::Acquire(
             }
         }
         if (index >= inference_.size()) {
-            return Make(common::ErrorCode::kNoBuffer, request.index,
-                        "memory.pointer.acquire.inference.no_free_slot");
+            return common::Error{common::ErrorCode::kNoBuffer};
         }
 
         StateLock lock;
         Slot &slot = inference_[index];
         if (slot.state != BufferState::kFree) {
-            return Make(common::ErrorCode::kNoBuffer, index,
-                        "memory.pointer.acquire.inference.busy");
+            return common::Error{common::ErrorCode::kNoBuffer};
         }
         if ((request.size != 0U && request.size > slot.buffer.size) ||
             (request.alignment != 0U &&
              (slot.buffer.address % request.alignment) != 0U)) {
-            return Make(common::ErrorCode::kInvalidArgument, index,
-                        "memory.pointer.acquire.inference.requirements");
+            return common::Error{common::ErrorCode::kInvalidArgument};
         }
         slot.state = BufferState::kReadyForAi;
         inference_lease_token_[index] = NextInferenceLeaseToken();
         identity = {slot.buffer, kInferencePool, inference_lease_token_[index]};
         control = &inference_[index].pointer;
     } else {
-        return Make(common::ErrorCode::kInvalidArgument, request.pool,
-                    "memory.pointer.acquire.unknown_pool");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     control->Initialize(identity, this, &FixedPoolAllocator::ReleasePointer,
                         &FixedPoolAllocator::ValidatePointer);
     *pointer = memory_manager::UniquePointer(control);
-    return Make(common::ErrorCode::kOk,
-                static_cast<std::uint32_t>(identity.buffer.index),
-                "memory.pointer.acquire");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 common::Error FixedPoolAllocator::Validate(
     const memory_manager::PointerIdentity &identity) const
 {
     if (!initialized_) {
-        return Make(common::ErrorCode::kNotInitialized, 0U,
-                    "memory.pointer.validate.not_initialized");
+        return common::Error{common::ErrorCode::kNotInitialized};
     }
     if (!identity.buffer || identity.token == 0U) {
-        return Make(common::ErrorCode::kInvalidArgument, 0U,
-                    "memory.pointer.validate.empty");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
 
     if (identity.pool == kDisplayPool) {
         if (identity.buffer.index >= display_.size()) {
-            return Make(common::ErrorCode::kInvalidArgument, identity.buffer.index,
-                        "memory.pointer.validate.display.bad_index");
+            return common::Error{common::ErrorCode::kInvalidArgument};
         }
         const Slot &slot = display_[identity.buffer.index];
         if (!SameBuffer(slot.buffer, identity.buffer) ||
             display_lease_token_[identity.buffer.index] != identity.token) {
-            return Make(common::ErrorCode::kOwnership, identity.buffer.index,
-                        "memory.pointer.validate.display.not_owner");
+            return common::Error{common::ErrorCode::kOwnership};
         }
         if (slot.state != BufferState::kFilling) {
-            return Make(common::ErrorCode::kInvalidState,
-                        static_cast<std::uint32_t>(slot.state),
-                        "memory.pointer.validate.display.not_filling");
+            return common::Error{common::ErrorCode::kInvalidState};
         }
-        return Make(common::ErrorCode::kOk, identity.buffer.index,
-                    "memory.pointer.validate.display");
+        return common::Error{common::ErrorCode::kOk};
     }
 
     if (identity.pool == kInferencePool) {
         if (identity.buffer.index >= inference_.size()) {
-            return Make(common::ErrorCode::kInvalidArgument, identity.buffer.index,
-                        "memory.pointer.validate.inference.bad_index");
+            return common::Error{common::ErrorCode::kInvalidArgument};
         }
         const Slot &slot = inference_[identity.buffer.index];
         if (!SameBuffer(slot.buffer, identity.buffer) ||
             inference_lease_token_[identity.buffer.index] != identity.token) {
-            return Make(common::ErrorCode::kOwnership, identity.buffer.index,
-                        "memory.pointer.validate.inference.not_owner");
+            return common::Error{common::ErrorCode::kOwnership};
         }
         if (slot.state != BufferState::kReadyForAi &&
             slot.state != BufferState::kInUseByAi) {
-            return Make(common::ErrorCode::kInvalidState,
-                        static_cast<std::uint32_t>(slot.state),
-                        "memory.pointer.validate.inference.not_owned");
+            return common::Error{common::ErrorCode::kInvalidState};
         }
-        return Make(common::ErrorCode::kOk, identity.buffer.index,
-                    "memory.pointer.validate.inference");
+        return common::Error{common::ErrorCode::kOk};
     }
 
-    return Make(common::ErrorCode::kInvalidArgument, identity.pool,
-                "memory.pointer.validate.unknown_pool");
+    return common::Error{common::ErrorCode::kInvalidArgument};
 }
 
 void FixedPoolAllocator::ReleasePointer(
@@ -440,7 +393,7 @@ void FixedPoolAllocator::ReleasePointer(
 common::Error FixedPoolAllocator::Initialize()
 {
     if (initialized_) {
-        return Make(common::ErrorCode::kAlreadyInitialized, 0U, "memory.initialize");
+        return common::Error{common::ErrorCode::kAlreadyInitialized};
     }
 
     constexpr std::size_t region_count =
@@ -450,23 +403,17 @@ common::Error FixedPoolAllocator::Initialize()
         const auto &region = static_memory_layout::Region::GetRegionFromKey(
             static_cast<StaticMemoryKey>(i));
         if (!region.is_valid()) {
-            return Make(common::ErrorCode::kInvalidArgument,
-                        static_cast<std::uint32_t>(i),
-                        "memory.initialize.invalid_region");
+            return common::Error{common::ErrorCode::kInvalidArgument};
         }
         ranges[i] = region.to_address_range();
         if ((region.address() % memory_manager::kMemoryConfig.buffer_alignment) != 0U) {
-            return Make(common::ErrorCode::kInvalidArgument,
-                        static_cast<std::uint32_t>(i),
-                        "memory.initialize.region_alignment");
+            return common::Error{common::ErrorCode::kInvalidArgument};
         }
     }
     for (std::size_t lhs = 0U; lhs < region_count; ++lhs) {
         for (std::size_t rhs = lhs + 1U; rhs < region_count; ++rhs) {
             if (ranges[lhs].overlaps(ranges[rhs])) {
-                return Make(common::ErrorCode::kInvalidArgument,
-                            static_cast<std::uint32_t>(lhs),
-                            "memory.initialize.overlapping_regions");
+                return common::Error{common::ErrorCode::kInvalidArgument};
             }
         }
     }
@@ -481,9 +428,7 @@ common::Error FixedPoolAllocator::Initialize()
         frame_bytes > StaticRegion(StaticMemoryKey::kDisplay1).size() ||
         scratch_bytes >
             StaticRegion(StaticMemoryKey::kInferenceScratch).size()) {
-        return Make(common::ErrorCode::kInvalidArgument,
-                    static_cast<std::uint32_t>(inference_bytes),
-                    "memory.initialize.layout_capacity");
+        return common::Error{common::ErrorCode::kInvalidArgument};
     }
     for (std::size_t i = 0U;
          i < memory_manager::kInferenceSourceBufferCount; ++i) {
@@ -491,9 +436,7 @@ common::Error FixedPoolAllocator::Initialize()
             static_memory_layout::Region::GetRegionFromKey(
                 static_memory_layout::kInferenceSourceRegionKeys[i])
                 .size()) {
-            return Make(common::ErrorCode::kInvalidArgument,
-                        static_cast<std::uint32_t>(source_bytes),
-                        "memory.initialize.layout_capacity");
+            return common::Error{common::ErrorCode::kInvalidArgument};
         }
     }
 
@@ -508,9 +451,7 @@ common::Error FixedPoolAllocator::Initialize()
             static_memory_layout::Region::GetRegionFromKey(
                 static_memory_layout::kInferenceRegionKeys[i])
                 .size()) {
-            return Make(common::ErrorCode::kInvalidArgument,
-                        static_cast<std::uint32_t>(inference_bytes),
-                        "memory.initialize.layout_capacity");
+            return common::Error{common::ErrorCode::kInvalidArgument};
         }
         inference_[i].buffer = {
             static_memory_layout::Region::GetRegionFromKey(
@@ -519,7 +460,7 @@ common::Error FixedPoolAllocator::Initialize()
             inference_bytes, static_cast<std::uint8_t>(i), Region::kInference};
     }
     initialized_ = true;
-    return Make(common::ErrorCode::kOk, 0U, "memory.initialize");
+    return common::Error{common::ErrorCode::kOk};
 }
 
 } // namespace uai::ai::memory_allocator

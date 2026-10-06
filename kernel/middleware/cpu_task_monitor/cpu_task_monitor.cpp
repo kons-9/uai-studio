@@ -70,8 +70,7 @@ void CpuTaskMonitor::ResetCounters()
 common::Error CpuTaskMonitor::InitializeTraceBuffer()
 {
     if (trace_header_ != nullptr) {
-        return {common::ErrorCode::kAlreadyInitialized, 0U,
-                "ai2.cpu_task_monitor.trace_buffer"};
+        return {common::ErrorCode::kAlreadyInitialized};
     }
 
     const auto &region = static_memory_layout::Region::GetRegionFromKey(
@@ -79,8 +78,7 @@ common::Error CpuTaskMonitor::InitializeTraceBuffer()
     if (region.begin == nullptr ||
         region.size() < kCpuTaskMonitorTraceDataOffset +
                             sizeof(CpuTaskMonitorTraceRecord)) {
-        return {common::ErrorCode::kInvalidState, 0U,
-                "ai2.cpu_task_monitor.trace_region"};
+        return {common::ErrorCode::kInvalidState};
     }
 
     trace_header_ = reinterpret_cast<CpuTaskMonitorTraceHeader *>(
@@ -96,8 +94,7 @@ common::Error CpuTaskMonitor::InitializeTraceBuffer()
         trace_header_ = nullptr;
         trace_task_names_ = nullptr;
         trace_records_ = nullptr;
-        return {common::ErrorCode::kInvalidState, 0U,
-                "ai2.cpu_task_monitor.trace_capacity"};
+        return {common::ErrorCode::kInvalidState};
     }
 
     if (!TraceHeaderValid()) {
@@ -124,8 +121,7 @@ common::Error CpuTaskMonitor::InitializeTraceBuffer()
                  static_cast<unsigned int>(region.size()),
                  static_cast<unsigned int>(trace_capacity_),
                  static_cast<unsigned int>(trace_header_->version));
-    return {common::ErrorCode::kOk, 0U,
-            "ai2.cpu_task_monitor.trace_buffer"};
+    return {common::ErrorCode::kOk};
 }
 
 bool CpuTaskMonitor::TraceHeaderValid() const
@@ -188,9 +184,7 @@ common::Error CpuTaskMonitor::RegisterTask(ID task_id, const char *name)
 {
     if (task_id <= 0 || task_id >= static_cast<ID>(kTaskSlotCount) ||
         name == nullptr || name[0] == '\0') {
-        return {common::ErrorCode::kInvalidArgument,
-                static_cast<std::uint32_t>(task_id),
-                "ai2.cpu_task_monitor.register_task"};
+        return {common::ErrorCode::kInvalidArgument};
     }
 
     char *registered_name = task_names_[static_cast<std::size_t>(task_id)];
@@ -213,8 +207,7 @@ common::Error CpuTaskMonitor::RegisterTask(ID task_id, const char *name)
                      static_cast<unsigned int>(task_id),
                      registered_name);
     }
-    return {common::ErrorCode::kOk, 0U,
-            "ai2.cpu_task_monitor.register_task"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error CpuTaskMonitor::RegisterTaskForActiveMonitor(
@@ -222,8 +215,7 @@ common::Error CpuTaskMonitor::RegisterTaskForActiveMonitor(
 {
     CpuTaskMonitor *monitor = active_instance_;
     if (monitor == nullptr || !monitor->active_) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "ai2.cpu_task_monitor.active_instance"};
+        return {common::ErrorCode::kNotInitialized};
     }
     return monitor->RegisterTask(task_id, name);
 }
@@ -287,12 +279,10 @@ void CpuTaskMonitor::UpdateTraceTaskName(ID task_id)
 common::Error CpuTaskMonitor::Start()
 {
     if (active_) {
-        return {common::ErrorCode::kAlreadyInitialized, 0U,
-                "ai2.cpu_task_monitor.start"};
+        return {common::ErrorCode::kAlreadyInitialized};
     }
     if (active_instance_ != nullptr) {
-        return {common::ErrorCode::kAlreadyInitialized, 0U,
-                "ai2.cpu_task_monitor.instance"};
+        return {common::ErrorCode::kAlreadyInitialized};
     }
 
     EnableCycleCounter();
@@ -307,9 +297,7 @@ common::Error CpuTaskMonitor::Start()
     if (status != E_OK) {
         active_ = false;
         active_instance_ = nullptr;
-        return {common::ErrorCode::kInvalidState,
-                static_cast<std::uint32_t>(status),
-                "ai2.cpu_task_monitor.hok_dsp"};
+        return {common::ErrorCode::kInvalidState};
     }
 
     TD_HINT interrupt_hook = {};
@@ -320,21 +308,18 @@ common::Error CpuTaskMonitor::Start()
         (void)td_hok_dsp(nullptr);
         active_ = false;
         active_instance_ = nullptr;
-        return {common::ErrorCode::kInvalidState,
-                static_cast<std::uint32_t>(status),
-                "ai2.cpu_task_monitor.hok_int"};
+        return {common::ErrorCode::kInvalidState};
     }
 
     UAI_LOG_INFO("ai: cpu task monitor started period=%u ms\n",
                  static_cast<unsigned int>(kReportPeriodMs));
-    return {common::ErrorCode::kOk, 0U, "ai2.cpu_task_monitor.start"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error CpuTaskMonitor::Stop()
 {
     if (!active_) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "ai2.cpu_task_monitor.stop"};
+        return {common::ErrorCode::kNotInitialized};
     }
 
     const ER dispatch_status = td_hok_dsp(nullptr);
@@ -343,16 +328,12 @@ common::Error CpuTaskMonitor::Stop()
     active_instance_ = nullptr;
 
     if (dispatch_status != E_OK) {
-        return {common::ErrorCode::kInvalidState,
-                static_cast<std::uint32_t>(dispatch_status),
-                "ai2.cpu_task_monitor.unhook_dsp"};
+        return {common::ErrorCode::kInvalidState};
     }
     if (interrupt_status != E_OK) {
-        return {common::ErrorCode::kInvalidState,
-                static_cast<std::uint32_t>(interrupt_status),
-                "ai2.cpu_task_monitor.unhook_int"};
+        return {common::ErrorCode::kInvalidState};
     }
-    return {common::ErrorCode::kOk, 0U, "ai2.cpu_task_monitor.stop"};
+    return {common::ErrorCode::kOk};
 }
 
 CpuTaskMonitor::TaskSlot *CpuTaskMonitor::FindTaskSlot(ID task_id)

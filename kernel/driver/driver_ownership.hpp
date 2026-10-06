@@ -61,10 +61,9 @@ public:
     ResourceManagement(const ResourceManagement &) = delete;
     ResourceManagement &operator=(const ResourceManagement &) = delete;
 
-    common::Error Initialize(const char *name);
+    common::Error Initialize();
     common::Error Acquire(Writer *writer, TMO timeout = TMO_FEVR) const;
-    common::Error Validate(const Writer &writer,
-                           const char *operation) const;
+    common::Error Validate(const Writer &writer) const;
 
 private:
     static void ReleaseWriter(const void *owner, ID mutex_id) noexcept;

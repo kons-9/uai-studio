@@ -67,8 +67,7 @@ private:
         const pipeline::DisplayBuffer &buffer);
     static void DrawMask(const pipeline::DisplayBuffer &buffer,
                          const inference::BoxSet &boxes);
-    static common::Error FromBackend(uai::driver::DriverStatus status,
-                                     const char *operation);
+    static common::Error FromBackend(uai::driver::DriverStatus status);
     memory_manager::MemoryManager *memory_ = nullptr;
     cache::CacheManagement *cache_ = nullptr;
     registers::LcdRegisterLayer registers_{};
@@ -85,7 +84,7 @@ public:
     { return driver_.Initialize(memory, cache); }
     common::Error Acquire(Accessor *a, TMO timeout = TMO_FEVR)
     {
-        if (!a) return {common::ErrorCode::kInvalidArgument, 0U, "lcd.management.acquire.null_accessor"};
+        if (!a) return {common::ErrorCode::kInvalidArgument};
         *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout);
         if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w));
         return s;

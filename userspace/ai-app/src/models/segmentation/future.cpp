@@ -22,11 +22,6 @@ constexpr std::size_t kMaskBytes = kMaskWidth * kMaskHeight;
 constexpr std::size_t kOutputBytes = kMaskBytes * 2U;
 constexpr std::uint32_t kModelId = 1U;
 
-common::Error Invalid(const char *operation)
-{
-    return {common::ErrorCode::kModel, 0U, operation};
-}
-
 bool g_decoder_initialized = false;
 
 common::Error InitializeDecoder(const stai_network_info &info)
@@ -34,22 +29,19 @@ common::Error InitializeDecoder(const stai_network_info &info)
     g_decoder_initialized = false;
     if (info.outputs == nullptr || info.n_outputs != 1U ||
         info.outputs[0].size_bytes != kOutputBytes) {
-        return Invalid("segmentation.future.decoder.initialize");
+        return common::Error{common::ErrorCode::kModel};
     }
     g_decoder_initialized = true;
-    return {common::ErrorCode::kOk, 0U,
-            "segmentation.future.decoder.initialize"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error DecodeMask(const void *output, inference::BoxSet *boxes)
 {
     if (!g_decoder_initialized) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "segmentation.future.decoder.decode"};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (output == nullptr || boxes == nullptr) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "segmentation.future.decoder.decode"};
+        return {common::ErrorCode::kInvalidArgument};
     }
 
     const auto *logits = reinterpret_cast<const std::int8_t *>(output);
@@ -64,8 +56,7 @@ common::Error DecodeMask(const void *output, inference::BoxSet *boxes)
     boxes->segmentation.mask_height = static_cast<std::uint16_t>(kMaskHeight);
     boxes->segmentation.mask_foreground_pixels = foreground_pixels;
     boxes->segmentation_valid = true;
-    return {common::ErrorCode::kOk, foreground_pixels,
-            "segmentation.future.decoder.decode"};
+    return {common::ErrorCode::kOk};
 }
 
 } // namespace
@@ -110,8 +101,7 @@ std::uint32_t Future::step_id() const
 common::Error Future::Preprocess()
 {
     if (context_.cache == nullptr || context_.info == nullptr) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "segmentation.future.preprocess.context"};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (!preprocess_stage_logged_) {
         UAI_LOG_INFO("ai: segmentation preprocess begin seq=%u buffer=%x\n",
@@ -124,8 +114,7 @@ common::Error Future::Preprocess()
         context_.info->inputs[0].size_bytes != InputBytes() ||
         frame_.buffer.size < InputBytes() ||
         frame_.source.size < memory_manager::kInferenceSourceBytes) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "segmentation.future.frame"};
+        return {common::ErrorCode::kInvalidArgument};
     }
 
     common::Error status = context_.cache->PrepareForCpuRead(frame_.source);
@@ -160,8 +149,7 @@ common::Error Future::Infer()
     if (context_.npu == nullptr || context_.npu_writer == nullptr ||
         context_.model == nullptr ||
         context_.info == nullptr) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "segmentation.future.infer.context"};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (!infer_stage_logged_) {
         UAI_LOG_INFO("ai: segmentation infer begin seq=%u\n",
@@ -183,8 +171,7 @@ common::Error Future::Infer()
         const auto &output = frame_.outputs[i];
         if (!output || output.size < context_.info->outputs[i].size_bytes ||
             output.alignment == 0U || output.address % output.alignment != 0U) {
-            return {common::ErrorCode::kInvalidArgument, i,
-                    "segmentation.future.output_buffer"};
+            return {common::ErrorCode::kInvalidArgument};
         }
         outputs[i] = reinterpret_cast<stai_ptr>(output.address);
     }
@@ -193,10 +180,7 @@ common::Error Future::Infer()
     if (!result.Ok()) return result.error;
     result = context_.npu->Run(*context_.npu_writer);
     if (!result.Ok()) {
-        UAI_LOG_WARN("ai: segmentation infer failed code=%u detail=%u op=%s\n",
-                     static_cast<unsigned int>(result.error.code),
-                     static_cast<unsigned int>(result.error.detail),
-                     result.error.operation);
+        result.error.LogStatus("segmentation.infer", common::LogLevel::kWarn);
         return result.error;
     }
     if (!infer_stage_logged_) {
@@ -212,8 +196,7 @@ common::Error Future::Postprocess()
 {
     if (context_.cache == nullptr || context_.info == nullptr ||
         context_.publish == nullptr || context_.info->n_outputs != 1U) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "segmentation.future.postprocess.context"};
+        return {common::ErrorCode::kNotInitialized};
     }
     const auto &output = frame_.outputs[0];
     const memory_allocator::Buffer range{

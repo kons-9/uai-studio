@@ -84,12 +84,6 @@ const RegisterDescription *Find(Imx335Register address)
     return nullptr;
 }
 
-common::Error HardwareError(const char *operation, int32_t status)
-{
-    return {common::ErrorCode::kHardware, static_cast<std::uint32_t>(status),
-            operation};
-}
-
 } // namespace
 
 const RegisterDescription *Imx335RegisterLayer::Describe(std::size_t *count)
@@ -106,17 +100,17 @@ common::Error Imx335RegisterLayer::Read(Imx335Register address, void *data,
     const RegisterDescription *description = Find(address);
     if (description == nullptr || data == nullptr ||
         size != description->size || size > UINT16_MAX) {
-        return {common::ErrorCode::kInvalidArgument, 0U, "camera.register.read"};
+        return {common::ErrorCode::kInvalidArgument};
     }
     auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
     if (sensor == nullptr) {
-        return HardwareError("camera.register.read", -1);
+        return common::Error{common::ErrorCode::kHardware};
     }
     const int32_t status = sensor->IO.ReadReg(
         sensor->IO.Address, static_cast<std::uint16_t>(address),
         static_cast<std::uint8_t *>(data), static_cast<std::uint16_t>(size));
-    return status == 0 ? common::Error{common::ErrorCode::kOk, 0U, "camera.register.read"}
-                       : HardwareError("camera.register.read", status);
+    return status == 0 ? common::Error{common::ErrorCode::kOk}
+                       : common::Error{common::ErrorCode::kHardware};
 }
 
 common::Error Imx335RegisterLayer::Write(Imx335Register address, const void *data,
@@ -125,18 +119,18 @@ common::Error Imx335RegisterLayer::Write(Imx335Register address, const void *dat
     const RegisterDescription *description = Find(address);
     if (description == nullptr || data == nullptr ||
         size != description->size || size > UINT16_MAX) {
-        return {common::ErrorCode::kInvalidArgument, 0U, "camera.register.write"};
+        return {common::ErrorCode::kInvalidArgument};
     }
     auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
     if (sensor == nullptr) {
-        return HardwareError("camera.register.write", -1);
+        return common::Error{common::ErrorCode::kHardware};
     }
     const int32_t status = sensor->IO.WriteReg(
         sensor->IO.Address, static_cast<std::uint16_t>(address),
         const_cast<std::uint8_t *>(static_cast<const std::uint8_t *>(data)),
         static_cast<std::uint16_t>(size));
-    return status == 0 ? common::Error{common::ErrorCode::kOk, 0U, "camera.register.write"}
-                       : HardwareError("camera.register.write", status);
+    return status == 0 ? common::Error{common::ErrorCode::kOk}
+                       : common::Error{common::ErrorCode::kHardware};
 }
 
 common::Error Imx335RegisterLayer::SetStreaming(bool enabled) const
@@ -152,9 +146,9 @@ common::Error Imx335RegisterLayer::Configure(int test_pattern_mode,
     if (sensor == nullptr ||
         IMX335_SetTestPattern(sensor, test_pattern_mode) != IMX335_OK ||
         IMX335_SetFramerate(sensor, framerate) != IMX335_OK) {
-        return HardwareError("camera.sensor.configure", IMX335_ERROR);
+        return common::Error{common::ErrorCode::kHardware};
     }
-    return {common::ErrorCode::kOk, 0U, "camera.sensor.configure"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error Imx335RegisterLayer::SetExposureMicroseconds(int32_t exposure) const
@@ -162,9 +156,9 @@ common::Error Imx335RegisterLayer::SetExposureMicroseconds(int32_t exposure) con
     IMX335_Object_t *sensor = Sensor();
     if (sensor == nullptr || exposure < 0 ||
         IMX335_SetExposure(sensor, exposure) != IMX335_OK) {
-        return HardwareError("camera.sensor.exposure", IMX335_ERROR);
+        return common::Error{common::ErrorCode::kHardware};
     }
-    return {common::ErrorCode::kOk, 0U, "camera.sensor.exposure"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error Imx335RegisterLayer::SetGainMilliDb(int32_t gain_mdB) const
@@ -172,9 +166,9 @@ common::Error Imx335RegisterLayer::SetGainMilliDb(int32_t gain_mdB) const
     IMX335_Object_t *sensor = Sensor();
     if (sensor == nullptr || gain_mdB < IMX335_GAIN_MIN ||
         IMX335_SetGain(sensor, gain_mdB) != IMX335_OK) {
-        return HardwareError("camera.sensor.gain", IMX335_ERROR);
+        return common::Error{common::ErrorCode::kHardware};
     }
-    return {common::ErrorCode::kOk, 0U, "camera.sensor.gain"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error Imx335RegisterLayer::ConfigureMipi891Mbps() const
@@ -210,14 +204,13 @@ common::Error Imx335RegisterLayer::ConfigureMipi891Mbps() const
         status = Write(timing.address, value, sizeof(value));
         if (!status.Ok()) return status;
     }
-    return {common::ErrorCode::kOk, 0U, "camera.register.mipi_891"};
+    return {common::ErrorCode::kOk};
 }
 
 common::Error Imx335RegisterLayer::ReadSnapshot(SensorRegisterSnapshot *snapshot) const
 {
     if (snapshot == nullptr) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "camera.register.snapshot"};
+        return {common::ErrorCode::kInvalidArgument};
     }
     std::uint8_t vmax[3] = {};
     std::uint8_t shutter[3] = {};
@@ -242,7 +235,7 @@ common::Error Imx335RegisterLayer::ReadSnapshot(SensorRegisterSnapshot *snapshot
                         (static_cast<std::uint32_t>(shutter[2]) << 16U);
     snapshot->gain = static_cast<std::uint32_t>(gain[0]) |
                      (static_cast<std::uint32_t>(gain[1]) << 8U);
-    return {common::ErrorCode::kOk, 0U, "camera.register.snapshot"};
+    return {common::ErrorCode::kOk};
 }
 
 } // namespace uai::ai::camera::sensor::registers

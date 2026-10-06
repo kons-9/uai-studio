@@ -113,11 +113,6 @@ const float g_anchors_l[6] = {30.0F, 30.0F, 4.2F, 15.0F, 13.8F, 42.0F};
 const float g_anchors_m[6] = {15.0F, 15.0F, 2.1F, 7.5F, 6.9F, 21.0F};
 const float g_anchors_s[6] = {7.5F, 7.5F, 1.05F, 3.75F, 3.45F, 10.5F};
 
-common::Error InvalidDecoder(const char *operation)
-{
-    return {common::ErrorCode::kModel, 0U, operation};
-}
-
 void SortOutputs(const stai_network_info &info, std::size_t *output_order)
 {
     for (std::size_t i = 0U; i < 3U; ++i) output_order[i] = i;
@@ -139,7 +134,7 @@ common::Error InitializeDecoder(const stai_network_info &info)
     g_decoder_initialized = false;
     if (info.outputs == nullptr || info.n_outputs != 3U ||
         info.n_outputs > kMaxModelOutputs) {
-        return InvalidDecoder("person.future.decoder.initialize");
+        return common::Error{common::ErrorCode::kModel};
     }
     SortOutputs(info, g_output_order);
 
@@ -172,10 +167,10 @@ common::Error InitializeDecoder(const stai_network_info &info)
     g_postprocess.raw_l_zero_point = static_cast<std::int8_t>(
         info.outputs[g_output_order[2]].zeropoint.data[0]);
     if (od_st_yolox_pp_reset(&g_postprocess) != 0) {
-        return InvalidDecoder("person.future.decoder.initialize");
+        return common::Error{common::ErrorCode::kModel};
     }
     g_decoder_initialized = true;
-    return {common::ErrorCode::kOk, 0U, "person.future.decoder.initialize"};
+    return {common::ErrorCode::kOk};
 }
 
 float ClampProjectedCoordinate(float value, std::uint32_t limit)
@@ -231,22 +226,19 @@ common::Error DecodePerson(const ModelOutputView &outputs,
                            ModelResult *result)
 {
     if (!g_decoder_initialized) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "person.future.decoder.decode"};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (result == nullptr || outputs.count < 3U ||
         geometry.frame_width == 0U || geometry.frame_height == 0U ||
         geometry.model_height == 0U || geometry.content_height == 0U) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "person.future.decoder.decode"};
+        return {common::ErrorCode::kInvalidArgument};
     }
 
     const void *raw_s = outputs.tensors[g_output_order[0]];
     const void *raw_m = outputs.tensors[g_output_order[1]];
     const void *raw_l = outputs.tensors[g_output_order[2]];
     if (raw_s == nullptr || raw_m == nullptr || raw_l == nullptr) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "person.future.decoder.outputs"};
+        return {common::ErrorCode::kInvalidArgument};
     }
 
     OdInput input{const_cast<void *>(raw_l), const_cast<void *>(raw_m),
@@ -254,7 +246,7 @@ common::Error DecodePerson(const ModelOutputView &outputs,
     OdOutput output{g_postprocess_buffer, 0};
     g_postprocess.nb_detect = 0;
     if (od_st_yolox_pp_process_int8(&input, &output, &g_postprocess) != 0) {
-        return InvalidDecoder("person.future.decoder.postprocess");
+        return common::Error{common::ErrorCode::kModel};
     }
 
     const std::uint32_t available = output.count > 0
@@ -268,7 +260,7 @@ common::Error DecodePerson(const ModelOutputView &outputs,
         ProjectDetection(g_postprocess_buffer[i], geometry,
                          &result->detections[i]);
     }
-    return {common::ErrorCode::kOk, 0U, "person.future.decoder.decode"};
+    return {common::ErrorCode::kOk};
 }
 
 std::int16_t ClampBoxCoordinate(float value, std::int32_t limit)
@@ -284,11 +276,10 @@ common::Error ConvertResult(const ModelResult &source,
                             inference::BoxSet *destination)
 {
     if (destination == nullptr) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "person.future.result_destination"};
+        return {common::ErrorCode::kInvalidArgument};
     }
     if (!source.detections_valid) {
-        return {common::ErrorCode::kModel, 0U, "person.future.result"};
+        return {common::ErrorCode::kModel};
     }
 
     destination->person = {};
@@ -309,8 +300,7 @@ common::Error ConvertResult(const ModelResult &source,
         destination->person.boxes[i].confidence = detection.confidence;
     }
     destination->person_valid = true;
-    return {common::ErrorCode::kOk, destination->person.count,
-            "person.future.result"};
+    return {common::ErrorCode::kOk};
 }
 
 } // namespace
@@ -355,8 +345,7 @@ std::uint32_t Future::step_id() const
 common::Error Future::Preprocess()
 {
     if (context_.cache == nullptr || context_.info == nullptr) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "person.future.preprocess.context"};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (!preprocess_stage_logged_) {
         UAI_LOG_INFO("ai: person preprocess begin seq=%u buffer=%x\n",
@@ -366,8 +355,7 @@ common::Error Future::Preprocess()
     if (!frame_ || !frame_.from_pipe2 ||
         frame_.output_count < context_.info->n_outputs ||
         frame_.buffer.size < context_.info->inputs[0].size_bytes) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "person.future.frame"};
+        return {common::ErrorCode::kInvalidArgument};
     }
     frame_.input_prepared_by_cpu = false;
     // The person network is generated for the 480x480 Pipe2 tensor. Keep its
@@ -375,8 +363,7 @@ common::Error Future::Preprocess()
     // source buffer is reserved for models that need CPU resizing.
     const memory_allocator::Buffer &input = frame_.buffer;
     if (!input || input.size < context_.info->inputs[0].size_bytes) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "person.future.input"};
+        return {common::ErrorCode::kInvalidArgument};
     }
 
     /* Pipe2 wrote this buffer using DMA. A CPU read/invalidate here must not
@@ -400,9 +387,7 @@ common::Error Future::Infer()
     if (context_.npu == nullptr || context_.npu_writer == nullptr ||
         context_.model == nullptr ||
         context_.info == nullptr) {
-        return {common::ErrorCode::kNotInitialized,
-                0U,
-                "person.future.infer.context"};
+        return {common::ErrorCode::kNotInitialized};
     }
     if (!infer_stage_logged_) {
         UAI_LOG_INFO("ai: person infer begin seq=%u\n",
@@ -426,8 +411,7 @@ common::Error Future::Infer()
         if (!output || output.size < context_.info->outputs[i].size_bytes ||
             output.alignment == 0U ||
             output.address % output.alignment != 0U) {
-            return {common::ErrorCode::kInvalidArgument, i,
-                    "person.future.output_buffer"};
+            return {common::ErrorCode::kInvalidArgument};
         }
         outputs[i] = reinterpret_cast<stai_ptr>(output.address);
     }
@@ -436,10 +420,7 @@ common::Error Future::Infer()
     if (!result.Ok()) return result.error;
     result = context_.npu->Run(*context_.npu_writer);
     if (!result.Ok()) {
-        UAI_LOG_WARN("ai: person infer failed code=%u detail=%u op=%s\n",
-                     static_cast<unsigned int>(result.error.code),
-                     static_cast<unsigned int>(result.error.detail),
-                     result.error.operation);
+        result.error.LogStatus("person.infer", common::LogLevel::kWarn);
         return result.error;
     }
     if (!infer_stage_logged_) {
@@ -455,8 +436,7 @@ common::Error Future::Postprocess()
 {
     if (context_.cache == nullptr || context_.info == nullptr ||
         context_.publish == nullptr) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "person.future.postprocess.context"};
+        return {common::ErrorCode::kNotInitialized};
     }
     ModelOutputView view{};
     view.count = context_.info->n_outputs;

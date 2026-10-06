@@ -3,11 +3,6 @@
 namespace uai::ai::ai_runtime {
 namespace {
 
-common::Error Error(common::ErrorCode code, const char *operation)
-{
-    return {code, 0U, operation};
-}
-
 std::uint32_t Bits(WaitBitFlag flags)
 {
     return static_cast<std::uint32_t>(flags);
@@ -107,16 +102,14 @@ common::Error PipelineRuntime::Submit(AiFuture &future)
         std::size_t free_index = kCapacity;
         for (std::size_t i = 0; i < kCapacity; ++i) {
             if (slots_[i].future == &future) {
-                return Error(common::ErrorCode::kInvalidState,
-                             "ai_runtime.duplicate");
+                return common::Error{common::ErrorCode::kInvalidState};
             }
             if (free_index == kCapacity && slots_[i].state == State::kFree) {
                 free_index = i;
             }
         }
         if (free_index == kCapacity) {
-            return Error(common::ErrorCode::kQueueFull,
-                         "ai_runtime.capacity");
+            return common::Error{common::ErrorCode::kQueueFull};
         }
         ++next_inference_id_;
         if (next_inference_id_ == 0U) ++next_inference_id_;
@@ -142,8 +135,7 @@ common::Error PipelineRuntime::Signal(AiFuture &future, WaitBitFlag flags)
             found = true;
             if (slot.state != State::kExecuting &&
                 slot.state != State::kWaiting) {
-                return Error(common::ErrorCode::kInvalidState,
-                             "ai_runtime.signal.not_waiting");
+                return common::Error{common::ErrorCode::kInvalidState};
             }
             slot.received = slot.received | flags;
             if (slot.state == State::kWaiting && Satisfied(slot)) {
@@ -155,7 +147,7 @@ common::Error PipelineRuntime::Signal(AiFuture &future, WaitBitFlag flags)
         }
     }
     if (!found) {
-        return Error(common::ErrorCode::kInvalidState, "ai_runtime.signal");
+        return common::Error{common::ErrorCode::kInvalidState};
     }
     if (wake) Wake(wake_lane);
     return {};
@@ -225,7 +217,7 @@ DispatchResult PipelineRuntime::RunOne(ExecutionContext lane)
     if (!terminal && LaneIndex(result.next.context) >= 3U) {
         if (done_ != nullptr) {
             done_(done_context_, *future,
-                  Error(common::ErrorCode::kInvalidArgument, "ai_runtime.lane"));
+                  common::Error{common::ErrorCode::kInvalidArgument});
         }
         return DispatchResult::kFailed;
     }

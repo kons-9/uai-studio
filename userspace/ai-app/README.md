@@ -41,7 +41,8 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | `src/task/task_context.hpp` | 共有資源とタスク参照の保持、各タスク用コンテキストの組み立て |
 | `src/task/application_initialize_task.hpp`、`src/task/camera_render_task.hpp`、`src/task/pipeline_task.hpp` | タスクごとに必要な依存を列挙するコンテキストとスタック。パイプラインのフレーム解放と結果選別 |
 | `src/task/task_config.hpp` | 動作モード、診断設定、キュー・スタックのサイズ |
-| `kernel/middleware/foundation/error.hpp` | エラーコードの分類と共有エラーログのAPI。カメラ固有の診断処理は`camera_render_task.cpp`に配置 |
+| `kernel/middleware/foundation/error_code.hpp` | ログ・OS非依存のエラーコードとコード名 |
+| `kernel/middleware/foundation/error.hpp` | ログ・OS非依存のエラー構造体と判定。`LogStatus()`の実装は`error.cpp`に配置 |
 | `kernel/middleware/foundation/task.hpp` | タスクの起動、停止、ループの共通処理 |
 | `kernel/middleware/foundation/stable_aligned_bytes.hpp` | サイズと8バイト整列を保証し、コピー・移動を禁止する固定アドレスのバイト領域 |
 | `kernel/middleware/foundation/message_channel.hpp` | メッセージバッファの領域所有、生成と型付き送受信 |
