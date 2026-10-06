@@ -1,5 +1,4 @@
-#ifndef UAI_CAMERA_LCD_TOUCH_FRAME_BUFFER_HPP
-#define UAI_CAMERA_LCD_TOUCH_FRAME_BUFFER_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -16,5 +15,3 @@ std::uint16_t *DisplayFrameBuffer(std::size_t index);
 std::uintptr_t DisplayFrameBufferAddress(std::size_t index);
 
 } // namespace uai::camera_lcd_touch::driver
-
-#endif

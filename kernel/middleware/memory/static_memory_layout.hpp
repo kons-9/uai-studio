@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_MEMORY_STATIC_MEMORY_LAYOUT_HPP
-#define UAI_AI_MIDDLEWARE_MEMORY_STATIC_MEMORY_LAYOUT_HPP
+#pragma once
 
 /* Public API and value types for the auto_static_memory_layout result. */
 #include <array>
@@ -62,5 +61,3 @@ struct Layout {
 };
 
 } // namespace uai::ai::static_memory_layout
-
-#endif // UAI_AI_MIDDLEWARE_MEMORY_STATIC_MEMORY_LAYOUT_HPP

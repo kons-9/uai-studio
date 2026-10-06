@@ -1,5 +1,4 @@
-#ifndef UAI_AI_COMMON_ERROR_HPP
-#define UAI_AI_COMMON_ERROR_HPP
+#pragma once
 
 #include "middleware/foundation/error_code.hpp"
 
@@ -29,5 +28,3 @@ private:
 };
 
 } // namespace uai::ai::common
-
-#endif

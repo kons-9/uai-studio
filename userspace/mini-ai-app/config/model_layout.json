@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "model_order": ["person"],
+  "models": {
+    "person": "st_yolo_x_nano_480_1.0_0.25_3_st_int8.tflite"
+  },
+  "weight_addresses": {
+    "person": "0x70380000"
+  }
+}

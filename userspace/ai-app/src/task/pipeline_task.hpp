@@ -1,5 +1,4 @@
-#ifndef UAI_AI_TASK_PIPELINE_TASK_HPP
-#define UAI_AI_TASK_PIPELINE_TASK_HPP
+#pragma once
 
 #include <cstdint>
 #include <tk/tkernel.h>
@@ -137,5 +136,3 @@ private:
 };
 
 } // namespace uai::ai::task
-
-#endif

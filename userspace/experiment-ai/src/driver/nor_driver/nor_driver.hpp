@@ -1,5 +1,4 @@
-#ifndef UAI_AI_NOR_DRIVER_HPP
-#define UAI_AI_NOR_DRIVER_HPP
+#pragma once
 
 #include "driver/nor_driver/registers/nor_registers.hpp"
 
@@ -20,5 +19,3 @@ private:
 };
 
 } // namespace uai::ai::nor
-
-#endif // UAI_AI_NOR_DRIVER_HPP

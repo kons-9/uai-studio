@@ -24,7 +24,7 @@ make -C userspace/<app> <target>
 | `uai::drivers` | STATIC | `kernel/driver`。`uai::utkernel`と`uai::middleware`に依存 |
 | `uai::driver_overrides` | OBJECT | HALの弱シンボル（`HAL_GetTick`、`HAL_Delay`、DCMIPPコールバック）を上書きするコード。実行ファイルへ直接入れます |
 
-`uai::middleware`と`uai::drivers`は`APP_TARGET=ai-app`のときだけ追加されます。生成したメモリ配置ヘッダを置く`UAI_GENERATED_INCLUDE_DIR`（`<build>/generated`）もai-appでだけ定義されます。
+`uai::middleware`と`uai::drivers`は`APP_TARGET`がルート`CMakeLists.txt`の`UAI_KERNEL_APPS`（ai-app、mini-ai-app）にあるときだけ追加されます。生成したメモリ配置ヘッダを置く`UAI_GENERATED_INCLUDE_DIR`（`<build>/generated`）も同じ条件で定義されます。
 
 ## CMakeオプション
 

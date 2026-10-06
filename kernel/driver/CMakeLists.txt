@@ -24,8 +24,13 @@ set(UAI_DRIVER_SOURCES
     npu_driver/registers/npu_registers.cpp
     psram_driver/psram_driver.cpp
     psram_driver/registers/psram_registers.cpp
-    rif_driver/rif_driver.cpp)
+    rif_driver/rif_driver.cpp
+    touch_driver/touch_driver.cpp)
 list(TRANSFORM UAI_DRIVER_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
+list(APPEND UAI_DRIVER_SOURCES
+    "${AI_BSP_ROOT}/stm32n6570_discovery_ts.c"
+    "${AI_COMPONENT_ROOT}/gt911/gt911.c"
+    "${AI_COMPONENT_ROOT}/gt911/gt911_reg.c")
 
 set(AI_CAMERA_BSP_SOURCE
     "${CMAKE_CURRENT_SOURCE_DIR}/camera_driver/board_driver/stm32n6570_discovery_camera.c")
@@ -51,6 +56,7 @@ target_include_directories(uai-drivers
         "${AI_BSP_ROOT}"
         "${AI_COMPONENT_ROOT}/Common"
         "${AI_COMPONENT_ROOT}/imx335"
+        "${AI_COMPONENT_ROOT}/gt911"
         "${AI_COMPONENT_ROOT}/mx66uw1g45g"
         "${AI_ISP_ROOT}/Inc"
         "${AI_ISP_ROOT}/../evision/Inc"

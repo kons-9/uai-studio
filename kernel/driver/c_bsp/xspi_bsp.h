@@ -1,5 +1,4 @@
-#ifndef UAI_AI_C_BSP_XSPI_BSP_H
-#define UAI_AI_C_BSP_XSPI_BSP_H
+#pragma once
 
 #include <stdint.h>
 
@@ -23,5 +22,3 @@ extern volatile uint32_t uai_nor_cr_after_init;
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* UAI_AI_C_BSP_XSPI_BSP_H */

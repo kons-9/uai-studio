@@ -1,5 +1,4 @@
-#ifndef UAI_CAMERA_PIPE2_CAMERA_DRIVER_HPP
-#define UAI_CAMERA_PIPE2_CAMERA_DRIVER_HPP
+#pragma once
 
 #include "driver/driver_status.hpp"
 
@@ -17,5 +16,3 @@ private:
 };
 
 } // namespace uai::camera_pipe2::driver
-
-#endif

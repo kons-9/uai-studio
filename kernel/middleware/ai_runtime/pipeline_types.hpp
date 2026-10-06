@@ -1,5 +1,4 @@
-#ifndef UAI_AI_RUNTIME_PIPELINE_TYPES_HPP
-#define UAI_AI_RUNTIME_PIPELINE_TYPES_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -66,5 +65,3 @@ struct StepTrace {
 enum class DispatchResult : std::uint8_t { kIdle, kNotReady, kRan, kFailed };
 
 } // namespace uai::ai::ai_runtime
-
-#endif

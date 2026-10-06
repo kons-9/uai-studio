@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MEMORY_ALLOCATOR_HPP
-#define UAI_AI_MEMORY_ALLOCATOR_HPP
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -239,5 +238,3 @@ private:
 };
 
 } // namespace uai::ai::memory_allocator
-
-#endif

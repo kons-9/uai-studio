@@ -1,5 +1,4 @@
-#ifndef UAI_AI_STATIC_MEMORY_LAYOUT_HPP
-#define UAI_AI_STATIC_MEMORY_LAYOUT_HPP
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -118,5 +117,3 @@ inline constexpr Layout kLayout = {
 };
 
 } // namespace uai::ai::static_memory_layout
-
-#endif

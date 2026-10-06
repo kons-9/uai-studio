@@ -1,5 +1,4 @@
-#ifndef UAI_AI_IMAGE_RESIZER_HPP
-#define UAI_AI_IMAGE_RESIZER_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -46,5 +45,3 @@ common::Error Select(const Request &request, Selection *selection);
 const char *HardwareName(Hardware hardware);
 
 } // namespace uai::ai::image_resizer
-
-#endif // UAI_AI_IMAGE_RESIZER_HPP

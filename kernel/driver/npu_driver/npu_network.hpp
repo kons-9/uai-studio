@@ -1,5 +1,4 @@
-#ifndef UAI_AI_NPU_NETWORK_HPP
-#define UAI_AI_NPU_NETWORK_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -43,5 +42,3 @@ protected:
 };
 
 } // namespace uai::ai::npu
-
-#endif

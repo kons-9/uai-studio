@@ -1,5 +1,4 @@
-#ifndef UAI_AI_NPU_RUNTIME_INFERENCE_TIMING_HPP
-#define UAI_AI_NPU_RUNTIME_INFERENCE_TIMING_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -55,5 +54,3 @@ struct InferenceTiming {
 };
 
 } // namespace uai::ai::npu_runtime
-
-#endif

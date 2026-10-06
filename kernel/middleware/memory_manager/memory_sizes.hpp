@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MEMORY_MANAGER_MEMORY_SIZES_HPP
-#define UAI_AI_MEMORY_MANAGER_MEMORY_SIZES_HPP
+#pragma once
 
 #include <cstddef>
 
@@ -22,5 +21,3 @@ inline constexpr std::size_t kInferenceBufferBytes = kMemoryConfig.AlignUp(
     kInferenceOutputsOffset + kMemoryConfig.inference_output_storage_bytes());
 
 } // namespace uai::ai::memory_manager
-
-#endif

@@ -61,6 +61,15 @@ common::Error InitializeDrivers(ApplicationInitializeContext &context)
     if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return status;
     }
+    /* The GT911 shares the LCD reset line, so bring it up after the LCD. A
+     * missing or failed touch controller only disables the on-screen UI. */
+    const common::Error touch_status = context.touch.Initialize();
+    context.touch_ready = touch_status.Ok() ||
+        touch_status.Code() == common::ErrorCode::kAlreadyInitialized;
+    if (!context.touch_ready) {
+        touch_status.LogStatus("touch");
+        UAI_LOG_WARN("touch: controller unavailable; on-screen UI disabled\n");
+    }
 
     context.cache.KeepClocksOnSleep();
     context.psram.KeepClocksOnSleep();

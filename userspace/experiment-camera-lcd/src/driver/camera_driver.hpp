@@ -1,5 +1,4 @@
-#ifndef UAI_CAMERA_LCD_CAMERA_DRIVER_HPP
-#define UAI_CAMERA_LCD_CAMERA_DRIVER_HPP
+#pragma once
 
 #include "driver/driver_status.hpp"
 
@@ -17,5 +16,3 @@ private:
 };
 
 } // namespace uai::camera_lcd::driver
-
-#endif

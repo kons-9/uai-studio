@@ -14,6 +14,7 @@ namespace uai::ai::psram { class PsramManagement; }
 namespace uai::ai::rif { class RifManagement; }
 namespace uai::ai::lcd { class LcdManagement; }
 namespace uai::ai::camera { class CameraManagement; }
+namespace uai::ai::touch { class TouchManagement; }
 
 namespace uai::ai::task {
 
@@ -27,11 +28,13 @@ struct ApplicationInitializeContext {
     rif::RifManagement &rif;
     lcd::LcdManagement &lcd;
     camera::CameraManagement &camera;
+    touch::TouchManagement &touch;
     middleware::cpu_task_monitor::CpuTaskMonitor &cpu_task_monitor;
     CameraRenderTask &camera_task;
     PipelineTask &pipeline_task;
     volatile std::uint32_t &app_stage;
     volatile bool &external_nor_ready;
+    volatile bool &touch_ready;
     ID external_memory_ready;
     const DiagnosticsConfig &diagnostics;
 };

@@ -1,5 +1,4 @@
-#ifndef UAI_AI_NPU_DRIVER_DEBUG_H
-#define UAI_AI_NPU_DRIVER_DEBUG_H
+#pragma once
 
 /* Diagnostics are owned by experiment-ai. Weak definitions keep compatibility
  * with older local ATON/cache copies that already export these counters. */
@@ -17,6 +16,4 @@ extern volatile unsigned int g_npu_cache_sr;
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

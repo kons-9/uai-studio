@@ -1,5 +1,4 @@
-#ifndef UAI_CAMERA_LCD_TOUCH_OVERLAY_UI_HPP
-#define UAI_CAMERA_LCD_TOUCH_OVERLAY_UI_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -36,5 +35,3 @@ private:
 };
 
 } // namespace uai::camera_lcd_touch::driver
-
-#endif

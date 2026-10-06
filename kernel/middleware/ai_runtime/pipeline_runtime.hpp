@@ -1,5 +1,4 @@
-#ifndef UAI_AI_RUNTIME_PIPELINE_RUNTIME_HPP
-#define UAI_AI_RUNTIME_PIPELINE_RUNTIME_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -86,5 +85,3 @@ private:
 };
 
 } // namespace uai::ai::ai_runtime
-
-#endif

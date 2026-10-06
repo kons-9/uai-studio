@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_TASK_TASK_HPP
-#define UAI_AI_MIDDLEWARE_TASK_TASK_HPP
+#pragma once
 
 #include <cstdint>
 #include <limits>
@@ -73,5 +72,3 @@ public:
 };
 
 } // namespace uai::ai::common
-
-#endif

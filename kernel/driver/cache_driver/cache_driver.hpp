@@ -1,5 +1,4 @@
-#ifndef UAI_AI_CACHE_DRIVER_HPP
-#define UAI_AI_CACHE_DRIVER_HPP
+#pragma once
 
 #include "middleware/foundation/error.hpp"
 #include "driver/driver_ownership.hpp"
@@ -93,5 +92,3 @@ private:
 };
 
 } // namespace uai::ai::cache
-
-#endif

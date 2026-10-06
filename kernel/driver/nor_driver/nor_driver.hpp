@@ -1,5 +1,4 @@
-#ifndef UAI_AI_NOR_DRIVER_HPP
-#define UAI_AI_NOR_DRIVER_HPP
+#pragma once
 
 #include <utility>
 
@@ -115,5 +114,3 @@ private:
 };
 
 } // namespace uai::ai::nor
-
-#endif // UAI_AI_NOR_DRIVER_HPP

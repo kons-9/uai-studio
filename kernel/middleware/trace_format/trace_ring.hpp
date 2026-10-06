@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_TRACE_FORMAT_TRACE_RING_HPP
-#define UAI_AI_MIDDLEWARE_TRACE_FORMAT_TRACE_RING_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -38,5 +37,3 @@ bool AppendTraceRecord(Header *header, Record *records,
 }
 
 } // namespace uai::ai::middleware::trace_format
-
-#endif

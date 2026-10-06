@@ -1,5 +1,4 @@
-#ifndef UAI_TEST_MEMORY_CONFIG_HPP
-#define UAI_TEST_MEMORY_CONFIG_HPP
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -31,5 +30,3 @@ inline constexpr std::size_t kInferenceBufferCount = 3U;
 inline constexpr std::size_t kInferenceSourceBufferCount = 3U;
 
 } // namespace uai::ai::memory_manager
-
-#endif

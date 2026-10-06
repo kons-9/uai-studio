@@ -11,6 +11,7 @@
 #include "driver/nor_driver/nor_driver.hpp"
 #include "driver/psram_driver/psram_driver.hpp"
 #include "driver/rif_driver/rif_driver.hpp"
+#include "driver/touch_driver/touch_driver.hpp"
 #include "middleware/ai_runtime/inference_result_types.hpp"
 #include "middleware/cpu_task_monitor/cpu_task_monitor.hpp"
 #include "middleware/foundation/error.hpp"
@@ -35,18 +36,20 @@ public:
     uai::ai::rif::RifManagement &rif = rif::RifManagement::Instance();
     uai::ai::lcd::LcdManagement &lcd = lcd::LcdManagement::Instance();
     uai::ai::camera::CameraManagement &camera = camera::CameraManagement::Instance();
+    uai::ai::touch::TouchManagement &touch = touch::TouchManagement::Instance();
     uai::ai::middleware::cpu_task_monitor::CpuTaskMonitor cpu_task_monitor;
 
     volatile std::uint32_t app_stage = 0U;
     volatile bool external_nor_ready = false;
+    volatile bool touch_ready = false;
     ID external_memory_ready = -1;
     ID pipeline_work_ready = -1;
     DiagnosticsConfig diagnostics;
 
     CameraRenderContext CameraContext()
     {
-        return {memory, cache, camera, lcd, cpu_task_monitor, pipeline_task,
-                external_nor_ready, diagnostics};
+        return {memory, cache, camera, lcd, touch, cpu_task_monitor, pipeline_task,
+                external_nor_ready, touch_ready, diagnostics};
     }
 
     PipelineFrameContext FrameContext()
@@ -63,9 +66,9 @@ public:
 
     ApplicationInitializeContext InitializationContext()
     {
-        return {memory, cache, psram, rif, lcd, camera, cpu_task_monitor,
+        return {memory, cache, psram, rif, lcd, camera, touch, cpu_task_monitor,
                 camera_task, pipeline_task, app_stage, external_nor_ready,
-                external_memory_ready, diagnostics};
+                touch_ready, external_memory_ready, diagnostics};
     }
 };
 

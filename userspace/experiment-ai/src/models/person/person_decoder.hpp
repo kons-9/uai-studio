@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MODELS_PERSON_PERSON_DECODER_HPP
-#define UAI_AI_MODELS_PERSON_PERSON_DECODER_HPP
+#pragma once
 
 #include <cstddef>
 
@@ -20,5 +19,3 @@ private:
 };
 
 } // namespace uai::ai::models::person
-
-#endif

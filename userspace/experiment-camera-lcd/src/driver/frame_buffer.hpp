@@ -1,5 +1,4 @@
-#ifndef UAI_CAMERA_LCD_FRAME_BUFFER_HPP
-#define UAI_CAMERA_LCD_FRAME_BUFFER_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -14,5 +13,3 @@ std::uint8_t *FrameBuffer();
 std::uintptr_t FrameBufferAddress();
 
 } // namespace uai::camera_lcd::driver
-
-#endif

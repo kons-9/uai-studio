@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MEMORY_MANAGER_HPP
-#define UAI_AI_MEMORY_MANAGER_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -87,5 +86,3 @@ private:
 };
 
 } // namespace uai::ai::memory_manager
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef UAI_AI2_MIDDLEWARE_CPU_TASK_MONITOR_HPP
-#define UAI_AI2_MIDDLEWARE_CPU_TASK_MONITOR_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -111,5 +110,3 @@ public:
 #endif /* UAI_CPU_TASK_MONITOR */
 
 } // namespace uai::ai::middleware::cpu_task_monitor
-
-#endif

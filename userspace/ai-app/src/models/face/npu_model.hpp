@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MODELS_FACE_NPU_MODEL_HPP
-#define UAI_AI_MODELS_FACE_NPU_MODEL_HPP
+#pragma once
 
 #include "driver/npu_driver/npu_network.hpp"
 
@@ -26,5 +25,3 @@ public:
 };
 
 } // namespace uai::ai::models::face
-
-#endif

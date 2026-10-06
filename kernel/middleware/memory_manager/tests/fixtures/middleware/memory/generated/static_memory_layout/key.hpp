@@ -1,5 +1,4 @@
-#ifndef UAI_TEST_STATIC_MEMORY_KEY_HPP
-#define UAI_TEST_STATIC_MEMORY_KEY_HPP
+#pragma once
 
 #include <array>
 #include "middleware/memory/static_memory_layout.hpp"
@@ -19,5 +18,3 @@ inline constexpr std::array<Key, 3U> kInferenceSourceRegionKeys{
     Key::kInferenceSource0, Key::kInferenceSource1, Key::kInferenceSource2};
 
 } // namespace uai::ai::static_memory_layout
-
-#endif

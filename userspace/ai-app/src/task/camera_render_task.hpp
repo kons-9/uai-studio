@@ -12,6 +12,7 @@ namespace uai::ai::memory_manager { class MemoryManager; }
 namespace uai::ai::cache { class CacheManagement; }
 namespace uai::ai::camera { class CameraManagement; }
 namespace uai::ai::lcd { class LcdManagement; }
+namespace uai::ai::touch { class TouchManagement; }
 
 namespace uai::ai::task {
 
@@ -22,9 +23,11 @@ struct CameraRenderContext {
     cache::CacheManagement &cache;
     camera::CameraManagement &camera;
     lcd::LcdManagement &lcd;
+    touch::TouchManagement &touch;
     middleware::cpu_task_monitor::CpuTaskMonitor &cpu_task_monitor;
     PipelineTask &pipeline_task;
     const volatile bool &external_nor_ready;
+    const volatile bool &touch_ready;
     const DiagnosticsConfig &diagnostics;
 };
 

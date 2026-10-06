@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MODELS_MODEL_HPP
-#define UAI_AI_MODELS_MODEL_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -252,5 +251,3 @@ struct ModelBinding {
 };
 
 } // namespace uai::ai::models
-
-#endif

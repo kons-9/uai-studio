@@ -1,5 +1,4 @@
-#ifndef UAI_AI_DRIVER_OWNERSHIP_HPP
-#define UAI_AI_DRIVER_OWNERSHIP_HPP
+#pragma once
 
 #include "middleware/resource_ownership/resource_ownership.hpp"
 #include "middleware/resource_ownership/utkernel_mutex_backend.hpp"
@@ -15,5 +14,3 @@ template <typename Resource>
 using ResourceAccessor = resource_ownership::ResourceAccessor<Resource>;
 
 } // namespace uai::ai::driver
-
-#endif // UAI_AI_DRIVER_OWNERSHIP_HPP

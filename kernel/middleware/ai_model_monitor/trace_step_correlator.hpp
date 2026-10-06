@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_AI_MODEL_MONITOR_TRACE_STEP_CORRELATOR_HPP
-#define UAI_AI_MIDDLEWARE_AI_MODEL_MONITOR_TRACE_STEP_CORRELATOR_HPP
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -64,5 +63,3 @@ private:
 };
 
 } // namespace uai::ai::middleware::ai_model_monitor
-
-#endif

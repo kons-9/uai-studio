@@ -6,7 +6,11 @@ cmake_minimum_required(VERSION 3.16)
 set(APP_TARGET "experiment-hello-world" CACHE STRING "Userspace application to build")
 set_property(CACHE APP_TARGET PROPERTY STRINGS
     experiment-hello-world experiment-camera-lcd experiment-ai ai-app
-    experiment-camera-pipe2 experiment-camera-lcd-touch)
+    mini-ai-app experiment-camera-pipe2 experiment-camera-lcd-touch)
+
+# Applications built on the kernel middleware and drivers. They generate the
+# memory contract that the kernel components include.
+set(UAI_KERNEL_APPS ai-app mini-ai-app)
 
 option(CMAKE_EXPORT_COMPILE_COMMANDS
        "Generate compile_commands.json for IDEs"
@@ -60,7 +64,7 @@ if(APP_TARGET STREQUAL "experiment-camera-lcd" OR
         CPU_IN_SECURE_STATE)
 endif()
 add_subdirectory(kernel/pre_kernel/stm32n6570-dk)
-if(APP_TARGET STREQUAL "ai-app")
+if(APP_TARGET IN_LIST UAI_KERNEL_APPS)
     # Generated memory contracts are build outputs shared by the middleware,
     # drivers, and this userspace application.
     set(UAI_GENERATED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/generated")

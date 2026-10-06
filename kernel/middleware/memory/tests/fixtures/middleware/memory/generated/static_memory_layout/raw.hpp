@@ -1,8 +1,7 @@
 /* Host stand-in for the generated raw.hpp. The real file binds Region begin/end
  * to linker section symbols; here they point into arrays owned by the test so
  * the same static_memory_layout.cpp can be linked and exercised. */
-#ifndef UAI_TEST_MEMORY_STATIC_MEMORY_RAW_HPP
-#define UAI_TEST_MEMORY_STATIC_MEMORY_RAW_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -26,5 +25,3 @@ inline const Layout<static_cast<std::size_t>(Key::kCount)> kLayout = {
 };
 
 } // namespace uai::ai::static_memory_layout
-
-#endif

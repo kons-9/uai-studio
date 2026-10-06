@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MODELS_SEGMENTATION_FUTURE_HPP
-#define UAI_AI_MODELS_SEGMENTATION_FUTURE_HPP
+#pragma once
 
 #include <atomic>
 #include <cstddef>
@@ -80,5 +79,3 @@ private:
 };
 
 } // namespace uai::ai::models::segmentation
-
-#endif

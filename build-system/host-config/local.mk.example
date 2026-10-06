@@ -11,8 +11,8 @@ STM32_PROGRAM_PORT ?= swd
 
 # STM32N6570-DK RAM image layout.
 STM32_RAM_ADDRESS ?= 0x34000400
-STM32_RAM_ENTRY ?= $(if $(filter ai-app,$(APP_TARGET)),0x34060001,$(if $(filter experiment-ai,$(APP_TARGET)),0x34052001,0x34000800))
-STM32_RAM_STACK ?= $(if $(filter ai-app experiment-ai,$(APP_TARGET)),0x34100000,0x34200000)
+STM32_RAM_ENTRY ?= $(if $(filter ai-app mini-ai-app,$(APP_TARGET)),0x34060001,$(if $(filter experiment-ai,$(APP_TARGET)),0x34052001,0x34000800))
+STM32_RAM_STACK ?= $(if $(filter ai-app mini-ai-app experiment-ai,$(APP_TARGET)),0x34100000,0x34200000)
 STM32_RAM_XPSR ?= 0x01000000
 
 # Host UART settings.
@@ -28,6 +28,8 @@ ifeq ($(APP_TARGET),experiment-ai)
 CUBEMX_IOC ?= userspace/experiment-ai/config/stm32n6570-dk-experiment-ai.ioc
 else ifeq ($(APP_TARGET),ai-app)
 CUBEMX_IOC ?= userspace/ai-app/config/stm32n6570-dk-ai-app.ioc
+else ifeq ($(APP_TARGET),mini-ai-app)
+CUBEMX_IOC ?= userspace/mini-ai-app/config/stm32n6570-dk-mini-ai-app.ioc
 else ifeq ($(APP_TARGET),experiment-camera-pipe2)
 CUBEMX_IOC ?= userspace/experiment-camera-lcd/config/stm32n6570-dk-fullsecure.ioc
 else

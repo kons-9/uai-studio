@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MODELS_FACE_C_WRAPPER_H
-#define UAI_AI_MODELS_FACE_C_WRAPPER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -93,6 +92,4 @@ inline stai_return_code SetEpochTraceCallback(
 }
 
 } // namespace uai::ai::models::face::c_wrapper
-#endif
-
 #endif

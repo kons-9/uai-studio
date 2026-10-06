@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MODELS_FACE_FACE_DECODER_HPP
-#define UAI_AI_MODELS_FACE_FACE_DECODER_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -23,5 +22,3 @@ private:
 };
 
 } // namespace uai::ai::models::face
-
-#endif

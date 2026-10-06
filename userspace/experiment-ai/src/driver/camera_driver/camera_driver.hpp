@@ -1,5 +1,4 @@
-#ifndef UAI_AI_CAMERA_DRIVER_HPP
-#define UAI_AI_CAMERA_DRIVER_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -57,5 +56,3 @@ private:
 };
 
 } // namespace uai::ai::camera
-
-#endif // UAI_AI_CAMERA_DRIVER_HPP

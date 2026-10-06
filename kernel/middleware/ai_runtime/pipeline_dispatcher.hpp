@@ -1,5 +1,4 @@
-#ifndef UAI_AI_RUNTIME_PIPELINE_DISPATCHER_HPP
-#define UAI_AI_RUNTIME_PIPELINE_DISPATCHER_HPP
+#pragma once
 
 #include "middleware/ai_runtime/pipeline_runtime.hpp"
 
@@ -27,5 +26,3 @@ private:
 };
 
 } // namespace uai::ai::ai_runtime
-
-#endif

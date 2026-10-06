@@ -1,5 +1,4 @@
-#ifndef UAI_AI2_MIDDLEWARE_AI_MODEL_MONITOR_HPP
-#define UAI_AI2_MIDDLEWARE_AI_MODEL_MONITOR_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -85,5 +84,3 @@ private:
 };
 
 } // namespace uai::ai::middleware::ai_model_monitor
-
-#endif

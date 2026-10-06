@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_TRACE_FORMAT_AI_MODEL_TRACE_HPP
-#define UAI_AI_MIDDLEWARE_TRACE_FORMAT_AI_MODEL_TRACE_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -97,5 +96,3 @@ static_assert(sizeof(ThreadMonitorTraceHeader) == 64U);
 static_assert(sizeof(ThreadMonitorTraceRecord) == 64U);
 
 } // namespace uai::ai::middleware::ai_model_monitor
-
-#endif

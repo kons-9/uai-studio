@@ -1,5 +1,4 @@
-#ifndef UAI_AI_CAMERA_DIAGNOSTICS_HPP
-#define UAI_AI_CAMERA_DIAGNOSTICS_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -22,5 +21,3 @@ void DumpCaptureRegisters(const pipeline::CaptureFrame &frame,
                           const Diagnostics &diagnostics, std::uint32_t crc);
 
 } // namespace uai::ai::camera
-
-#endif

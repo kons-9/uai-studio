@@ -1,5 +1,4 @@
-#ifndef UAI_AI_CAMERA_SENSOR_REGISTERS_IMX335_REGISTERS_HPP
-#define UAI_AI_CAMERA_SENSOR_REGISTERS_IMX335_REGISTERS_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -76,5 +75,3 @@ public:
 };
 
 } // namespace uai::ai::camera::sensor::registers
-
-#endif // UAI_AI_CAMERA_SENSOR_REGISTERS_IMX335_REGISTERS_HPP

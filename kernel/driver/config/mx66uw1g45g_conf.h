@@ -1,5 +1,4 @@
-#ifndef MX66UW1G45G_CONF_H
-#define MX66UW1G45G_CONF_H
+#pragma once
 
 #include "stm32n6xx_hal.h"
 
@@ -9,5 +8,3 @@
 #define DUMMY_CYCLES_READ_OCTAL_DTR 10U
 #define DUMMY_CYCLES_REG_OCTAL 4U
 #define DUMMY_CYCLES_REG_OCTAL_DTR 5U
-
-#endif /* MX66UW1G45G_CONF_H */

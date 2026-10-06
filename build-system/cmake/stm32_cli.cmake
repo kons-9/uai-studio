@@ -35,9 +35,9 @@ if(NOT CUBEMX_IOC)
     # experiment-camera-pipe2 intentionally reuses experiment-camera-lcd's
     # CubeMX peripheral/startup setup;
     # its dual-pipe configuration is applied by the application at runtime.
-    if(APP_TARGET STREQUAL "ai-app")
+    if(APP_TARGET IN_LIST UAI_KERNEL_APPS)
         set(_uai_default_ioc
-            "${CMAKE_SOURCE_DIR}/userspace/ai-app/config/stm32n6570-dk-ai-app.ioc")
+            "${CMAKE_SOURCE_DIR}/userspace/${APP_TARGET}/config/stm32n6570-dk-${APP_TARGET}.ioc")
     endif()
     if(NOT EXISTS "${_uai_default_ioc}" AND
        APP_TARGET STREQUAL "experiment-camera-pipe2")
@@ -147,7 +147,7 @@ endif()
 set(STM32_RAM_ENTRY "$ENV{STM32_RAM_ENTRY}" CACHE STRING
     "RAM image execution address" FORCE)
 if(NOT STM32_RAM_ENTRY)
-    if(APP_TARGET STREQUAL "ai-app")
+    if(APP_TARGET IN_LIST UAI_KERNEL_APPS)
         set(_stm32_default_ram_entry "0x34060001")
     elseif(APP_TARGET STREQUAL "experiment-ai")
         set(_stm32_default_ram_entry "0x34052001")
@@ -160,7 +160,7 @@ endif()
 set(STM32_RAM_STACK "$ENV{STM32_RAM_STACK}" CACHE STRING
     "Initial main stack pointer" FORCE)
 if(NOT STM32_RAM_STACK)
-    if(APP_TARGET STREQUAL "ai-app" OR APP_TARGET STREQUAL "experiment-ai")
+    if(APP_TARGET IN_LIST UAI_KERNEL_APPS OR APP_TARGET STREQUAL "experiment-ai")
         set(_stm32_default_ram_stack "0x34100000")
     else()
         set(_stm32_default_ram_stack "0x34200000")

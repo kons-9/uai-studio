@@ -1,5 +1,4 @@
-#ifndef UAI_AI_IMAGE_RESIZER_HPP
-#define UAI_AI_IMAGE_RESIZER_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -95,5 +94,3 @@ common::Error FillRgb888LetterboxPadding(
     std::uint32_t content_height, std::uint8_t pad_value = 0U);
 
 } // namespace uai::ai::image_resizer
-
-#endif // UAI_AI_IMAGE_RESIZER_HPP

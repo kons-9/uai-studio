@@ -1,5 +1,4 @@
-#ifndef UAI_AI_LCD_DRIVER_HPP
-#define UAI_AI_LCD_DRIVER_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -50,5 +49,3 @@ private:
 };
 
 } // namespace uai::ai::lcd
-
-#endif

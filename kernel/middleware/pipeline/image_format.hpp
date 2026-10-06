@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_PIPELINE_IMAGE_FORMAT_HPP
-#define UAI_AI_MIDDLEWARE_PIPELINE_IMAGE_FORMAT_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -26,5 +25,3 @@ inline constexpr ImageFormat kInferenceFormat{480U, 480U, 3U};
 inline constexpr ImageFormat kInferenceContentFormat{480U, 288U, 3U};
 
 } // namespace uai::ai::pipeline
-
-#endif

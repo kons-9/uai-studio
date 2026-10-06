@@ -1,5 +1,4 @@
-#ifndef UAI_AI_LCD_REGISTERS_HPP
-#define UAI_AI_LCD_REGISTERS_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -20,5 +19,3 @@ private:
 };
 
 } // namespace uai::ai::lcd::registers
-
-#endif // UAI_AI_LCD_REGISTERS_HPP

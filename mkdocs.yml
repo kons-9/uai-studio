@@ -14,6 +14,18 @@ nav:
   - ホーム: index.md
   - はじめに: getting-started.md
   - 紹介スライド: https://kons-9.github.io/uai-studio/introduction.html
+  - チュートリアル（mini-ai-app）:
+      - 概要: tutorial/index.md
+      - 1. 最小アプリ: tutorial/01-minimal-app.md
+      - 2. カーネルアプリとして登録する: tutorial/02-build-system.md
+      - 3. メモリ配置: tutorial/03-memory-layout.md
+      - 4. タスクと共有資源: tutorial/04-tasks-and-context.md
+      - 5. ドライバ初期化: tutorial/05-driver-init.md
+      - 6. カメラとLCD: tutorial/06-camera-lcd.md
+      - 7. モデル: tutorial/07-model.md
+      - 8. 推論: tutorial/08-inference.md
+      - 9. 実行と計測: tutorial/09-run-and-measure.md
+      - 10. 次のステップ: tutorial/10-next-steps.md
   - カーネル:
       - 概要: kernel/index.md
       - ビルド構成: kernel/build.md
@@ -36,6 +48,7 @@ nav:
       - cpu_task_monitor: middleware/cpu_task_monitor.md
       - image_resizer: middleware/image_resizer.md
       - image_processing: middleware/image_processing.md
+      - ui: middleware/ui.md
 
 theme:
   name: material
@@ -47,6 +60,7 @@ theme:
     - search.highlight
 
 markdown_extensions:
+  - admonition
   - tables
   - toc:
       permalink: true

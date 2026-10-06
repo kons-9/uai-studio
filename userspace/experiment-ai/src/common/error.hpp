@@ -1,5 +1,4 @@
-#ifndef UAI_AI_COMMON_ERROR_HPP
-#define UAI_AI_COMMON_ERROR_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -52,5 +51,3 @@ struct Error {
 };
 
 } // namespace uai::ai::common
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_TRACE_FORMAT_CPU_TASK_TRACE_HPP
-#define UAI_AI_MIDDLEWARE_TRACE_FORMAT_CPU_TASK_TRACE_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -77,5 +76,3 @@ static_assert(sizeof(CpuTaskMonitorTraceHeader) == 64U);
 static_assert(sizeof(CpuTaskMonitorTraceRecord) == 64U);
 
 } // namespace uai::ai::middleware::cpu_task_monitor
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef UAI_AI_RIF_DRIVER_HPP
-#define UAI_AI_RIF_DRIVER_HPP
+#pragma once
 
 #include "common/error.hpp"
 
@@ -21,5 +20,3 @@ private:
 };
 
 } // namespace uai::ai::rif
-
-#endif // UAI_AI_RIF_DRIVER_HPP

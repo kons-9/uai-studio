@@ -1,5 +1,4 @@
-#ifndef UAI_AI_CACHE_DRIVER_HPP
-#define UAI_AI_CACHE_DRIVER_HPP
+#pragma once
 
 #include "common/error.hpp"
 #include "memory_allocator/memory_allocator.hpp"
@@ -23,5 +22,3 @@ private:
 };
 
 } // namespace uai::ai::cache
-
-#endif

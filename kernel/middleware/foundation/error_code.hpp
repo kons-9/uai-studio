@@ -1,5 +1,4 @@
-#ifndef UAI_AI_COMMON_ERROR_CODE_HPP
-#define UAI_AI_COMMON_ERROR_CODE_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -46,5 +45,3 @@ constexpr const char *ErrorCodeName(ErrorCode code)
 }
 
 } // namespace uai::ai::common
-
-#endif

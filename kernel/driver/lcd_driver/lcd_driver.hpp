@@ -1,5 +1,4 @@
-#ifndef UAI_AI_LCD_DRIVER_HPP
-#define UAI_AI_LCD_DRIVER_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -11,6 +10,7 @@
 #include "middleware/pipeline/frame_types.hpp"
 #include "memory_manager/memory_manager.hpp"
 #include "middleware/ai_runtime/inference_result_types.hpp"
+#include "middleware/ui/widget.hpp"
 
 namespace uai::ai::lcd {
 
@@ -40,11 +40,13 @@ public:
     common::Error ComposeAndPresent(
         const pipeline::CaptureFrame &capture,
         const inference::BoxSet &boxes,
-        bool log_copy_crc = false);
+        bool log_copy_crc = false,
+        const ui::Painter *overlay = nullptr);
     common::Error ComposeAndPresent(
         const pipeline::CaptureFrame &capture,
         const inference::BoxSet &boxes, const Writer &writer,
-        bool log_copy_crc = false);
+        bool log_copy_crc = false,
+        const ui::Painter *overlay = nullptr);
     common::Error ComposeInferenceAndPresent(
         const pipeline::InferenceFrame &frame);
     common::Error ComposeInferenceAndPresent(
@@ -94,7 +96,7 @@ public:
     common::Error ShowInitialFrame(const inference::BoxSet &b, bool p = false) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ShowInitialFrame(b, w, p); }); }
     common::Error SynchronizeCurrentFrame() { return WithWriter([](LcdDriver &d, const Writer &w) { return d.SynchronizeCurrentFrame(w); }); }
     common::Error GenerateCoordinatePattern(const buffer::Buffer &b) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.GenerateCoordinatePattern(b, w); }); }
-    common::Error ComposeAndPresent(const pipeline::CaptureFrame &f, const inference::BoxSet &b, bool crc = false) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ComposeAndPresent(f, b, w, crc); }); }
+    common::Error ComposeAndPresent(const pipeline::CaptureFrame &f, const inference::BoxSet &b, bool crc = false, const ui::Painter *overlay = nullptr) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ComposeAndPresent(f, b, w, crc, overlay); }); }
     common::Error ComposeInferenceAndPresent(const pipeline::InferenceFrame &f) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ComposeInferenceAndPresent(f, w); }); }
     void SetTimingDiagnostics(bool enabled) { (void)WithWriter([&](LcdDriver &d, const Writer &w) { d.SetTimingDiagnostics(enabled, w); return common::Error{}; }); }
     LcdManagement(const LcdManagement &) = delete;
@@ -106,5 +108,3 @@ private:
 };
 
 } // namespace uai::ai::lcd
-
-#endif

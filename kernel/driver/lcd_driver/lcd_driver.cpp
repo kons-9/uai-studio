@@ -380,18 +380,18 @@ common::Error LcdDriver::SynchronizeCurrentFrame(const Writer &writer)
 common::Error LcdDriver::ComposeAndPresent(
     const pipeline::CaptureFrame &capture,
     const inference::BoxSet &boxes,
-    bool log_copy_crc)
+    bool log_copy_crc, const ui::Painter *overlay)
 {
     Writer writer;
     common::Error status = management_->Acquire(&writer);
     if (!status.Ok()) return status;
-    return ComposeAndPresent(capture, boxes, writer, log_copy_crc);
+    return ComposeAndPresent(capture, boxes, writer, log_copy_crc, overlay);
 }
 
 common::Error LcdDriver::ComposeAndPresent(
     const pipeline::CaptureFrame &capture,
     const inference::BoxSet &boxes, const Writer &writer,
-    bool log_copy_crc)
+    bool log_copy_crc, const ui::Painter *overlay)
 {
     common::Error ownership = management_->Validate(writer);
     if (!ownership.Ok()) return ownership;
@@ -481,6 +481,13 @@ common::Error LcdDriver::ComposeAndPresent(
     DrawMask(display, boxes);
     DrawInferenceRegion(display);
     DrawBoxes(display, boxes);
+    if (overlay != nullptr) {
+        ui::Canvas canvas(
+            reinterpret_cast<std::uint16_t *>(display.buffer.address),
+            static_cast<std::uint16_t>(pipeline::kCaptureFormat.width),
+            static_cast<std::uint16_t>(pipeline::kCaptureFormat.height));
+        overlay->Paint(canvas);
+    }
 
     status = cache_->PrepareForPeripheralRead(display.buffer);
     if (!status.Ok()) {

@@ -87,8 +87,8 @@ if(NOT APP_TARGET STREQUAL "experiment-camera-lcd" AND
    NOT APP_TARGET STREQUAL "experiment-camera-pipe2" AND
    NOT APP_TARGET STREQUAL "experiment-camera-lcd-touch")
     set(_ai_board_config_app experiment-ai)
-    if(APP_TARGET STREQUAL "ai-app")
-        set(_ai_board_config_app ai-app)
+    if(APP_TARGET IN_LIST UAI_KERNEL_APPS)
+        set(_ai_board_config_app "${APP_TARGET}")
     endif()
     target_include_directories(stm32n6570_dk PUBLIC
         "${CMAKE_SOURCE_DIR}/userspace/${_ai_board_config_app}/src/board"
@@ -108,7 +108,7 @@ target_compile_definitions(stm32n6570_dk PRIVATE
 )
 
 if(APP_TARGET STREQUAL "experiment-ai" OR
-   APP_TARGET STREQUAL "ai-app" OR
+   APP_TARGET IN_LIST UAI_KERNEL_APPS OR
    APP_TARGET STREQUAL "experiment-camera-lcd" OR
    APP_TARGET STREQUAL "experiment-camera-pipe2" OR
    APP_TARGET STREQUAL "experiment-camera-lcd-touch")

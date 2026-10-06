@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MODELS_FACE_MODEL_HPP
-#define UAI_AI_MODELS_FACE_MODEL_HPP
+#pragma once
 
 #include "models/model.hpp"
 
@@ -44,5 +43,3 @@ private:
 ::uai::ai::models::ModelRuntime &Runtime(Model &model);
 
 } // namespace uai::ai::models::face
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef UAI_CAMERA_LCD_TOUCH_DRIVER_STATUS_HPP
-#define UAI_CAMERA_LCD_TOUCH_DRIVER_STATUS_HPP
+#pragma once
 
 namespace uai::camera_lcd_touch::driver {
 
@@ -19,5 +18,3 @@ constexpr bool IsOk(DriverStatus status)
 }
 
 } // namespace uai::camera_lcd_touch::driver
-
-#endif

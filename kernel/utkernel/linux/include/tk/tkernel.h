@@ -1,5 +1,4 @@
-#ifndef UAI_LINUX_TEST_TKERNEL_H
-#define UAI_LINUX_TEST_TKERNEL_H
+#pragma once
 
 #include <cstdint>
 
@@ -84,5 +83,3 @@ inline ER tk_dly_tsk(RELTIM delay)
 inline ER tk_ref_tsk(ID, T_RTSK *) { return E_OK; }
 inline ER tk_get_otm(SYSTIM *) { return E_OK; }
 inline void tk_ext_tsk() {}
-
-#endif

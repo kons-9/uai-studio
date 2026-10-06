@@ -1,5 +1,4 @@
-#ifndef UAI_TEST_STM32N6XX_HAL_H
-#define UAI_TEST_STM32N6XX_HAL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -24,5 +23,3 @@ uint32_t __get_PRIMASK(void);
 void __disable_irq(void);
 void __enable_irq(void);
 void SCB_CleanDCache_by_Addr(uint32_t *address, int32_t size);
-
-#endif

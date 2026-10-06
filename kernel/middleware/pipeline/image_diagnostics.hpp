@@ -1,5 +1,4 @@
-#ifndef UAI_AI_PIPELINE_IMAGE_DIAGNOSTICS_HPP
-#define UAI_AI_PIPELINE_IMAGE_DIAGNOSTICS_HPP
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -124,5 +123,3 @@ inline CaptureRowStatistics InspectCaptureRows(const std::uint16_t *pixels)
 }
 
 } // namespace uai::ai::pipeline
-
-#endif

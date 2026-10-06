@@ -1,5 +1,4 @@
-#ifndef UAI_AI_NPU_REGISTERS_HPP
-#define UAI_AI_NPU_REGISTERS_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -52,5 +51,3 @@ public:
 };
 
 } // namespace uai::ai::npu::registers
-
-#endif // UAI_AI_NPU_REGISTERS_HPP

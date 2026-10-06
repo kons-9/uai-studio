@@ -1,5 +1,4 @@
-#ifndef UAI_AI_DRIVER_STATUS_HPP
-#define UAI_AI_DRIVER_STATUS_HPP
+#pragma once
 
 namespace uai::driver {
 
@@ -19,5 +18,3 @@ constexpr bool IsOk(DriverStatus status)
 }
 
 } // namespace uai::driver
-
-#endif

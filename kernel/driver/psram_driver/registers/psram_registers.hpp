@@ -1,5 +1,4 @@
-#ifndef UAI_AI_PSRAM_REGISTERS_HPP
-#define UAI_AI_PSRAM_REGISTERS_HPP
+#pragma once
 
 namespace uai::ai::psram::registers {
 
@@ -10,5 +9,3 @@ public:
 };
 
 } // namespace uai::ai::psram::registers
-
-#endif // UAI_AI_PSRAM_REGISTERS_HPP

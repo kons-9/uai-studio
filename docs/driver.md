@@ -43,6 +43,7 @@ if (status.Ok()) {
 | 6 | `nor::NorManagement::Instance().Initialize()` | NOR Flashをメモリマップします。戻り値は成功で`0` |
 | 7 | `lcd::LcdManagement::Instance().Initialize(memory, cache)` | LCDを初期化します |
 | 8 | `camera::CameraManagement::Instance().Initialize(memory, cache)` | カメラを初期化します |
+| 9 | `touch::TouchManagement::Instance().Initialize()` | タッチコントローラを初期化します。LCDとリセット線を共有するためLCDの後に行います。失敗してもai-appは続行します |
 
 コールドブート直後のXSPI1/XSPI2はRIFで保護されているため、外部メモリより先にRIFを設定します。PSRAMの初期化はXSPIMをリセットするため、NORより先に行います。
 
@@ -100,12 +101,23 @@ for (;;) {
 | メソッド | 内容 |
 | --- | --- |
 | `ShowInitialFrame(boxes)` | カメラ開始前に最初の画面を出します |
-| `ComposeAndPresent(capture, boxes)` | Pipe1のフレームを表示バッファへコピーし、`inference::BoxSet`の枠とマスクを重ねて表示します |
+| `ComposeAndPresent(capture, boxes, log_crc, overlay)` | Pipe1のフレームを表示バッファへコピーし、`inference::BoxSet`の枠とマスクを重ねて表示します。`overlay`（`ui::Painter`）を渡すと、その上にボタンなどを描きます（[ui](middleware/ui.md)） |
 | `ComposeInferenceAndPresent(frame)` | 推論入力を確認するための表示です |
 | `SynchronizeCurrentFrame()` | LTDCの表示切り替えと同期し、表示バッファの受け渡しを完了します |
 | `SetTimingDiagnostics(enabled)` | 合成と表示にかかった時間のログを有効にします。ai-appでは`DiagnosticsConfig::display_timing`から設定します |
 
 表示バッファの確保と受け渡しは内部で`MemoryManager`を使います。
+
+## タッチ
+
+`touch::TouchManagement`はSTM32N6570-DKのGT911タッチコントローラをI2C2で読みます。割り込みは使わず、タスクからポーリングします。
+
+| メソッド | 内容 |
+| --- | --- |
+| `Initialize()` | リセット線を解放し、GT911のIDを確認して初期化します。失敗時は`kHardware`を返し、各段階の状態を`touch: gt911 init failed ...`に出します |
+| `Read(&sample)` | 現在の状態を`ui::TouchPoint`（`active`、`x`、`y`）に読みます。座標はLCDのピクセル（800x480）です |
+
+GT911の設定は`kernel/driver/config/gt911_conf.h`、BSPの有効化は`kernel/driver/board/include/stm32n6570_discovery_conf.h`（`TS_TOUCH_NBR`）にあります。ボタンの判定と描画は[ui](middleware/ui.md)が行います。
 
 ## NPU
 

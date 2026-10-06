@@ -1,5 +1,4 @@
-#ifndef UAI_AI_NPU_RUNTIME_SCHEDULER_HPP
-#define UAI_AI_NPU_RUNTIME_SCHEDULER_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -58,5 +57,3 @@ private:
 };
 
 } // namespace uai::ai::npu_runtime::scheduler
-
-#endif

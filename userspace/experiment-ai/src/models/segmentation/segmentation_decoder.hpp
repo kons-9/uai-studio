@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MODELS_SEGMENTATION_SEGMENTATION_DECODER_HPP
-#define UAI_AI_MODELS_SEGMENTATION_SEGMENTATION_DECODER_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -20,5 +19,3 @@ private:
 };
 
 } // namespace uai::ai::models::segmentation
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_BUFFER_BUFFER_TYPES_HPP
-#define UAI_AI_MIDDLEWARE_BUFFER_BUFFER_TYPES_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -43,5 +42,3 @@ struct Buffer {
 };
 
 } // namespace uai::ai::buffer
-
-#endif

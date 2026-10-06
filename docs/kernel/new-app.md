@@ -87,16 +87,15 @@ make -C userspace/<app> monitor    # 別端末
 make -C userspace/<app> ram-run
 ```
 
-`STM32_RAM_ENTRY`と`STM32_RAM_STACK`の既定値（`local.mk.example`）は、ai-app以外では`0x34000800`と`0x34200000`です。独自のリンカスクリプトを使う場合は[起動の流れ](boot.md)を参照して合わせてください。
+`STM32_RAM_ENTRY`と`STM32_RAM_STACK`の既定値（`local.mk.example`）は、`UAI_KERNEL_APPS`のアプリ（ai-app、mini-ai-app）以外では`0x34000800`と`0x34200000`です。独自のリンカスクリプトを使う場合は[起動の流れ](boot.md)を参照して合わせてください。
 
 ## ドライバーとミドルウェアを使う
 
-`kernel/driver`や`kernel/middleware`は現在`APP_TARGET=ai-app`のときだけ追加されます。別のアプリから使うには次が必要です。
+`kernel/driver`や`kernel/middleware`は、ルートの`CMakeLists.txt`の`UAI_KERNEL_APPS`に登録したアプリ（ai-app、mini-ai-app）のときだけ追加されます。別のアプリから使うには次が必要です。手順を章ごとに追ったものが[チュートリアル](../tutorial/index.md)で、完成形が`userspace/mini-ai-app`です。
 
-1. ルートの`CMakeLists.txt`で、ai-appと同じように`UAI_GENERATED_INCLUDE_DIR`を定義し、`kernel/middleware`と`kernel/driver`を`add_subdirectory()`する。
-2. メモリ配置の生成を用意する。`config/board_memory.json`、`config/application_memory.json`、`config/model_layout.json`を置き、ai-appの`CMakeLists.txt`と同じように`auto_static_memory_layout`を呼ぶ（[memory](../middleware/memory.md)）。
-3. `uai::drivers`、`uai::middleware`、`uai::driver_overrides`をリンクする。`src/hal_time.c`は`uai::driver_overrides`に含まれるため不要になります。
-4. カメラを使う場合は`kernel/pre_kernel/stm32n6570-dk/CMakeLists.txt`で`UAI_CAMERA_LCD_CLOCKS`を有効にする。
-5. ドライバーを[初期化の順序](../driver.md)に従って初期化する。
+1. ルートの`CMakeLists.txt`の`UAI_KERNEL_APPS`に`<app>`を加える。これで`UAI_GENERATED_INCLUDE_DIR`の定義、`kernel/middleware`と`kernel/driver`の追加、既定IOC（`config/stm32n6570-dk-<app>.ioc`）、`STM32_RAM_ENTRY`/`STACK`、`UAI_CAMERA_LCD_CLOCKS`が切り替わる。
+2. メモリ配置の生成を用意する。`config/board_memory.json`、`config/application_memory.json`、`config/model_layout.json`とリンカスクリプトの雛形を置き、mini-ai-appの`CMakeLists.txt`と同じように`auto_static_memory_layout`を呼ぶ（[memory](../middleware/memory.md)）。
+3. `uai::drivers`、`uai::middleware`、`uai::driver_overrides`をリンクする。`src/hal_time.c`は`uai::driver_overrides`に含まれるため不要になります。`uai_systick_count`だけはアプリで定義します。
+4. ドライバーを[初期化の順序](../driver.md)に従って初期化する。
 
 モデルを追加する場合の実装の要点は[ai_runtime](../middleware/ai_runtime.md)と[NPUドライバー](../driver.md)にあります。

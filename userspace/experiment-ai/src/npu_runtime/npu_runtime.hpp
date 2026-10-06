@@ -1,5 +1,4 @@
-#ifndef UAI_AI_NPU_RUNTIME_HPP
-#define UAI_AI_NPU_RUNTIME_HPP
+#pragma once
 
 #include "common/error.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
@@ -51,5 +50,3 @@ private:
 };
 
 } // namespace uai::ai::npu_runtime
-
-#endif

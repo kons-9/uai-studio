@@ -26,7 +26,9 @@ add_library(uai-middleware STATIC
     ai_model_monitor/ai_model_monitor.cpp
     cpu_task_monitor/cpu_task_monitor.cpp
     image_resizer/image_resizer.cpp
-    memory_manager/memory_manager.cpp)
+    memory_manager/memory_manager.cpp
+    ui/canvas.cpp
+    ui/widget.cpp)
 add_library(uai::middleware ALIAS uai-middleware)
 
 target_include_directories(uai-middleware

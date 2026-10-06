@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_BUFFER_LEASE_POOL_HPP
-#define UAI_AI_MIDDLEWARE_BUFFER_LEASE_POOL_HPP
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -87,5 +86,3 @@ private:
 };
 
 } // namespace uai::ai::buffer
-
-#endif

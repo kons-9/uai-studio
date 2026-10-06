@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MODELS_FACE_FUTURE_HPP
-#define UAI_AI_MODELS_FACE_FUTURE_HPP
+#pragma once
 
 #include <atomic>
 #include <cstddef>
@@ -84,5 +83,3 @@ private:
 };
 
 } // namespace uai::ai::models::face
-
-#endif

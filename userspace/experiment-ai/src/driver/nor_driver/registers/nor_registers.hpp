@@ -1,5 +1,4 @@
-#ifndef UAI_AI_NOR_REGISTERS_HPP
-#define UAI_AI_NOR_REGISTERS_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -15,5 +14,3 @@ public:
 };
 
 } // namespace uai::ai::nor::registers
-
-#endif // UAI_AI_NOR_REGISTERS_HPP

@@ -18,6 +18,7 @@
 | STM32 ISPライブラリの一部（`isp_core.c`） | STMicroelectronics | STM32N6向けISPライブラリから`userspace/experiment-camera-pipe2/`に取り込み | 実験用アプリのカメラ画質調整 | 配布元のLICENSEに従う |
 | STM32N6570-DK用FSBL（`stm32n6570-dk-ai_fsbl.hex`） | STMicroelectronics | STのSTM32N6570-DK向けサンプル（STM32N6_Survivor_Detection）のバイナリを`userspace/ai-app/fsbl/`に取り込み。[TODO: 公開URL] | 外部Flash起動の第1段ブートローダ | 配布元のLICENSEに従う |
 | Neural-ARTのメモリプール定義と変換プロファイル | STMicroelectronics | [STM32N6-GettingStarted-ObjectDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-ObjectDetection)の設定をもとに`userspace/ai-app/models/`に配置 | STEdgeAIによるモデル変換の設定 | 配布元のLICENSEに従う |
+| Lucide 0.468.0（3アイコン） | Lucide Contributors | [lucide-static](https://www.npmjs.com/package/lucide-static/v/0.468.0)から`host_app/auto_static_memory_layout/static/icons/`に配置 | メモリ配置GUIの操作アイコン | [ISC](host_app/auto_static_memory_layout/static/icons/LICENSE) |
 
 実験用の`userspace/experiment-*`にも、上記のST製ファイル（BSP、IMX335ドライバ、vision_models_pp、FSBL、メモリプール定義）のコピーを含む。各ファイルの冒頭にある著作権表示はそのまま残している。
 

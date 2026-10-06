@@ -9,6 +9,7 @@
 | 目的 | ページ |
 | --- | --- |
 | ボードとツールを用意して、ai-appを動かす | [はじめに](getting-started.md) |
+| 最小のAIアプリを一から組み立てる | [チュートリアル](tutorial/index.md) |
 | ビルドの仕組みと起動の流れを知る、アプリを追加する | [カーネル](kernel/index.md) |
 | カメラ、LCD、NPUなどの周辺機能を使う | [ドライバー](driver.md) |
 | 推論パイプライン、バッファ管理、モニターを使う | [ミドルウェア](middleware/index.md) |
@@ -25,7 +26,7 @@ build-system           CMake・Makeの共通定義、CubeMX生成とUARTのス�
 host_app               PCで動かすメモリ配置の生成とモニターの解析ツール
 ```
 
-ドライバーもミドルウェアの`foundation`を利用します。`kernel/driver`と`kernel/middleware`は現在ai-appのビルドでだけ有効です。ミドルウェアはホストPCでもテストできます（[ミドルウェア](middleware/index.md)）。
+ドライバーもミドルウェアの`foundation`を利用します。`kernel/driver`と`kernel/middleware`はルートの`CMakeLists.txt`で`UAI_KERNEL_APPS`に登録したアプリ（ai-app、mini-ai-app）のビルドでだけ有効です。ミドルウェアはホストPCでもテストできます（[ミドルウェア](middleware/index.md)）。
 
 ## 開発の流れ
 

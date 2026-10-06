@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "screen": {
+    "width": 800,
+    "height": 480
+  },
+  "namespace": "uai::ai::app_ui",
+  "widgets": [
+    {
+      "type": "button",
+      "id": "toggle_boxes",
+      "label": "BOXES",
+      "x": 624,
+      "y": 392,
+      "width": 160,
+      "height": 72,
+      "style": {
+        "fill": "#2060C0",
+        "pressed_fill": "#103060",
+        "border": "#FFFFFF",
+        "text": "#FFFFFF",
+        "text_scale": 3,
+        "border_width": 2
+      },
+      "on_tap": "OnToggleBoxesTap"
+    }
+  ]
+}

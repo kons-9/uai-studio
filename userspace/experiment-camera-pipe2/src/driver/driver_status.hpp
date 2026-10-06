@@ -1,5 +1,4 @@
-#ifndef UAI_CAMERA_PIPE2_DRIVER_STATUS_HPP
-#define UAI_CAMERA_PIPE2_DRIVER_STATUS_HPP
+#pragma once
 
 namespace uai::camera_pipe2::driver {
 
@@ -18,5 +17,3 @@ constexpr bool IsOk(DriverStatus status)
 }
 
 } // namespace uai::camera_pipe2::driver
-
-#endif

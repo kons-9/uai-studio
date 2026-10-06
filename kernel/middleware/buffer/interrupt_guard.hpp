@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_BUFFER_INTERRUPT_GUARD_HPP
-#define UAI_AI_MIDDLEWARE_BUFFER_INTERRUPT_GUARD_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -41,5 +40,3 @@ private:
 };
 
 } // namespace uai::ai::buffer
-
-#endif

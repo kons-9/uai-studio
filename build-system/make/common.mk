@@ -56,22 +56,26 @@ CPU_TASK_MONITOR_JSON ?= $(BUILD_DIR)/cpu_task_monitor.json
 CPU_TASK_MONITOR_PNG ?= $(BUILD_DIR)/cpu_task_monitor.png
 CPU_TASK_MONITOR_CSV ?= $(BUILD_DIR)/cpu_task_monitor.csv
 
+# Samples with an on-screen UI set UI_LAYOUT_JSON/UI_LAYOUT_HEADER to enable
+# the ui_designer editor and header generation targets.
+UI_LAYOUT_JSON ?=
+UI_LAYOUT_HEADER ?=
+UI_DESIGNER_PORT ?= 8765
+UI_DESIGNER_PYTHON ?= python3
+
 AI_PROGRAM_CONNECTION := port=$(STM32_PROGRAM_PORT)$(if $(strip $(STM32_PROGRAM_SERIAL)), sn=$(STM32_PROGRAM_SERIAL))
 
 ifeq ($(ENABLE_AI),1)
 STEDGEAI_BIN ?= /opt/ST/STEdgeAI/4.0/Utilities/linux
-AI_MODELS_DIR := $(SAMPLE_DIR)/models
+# Samples may share the model generator and generated artifacts of another
+# sample by overriding AI_MODELS_DIR, and build a subset with AI_MODEL_NAMES.
+AI_MODELS_DIR ?= $(SAMPLE_DIR)/models
+AI_MODEL_NAMES ?= person segmentation face
 AI_MODEL_GENERATOR := $(AI_MODELS_DIR)/generate_model.sh
 AI_BUILD_DIR := $(BUILD_DIR)/userspace/$(APP_TARGET)
-AI_PERSON_WEIGHTS := $(AI_MODELS_DIR)/person/network_data.hex
-AI_SEGMENTATION_WEIGHTS := $(AI_MODELS_DIR)/segmentation/network_data.hex
-AI_FACE_WEIGHTS := $(AI_MODELS_DIR)/face/network_data.hex
-AI_PERSON_BLOB := $(AI_BUILD_DIR)/network_blobs_person.hex
-AI_SEGMENTATION_BLOB := $(AI_BUILD_DIR)/network_blobs_segmentation.hex
-AI_FACE_BLOB := $(AI_BUILD_DIR)/network_blobs_face.hex
-AI_MODEL_BUILD_TARGETS := ai-model-person ai-model-segmentation ai-model-face
-AI_WEIGHT_IMAGES := $(AI_PERSON_WEIGHTS) $(AI_SEGMENTATION_WEIGHTS) $(AI_FACE_WEIGHTS)
-AI_BLOB_IMAGES := $(AI_PERSON_BLOB) $(AI_SEGMENTATION_BLOB) $(AI_FACE_BLOB)
+AI_MODEL_BUILD_TARGETS := $(addprefix ai-model-,$(AI_MODEL_NAMES))
+AI_WEIGHT_IMAGES := $(foreach name,$(AI_MODEL_NAMES),$(AI_MODELS_DIR)/$(name)/network_data.hex)
+AI_BLOB_IMAGES := $(foreach name,$(AI_MODEL_NAMES),$(AI_BUILD_DIR)/network_blobs_$(name).hex)
 
 AI_MODEL_OPTIMIZATION ?= balanced
 AI_MODEL_INPUT_DATA_TYPE ?= uint8
@@ -123,6 +127,7 @@ endif
 .PHONY: ai-deps ai-model-person ai-model-segmentation ai-model-face \
 	ai-models ai-build ai-load-weights ai-load-blobs ai-load ai-init ai-run
 .PHONY: thread-monitor-dump thread-monitor cpu-task-monitor-dump cpu-task-monitor
+.PHONY: ui-layout ui-layout-check ui-designer
 
 help:
 	@echo "$(MAKE) -f $(SAMPLE_MAKEFILE) configure  - Configure CMake"
@@ -146,6 +151,10 @@ ifeq ($(ENABLE_THREAD_MONITOR),1)
 endif
 ifeq ($(ENABLE_CPU_TASK_MONITOR),1)
 	@echo "$(MAKE) -f $(SAMPLE_MAKEFILE) cpu-task-monitor - Dump and visualize CPU monitor"
+endif
+ifneq ($(strip $(UI_LAYOUT_JSON)),)
+	@echo "$(MAKE) -f $(SAMPLE_MAKEFILE) ui-designer - Open the browser UI layout editor"
+	@echo "$(MAKE) -f $(SAMPLE_MAKEFILE) ui-layout  - Regenerate the UI layout header"
 endif
 	@echo
 	@echo "Host settings: $(CONFIG_FILE)"
@@ -185,11 +194,12 @@ build: configure
 	$(CMAKE) --build "$(BUILD_DIR)" --target $(APP_TARGET)
 
 ifeq ($(ENABLE_AI),1)
+AI_DEPS_SCRIPT ?= $(SAMPLE_DIR)/scripts/setup_third_party.sh
 ai-deps:
 	@if test -n "$(strip $(STEDGEAI_LIB_DIR))"; then \
-		sh "$(SAMPLE_DIR)/scripts/setup_third_party.sh" "$(STEDGEAI_LIB_DIR)"; \
+		sh "$(AI_DEPS_SCRIPT)" "$(STEDGEAI_LIB_DIR)"; \
 	else \
-		sh "$(SAMPLE_DIR)/scripts/setup_third_party.sh"; \
+		sh "$(AI_DEPS_SCRIPT)"; \
 	fi
 
 ai-model-person:
@@ -264,7 +274,7 @@ thread-monitor-dump: build
 	echo "ThreadMonitor dump written: $(THREAD_MONITOR_DUMP)"
 
 thread-monitor: thread-monitor-dump
-ifeq ($(APP_TARGET),ai-app)
+ifneq ($(filter ai-app mini-ai-app,$(APP_TARGET)),)
 	MPLCONFIGDIR="$(BUILD_DIR)/matplotlib" \
 	$(if $(strip $(THREAD_MONITOR_LD_PRELOAD)),LD_PRELOAD="$(THREAD_MONITOR_LD_PRELOAD)") \
 	$(THREAD_MONITOR_UV) run --project "$(HOST_APP_DIR)" \
@@ -321,6 +331,22 @@ cpu-task-monitor: cpu-task-monitor-dump
 		--cpu-hz "$(THREAD_MONITOR_CPU_HZ)"
 	@echo "CPU task monitor PNG written: $(CPU_TASK_MONITOR_PNG)"
 	@echo "CPU task monitor CSV written: $(CPU_TASK_MONITOR_CSV)"
+endif
+
+ifneq ($(strip $(UI_LAYOUT_JSON)),)
+ui-layout:
+	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" generate \
+		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)"
+
+ui-layout-check:
+	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" validate \
+		--layout "$(UI_LAYOUT_JSON)" --check-font
+	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" generate --check \
+		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)"
+
+ui-designer:
+	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" serve \
+		--layout "$(UI_LAYOUT_JSON)" --port $(UI_DESIGNER_PORT)
 endif
 
 ram-run: configure

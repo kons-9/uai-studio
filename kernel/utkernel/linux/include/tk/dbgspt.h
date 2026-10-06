@@ -1,5 +1,4 @@
-#ifndef UAI_LINUX_TEST_DBGSPT_H
-#define UAI_LINUX_TEST_DBGSPT_H
+#pragma once
 
 #include <tk/tkernel.h>
 
@@ -17,4 +16,3 @@ extern "C" {
 ER td_hok_dsp(const TD_HDSP *hook);
 ER td_hok_int(const TD_HINT *hook);
 }
-#endif

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>uai ui_designer</title>
+<style>
+  :root { color-scheme: light; font-family: system-ui, sans-serif; font-size: 14px; }
+  body { margin: 0; display: grid; grid-template-columns: 1fr 320px; grid-template-rows: auto 1fr; height: 100vh; }
+  header { grid-column: 1 / 3; display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #ccc; background: #f6f6f6; }
+  header .path { color: #555; font-family: monospace; margin-left: auto; }
+  main { overflow: auto; display: flex; align-items: flex-start; justify-content: center; background: #ddd; padding: 16px; }
+  canvas#screen { background: #000; image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 0 1px #888; max-width: 100%; height: auto; }
+  aside { border-left: 1px solid #ccc; padding: 12px; overflow: auto; background: #fafafa; }
+  fieldset { border: 1px solid #ccc; margin: 0 0 12px; padding: 8px; }
+  legend { font-weight: 600; }
+  label { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 6px; margin: 4px 0; }
+  input[type=number], input[type=text] { width: 100%; box-sizing: border-box; }
+  button { padding: 4px 10px; }
+  #status { font-family: monospace; white-space: pre-wrap; color: #a00; min-height: 1.5em; }
+  #status.ok { color: #060; }
+  #widgets li { cursor: pointer; padding: 2px 4px; font-family: monospace; }
+  #widgets li.selected { background: #cde; }
+  pre#cpp { font-size: 12px; background: #fff; border: 1px solid #ccc; padding: 8px; max-height: 240px; overflow: auto; }
+</style>
+</head>
+<body>
+<header>
+  <strong>ui_designer</strong>
+  <button id="add">+ Button</button>
+  <button id="delete">Delete</button>
+  <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="snap" checked> snap 8px</label>
+  <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="pressed"> pressed preview</label>
+  <button id="save">Save</button>
+  <button id="reload">Reload</button>
+  <a id="png" href="/api/preview.png" target="_blank">preview.png</a>
+  <span class="path" id="path"></span>
+</header>
+<main><canvas id="screen" width="800" height="480"></canvas></main>
+<aside>
+  <div id="status"></div>
+  <fieldset><legend>Widgets</legend><ul id="widgets" style="list-style:none;margin:0;padding:0"></ul></fieldset>
+  <fieldset id="props"><legend>Properties</legend>
+    <label>id <input type="text" id="p_id"></label>
+    <label>label <input type="text" id="p_label"></label>
+    <label>x <input type="number" id="p_x" min="0"></label>
+    <label>y <input type="number" id="p_y" min="0"></label>
+    <label>width <input type="number" id="p_width" min="1"></label>
+    <label>height <input type="number" id="p_height" min="1"></label>
+    <label>fill <input type="color" id="p_fill"></label>
+    <label>pressed_fill <input type="color" id="p_pressed_fill"></label>
+    <label>border <input type="color" id="p_border"></label>
+    <label>text <input type="color" id="p_text"></label>
+    <label>text_scale <input type="number" id="p_text_scale" min="1" max="16"></label>
+    <label>border_width <input type="number" id="p_border_width" min="0" max="32"></label>
+    <label>on_tap <input type="text" id="p_on_tap" placeholder="OnXxxTap"></label>
+    <label>on_press <input type="text" id="p_on_press" placeholder="OnXxxPress"></label>
+  </fieldset>
+  <fieldset><legend>Screen</legend>
+    <label>namespace <input type="text" id="s_namespace"></label>
+    <label>width <input type="number" id="s_width" min="1"></label>
+    <label>height <input type="number" id="s_height" min="1"></label>
+  </fieldset>
+  <fieldset><legend>Generated C++</legend><pre id="cpp"></pre></fieldset>
+</aside>
+<script>
+(() => {
+  const canvas = document.getElementById('screen');
+  const ctx = canvas.getContext('2d');
+  const status = document.getElementById('status');
+  let font = null;
+  let layout = null;
+  let token = '';
+  let selected = -1;
+  let drag = null;
+
+  const $ = (id) => document.getElementById(id);
+  const propIds = ['id', 'label', 'x', 'y', 'width', 'height'];
+  const callbackIds = ['on_tap', 'on_press'];
+  const styleIds = ['fill', 'pressed_fill', 'border', 'text', 'text_scale', 'border_width'];
+  const numericStyle = ['text_scale', 'border_width'];
+
+  function setStatus(message, ok) {
+    status.textContent = message;
+    status.className = ok ? 'ok' : '';
+  }
+
+  function rgb565(hex) {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    const v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+    const rr = (v >> 11) & 0x1F, gg = (v >> 5) & 0x3F, bb = v & 0x1F;
+    return `rgb(${(rr << 3) | (rr >> 2)},${(gg << 2) | (gg >> 4)},${(bb << 3) | (bb >> 2)})`;
+  }
+
+  function fillRect(x, y, w, h, color) { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); }
+
+  function drawFrame(x, y, w, h, t, color) {
+    if (!t || !w || !h) return;
+    const tx = Math.min(t, w), ty = Math.min(t, h);
+    fillRect(x, y, w, ty, color); fillRect(x, y + h - ty, w, ty, color);
+    fillRect(x, y, tx, h, color); fillRect(x + w - tx, y, tx, h, color);
+  }
+
+  function textWidth(text, scale) {
+    return text.length ? (text.length * font.advance - (font.advance - font.width)) * scale : 0;
+  }
+
+  function drawText(x, y, text, scale, color) {
+    let pen = x;
+    for (const ch of text) {
+      const rows = font.glyphs[ch.toUpperCase()] || new Array(font.height).fill(0);
+      for (let r = 0; r < font.height; r++) {
+        for (let c = 0; c < font.width; c++) {
+          if (rows[r] & (1 << (font.width - 1 - c))) fillRect(pen + c * scale, y + r * scale, scale, scale, color);
+        }
+      }
+      pen += font.advance * scale;
+    }
+  }
+
+  function drawButton(b, pressed) {
+    const s = b.style;
+    fillRect(b.x, b.y, b.width, b.height, rgb565(pressed ? s.pressed_fill : s.fill));
+    drawFrame(b.x, b.y, b.width, b.height, s.border_width, rgb565(s.border));
+    const tw = textWidth(b.label, s.text_scale), th = font.height * s.text_scale;
+    const tx = tw < b.width ? b.x + Math.floor((b.width - tw) / 2) : b.x;
+    const ty = th < b.height ? b.y + Math.floor((b.height - th) / 2) : b.y;
+    drawText(tx, ty, b.label, s.text_scale, rgb565(s.text));
+  }
+
+  function render() {
+    if (!layout || !font) return;
+    canvas.width = layout.screen.width; canvas.height = layout.screen.height;
+    fillRect(0, 0, canvas.width, canvas.height, '#424242');
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, canvas.height); ctx.stroke(); }
+    for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(canvas.width, y + .5); ctx.stroke(); }
+    const pressedPreview = $('pressed').checked;
+    layout.widgets.forEach((b, i) => drawButton(b, pressedPreview && i === selected));
+    if (selected >= 0) {
+      const b = layout.widgets[selected];
+      ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+      ctx.strokeRect(b.x - 1.5, b.y - 1.5, b.width + 3, b.height + 3);
+      ctx.setLineDash([]);
+      fillRect(b.x + b.width - 6, b.y + b.height - 6, 6, 6, '#ffeb3b');
+    }
+    renderList();
+    renderProps();
+  }
+
+  function renderList() {
+    const ul = $('widgets'); ul.innerHTML = '';
+    layout.widgets.forEach((b, i) => {
+      const li = document.createElement('li');
+      li.textContent = `${b.id} (${b.x},${b.y} ${b.width}x${b.height}) "${b.label}"` + (b.on_tap ? ` -> ${b.on_tap}` : '');
+      li.className = i === selected ? 'selected' : '';
+      li.onclick = () => { selected = i; render(); };
+      ul.appendChild(li);
+    });
+  }
+
+  function renderProps() {
+    const has = selected >= 0;
+    $('props').disabled = !has;
+    const b = has ? layout.widgets[selected] : null;
+    propIds.forEach((k) => { $('p_' + k).value = has ? b[k] : ''; });
+    callbackIds.forEach((k) => { $('p_' + k).value = has ? (b[k] || '') : ''; });
+    styleIds.forEach((k) => { $('p_' + k).value = has ? b.style[k] : (numericStyle.includes(k) ? 0 : '#000000'); });
+    $('s_namespace').value = layout.namespace; $('s_width').value = layout.screen.width; $('s_height').value = layout.screen.height;
+  }
+
+  function bindProps() {
+    propIds.forEach((k) => $('p_' + k).addEventListener('change', (e) => {
+      if (selected < 0) return;
+      const b = layout.widgets[selected];
+      b[k] = ['x', 'y', 'width', 'height'].includes(k) ? Number(e.target.value) : e.target.value;
+      render(); refreshCpp();
+    }));
+    callbackIds.forEach((k) => $('p_' + k).addEventListener('change', (e) => {
+      if (selected < 0) return;
+      const b = layout.widgets[selected];
+      if (e.target.value.trim()) b[k] = e.target.value.trim(); else delete b[k];
+      render(); refreshCpp();
+    }));
+    styleIds.forEach((k) => $('p_' + k).addEventListener('change', (e) => {
+      if (selected < 0) return;
+      const b = layout.widgets[selected];
+      b.style[k] = numericStyle.includes(k) ? Number(e.target.value) : e.target.value.toUpperCase();
+      render(); refreshCpp();
+    }));
+    $('s_namespace').addEventListener('change', (e) => { layout.namespace = e.target.value; refreshCpp(); });
+    $('s_width').addEventListener('change', (e) => { layout.screen.width = Number(e.target.value); render(); });
+    $('s_height').addEventListener('change', (e) => { layout.screen.height = Number(e.target.value); render(); });
+    $('pressed').addEventListener('change', render);
+  }
+
+  function canvasPoint(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: Math.round((e.clientX - r.left) * canvas.width / r.width), y: Math.round((e.clientY - r.top) * canvas.height / r.height) };
+  }
+  function snap(v) { return $('snap').checked ? Math.round(v / 8) * 8 : v; }
+  function hit(p) {
+    for (let i = layout.widgets.length - 1; i >= 0; i--) {
+      const b = layout.widgets[i];
+      if (p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height) return i;
+    }
+    return -1;
+  }
+
+  canvas.addEventListener('mousedown', (e) => {
+    const p = canvasPoint(e);
+    const i = hit(p);
+    selected = i;
+    if (i >= 0) {
+      const b = layout.widgets[i];
+      const resize = p.x >= b.x + b.width - 10 && p.y >= b.y + b.height - 10;
+      drag = { mode: resize ? 'resize' : 'move', start: p, orig: { x: b.x, y: b.y, width: b.width, height: b.height } };
+    }
+    render();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!drag || selected < 0) return;
+    const p = canvasPoint(e), b = layout.widgets[selected], dx = p.x - drag.start.x, dy = p.y - drag.start.y;
+    if (drag.mode === 'move') {
+      b.x = Math.max(0, Math.min(layout.screen.width - b.width, snap(drag.orig.x + dx)));
+      b.y = Math.max(0, Math.min(layout.screen.height - b.height, snap(drag.orig.y + dy)));
+    } else {
+      b.width = Math.max(8, Math.min(layout.screen.width - b.x, snap(drag.orig.width + dx)));
+      b.height = Math.max(8, Math.min(layout.screen.height - b.y, snap(drag.orig.height + dy)));
+    }
+    render();
+  });
+  window.addEventListener('mouseup', () => { if (drag) { drag = null; refreshCpp(); } });
+  window.addEventListener('keydown', (e) => {
+    if (selected < 0 || e.target.tagName === 'INPUT') return;
+    const b = layout.widgets[selected], step = e.shiftKey ? 8 : 1;
+    const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (moves[e.key]) { b.x = Math.max(0, b.x + moves[e.key][0]); b.y = Math.max(0, b.y + moves[e.key][1]); render(); refreshCpp(); e.preventDefault(); }
+    if (e.key === 'Delete') $('delete').click();
+  });
+
+  $('add').onclick = () => {
+    let n = layout.widgets.length + 1;
+    while (layout.widgets.some((w) => w.id === 'button_' + n)) n++;
+    layout.widgets.push({ type: 'button', id: 'button_' + n, label: 'BTN ' + n, x: 16, y: 16, width: 160, height: 72,
+      style: { fill: '#2060C0', pressed_fill: '#103060', border: '#FFFFFF', text: '#FFFFFF', text_scale: 3, border_width: 2 } });
+    selected = layout.widgets.length - 1; render(); refreshCpp();
+  };
+  $('delete').onclick = () => { if (selected >= 0) { layout.widgets.splice(selected, 1); selected = -1; render(); refreshCpp(); } };
+
+  function post(url) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Editor-Token': token }, body: JSON.stringify(layout) });
+  }
+
+  async function refreshCpp() {
+    const r = await post('/api/cpp');
+    if (r.ok) { $('cpp').textContent = await r.text(); setStatus('ok', true); }
+    else { const j = await r.json(); $('cpp').textContent = ''; setStatus('invalid: ' + j.error, false); }
+  }
+
+  $('save').onclick = async () => {
+    const r = await post('/api/layout');
+    const j = await r.json();
+    setStatus(r.ok ? 'saved' : 'save failed: ' + j.error, r.ok);
+  };
+  $('reload').onclick = load;
+
+  async function load() {
+    const [f, l] = await Promise.all([fetch('/api/font').then((r) => r.json()), fetch('/api/layout').then((r) => r.json())]);
+    font = f;
+    if (l.error) { setStatus('layout invalid: ' + l.error, false); return; }
+    layout = l.layout; token = l.token; $('path').textContent = l.path; selected = -1;
+    render(); refreshCpp();
+  }
+  bindProps();
+  load();
+})();
+</script>
+</body>
+</html>

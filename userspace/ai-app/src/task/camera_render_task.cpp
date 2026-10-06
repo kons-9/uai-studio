@@ -7,14 +7,17 @@
 #include "driver/camera_driver/camera_diagnostics.hpp"
 #include "driver/lcd_driver/lcd_driver.hpp"
 #include "driver/npu_driver/debug.h"
+#include "driver/touch_driver/touch_driver.hpp"
 #include "middleware/foundation/log.hpp"
 #include "memory_manager/memory_sizes.hpp"
 #include "middleware/ai_runtime/inference_result_types.hpp"
 #include "middleware/pipeline/image_diagnostics.hpp"
 #include "middleware/pipeline/image_format.hpp"
+#include "middleware/ui/widget.hpp"
 #include "task/camera_render_task.hpp"
 #include "middleware/task/task.hpp"
 #include "task/task_context.hpp"
+#include "ui/ui_layout.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
@@ -378,6 +381,25 @@ void CameraRenderTask::Run(CameraRenderContext context)
     inference::BoxSet active_boxes = initial;
     std::uint32_t next_inference = common::Task::Now() + kInferencePeriod;
 
+    ui::ButtonPanel button_panel(app_ui::kButtons, app_ui::kButtonCount);
+    bool show_boxes = true;
+    /* Methods named here are bound to widgets in config/ui_layout.json;
+     * app_ui::Dispatch() fails to compile if one is missing. */
+    struct UiHandlers {
+        bool &show_boxes;
+        void OnToggleBoxesTap(const ui::Event &event)
+        {
+            show_boxes = !show_boxes;
+            UAI_LOG_INFO("ui: tap id=%u boxes=%s\n",
+                         static_cast<unsigned int>(event.widget_id),
+                         show_boxes ? "on" : "off");
+        }
+    } ui_handlers{show_boxes};
+    std::uint32_t next_touch_poll = common::Task::Now();
+    UAI_LOG_INFO("ui: touch=%s buttons=%u\n",
+                 context.touch_ready ? "ready" : "disabled",
+                 static_cast<unsigned int>(app_ui::kButtonCount));
+
     std::uint32_t loop_count = 0U;
     unsigned int reported_pipe_errors = 0U;
     unsigned int reported_camera_errors = 0U;
@@ -436,6 +458,26 @@ void CameraRenderTask::Run(CameraRenderContext context)
         }
 
         const std::uint32_t now = common::Task::Now();
+        if (context.touch_ready &&
+            static_cast<std::int32_t>(now - next_touch_poll) >= 0) {
+            next_touch_poll = now + kTouchPollPeriod;
+            ui::TouchPoint sample{};
+            const common::Error touch_status = context.touch.Read(&sample);
+            if (!touch_status.Ok()) {
+                touch_status.LogStatus("touch");
+            } else {
+                const ui::Event event = button_panel.Update(sample);
+                const bool handled = app_ui::Dispatch(ui_handlers, event);
+                if (!handled && event.type != ui::EventType::kNone &&
+                    context.diagnostics.display_trace) {
+                    UAI_LOG_DEBUG("ui: unhandled event type=%u id=%u x=%u y=%u\n",
+                                  static_cast<unsigned int>(event.type),
+                                  static_cast<unsigned int>(event.widget_id),
+                                  static_cast<unsigned int>(event.x),
+                                  static_cast<unsigned int>(event.y));
+                }
+            }
+        }
         const bool inference_due = kCopyInferenceFrames &&
                                     (kInferenceMode == InferenceMode::kCopyOnly ||
                                      context.external_nor_ready) &&
@@ -565,7 +607,9 @@ void CameraRenderTask::Run(CameraRenderContext context)
                 UAI_LOG_DEBUG("lcd: compose begin sequence=%u\n",
                           static_cast<unsigned int>(capture.sequence));
             }
-            status = context.lcd.ComposeAndPresent(capture, active_boxes);
+            status = context.lcd.ComposeAndPresent(
+                capture, show_boxes ? active_boxes : initial, false,
+                &button_panel);
             if (!status.Ok()) {
                 status.LogStatus("lcd");
                 if (!status.IsRoutine()) {

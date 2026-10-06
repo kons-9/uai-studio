@@ -1,5 +1,4 @@
-#ifndef UAI_AI_PSRAM_DRIVER_HPP
-#define UAI_AI_PSRAM_DRIVER_HPP
+#pragma once
 
 #include "driver/psram_driver/registers/psram_registers.hpp"
 
@@ -17,5 +16,3 @@ private:
 };
 
 } // namespace uai::ai::psram
-
-#endif // UAI_AI_PSRAM_DRIVER_HPP

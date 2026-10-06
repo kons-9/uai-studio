@@ -1,6 +1,5 @@
 /* Local configuration for the STM32N6570-DK Octo-SPI PSRAM driver. */
-#ifndef APS256XX_CONF_H
-#define APS256XX_CONF_H
+#pragma once
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,5 +17,3 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* APS256XX_CONF_H */

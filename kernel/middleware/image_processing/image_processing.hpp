@@ -1,5 +1,4 @@
-#ifndef UAI_IMAGE_PROCESSING_HPP
-#define UAI_IMAGE_PROCESSING_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -48,5 +47,3 @@ common::Error FillLetterboxPadding(
     std::uint32_t content_height, std::uint8_t pad_value = 0U);
 
 } // namespace uai::ai::image_processing
-
-#endif // UAI_IMAGE_PROCESSING_HPP

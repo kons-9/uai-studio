@@ -13,6 +13,9 @@ inline constexpr UINT kExternalMemoryReady = 0x01U;
  * delay; this value only prevents the camera task from adding a software
  * interval between queued inference frames. */
 inline constexpr std::uint32_t kInferencePeriod = 0U;
+/* GT911 state is read over I2C; 10 ms keeps taps responsive without adding
+ * bus traffic on every 1 ms camera-task iteration. */
+inline constexpr std::uint32_t kTouchPollPeriod = 10U;
 
 enum class InferenceMode : std::uint8_t {
     kDisabled,

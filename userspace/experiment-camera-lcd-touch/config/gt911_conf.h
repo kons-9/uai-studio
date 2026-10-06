@@ -1,8 +1,5 @@
-#ifndef UAI_GT911_CONF_H
-#define UAI_GT911_CONF_H
+#pragma once
 
 #define GT911_AUTO_CALIBRATION_ENABLED 0U
 #define GT911_MAX_X_LENGTH 800U
 #define GT911_MAX_Y_LENGTH 480U
-
-#endif

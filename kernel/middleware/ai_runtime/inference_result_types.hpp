@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_INFERENCE_RESULT_TYPES_HPP
-#define UAI_AI_MIDDLEWARE_INFERENCE_RESULT_TYPES_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -45,5 +44,3 @@ struct BoxSet {
 };
 
 } // namespace uai::ai::inference
-
-#endif

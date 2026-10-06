@@ -1,5 +1,4 @@
-#ifndef STM32N6xx_HAL_CONF_H
-#define STM32N6xx_HAL_CONF_H
+#pragma once
 
 #define HAL_MODULE_ENABLED
 #define HAL_DCMIPP_MODULE_ENABLED
@@ -50,6 +49,4 @@
 
 #ifndef USE_FULL_ASSERT
 #define assert_param(expr) ((void)0U)
-#endif
-
 #endif

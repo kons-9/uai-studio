@@ -36,11 +36,12 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | --- | --- |
 | `src/main.cpp` | `usermain()`。割り込み登録、カーネルオブジェクト作成、初期化タスク起動 |
 | `src/task/application_initialize_task.cpp` | ドライバー初期化と各タスクの起動 |
-| `src/task/camera_render_task.cpp` | カメラフレームの取得とLCD表示 |
+| `src/task/camera_render_task.cpp` | カメラフレームの取得とLCD表示。タッチをポーリングし、画面上のボタンを処理 |
 | `src/task/pipeline_task.cpp` | モデル登録と3レーンのパイプライン実行 |
 | `src/task/task_context.hpp` | 共有資源とタスク参照の保持、各タスク用コンテキストの組み立て |
 | `src/task/application_initialize_task.hpp`、`src/task/camera_render_task.hpp`、`src/task/pipeline_task.hpp` | タスクごとに必要な依存を列挙するコンテキストとスタック。パイプラインのフレーム解放と結果選別 |
 | `src/task/task_config.hpp` | 動作モード、診断設定、キュー・スタックのサイズ |
+| `src/ui/ui_layout.hpp` | 画面上のボタンの表。`config/ui_layout.json`から[host_app/ui_designer](../../host_app/ui_designer/README.md)が生成（`make ui-layout`） |
 | `kernel/middleware/foundation/error_code.hpp` | ログ・OS非依存のエラーコードとコード名 |
 | `kernel/middleware/foundation/error.hpp` | ログ・OS非依存のエラー構造体と判定。`LogStatus()`の実装は`error.cpp`に配置 |
 | `kernel/middleware/task/task.hpp` | μT-Kernelタスクの起動、ループ、停止の共通処理 |
@@ -48,7 +49,7 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | `kernel/middleware/message_channel/message_channel.hpp` | メッセージバッファの領域所有、生成と型付き送受信 |
 | `src/models/<model>/` | 生成コードのラッパー（`*_model_runtime.c`、`c_wrapper.h`）、`NpuNetwork`実装（`npu_model.*`）、`AiFuture`実装（`future.*`） |
 | `models/` | モデル生成スクリプト、NPUメモリプール設定、生成物の出力先 |
-| `config/` | CubeMX IOC、HAL設定、メモリ配置の入力 |
+| `config/` | CubeMX IOC、HAL設定、メモリ配置の入力、画面レイアウト（`ui_layout.json`） |
 | `third_party/` | ST vision-models post-processing（[third_party/README.md](third_party/README.md)） |
 | `fsbl/` | Flash起動用FSBL（[fsbl/README.md](fsbl/README.md)） |
 
@@ -63,6 +64,7 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | カメラの診断設定、Pipe2のフレームレート | `kernel/driver/config/ai_board_config.hpp` |
 | ログレベル | `kernel/middleware/foundation/log.hpp`の`kLogLevel` |
 | メモリ配置 | `config/board_memory.json`、`config/application_memory.json`、`config/model_layout.json` |
+| 画面上のボタン、タッチのポーリング周期 | `config/ui_layout.json`（`make ui-designer`で編集）、`src/task/task_config.hpp`の`kTouchPollPeriod` |
 
 `task_config.hpp`は「何を選び、いくつ確保するか」を定義し、`TaskContext`は起動後に共有するタスクへの参照と資源を保持します。例えば`kFrameQueueDepth`は設定、`context.pipeline_task.InferenceFrames()`はその深さの保存領域とキューを持つ実体へのアクセサです。推論結果はパイプラインタスクが保持し、カメラタスクが`TryGetLatestResult()`で待たずに最新の有効な結果を取得します。`DiagnosticsConfig`は診断の設定項目と既定値を定義し、`context.diagnostics`は起動中に参照するその設定値です。
 
@@ -73,6 +75,8 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 `DiagnosticsConfig`は既定で`inference_fps`だけが有効です。T-MonitorのUART出力は遅いため、フレーム単位の診断（`inference_trace`、`inference_input`など）は調査時だけ有効にしてください。`inference_input_display`を有効にすると、LCDにNPUへ渡す入力画像を表示します。
 
 メモリ配置はビルド時に`host_app/auto_static_memory_layout`が解決し、リンカスクリプトと`static_memory_layout`用ヘッダを`build-ai-app-person/generated/`へ生成します。
+
+画面右下の`BOXES`ボタンをタップすると検出枠とマスクの表示を切り替え、UARTに`ui: tap id=1 boxes=off`のように出ます。タッチコントローラ（GT911、I2C2）の初期化に失敗しても起動は続行し、`touch: controller unavailable; on-screen UI disabled`を出します。ボタンの追加や配置の変更は`make -C userspace/ai-app ui-designer`で行い、`make -C userspace/ai-app ui-layout`でヘッダを再生成します（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。
 
 ## 主な生成物
 

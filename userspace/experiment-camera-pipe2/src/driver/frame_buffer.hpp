@@ -1,5 +1,4 @@
-#ifndef UAI_CAMERA_PIPE2_FRAME_BUFFER_HPP
-#define UAI_CAMERA_PIPE2_FRAME_BUFFER_HPP
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -32,5 +31,3 @@ std::uintptr_t MainPipeFrameBufferAddress();
 std::uintptr_t AncillaryPipeFrameBufferAddress();
 
 } // namespace uai::camera_pipe2::driver
-
-#endif

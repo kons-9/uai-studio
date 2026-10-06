@@ -41,6 +41,7 @@ add_subdirectory("${UAI_ROOT}/kernel/middleware/message_channel/tests" message_c
 add_subdirectory("${UAI_ROOT}/kernel/middleware/resource_ownership/tests" resource_ownership)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/trace_format/tests" trace_format)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/pipeline/tests" pipeline)
+add_subdirectory("${UAI_ROOT}/kernel/middleware/ui/tests" ui)
 
 uai_add_host_test(frame_channels_test
     "${UAI_ROOT}/kernel/middleware/foundation/error.cpp"
@@ -51,5 +52,15 @@ target_include_directories(frame_channels_test BEFORE PRIVATE
     "${UAI_ROOT}/kernel/middleware/memory_manager/tests/fixtures"
     "${UAI_ROOT}/kernel/middleware"
     "${UAI_ROOT}/kernel/utkernel/linux/include"
+    "${UAI_ROOT}/userspace/ai-app/src"
+)
+
+uai_add_host_test(ui_layout_test
+    "${UAI_ROOT}/kernel/middleware/ui/canvas.cpp"
+    "${UAI_ROOT}/kernel/middleware/ui/widget.cpp"
+    "${UAI_ROOT}/userspace/ai-app/tests/ui_layout_test.cpp"
+)
+target_include_directories(ui_layout_test BEFORE PRIVATE
+    "${UAI_ROOT}/kernel/middleware"
     "${UAI_ROOT}/userspace/ai-app/src"
 )

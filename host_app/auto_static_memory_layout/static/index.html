@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memory Layout | UAI Studio</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">U</span><div><span class="eyebrow">UAI STUDIO / HOST TOOLS</span><h1>Memory Layout</h1></div></div>
+    <div class="actions">
+      <button id="reload" class="icon-button" title="Reload inputs" aria-label="Reload inputs"><img src="/icons/refresh-cw.svg" alt=""></button>
+      <button id="validate"><img src="/icons/check.svg" alt="">Validate</button>
+      <button id="export" class="primary" disabled><img src="/icons/download.svg" alt="">Export ZIP</button>
+    </div>
+  </header>
+  <main>
+    <div class="context-line"><span id="board-name">Board</span><span id="dirty">Original inputs</span><span class="local-badge">LOCAL SESSION</span></div>
+    <div id="status" role="status" aria-live="polite">Loading inputs...</div>
+    <section class="summary" aria-label="Layout summary">
+      <div><span>Memory regions</span><strong id="region-count">--</strong></div>
+      <div><span>Total capacity</span><strong id="capacity">--</strong></div>
+      <div><span>Static reservations</span><strong id="reserved">--</strong></div>
+      <div><span>Allocations</span><strong id="allocation-count">--</strong></div>
+    </section>
+    <div class="workspace">
+      <section class="editor-pane" aria-label="Input editor">
+        <div class="section-heading"><h2>Configuration</h2><span id="alignment-label"></span></div>
+        <nav class="tabs" aria-label="Configuration views">
+          <button data-tab="runtime" aria-selected="true">Runtime</button>
+          <button data-tab="reservations" aria-selected="false">Reservations</button>
+          <button data-tab="regions" aria-selected="false">Regions</button>
+          <button data-tab="json" aria-selected="false">JSON</button>
+        </nav>
+        <div id="editor-content"></div>
+        <details class="source-paths"><summary>Input files</summary><dl id="paths"></dl></details>
+      </section>
+      <section class="map-pane" aria-label="Memory map">
+        <div class="section-heading"><h2>Memory map</h2><span class="legend"><i></i>Static reservations</span></div>
+        <div class="map-controls"><label for="filter">Region</label><select id="filter"><option value="">All regions</option></select></div>
+        <div id="memory-map" aria-live="polite"></div>
+        <div class="section-heading allocation-heading"><h2>Allocation detail</h2><span id="selection">All regions</span></div>
+        <div class="table-scroll"><table class="allocations"><thead><tr><th>Name</th><th>Region</th><th>Relative offset</th><th>Size</th><th>Alignment</th></tr></thead><tbody id="allocations"></tbody></table></div>
+        <p id="map-note" class="footnote"></p>
+      </section>
+    </div>
+  </main>
+  <footer><span>auto_static_memory_layout</span><span id="model-summary">Models</span></footer>
+</body>
+</html>

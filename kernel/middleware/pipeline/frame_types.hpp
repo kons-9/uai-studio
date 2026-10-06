@@ -1,5 +1,4 @@
-#ifndef UAI_AI_MIDDLEWARE_PIPELINE_FRAME_TYPES_HPP
-#define UAI_AI_MIDDLEWARE_PIPELINE_FRAME_TYPES_HPP
+#pragma once
 
 #include <cstdint>
 
@@ -56,5 +55,3 @@ struct InferenceFrame {
 };
 
 } // namespace uai::ai::pipeline
-
-#endif
