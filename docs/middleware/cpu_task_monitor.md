@@ -30,12 +30,12 @@ monitor.Report();                         // 1秒ごとに呼ぶと使用率を�
 - `RegisterTask()`でタスクIDに名前を付けます。付けていないタスクはIDで表示されます。
 - `Report()`はどのタスクから呼んでも構いません。ai-appでは初期化タスクが1秒周期で呼んでいます。
 
-ループ時間を記録するには、ループ本体を`BeginTaskLoop()`と`RecordTaskLoop()`で囲みます。foundationの`Task::RunForever()`（`kernel/middleware/foundation/task.hpp`）がこれを行う雛形です。
+ループ時間を記録するには、ループ本体を`BeginTaskLoop()`と`RecordTaskLoop()`で囲みます。foundationの`common::Task::RunForever()`（[共通基盤](../kernel/common.md)）がこれを行う雛形で、`common::Task::Start()`で起動したタスクは`RegisterTask()`も済んでいます。
 
 ```cpp
-Task::RunForever(monitor, "camera",
-                 [] { /* イベントを待つ。この時間は計測しない */ },
-                 [] { /* 1回分の処理 */ });
+common::Task::RunForever(monitor, "camera",
+                         [] { /* イベントを待つ。この時間は計測しない */ },
+                         [] { /* 1回分の処理 */ });
 ```
 
 ## 取得と可視化

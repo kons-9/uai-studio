@@ -31,7 +31,7 @@ if (status.Ok()) {
 
 ## 初期化の順序
 
-外部メモリとRIFの依存関係があるため、次の順で初期化します。ai-appでは`TaskContext::InitializeDrivers()`（`userspace/ai-app/src/task/task_context.cpp`）がこの順で呼んでいます。
+外部メモリとRIFの依存関係があるため、次の順で初期化します。ai-appでは初期化タスク（`userspace/ai-app/src/task/application_initialize_task.cpp`の`InitializeDrivers()`）がこの順で呼んでいます。その前に`HAL_ResumeTick()`と`driver::board::ConfigureReferenceInterruptPriorities()`を呼び、HALのtickと割り込み優先度を整えます（[μT-Kernel](kernel/utkernel.md)）。
 
 | 順 | 呼び出し | 理由 |
 | --- | --- | --- |
@@ -90,6 +90,7 @@ for (;;) {
 - Pipe2のフレームは推論バッファ（`InferenceFrame`）として受け取ります。受け取ったフレームは必ず`MemoryManager::ReleaseInferenceBuffer()`で返します。
 - `SnapshotInferenceSource()`はPipe2の有効領域を`frame.source`へコピーします。DMAが次のフレームを書いても推論入力が変わらないようにするためです。
 - `GetDiagnostics()`でフレーム数、ドロップ数、CSIエラー数などを読めます。
+- `camera_driver/camera_diagnostics.hpp`の`ReadSensorDiagnostics()`はIMX335の露出とゲインを、`DumpCaptureRegisters()`はDCMIPPとCSIのレジスタをログに出します。フレームが来ない、映像が暗いといった調査に使います。
 - センサーのテストパターンやPipe2のフレームレートは`kernel/driver/config/ai_board_config.hpp`の`config::kCamera`で設定します。
 
 ## LCD
@@ -102,6 +103,7 @@ for (;;) {
 | `ComposeAndPresent(capture, boxes)` | Pipe1のフレームを表示バッファへコピーし、`inference::BoxSet`の枠とマスクを重ねて表示します |
 | `ComposeInferenceAndPresent(frame)` | 推論入力を確認するための表示です |
 | `SynchronizeCurrentFrame()` | LTDCの表示切り替えと同期し、表示バッファの受け渡しを完了します |
+| `SetTimingDiagnostics(enabled)` | 合成と表示にかかった時間のログを有効にします。ai-appでは`DiagnosticsConfig::display_timing`から設定します |
 
 表示バッファの確保と受け渡しは内部で`MemoryManager`を使います。
 
@@ -174,6 +176,18 @@ driver->NewInference(writer);
 | `nor::NorManagement` | NOR Flash（MX66UW1G45G）が`0x70000000`以降にメモリマップされます。モデルの重みとcommand blobを読めるかを確認します |
 
 外部NORへの書き込みはボード上では行わず、STM32CubeProgrammerとExternal Loaderで行います。
+
+## ボード共通（board）
+
+`kernel/driver/board`はドライバーに属さないボード全体の処理です。名前空間は`uai::ai::driver::board`です。
+
+| ファイル | 内容 |
+| --- | --- |
+| `hal_time.c` | `HAL_GetTick()`と`HAL_Delay()`をμT-Kernelの時刻で置き換えます（`uai::driver_overrides`） |
+| `interrupt_priority.hpp` | `ConfigureReferenceInterruptPriorities()`。すべての周辺割り込みをSysTickと同じ優先度にそろえます |
+| `register_diagnostics.hpp` | `DumpCoreRegisters(stage)`と`DumpPeripheralRegisters(stage)`。Cortex-M55のコアレジスタとベクタ、RCC、キャッシュ、RIF（IAC、RIFSC、RISAF）、NPUのレジスタをログに出します。ログレベルが`kDebug`以上のときだけ出力します |
+
+レジスタダンプはai-appの`DiagnosticsConfig::register_dump`で有効にします。起動が途中で止まる、外部メモリが読めないといった調査に使います。
 
 ## 設定ファイル
 

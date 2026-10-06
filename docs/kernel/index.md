@@ -4,7 +4,7 @@
 
 ```text
 userspace/<app>        アプリ（usermain、タスク、モデル）
-kernel/middleware      ai_runtime、memory_manager、モニター、image_resizer、foundation（エラー型・ログ）
+kernel/middleware      ai_runtime、memory_manager、モニター、image_resizer、foundation（エラー型、ログ、タスクとメッセージの共通部品）
 kernel/driver          カメラ、LCD、NPU、PSRAM、NOR、RIF、キャッシュ
 kernel/utkernel        μT-Kernel 3.0 BSP2（サブモジュール）
 kernel/pre_kernel      CubeMX生成コードとRAM起動
@@ -19,7 +19,7 @@ kernel/pre_kernel      CubeMX生成コードとRAM起動
 | [ビルド構成](build.md) | CMakeターゲット、CMakeオプション、Makeターゲット、`local.mk` |
 | [起動の流れ](boot.md) | `ram-run`からμT-Kernel起動、`usermain()`までの手順 |
 | [μT-Kernel](utkernel.md) | BSP2の設定、割り込み登録、T-Monitor、フックAPI |
-| [エラー型とログ](common.md) | `common::Error`と`UAI_LOG_*` |
+| [共通基盤（foundation）](common.md) | `common::Error`、`UAI_LOG_*`、`common::Task`、`common::MessageChannel` |
 | [アプリの追加](new-app.md) | 新しい`userspace/<app>`を作る手順 |
 
 ## 設計の方針

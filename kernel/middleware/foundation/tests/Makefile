@@ -1,9 +1,26 @@
 CMAKE ?= cmake
-BUILD_DIR ?= $(abspath $(CURDIR)/../../../../build/middleware-tests)
+CTEST ?= ctest
+HOST_TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../tests)
+BUILD_DIR ?= $(abspath $(HOST_TEST_DIR)/../../../build/middleware-tests)
+TSAN_BUILD_DIR ?= $(abspath $(HOST_TEST_DIR)/../../../build/middleware-tests-tsan)
+TESTS := stable_aligned_bytes_test fixed_message_slots_test owned_buffer_test \
+         error_test message_channel_test task_test
+TEST_REGEX := ^($(subst $() ,|,$(strip $(TESTS))))$$
 
-.PHONY: all test
+.PHONY: all configure build test tsan
 
 all: test
 
-test:
-	$(CMAKE) -S "$(abspath $(CURDIR)/../../tests)" -B "$(BUILD_DIR)"
+configure:
+	$(CMAKE) -S "$(HOST_TEST_DIR)" -B "$(BUILD_DIR)"
+
+build: configure
+	$(CMAKE) --build "$(BUILD_DIR)" $(addprefix --target ,$(TESTS))
+
+test: build
+	$(CTEST) --test-dir "$(BUILD_DIR)" --output-on-failure -R '$(TEST_REGEX)'
+
+tsan:
+	$(CMAKE) -S "$(HOST_TEST_DIR)" -B "$(TSAN_BUILD_DIR)" -DUAI_TEST_TSAN=ON
+	$(CMAKE) --build "$(TSAN_BUILD_DIR)" $(addprefix --target ,$(TESTS))
+	$(CTEST) --test-dir "$(TSAN_BUILD_DIR)" --output-on-failure -R '$(TEST_REGEX)'

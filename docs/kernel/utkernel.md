@@ -19,6 +19,8 @@ HALの`HAL_GetTick()`と`HAL_Delay()`は`tk_get_tim()`と`tk_dly_tsk()`で置き
 
 起動直後はHALのtickが止まっているため、HALのタイムアウトを使う前に`HAL_ResumeTick()`を呼びます。
 
+CubeMXの生成コードが設定した周辺割り込みの優先度はそろっていないため、ai-appはドライバーの初期化前に`driver::board::ConfigureReferenceInterruptPriorities()`（`kernel/driver/board/interrupt_priority.hpp`）ですべての周辺割り込みをSysTickと同じ優先度にそろえます。STの参照アプリが外部メモリに触れる前に行っている設定に合わせたものです。
+
 ## 割り込みの登録
 
 C++のハンドラを登録するときは`tk_def_int()`を使います。CubeMXの弱シンボル（`NPU0_IRQHandler`など）を定義するだけでは、μT-Kernelのベクタからは呼ばれません。ai-appではNPUの割り込みを次のように登録しています。
@@ -34,7 +36,7 @@ HALのコールバック（DCMIPPのフレーム完了など）はドライバ�
 
 ## UART出力
 
-UART出力はT-Monitorの`tm_printf()`と`tm_putstring()`を使います。1文字ずつ送信するため、頻繁に呼ぶとタスクの処理時間に影響します。フレーム単位の診断ログは調査時だけ有効にしてください。レベル付きのマクロは[エラー型とログ](common.md)を参照してください。
+UART出力はT-Monitorの`tm_printf()`と`tm_putstring()`を使います。1文字ずつ送信するため、頻繁に呼ぶとタスクの処理時間に影響します。フレーム単位の診断ログは調査時だけ有効にしてください。レベル付きのマクロは[共通基盤（foundation）](common.md)を参照してください。
 
 ## フックAPI（td_hok_dsp、td_hok_int）
 

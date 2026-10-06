@@ -89,7 +89,7 @@ void Wake(void *, ai_runtime::ExecutionContext lane)
     tk_set_flg(work_flag, 1U << static_cast<UINT>(lane));
 }
 
-// レーンごとのワーカータスク
+// レーンごとのワーカータスク（ai-appではcommon::Task::RunForever()で待機と処理に分けている）
 ai_runtime::Dispatcher dispatcher(pipeline, lane);
 for (;;) {
     tk_wai_flg(work_flag, 1U << static_cast<UINT>(lane), TWF_ANDW | TWF_BITCLR,
@@ -104,10 +104,11 @@ for (;;) {
 - `AiFuture`と入出力バッファは完了コールバックが呼ばれるまで利用側が保持します。ai-appではモデルごとに推論バッファ数と同じ数の`Future`を静的に持ち、空いているものを使います。
 - 同時に投入できる推論は8件です。超えると`Submit()`は`kQueueFull`を返します。
 - `RegisterModelName()`と`StartAiModelMonitor()`はNPUレーンのタスクから呼びます（[ai_model_monitor](ai_model_monitor.md)）。
+- カメラタスクからのフレームと、後処理からLCDへの結果は、foundationの`common::MessageChannel`（[共通基盤](../kernel/common.md)）で受け渡します。ai-appではフレームキューが満杯なら古いフレームを返却してから入れ直し、結果キューが満杯（`kBufferOverflow`）なら最古の結果を捨てて再送します。カメラタスクは待たずに最新の結果だけを取り出します（`userspace/ai-app/src/task/pipeline_task.hpp`）。
 
 ## 推論結果の型
 
-`middleware/ai_runtime/inference_result_types.hpp`の`inference::BoxSet`は、後処理からLCDへ渡す結果です。person、faceの`DetectionSet`（最大`kMaxBoxes`=16個の枠）と、segmentationのマスク情報を持ち、それぞれ`*_valid`で有効かを示します。`LcdDriver::ComposeAndPresent()`がこの型を受け取り、カメラ映像に重ねます。
+`middleware/ai_runtime/inference_result_types.hpp`の`inference::BoxSet`は、後処理からLCDへ渡す結果です。person、faceの`DetectionSet`（最大`kMaxBoxes`=16個の枠）と、segmentationの`SegmentationSet`を持ち、それぞれ`*_valid`で有効かを示します。`SegmentationSet::mask`は20x20（`kSegmentationMaskWidth` x `kSegmentationMaskHeight`）の`common::OwnedBuffer`で、マスクをポインタではなく値として持ちます。このため`BoxSet`はメッセージバッファでそのまま送れ、推論バッファが次の推論に再利用されても表示中のマスクは変わりません。`LcdDriver::ComposeAndPresent()`がこの型を受け取り、カメラ映像に重ねます。
 
 ## テスト
 

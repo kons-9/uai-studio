@@ -19,7 +19,7 @@ nav:
       - ビルド構成: kernel/build.md
       - 起動の流れ: kernel/boot.md
       - μT-Kernel: kernel/utkernel.md
-      - エラー型とログ: kernel/common.md
+      - 共通基盤（foundation）: kernel/common.md
       - アプリの追加: kernel/new-app.md
   - ドライバー: driver.md
   - ミドルウェア:

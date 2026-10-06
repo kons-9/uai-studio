@@ -40,13 +40,13 @@ if (memory.ClaimInferenceBuffer(frame).Ok()) {
 memory.ReleaseInferenceBuffer(frame);
 ```
 
-- 受け取った`InferenceFrame`は、使っても使わなくても必ず`ReleaseInferenceBuffer()`で返します。返さないとPipe2のDMAが書き込み先を失い、フレームが落ちます。
+- 受け取った`InferenceFrame`は、使っても使わなくても必ず`ReleaseInferenceBuffer()`で返します。返さないとPipe2のDMAが書き込み先を失い、フレームが落ちます。ai-appではフレームを渡す`common::MessageChannel`を包む`InferenceFrameChannel`が、キューが満杯のときに捨てたフレームをその場で返却します。
 - `ClaimInferenceBuffer()`と`ReleaseInferenceBuffer()`はフレームの`capture_sequence`と`lease_token`を照合します。キューに残った古いメッセージで再利用後のスロットを操作すると`kOwnership`を返します。
 - 推論バッファには入力画像の後ろにモデル出力領域があり、`frame.outputs[]`で参照できます。`frame.source`は`SnapshotInferenceSource()`のコピー先、`frame.scratch`は共有の作業領域です。
 
-## フレームの型（pipeline）
+## フレームの型と画像診断（pipeline）
 
-`middleware/pipeline/`はフレームと画像形式の型だけを定義します。
+`middleware/pipeline/`はフレームと画像形式の型と、画像を検査するヘッダだけの関数を定義します。ハードウェアやμT-Kernelには依存しません。
 
 | 型 | 内容 |
 | --- | --- |
@@ -56,6 +56,19 @@ memory.ReleaseInferenceBuffer(frame);
 | `pipeline::kCaptureFormat` | 800x480、2 byte/pixel |
 | `pipeline::kInferenceFormat` | 480x480、3 byte/pixel |
 | `pipeline::kInferenceContentFormat` | 480x288、3 byte/pixel（letterboxの有効領域） |
+
+`image_diagnostics.hpp`はカメラや前処理の出力を調べるための関数です。ai-appの`DiagnosticsConfig`でフレーム単位の診断を有効にしたときに使われます。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Crc32Bytes(bytes, size)` | バッファのCRC32。フレームが更新されているかの確認に使います |
+| `SampleRgb565Luminance(pixels, count, step)` | RGB565を間引いて輝度の平均と最大を求めます（露出の確認） |
+| `InspectRgb888(bytes, size, pixel_count, step)` | RGB888のCRC、最小・最大値、平均輝度（NPU入力の確認） |
+| `InspectCaptureRows(pixels)` | Pipe1フレームの行ごとにデータの有無とCRCを調べ、空行や重複行を数えます（DMA転送の確認） |
+
+```sh
+make -C kernel/middleware/pipeline/tests test
+```
 
 ## キャッシュとの関係
 
