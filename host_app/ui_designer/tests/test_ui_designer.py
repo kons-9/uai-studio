@@ -28,6 +28,13 @@ def _document(**overrides):
     return document
 
 
+def _label(**overrides):
+    label = {"type": "label", "id": "status", "text": "HELLO",
+             "x": 0, "y": 0, "width": 800, "height": 24}
+    label.update(overrides)
+    return label
+
+
 class SchemaTest(unittest.TestCase):
     def test_defaults_and_round_trip(self):
         layout = schema.parse_layout(_document())
@@ -78,6 +85,34 @@ class SchemaTest(unittest.TestCase):
         self.assertEqual(schema.rgb565("#00FF00"), 0x07E0)
         self.assertEqual(schema.rgb565("#0000FF"), 0x001F)
 
+    def test_label_widget_defaults_and_constraints(self):
+        document = _document()
+        document["widgets"].append(_label(style={"fill": None, "align": "right"}))
+        layout = schema.parse_layout(document)
+        label = layout.labels()[0]
+        self.assertEqual(label.text, "HELLO")
+        self.assertIsNone(label.style.fill)
+        self.assertEqual(label.style.align, "right")
+        self.assertEqual(label.style.text_scale, 2)
+        self.assertEqual(label.style.padding, 4)
+        self.assertEqual(len(layout.buttons()), 1)
+        again = schema.parse_layout(json.loads(schema.dump_layout(layout)))
+        self.assertEqual(again, layout)
+
+        for bad in (
+            _label(on_tap="OnX"),
+            _label(label="X"),
+            _label(style={"align": "middle"}),
+            _label(style={"border": "#FFFFFF"}),
+            _label(text="A" * schema.LABEL_TEXT_CAPACITY),
+        ):
+            with self.assertRaises(schema.LayoutError, msg=str(bad)):
+                schema.parse_layout(_document(widgets=[bad]))
+        with self.assertRaises(schema.LayoutError):
+            schema.parse_layout(_document(widget={"text": "X"}))
+        with self.assertRaises(schema.LayoutError):
+            schema.parse_layout(_document(widgets=[_label(type="slider")]))
+
 
 class FontTest(unittest.TestCase):
     def test_table_matches_canvas_cpp(self):
@@ -106,12 +141,26 @@ class RenderTest(unittest.TestCase):
         button = layout.widgets[0]
         normal = render.render_layout(layout)
         pressed = render.render_layout(layout, frozenset({"toggle_boxes"}))
+        checked = render.render_layout(layout, checked_ids=frozenset({"toggle_boxes"}))
         center = (button.y + 10) * 800 + button.x + 10
         corner = button.y * 800 + button.x
         self.assertEqual(normal.pixels[center], schema.rgb565("#2060C0"))
         self.assertEqual(pressed.pixels[center], schema.rgb565("#103060"))
+        self.assertEqual(checked.pixels[center], schema.rgb565("#00A060"))
         self.assertEqual(normal.pixels[corner], 0xFFFF)
         self.assertEqual(normal.pixels[(button.y - 1) * 800 + button.x], 0x4208)
+
+    def test_label_paint_alignment_and_transparency(self):
+        document = _document(widgets=[
+            _label(id="a", text="I", x=0, y=0, width=32, height=9,
+                   style={"text_scale": 1, "align": "right", "padding": 4, "fill": None}),
+            _label(id="b", text="", x=0, y=20, width=16, height=8, style={"fill": "#FF0000"}),
+        ])
+        canvas = render.render_layout(schema.parse_layout(document))
+        self.assertEqual(canvas.pixels[1 * 800 + 27], 0xFFFF)
+        self.assertEqual(canvas.pixels[1 * 800 + 28], 0x4208)
+        self.assertEqual(canvas.pixels[0], 0x4208)  # transparent background
+        self.assertEqual(canvas.pixels[20 * 800 + 3], 0xF800)
 
     def test_png_header(self):
         data = render.encode_png(render.Canvas(4, 2, 0xF800))
@@ -129,7 +178,21 @@ class EmitTest(unittest.TestCase):
         self.assertIn('"BOXES"', text)
         self.assertIn("{624U, 392U, 160U, 72U}", text)
         self.assertIn("ui::Rgb565(0x20U, 0x60U, 0xC0U)", text)
+        self.assertIn("ui::Rgb565(0x00U, 0xA0U, 0x60U)", text)  # checked_fill
         self.assertIn("namespace uai::ai::app_ui {", text)
+        self.assertIn("kLabels = nullptr", text)
+
+    def test_label_emission(self):
+        document = _document()
+        document["widgets"].append(_label(style={"fill": None, "align": "center", "padding": 0}))
+        text = emit_cpp.generate_header(schema.parse_layout(document), "x.json")
+        self.assertIn("kStatus = 2U,", text)
+        self.assertIn("inline constexpr ui::LabelSpec kLabels[] = {", text)
+        self.assertIn('"HELLO"', text)
+        self.assertIn("            false,", text)
+        self.assertIn("ui::TextAlign::kCenter,", text)
+        self.assertIn("            0U,\n        },", text)
+        self.assertNotIn("kStatus:", text[text.index("Dispatch("):])
 
     def test_empty_layout_header(self):
         layout = schema.parse_layout(_document(widgets=[]))
@@ -218,6 +281,26 @@ class CliTest(unittest.TestCase):
             self.assertEqual(main(["screen", "--layout", str(layout), "--namespace", "demo::ui"]), 0)
             self.assertEqual(main(["screen", "--layout", str(layout), "--width", "100"]), 2)
             self.assertEqual(main(["list", "--layout", str(layout)]), 0)
+
+            # Labels: --text, --align, transparent fill; button-only options rejected.
+            self.assertEqual(main([
+                "add", "--layout", str(layout), "--type", "label", "--id", "fps_label",
+                "--x", "0", "--y", "0", "--width", "300", "--height", "24",
+                "--align", "center", "--fill", "none", "--text-color", "#FFE000"]), 0)
+            doc = json.loads(layout.read_text())
+            fps = next(w for w in doc["widgets"] if w["id"] == "fps_label")
+            self.assertEqual(fps["text"], "FPS LABEL")
+            self.assertIsNone(fps["style"]["fill"])
+            self.assertEqual(fps["style"]["text"], "#FFE000")
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "fps_label", "--text", "12.5 FPS"]), 0)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "fps_label", "--on-tap", "OnX"]), 2)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "fps_label", "--border-width", "1"]), 2)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "go", "--text", "X"]), 2)
+            png = Path(tmp, "edit.png")
+            self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png), "--checked", "fps_label"]), 2)
+            self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png), "--checked", "go"]), 0)
+            self.assertEqual(main(["remove", "--layout", str(layout), "--id", "fps_label"]), 0)
+
             self.assertEqual(main(["remove", "--layout", str(layout), "--id", "go"]), 0)
             self.assertEqual(main(["remove", "--layout", str(layout), "--id", "go"]), 2)
             self.assertEqual(json.loads(layout.read_text())["widgets"], [])

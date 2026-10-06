@@ -13,11 +13,11 @@
 #include "middleware/ai_runtime/inference_result_types.hpp"
 #include "middleware/pipeline/image_diagnostics.hpp"
 #include "middleware/pipeline/image_format.hpp"
-#include "middleware/ui/widget.hpp"
+#include "middleware/ui/touch_point.hpp"
 #include "task/camera_render_task.hpp"
 #include "middleware/task/task.hpp"
 #include "task/task_context.hpp"
-#include "ui/ui_layout.hpp"
+#include "ui/app_ui.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
@@ -263,7 +263,7 @@ void CameraRenderTask::Run(CameraRenderContext context)
                   static_cast<unsigned int>(synthetic_capture.sequence),
                   static_cast<unsigned int>(source_buffer.address),
                   static_cast<unsigned int>(source_buffer.size));
-        status = context.lcd.ComposeAndPresent(synthetic_capture, initial, true);
+        status = context.lcd.ComposeAndPresent(synthetic_capture, initial, nullptr, true);
         if (!status.Ok()) {
             status.LogStatus("lcd");
             common::Task::Halt("ai: synthetic compose failed\n");
@@ -348,7 +348,7 @@ void CameraRenderTask::Run(CameraRenderContext context)
                   static_cast<unsigned int>(first_capture.buffer.address));
         DumpFrozenCapture(context, first_capture);
 
-        status = context.lcd.ComposeAndPresent(first_capture, initial, true);
+        status = context.lcd.ComposeAndPresent(first_capture, initial, nullptr, true);
         if (!status.Ok()) {
             status.LogStatus("lcd");
             common::Task::Halt("ai: frozen live capture compose failed\n");
@@ -381,24 +381,12 @@ void CameraRenderTask::Run(CameraRenderContext context)
     inference::BoxSet active_boxes = initial;
     std::uint32_t next_inference = common::Task::Now() + kInferencePeriod;
 
-    ui::ButtonPanel button_panel(app_ui::kButtons, app_ui::kButtonCount);
-    bool show_boxes = true;
-    /* Methods named here are bound to widgets in config/ui_layout.json;
-     * app_ui::Dispatch() fails to compile if one is missing. */
-    struct UiHandlers {
-        bool &show_boxes;
-        void OnToggleBoxesTap(const ui::Event &event)
-        {
-            show_boxes = !show_boxes;
-            UAI_LOG_INFO("ui: tap id=%u boxes=%s\n",
-                         static_cast<unsigned int>(event.widget_id),
-                         show_boxes ? "on" : "off");
-        }
-    } ui_handlers{show_boxes};
+    app_ui::AppUi screen_ui(context.pipeline_task);
     std::uint32_t next_touch_poll = common::Task::Now();
-    UAI_LOG_INFO("ui: touch=%s buttons=%u\n",
+    UAI_LOG_INFO("ui: touch=%s buttons=%u labels=%u\n",
                  context.touch_ready ? "ready" : "disabled",
-                 static_cast<unsigned int>(app_ui::kButtonCount));
+                 static_cast<unsigned int>(app_ui::kButtonCount),
+                 static_cast<unsigned int>(app_ui::kLabelCount));
 
     std::uint32_t loop_count = 0U;
     unsigned int reported_pipe_errors = 0U;
@@ -458,6 +446,7 @@ void CameraRenderTask::Run(CameraRenderContext context)
         }
 
         const std::uint32_t now = common::Task::Now();
+        screen_ui.UpdateStatus(now);
         if (context.touch_ready &&
             static_cast<std::int32_t>(now - next_touch_poll) >= 0) {
             next_touch_poll = now + kTouchPollPeriod;
@@ -466,12 +455,10 @@ void CameraRenderTask::Run(CameraRenderContext context)
             if (!touch_status.Ok()) {
                 touch_status.LogStatus("touch");
             } else {
-                const ui::Event event = button_panel.Update(sample);
-                const bool handled = app_ui::Dispatch(ui_handlers, event);
-                if (!handled && event.type != ui::EventType::kNone &&
+                const ui::Event event = screen_ui.HandleTouch(sample);
+                if (event.type == ui::EventType::kPress &&
                     context.diagnostics.display_trace) {
-                    UAI_LOG_DEBUG("ui: unhandled event type=%u id=%u x=%u y=%u\n",
-                                  static_cast<unsigned int>(event.type),
+                    UAI_LOG_DEBUG("ui: press id=%u x=%u y=%u\n",
                                   static_cast<unsigned int>(event.widget_id),
                                   static_cast<unsigned int>(event.x),
                                   static_cast<unsigned int>(event.y));
@@ -608,8 +595,7 @@ void CameraRenderTask::Run(CameraRenderContext context)
                           static_cast<unsigned int>(capture.sequence));
             }
             status = context.lcd.ComposeAndPresent(
-                capture, show_boxes ? active_boxes : initial, false,
-                &button_panel);
+                capture, screen_ui.VisibleBoxes(active_boxes), &screen_ui.Overlay());
             if (!status.Ok()) {
                 status.LogStatus("lcd");
                 if (!status.IsRoutine()) {

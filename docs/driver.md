@@ -101,7 +101,7 @@ for (;;) {
 | メソッド | 内容 |
 | --- | --- |
 | `ShowInitialFrame(boxes)` | カメラ開始前に最初の画面を出します |
-| `ComposeAndPresent(capture, boxes, log_crc, overlay)` | Pipe1のフレームを表示バッファへコピーし、`inference::BoxSet`の枠とマスクを重ねて表示します。`overlay`（`ui::Painter`）を渡すと、その上にボタンなどを描きます（[ui](middleware/ui.md)） |
+| `ComposeAndPresent(capture, boxes, overlay, log_crc)` | Pipe1のフレームを表示バッファへコピーし、`inference::BoxSet`の枠とマスクを重ねて表示します。`overlay`（`ui::Painter`）を渡すと、その上にボタンやラベルを描きます（[ui](middleware/ui.md)） |
 | `ComposeInferenceAndPresent(frame)` | 推論入力を確認するための表示です |
 | `SynchronizeCurrentFrame()` | LTDCの表示切り替えと同期し、表示バッファの受け渡しを完了します |
 | `SetTimingDiagnostics(enabled)` | 合成と表示にかかった時間のログを有効にします。ai-appでは`DiagnosticsConfig::display_timing`から設定します |

@@ -11,7 +11,7 @@ import zlib
 from pathlib import Path
 
 from .font import GLYPH_HEIGHT, GLYPH_WIDTH, GLYPH_ADVANCE, glyph_rows, text_width
-from .schema import Button, Layout, rgb565
+from .schema import Layout, Widget, rgb565
 
 
 class Canvas:
@@ -67,22 +67,50 @@ class Canvas:
         self.draw_text(tx, ty, text, scale, color)
 
 
-def paint_button(canvas: Canvas, button: Button, pressed: bool = False) -> None:
+def paint_button(canvas: Canvas, button: Widget, pressed: bool = False,
+                 checked: bool = False) -> None:
     style = button.style
-    canvas.fill_rect(button.x, button.y, button.width, button.height,
-                     rgb565(style.pressed_fill if pressed else style.fill))
+    fill = style.pressed_fill if pressed else style.checked_fill if checked else style.fill
+    canvas.fill_rect(button.x, button.y, button.width, button.height, rgb565(fill))
     canvas.draw_frame(button.x, button.y, button.width, button.height,
                       style.border_width, rgb565(style.border))
     canvas.draw_text_centered(button.x, button.y, button.width, button.height,
-                              button.label, style.text_scale, rgb565(style.text))
+                              button.text, style.text_scale, rgb565(style.text))
+
+
+def paint_label(canvas: Canvas, label: Widget, text: str | None = None) -> None:
+    """Mirror ui::LabelPanel::Paint; `text` overrides the initial text."""
+    style = label.style
+    if style.fill is not None:
+        canvas.fill_rect(label.x, label.y, label.width, label.height, rgb565(style.fill))
+    content = label.text if text is None else text
+    tw = text_width(content, style.text_scale)
+    th = GLYPH_HEIGHT * style.text_scale
+    padding = style.padding if 2 * style.padding < label.width else 0
+    inner = label.width - 2 * padding
+    x = label.x + padding
+    if tw < inner:
+        if style.align == "center":
+            x += (inner - tw) // 2
+        elif style.align == "right":
+            x += inner - tw
+    y = label.y + (label.height - th) // 2 if th < label.height else label.y
+    canvas.draw_text(x, y, content, style.text_scale, rgb565(style.text))
 
 
 def render_layout(layout: Layout, pressed_ids: frozenset[str] = frozenset(),
+                  checked_ids: frozenset[str] = frozenset(),
                   background: int = 0x4208) -> Canvas:
-    """Draw every widget on a flat background standing in for the camera."""
+    """Draw every widget on a flat background standing in for the camera.
+
+    Buttons are drawn before labels, matching the PainterGroup order the
+    generated header suggests.
+    """
     canvas = Canvas(layout.width, layout.height, background)
-    for button in layout.widgets:
-        paint_button(canvas, button, button.id in pressed_ids)
+    for button in layout.buttons():
+        paint_button(canvas, button, button.id in pressed_ids, button.id in checked_ids)
+    for label in layout.labels():
+        paint_label(canvas, label)
     return canvas
 
 

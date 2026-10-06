@@ -1,28 +1,83 @@
 {
   "schema_version": 1,
-  "screen": {
-    "width": 800,
-    "height": 480
-  },
+  "screen": {"width": 800, "height": 480},
   "namespace": "uai::ai::app_ui",
   "widgets": [
+    {
+      "type": "label",
+      "id": "status",
+      "text": "AI STARTING",
+      "x": 0,
+      "y": 0,
+      "width": 800,
+      "height": 24,
+      "style": {"text": "#FFFFFF", "fill": "#000000", "text_scale": 2, "align": "left"}
+    },
+    {
+      "type": "label",
+      "id": "detections",
+      "text": "",
+      "x": 560,
+      "y": 32,
+      "width": 224,
+      "height": 24,
+      "style": {"text": "#FFE000", "fill": null, "text_scale": 2, "align": "right"}
+    },
+    {
+      "type": "button",
+      "id": "person",
+      "label": "PERSON",
+      "x": 16,
+      "y": 400,
+      "width": 140,
+      "height": 64,
+      "on_tap": "OnPersonTap",
+      "style": {
+        "fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#C02020",
+        "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2
+      }
+    },
+    {
+      "type": "button",
+      "id": "face",
+      "label": "FACE",
+      "x": 172,
+      "y": 400,
+      "width": 140,
+      "height": 64,
+      "on_tap": "OnFaceTap",
+      "style": {
+        "fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2040C0",
+        "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2
+      }
+    },
+    {
+      "type": "button",
+      "id": "segmentation",
+      "label": "SEG",
+      "x": 328,
+      "y": 400,
+      "width": 140,
+      "height": 64,
+      "on_tap": "OnSegmentationTap",
+      "style": {
+        "fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#20A040",
+        "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2
+      }
+    },
     {
       "type": "button",
       "id": "toggle_boxes",
       "label": "BOXES",
-      "x": 624,
-      "y": 392,
-      "width": 160,
-      "height": 72,
+      "x": 640,
+      "y": 400,
+      "width": 144,
+      "height": 64,
+      "on_tap": "OnToggleBoxesTap",
       "style": {
-        "fill": "#2060C0",
-        "pressed_fill": "#103060",
-        "border": "#FFFFFF",
-        "text": "#FFFFFF",
-        "text_scale": 3,
-        "border_width": 2
-      },
-      "on_tap": "OnToggleBoxesTap"
+        "fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2060C0",
+        "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2
+      }
     }
   ]
 }

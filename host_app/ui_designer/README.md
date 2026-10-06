@@ -1,12 +1,12 @@
 # ui_designer
 
-ai-appの画面に出すボタンなどのレイアウトを編集し、実機用のC++ヘッダを生成するツールです。標準ライブラリだけで動き、追加パッケージは不要です（Python 3.10以上）。
+ai-appの画面に出すボタンとラベルのレイアウトを編集し、実機用のC++ヘッダを生成するツールです。標準ライブラリだけで動き、追加パッケージは不要です（Python 3.10以上）。
 
 ```text
   ui_layout.json ──serve──> ブラウザで編集 ──Save──> ui_layout.json
         │
         ├──render───> preview.png（実機と同じ5x7フォント、RGB565の色）
-        └──generate─> ui_layout.hpp（kernel/middleware/ui の ButtonSpec 表）
+        └──generate─> ui_layout.hpp（kernel/middleware/ui の ButtonSpec / LabelSpec 表と Dispatch）
 ```
 
 ## 使い方
@@ -24,7 +24,7 @@ make -C userspace/ai-app ui-layout-check
 
 ```sh
 python3 host_app/ui_designer validate --layout userspace/ai-app/config/ui_layout.json --check-font
-python3 host_app/ui_designer render   --layout userspace/ai-app/config/ui_layout.json --output /tmp/preview.png --pressed toggle_boxes
+python3 host_app/ui_designer render   --layout userspace/ai-app/config/ui_layout.json --output /tmp/preview.png --checked person --pressed face
 python3 host_app/ui_designer generate --layout userspace/ai-app/config/ui_layout.json --output userspace/ai-app/src/ui/ui_layout.hpp
 python3 host_app/ui_designer serve    --layout userspace/ai-app/config/ui_layout.json --port 8765
 ```
@@ -43,10 +43,13 @@ python3 host_app/ui_designer add    --layout $L --id start --x 16 --y 392 --widt
 python3 host_app/ui_designer set    --layout $L --id start --x 24 --text-scale 4 --on-press OnStartDown --header $H
 python3 host_app/ui_designer set    --layout $L --id start --rename run --on-tap '' --header $H   # 改名、コールバック解除
 python3 host_app/ui_designer remove --layout $L --id run --header $H
+python3 host_app/ui_designer add    --layout $L --type label --id fps --x 0 --y 0 --width 800 --height 24 \
+    --text 'AI STARTING' --align left --fill '#000000' --text-color '#FFFFFF' --header $H
+python3 host_app/ui_designer set    --layout $L --id fps --fill none --align right            # 背景なし、右寄せ
 python3 host_app/ui_designer screen --layout $L --namespace demo::ui
 ```
 
-`add`と`set`のオプションは共通です。`--label`、`--x`、`--y`、`--width`、`--height`、スタイル（`--fill`、`--pressed-fill`、`--border`、`--text`、`--text-scale`、`--border-width`）、コールバック（`--on-tap`、`--on-press`）。`add`で`--label`を省くと`id`を大文字にしたものになります。
+`add`と`set`のオプションは共通です。位置と大きさ（`--x`、`--y`、`--width`、`--height`）、ボタンの`--label`とラベルの`--text`、スタイル（`--fill`、`--pressed-fill`、`--checked-fill`、`--border`、`--text-color`、`--text-scale`、`--border-width`、`--align`、`--padding`）、コールバック（`--on-tap`、`--on-press`）。種類に合わないオプション（ラベルへの`--on-tap`など）はエラーになります。`add`で文字を省くと`id`を大文字にして`_`を空白にしたものになります。
 
 ## コールバック
 
@@ -57,23 +60,22 @@ template <typename Handlers>
 bool Dispatch(Handlers &handlers, const ui::Event &event);   // 呼んだらtrue
 ```
 
-アプリ側は、割り当てた名前のメソッド`void Name(const ui::Event &)`を持つ任意の型を渡します。名前が足りなければコンパイルエラーになるので、レイアウトを変えたときの実装漏れをビルドで検出できます。仮想関数は使いません。
+アプリ側は、割り当てた名前のメソッド`void Name(const ui::Event &)`を持つ任意の型を渡します。名前が足りなければコンパイルエラーになるので、レイアウトを変えたときの実装漏れをビルドで検出できます。仮想関数は使いません。ai-appでは[src/ui/app_ui.hpp](../../userspace/ai-app/src/ui/app_ui.hpp)の`AppUi`がこの型で、`HandleTouch()`の中で`Dispatch(*this, event)`を呼びます。
 
 ```cpp
-struct UiHandlers {
-    bool &show_boxes;
-    void OnToggleBoxesTap(const ui::Event &) { show_boxes = !show_boxes; }
-} handlers{show_boxes};
-
-const ui::Event event = panel.Update(sample);
-if (!app_ui::Dispatch(handlers, event)) { /* 割り当てのないイベント */ }
+class AppUi {
+public:
+    void OnPersonTap(const ui::Event &);        // モデルの有効/無効を切り替え、SetChecked()で表示に反映
+    void OnToggleBoxesTap(const ui::Event &);
+    ...
+};
 ```
 
 ## エディタ
 
-- 800x480のキャンバスにボタンを置き、ドラッグで移動、右下の角で大きさを変えます。方向キーで1 px、Shift付きで8 px動かせます。
-- 右の欄で`id`、`label`、位置、大きさ、色、文字倍率、枠の太さ、コールバック（`on_tap`、`on_press`）を編集します。
-- 文字は実機と同じグリフ表（`/api/font`）で描くので、見た目は実機と一致します。`pressed preview`で押下時の色を確認できます。
+- 800x480のキャンバスにボタン（`+ Button`）とラベル（`+ Label`）を置き、ドラッグで移動、右下の角で大きさを変えます。方向キーで1 px、Shift付きで8 px動かせます。
+- 右の欄で種類に応じた項目を編集します。ボタンは`label`、色（`fill`、`pressed_fill`、`checked_fill`、`border`、`text`）、文字倍率、枠の太さ、コールバック（`on_tap`、`on_press`）。ラベルは`text`、文字色、背景色（`none`で透明）、文字倍率、`align`、`padding`。
+- 文字は実機と同じグリフ表（`/api/font`）で描くので、見た目は実機と一致します。`pressed preview`と`checked preview`で選択中のボタンの押下時・選択時の色を確認できます。
 - 変更するたびにサーバ側で検証し、生成されるC++をその場で表示します。画面外、重なり、`id`の重複、フォントにない文字はエラーになります。
 - `Save`で`ui_layout.json`に書き戻します。書き込む先はコマンドラインで渡したファイルだけです。
 
@@ -86,13 +88,20 @@ if (!app_ui::Dispatch(handlers, event)) { /* 割り当てのないイベント *
   "namespace": "uai::ai::app_ui",
   "widgets": [
     {
+      "type": "label",
+      "id": "status",
+      "text": "AI STARTING",
+      "x": 0, "y": 0, "width": 800, "height": 24,
+      "style": {"text": "#FFFFFF", "fill": "#000000", "text_scale": 2, "align": "left", "padding": 4}
+    },
+    {
       "type": "button",
       "id": "toggle_boxes",
       "label": "BOXES",
-      "x": 624, "y": 392, "width": 160, "height": 72,
+      "x": 640, "y": 400, "width": 144, "height": 64,
       "on_tap": "OnToggleBoxesTap",
       "style": {
-        "fill": "#2060C0", "pressed_fill": "#103060",
+        "fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2060C0",
         "border": "#FFFFFF", "text": "#FFFFFF",
         "text_scale": 3, "border_width": 2
       }
@@ -103,17 +112,18 @@ if (!app_ui::Dispatch(handlers, event)) { /* 割り当てのないイベント *
 
 | 項目 | 内容 |
 | --- | --- |
-| `screen` | 画面の大きさ。ウィジェットはこの中に収まる必要があります |
+| `screen` | 画面の大きさ。ウィジェットはこの中に収まり、互いに重ならない必要があります |
 | `namespace` | 生成するヘッダのC++名前空間 |
-| `widgets[].type` | 現在は`button`のみ |
+| `widgets[].type` | `button`または`label` |
 | `widgets[].id` | `[a-z][a-z0-9_]*`。`WidgetId::kToggleBoxes`のようにPascalCaseの列挙子になります。数値は並び順で1から振ります |
-| `widgets[].label` | フォントにある文字（英大文字、数字、空白、`- + . : / %`）。小文字は大文字として描かれます |
-| `widgets[].style` | 省略した項目は既定値になります |
-| `widgets[].on_tap`、`widgets[].on_press` | 省略可。`Dispatch()`が呼ぶメソッド名（C++識別子） |
+| `widgets[].label`（button）、`widgets[].text`（label） | フォントにある文字（英大文字、数字、空白、`- + . : / %`）。小文字は大文字として描かれます。ラベルの`text`は初期値で、63文字まで |
+| `widgets[].style`（button） | `fill`、`pressed_fill`、`checked_fill`、`border`、`text`、`text_scale`、`border_width`。省略した項目は既定値 |
+| `widgets[].style`（label） | `text`、`fill`（`null`で背景なし）、`text_scale`、`align`（`left`/`center`/`right`）、`padding` |
+| `widgets[].on_tap`、`widgets[].on_press` | buttonのみ、省略可。`Dispatch()`が呼ぶメソッド名（C++識別子） |
 
 ## 生成されるヘッダ
 
-`namespace`の中に`kScreenWidth`、`kScreenHeight`、`enum class WidgetId`、`constexpr ui::ButtonSpec kButtons[]`、`kButtonCount`、`Dispatch()`を出します。実機では`ui::ButtonPanel panel(kButtons, kButtonCount)`として使います（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。ヘッダは生成物ですがリポジトリに入れており、`generate --check`で最新かどうかを確認できます。
+`namespace`の中に`kScreenWidth`、`kScreenHeight`、`enum class WidgetId`（全ウィジェット）、`constexpr ui::ButtonSpec kButtons[]`と`kButtonCount`、`constexpr ui::LabelSpec kLabels[]`と`kLabelCount`、`Dispatch()`を出します。実機では`ui::ButtonPanel`と`ui::LabelPanel`に渡し、`ui::PainterGroup`でまとめてLCDへ渡します（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。ヘッダは生成物ですがリポジトリに入れており、`generate --check`で最新かどうかを確認できます。
 
 ## 今後の拡張の方針
 
@@ -121,9 +131,8 @@ if (!app_ui::Dispatch(handlers, event)) { /* 割り当てのないイベント *
 
 | 機能 | ねらい |
 | --- | --- |
-| ラベル（静的な文字、数値の表示枠） | FPSや検出数などの状態表示。実行時に文字列を差し替えるスロットを生成 |
-| トグル／ラジオボタン | モデル切り替え（person/face/segmentation）など排他選択 |
 | スライダー | しきい値の調整。値域と刻みを定義から生成 |
+| ラジオグループの宣言 | 排他選択をアプリ側の`SetChecked`呼び出しではなく定義で表現 |
 | 画面（複数レイアウト）と遷移 | 設定画面とプレビュー画面の切り替え |
 | カメラ画像のPNGを背景に読み込む | 実際の映像との重なりを見ながら配置 |
 | フォントの追加（サイズ、半角記号） | 表の単一ソース化（`canvas.cpp`の生成も`ui_designer`で行う） |
@@ -134,4 +143,4 @@ if (!app_ui::Dispatch(handlers, event)) { /* 割り当てのないイベント *
 python3 -m unittest discover -s host_app/ui_designer/tests -t host_app
 ```
 
-検証（画面外、重なり、`id`、グリフのない文字、コールバック名）、`canvas.cpp`とのフォント表の一致、描画のピクセル、生成ヘッダの内容と`Dispatch()`の分岐、リポジトリ内のヘッダが最新であること、CLIの編集コマンドと`--check`を確認します。
+検証（画面外、重なり、`id`、グリフのない文字、コールバック名、ラベルの制約）、`canvas.cpp`とのフォント表の一致、ボタンとラベルの描画のピクセル、生成ヘッダの内容と`Dispatch()`の分岐、リポジトリ内のヘッダが最新であること、CLIの編集コマンドと`--check`、サーバのHost検査とトークンを確認します。

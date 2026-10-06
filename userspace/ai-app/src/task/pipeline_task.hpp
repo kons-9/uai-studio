@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <tk/tkernel.h>
 
@@ -10,6 +11,7 @@
 #include "middleware/message_channel/utkernel_backend.hpp"
 #include "middleware/buffer/stable_aligned_bytes.hpp"
 #include "middleware/pipeline/frame_types.hpp"
+#include "task/model_control.hpp"
 #include "task/task_config.hpp"
 
 namespace uai::ai::middleware::cpu_task_monitor { class CpuTaskMonitor; }
@@ -97,7 +99,7 @@ private:
 };
 
 /* Model pipeline tasks. Each worker runs one ai_runtime lane. */
-class PipelineTask final {
+class PipelineTask final : public ModelControl {
 public:
     static PipelineTask &Instance(memory_manager::MemoryManager &memory)
     {
@@ -123,12 +125,22 @@ public:
     {
         return results_.DrainLatest(active);
     }
+    void SetModelMask(std::uint8_t mask) override
+    {
+        model_mask_.store(mask & kAllModelsMask, std::memory_order_relaxed);
+    }
+    std::uint8_t ModelMask() const override
+    {
+        return model_mask_.load(std::memory_order_relaxed);
+    }
+    PipelineStats Stats() const override;
 
 private:
     explicit PipelineTask(memory_manager::MemoryManager &memory)
         : inference_frames_(memory) {}
     InferenceFrameChannel inference_frames_;
     InferenceResultChannel results_;
+    std::atomic<std::uint8_t> model_mask_{kAllModelsMask};
     common::StableAlignedBytes<kPipelineTaskStackSize> frame_stack_;
     common::StableAlignedBytes<kPipelineTaskStackSize> preprocess_stack_;
     common::StableAlignedBytes<kPipelineTaskStackSize> npu_stack_;

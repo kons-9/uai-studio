@@ -72,6 +72,9 @@ constexpr std::size_t kRegisteredModelCount = 3U;
 constexpr std::size_t kModelScheduleLength = 4U;
 constexpr std::size_t kModelSchedule[kModelScheduleLength]{
     kPersonModel, kFaceModel, kSegmentationModel, kFaceModel};
+static_assert((1U << kPersonModel) == ModelMaskBit(ModelBit::kPerson));
+static_assert((1U << kFaceModel) == ModelMaskBit(ModelBit::kFace));
+static_assert((1U << kSegmentationModel) == ModelMaskBit(ModelBit::kSegmentation));
 
 UINT PipelineWorkBit(ai_runtime::ExecutionContext lane)
 {
@@ -152,9 +155,10 @@ struct PipelineApplication {
         segmentation_futures[memory_manager::kInferenceBufferCount]{};
     std::uint32_t model_sequence = 0U;
     std::uint32_t submitted_count[kRegisteredModelCount]{};
-    std::uint32_t completed_count[kRegisteredModelCount]{};
+    /* Read by the camera task for the on-screen rate display. */
+    std::atomic<std::uint32_t> completed_count[kRegisteredModelCount]{};
     std::uint32_t postprocess_count = 0U;
-    std::uint32_t last_detection_count = 0U;
+    std::atomic<std::uint32_t> last_detection_count{0U};
     std::uint32_t last_capture_sequence = 0U;
     std::uint32_t report_tick = 0U;
     std::uint32_t report_submitted = 0U;
@@ -190,34 +194,34 @@ struct PipelineApplication {
                          "drops=%u csi=%u\n",
                      static_cast<unsigned int>(submitted_count[kPersonModel] -
                                                report_submitted),
-                     static_cast<unsigned int>(completed_count[kPersonModel] -
+                     static_cast<unsigned int>(completed_count[kPersonModel].load() -
                                                report_completed),
                      static_cast<unsigned int>(submitted_count[kFaceModel] -
                                                report_face_submitted),
-                     static_cast<unsigned int>(completed_count[kFaceModel] -
+                     static_cast<unsigned int>(completed_count[kFaceModel].load() -
                                                report_face_completed),
                      static_cast<unsigned int>(
                          submitted_count[kSegmentationModel] -
                          report_segmentation_submitted),
                      static_cast<unsigned int>(
-                         completed_count[kSegmentationModel] -
+                         completed_count[kSegmentationModel].load() -
                          report_segmentation_completed),
                      static_cast<unsigned int>(postprocess_count -
                                                report_postprocess),
-                     static_cast<unsigned int>(last_detection_count),
+                     static_cast<unsigned int>(last_detection_count.load()),
                      static_cast<unsigned int>(last_capture_sequence),
                      static_cast<unsigned int>(camera.pipe2_frame_event_count),
                      static_cast<unsigned int>(camera.pipe2_drop_count),
                      static_cast<unsigned int>(camera.csi_error_count));
         report_tick = now;
         report_submitted = submitted_count[kPersonModel];
-        report_completed = completed_count[kPersonModel];
+        report_completed = completed_count[kPersonModel].load();
         report_face_submitted = submitted_count[kFaceModel];
-        report_face_completed = completed_count[kFaceModel];
+        report_face_completed = completed_count[kFaceModel].load();
         report_segmentation_submitted =
             submitted_count[kSegmentationModel];
         report_segmentation_completed =
-            completed_count[kSegmentationModel];
+            completed_count[kSegmentationModel].load();
         report_postprocess = postprocess_count;
     }
 
@@ -354,6 +358,22 @@ std::uint32_t PipelineApplication::interrupt_state_ = 0U;
 PipelineApplication g_app{};
 PipelineApplication &App() { return g_app; }
 
+} // namespace
+
+PipelineStats PipelineTask::Stats() const
+{
+    PipelineStats stats{};
+    stats.person_completed = g_app.completed_count[kPersonModel].load();
+    stats.face_completed = g_app.completed_count[kFaceModel].load();
+    stats.segmentation_completed =
+        g_app.completed_count[kSegmentationModel].load();
+    stats.last_detection_count = g_app.last_detection_count.load();
+    stats.enabled = g_app.enabled.load(std::memory_order_acquire);
+    return stats;
+}
+
+namespace {
+
 void PublishBoxes(void *context, const inference::BoxSet &source)
 {
     auto &task = *static_cast<PipelineFrameContext *>(context);
@@ -374,7 +394,7 @@ void PublishBoxes(void *context, const inference::BoxSet &source)
     boxes.model_sequence = ++application.model_sequence;
     boxes.capture_sequence = source.capture_sequence;
     ++application.postprocess_count;
-    application.last_detection_count = boxes.person.count + boxes.face.count;
+    application.last_detection_count.store(boxes.person.count + boxes.face.count);
     application.last_capture_sequence = boxes.capture_sequence;
     const common::Error publish_status = task.pipeline_task.PublishResult(boxes);
     publish_status.LogStatus("results");
@@ -476,6 +496,7 @@ void PipelineTask::FrameEntry()
             continue;
         }
         if (g_app.enabled.load(std::memory_order_acquire)) {
+            const std::uint8_t model_mask = task.pipeline_task.ModelMask();
             std::size_t model_index = kRegisteredModelCount;
             std::size_t selected_schedule_index = kModelScheduleLength;
             models::face::Future *face_available = nullptr;
@@ -488,6 +509,9 @@ void PipelineTask::FrameEntry()
                     kModelScheduleLength;
                 const std::size_t candidate =
                     kModelSchedule[schedule_index];
+                if ((model_mask & (1U << candidate)) == 0U) {
+                    continue;
+                }
                 if (candidate == kFaceModel) {
                     face_available =
                         ClaimAvailableFuture(g_app.face_futures);

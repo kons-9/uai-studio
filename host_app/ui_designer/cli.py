@@ -11,17 +11,28 @@ from .emit_cpp import generate_header
 from .font import GLYPHS, device_font_path, load_device_font
 from .render import render_layout, write_png
 from .schema import (
+    ALIGNMENTS,
+    BUTTON_STYLE_DEFAULTS,
     CALLBACK_EVENTS,
-    DEFAULT_STYLE,
+    GEOMETRY_KEYS,
+    LABEL_STYLE_DEFAULTS,
     SCHEMA_VERSION,
+    WIDGET_TYPES,
     LayoutError,
     dump_layout,
     load_layout,
     parse_layout,
 )
 
-STYLE_KEYS = tuple(DEFAULT_STYLE)
-GEOMETRY_KEYS = ("x", "y", "width", "height")
+# Every style key across widget kinds, with the kinds that accept it.
+STYLE_OPTIONS: dict[str, tuple[str, ...]] = {}
+for _key in BUTTON_STYLE_DEFAULTS:
+    STYLE_OPTIONS[_key] = ("button",)
+for _key in LABEL_STYLE_DEFAULTS:
+    STYLE_OPTIONS[_key] = STYLE_OPTIONS.get(_key, ()) + ("label",)
+INT_STYLE_KEYS = frozenset(
+    k for k, v in {**LABEL_STYLE_DEFAULTS, **BUTTON_STYLE_DEFAULTS}.items()
+    if isinstance(v, int))
 
 
 def _write_if_changed(path: Path, text: str) -> bool:
@@ -54,10 +65,13 @@ def _command_validate(args: argparse.Namespace) -> int:
 def _command_render(args: argparse.Namespace) -> int:
     layout = load_layout(args.layout)
     pressed = frozenset(args.pressed or [])
-    unknown = pressed - {w.id for w in layout.widgets}
-    if unknown:
-        raise LayoutError(f"--pressed names unknown widgets: {sorted(unknown)}")
-    write_png(args.output, render_layout(layout, pressed))
+    checked = frozenset(args.checked or [])
+    button_ids = {w.id for w in layout.buttons()}
+    for option, ids in (("--pressed", pressed), ("--checked", checked)):
+        unknown = ids - button_ids
+        if unknown:
+            raise LayoutError(f"{option} names unknown buttons: {sorted(unknown)}")
+    write_png(args.output, render_layout(layout, pressed, checked))
     print(f"wrote {args.output}")
     return 0
 
@@ -114,22 +128,39 @@ def _find_widget(document: dict, widget_id: str) -> dict:
 
 
 def _apply_widget_options(widget: dict, args: argparse.Namespace) -> None:
-    for key in ("label",) + GEOMETRY_KEYS:
+    widget_type = widget.get("type", "button")
+    text_key = "label" if widget_type == "button" else "text"
+    for key in ("label", "text"):
+        value = getattr(args, key)
+        if value is None:
+            continue
+        if key != text_key:
+            raise LayoutError(f"--{key} does not apply to a {widget_type}; use --{text_key}")
+        widget[key] = value
+    for key in GEOMETRY_KEYS:
         value = getattr(args, key)
         if value is not None:
             widget[key] = value
     style = widget.setdefault("style", {})
-    for key in STYLE_KEYS:
-        value = getattr(args, key)
-        if value is not None:
-            style[key] = value
+    for key, kinds in STYLE_OPTIONS.items():
+        value = getattr(args, "style_" + key)
+        if value is None:
+            continue
+        if widget_type not in kinds:
+            raise LayoutError(f"--{key.replace('_', '-')} does not apply to a {widget_type}")
+        # "none" makes a label background transparent.
+        style[key] = None if (key == "fill" and widget_type == "label" and
+                              value == "none") else value
     for event in CALLBACK_EVENTS:
         value = getattr(args, event)
-        if value is not None:
-            if value == "":
-                widget.pop(event, None)
-            else:
-                widget[event] = value
+        if value is None:
+            continue
+        if widget_type != "button":
+            raise LayoutError(f"--{event.replace('_', '-')} applies to buttons only")
+        if value == "":
+            widget.pop(event, None)
+        else:
+            widget[event] = value
 
 
 def _command_init(args: argparse.Namespace) -> int:
@@ -154,13 +185,13 @@ def _command_list(args: argparse.Namespace) -> int:
     if not layout.widgets:
         print("(no widgets)")
         return 0
-    print(f"{'id':<20} {'label':<12} {'x':>5} {'y':>5} {'w':>5} {'h':>5}  callbacks")
+    print(f"{'id':<20} {'type':<6} {'text':<16} {'x':>5} {'y':>5} {'w':>5} {'h':>5}  callbacks")
     for widget in layout.widgets:
         callbacks = ", ".join(
             f"{event}={getattr(widget, event)}" for event in CALLBACK_EVENTS
             if getattr(widget, event)) or "-"
-        print(f"{widget.id:<20} {widget.label:<12} {widget.x:>5} {widget.y:>5} "
-              f"{widget.width:>5} {widget.height:>5}  {callbacks}")
+        print(f"{widget.id:<20} {widget.type:<6} {widget.text[:16]:<16} {widget.x:>5} "
+              f"{widget.y:>5} {widget.width:>5} {widget.height:>5}  {callbacks}")
     return 0
 
 
@@ -169,7 +200,9 @@ def _command_add(args: argparse.Namespace) -> int:
     widgets = document.setdefault("widgets", [])
     if any(isinstance(w, dict) and w.get("id") == args.id for w in widgets):
         raise LayoutError(f"widget {args.id!r} already exists; use 'set' to change it")
-    widget = {"type": "button", "id": args.id, "label": args.id.upper().replace("_", " ")}
+    text_key = "label" if args.type == "button" else "text"
+    widget = {"type": args.type, "id": args.id,
+              text_key: args.id.upper().replace("_", " ")}
     for key in GEOMETRY_KEYS:
         if getattr(args, key) is None:
             raise LayoutError(f"add requires --{key}")
@@ -208,16 +241,23 @@ def _command_screen(args: argparse.Namespace) -> int:
 
 def _add_widget_options(parser: argparse.ArgumentParser) -> None:
     geometry = parser.add_argument_group("geometry")
-    geometry.add_argument("--label")
+    geometry.add_argument("--label", help="button caption")
+    geometry.add_argument("--text", help="initial label text")
     for key in GEOMETRY_KEYS:
         geometry.add_argument(f"--{key}", type=int)
-    style = parser.add_argument_group("style", "colors are #RRGGBB")
-    for key in STYLE_KEYS:
-        option = "--" + key.replace("_", "-")
-        if isinstance(DEFAULT_STYLE[key], int):
-            style.add_argument(option, dest=key, type=int)
+    style = parser.add_argument_group(
+        "style", "colors are #RRGGBB; label --fill accepts 'none' for transparent")
+    for key, kinds in STYLE_OPTIONS.items():
+        # --text is the label's initial text, so the text color is --text-color.
+        option = "--text-color" if key == "text" else "--" + key.replace("_", "-")
+        applies = "/".join(kinds)
+        dest = "style_" + key
+        if key == "align":
+            style.add_argument(option, dest=dest, choices=ALIGNMENTS, help=applies)
+        elif key in INT_STYLE_KEYS:
+            style.add_argument(option, dest=dest, type=int, help=applies)
         else:
-            style.add_argument(option, dest=key)
+            style.add_argument(option, dest=dest, help=applies)
     callbacks = parser.add_argument_group(
         "callbacks", "handler method names called by Dispatch(); pass '' to clear")
     for event in CALLBACK_EVENTS:
@@ -246,7 +286,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--layout", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--pressed", action="append", metavar="ID",
-                   help="draw this widget in its pressed state (repeatable)")
+                   help="draw this button in its pressed state (repeatable)")
+    p.add_argument("--checked", action="append", metavar="ID",
+                   help="draw this button in its checked state (repeatable)")
     p.set_defaults(func=_command_render)
 
     p = sub.add_parser("generate", help="emit the C++ layout header")
@@ -275,20 +317,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=_command_list)
 
-    p = sub.add_parser("add", help="add a button")
+    p = sub.add_parser("add", help="add a button or label")
     _add_edit_common(p)
     p.add_argument("--id", required=True)
+    p.add_argument("--type", choices=WIDGET_TYPES, default="button")
     _add_widget_options(p)
     p.set_defaults(func=_command_add)
 
-    p = sub.add_parser("set", help="change properties of a button")
+    p = sub.add_parser("set", help="change properties of a widget")
     _add_edit_common(p)
     p.add_argument("--id", required=True)
     p.add_argument("--rename", metavar="NEW_ID")
     _add_widget_options(p)
     p.set_defaults(func=_command_set)
 
-    p = sub.add_parser("remove", help="remove a button")
+    p = sub.add_parser("remove", help="remove a widget")
     _add_edit_common(p)
     p.add_argument("--id", required=True)
     p.set_defaults(func=_command_remove)

@@ -2,7 +2,7 @@
 
 #include "middleware/foundation/error.hpp"
 #include "driver/driver_ownership.hpp"
-#include "middleware/ui/widget.hpp"
+#include "middleware/ui/touch_point.hpp"
 
 namespace uai::ai::touch {
 

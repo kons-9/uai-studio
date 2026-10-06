@@ -380,18 +380,18 @@ common::Error LcdDriver::SynchronizeCurrentFrame(const Writer &writer)
 common::Error LcdDriver::ComposeAndPresent(
     const pipeline::CaptureFrame &capture,
     const inference::BoxSet &boxes,
-    bool log_copy_crc, const ui::Painter *overlay)
+    const ui::Painter *overlay, bool log_copy_crc)
 {
     Writer writer;
     common::Error status = management_->Acquire(&writer);
     if (!status.Ok()) return status;
-    return ComposeAndPresent(capture, boxes, writer, log_copy_crc, overlay);
+    return ComposeAndPresent(capture, boxes, writer, overlay, log_copy_crc);
 }
 
 common::Error LcdDriver::ComposeAndPresent(
     const pipeline::CaptureFrame &capture,
     const inference::BoxSet &boxes, const Writer &writer,
-    bool log_copy_crc, const ui::Painter *overlay)
+    const ui::Painter *overlay, bool log_copy_crc)
 {
     common::Error ownership = management_->Validate(writer);
     if (!ownership.Ok()) return ownership;

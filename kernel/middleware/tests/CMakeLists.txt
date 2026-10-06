@@ -56,11 +56,14 @@ target_include_directories(frame_channels_test BEFORE PRIVATE
 )
 
 uai_add_host_test(ui_layout_test
+    "${UAI_ROOT}/kernel/middleware/foundation/error.cpp"
     "${UAI_ROOT}/kernel/middleware/ui/canvas.cpp"
     "${UAI_ROOT}/kernel/middleware/ui/widget.cpp"
+    "${UAI_ROOT}/userspace/ai-app/src/ui/app_ui.cpp"
     "${UAI_ROOT}/userspace/ai-app/tests/ui_layout_test.cpp"
 )
 target_include_directories(ui_layout_test BEFORE PRIVATE
     "${UAI_ROOT}/kernel/middleware"
+    "${UAI_ROOT}/kernel/utkernel/linux/include"
     "${UAI_ROOT}/userspace/ai-app/src"
 )

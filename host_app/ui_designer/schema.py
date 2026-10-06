@@ -3,13 +3,17 @@
 The document is JSON (``ui_layout.json``). It is the single source of truth:
 the browser editor edits it, ``render`` previews it, and ``generate`` turns it
 into a C++ header consumed by ``kernel/middleware/ui``.
+
+Widget kinds:
+  button  tappable; ``label`` text, ButtonStyle, optional on_tap/on_press
+  label   text the firmware replaces at run time; ``text`` is the initial value
 """
 
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -21,19 +25,33 @@ CPP_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 NAMESPACE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*$")
 COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
+WIDGET_TYPES = ("button", "label")
 # Event names map to ui::EventType members and to the per-widget callback keys.
 CALLBACK_EVENTS: tuple[str, ...] = ("on_tap", "on_press")
+GEOMETRY_KEYS = ("x", "y", "width", "height")
 WIDGET_KEYS = frozenset(
-    ("type", "id", "label", "x", "y", "width", "height", "style") + CALLBACK_EVENTS)
+    ("type", "id", "label", "text", "style") + GEOMETRY_KEYS + CALLBACK_EVENTS)
+ALIGNMENTS = ("left", "center", "right")
 
-DEFAULT_STYLE: dict[str, Any] = {
+# Keep these defaults equal to ui::ButtonStyle / ui::LabelStyle in widget.hpp.
+BUTTON_STYLE_DEFAULTS: dict[str, Any] = {
     "fill": "#2060C0",
     "pressed_fill": "#103060",
+    "checked_fill": "#00A060",
     "border": "#FFFFFF",
     "text": "#FFFFFF",
     "text_scale": 3,
     "border_width": 2,
 }
+LABEL_STYLE_DEFAULTS: dict[str, Any] = {
+    "text": "#FFFFFF",
+    "fill": "#000000",      # null means transparent
+    "text_scale": 2,
+    "align": "left",
+    "padding": 4,
+}
+# Mirrors ui::kLabelTextCapacity; longer initial text would be truncated.
+LABEL_TEXT_CAPACITY = 64
 
 
 class LayoutError(ValueError):
@@ -41,28 +59,69 @@ class LayoutError(ValueError):
 
 
 @dataclass
-class Style:
-    fill: str = DEFAULT_STYLE["fill"]
-    pressed_fill: str = DEFAULT_STYLE["pressed_fill"]
-    border: str = DEFAULT_STYLE["border"]
-    text: str = DEFAULT_STYLE["text"]
-    text_scale: int = DEFAULT_STYLE["text_scale"]
-    border_width: int = DEFAULT_STYLE["border_width"]
+class ButtonStyle:
+    fill: str = BUTTON_STYLE_DEFAULTS["fill"]
+    pressed_fill: str = BUTTON_STYLE_DEFAULTS["pressed_fill"]
+    checked_fill: str = BUTTON_STYLE_DEFAULTS["checked_fill"]
+    border: str = BUTTON_STYLE_DEFAULTS["border"]
+    text: str = BUTTON_STYLE_DEFAULTS["text"]
+    text_scale: int = BUTTON_STYLE_DEFAULTS["text_scale"]
+    border_width: int = BUTTON_STYLE_DEFAULTS["border_width"]
+
+    def to_document(self) -> dict[str, Any]:
+        return dict(vars(self))
 
 
 @dataclass
-class Button:
+class LabelStyle:
+    text: str = LABEL_STYLE_DEFAULTS["text"]
+    fill: str | None = LABEL_STYLE_DEFAULTS["fill"]
+    text_scale: int = LABEL_STYLE_DEFAULTS["text_scale"]
+    align: str = LABEL_STYLE_DEFAULTS["align"]
+    padding: int = LABEL_STYLE_DEFAULTS["padding"]
+
+    def to_document(self) -> dict[str, Any]:
+        return dict(vars(self))
+
+
+@dataclass
+class Widget:
+    type: str
     id: str
-    label: str
+    text: str
     x: int
     y: int
     width: int
     height: int
-    style: Style = field(default_factory=Style)
+    style: ButtonStyle | LabelStyle = field(default_factory=ButtonStyle)
     # C++ method names invoked by the generated Dispatch(); empty means none.
     on_tap: str = ""
     on_press: str = ""
-    type: str = "button"
+
+    @property
+    def is_button(self) -> bool:
+        return self.type == "button"
+
+    def to_document(self) -> dict[str, Any]:
+        entry: dict[str, Any] = {
+            "type": self.type,
+            "id": self.id,
+            "label" if self.is_button else "text": self.text,
+            "x": self.x,
+            "y": self.y,
+            "width": self.width,
+            "height": self.height,
+            "style": self.style.to_document(),
+        }
+        for event in CALLBACK_EVENTS:
+            name = getattr(self, event)
+            if name:
+                entry[event] = name
+        return entry
+
+
+# Backwards-compatible alias used by older callers/tests.
+Button = Widget
 
 
 @dataclass
@@ -70,31 +129,20 @@ class Layout:
     width: int
     height: int
     namespace: str
-    widgets: list[Button]
+    widgets: list[Widget]
+
+    def buttons(self) -> list[Widget]:
+        return [w for w in self.widgets if w.is_button]
+
+    def labels(self) -> list[Widget]:
+        return [w for w in self.widgets if not w.is_button]
 
     def to_document(self) -> dict[str, Any]:
-        widgets = []
-        for widget in self.widgets:
-            entry = {
-                "type": widget.type,
-                "id": widget.id,
-                "label": widget.label,
-                "x": widget.x,
-                "y": widget.y,
-                "width": widget.width,
-                "height": widget.height,
-                "style": asdict(widget.style),
-            }
-            for event in CALLBACK_EVENTS:
-                name = getattr(widget, event)
-                if name:
-                    entry[event] = name
-            widgets.append(entry)
         return {
             "schema_version": SCHEMA_VERSION,
             "screen": {"width": self.width, "height": self.height},
             "namespace": self.namespace,
-            "widgets": widgets,
+            "widgets": [widget.to_document() for widget in self.widgets],
         }
 
 
@@ -122,22 +170,41 @@ def rgb565(color: str) -> int:
     return ((red & 0xF8) << 8) | ((green & 0xFC) << 3) | (blue >> 3)
 
 
-def _style(value: Any, context: str) -> Style:
+def _style_mapping(value: Any, defaults: dict[str, Any], context: str) -> dict[str, Any]:
     if value is None:
-        return Style()
+        return dict(defaults)
     if not isinstance(value, dict):
         raise LayoutError(f"{context} must be an object")
-    unknown = set(value) - set(DEFAULT_STYLE)
+    unknown = set(value) - set(defaults)
     if unknown:
         raise LayoutError(f"{context} has unknown keys {sorted(unknown)}")
-    merged = {**DEFAULT_STYLE, **value}
-    return Style(
+    return {**defaults, **value}
+
+
+def _button_style(value: Any, context: str) -> ButtonStyle:
+    merged = _style_mapping(value, BUTTON_STYLE_DEFAULTS, context)
+    return ButtonStyle(
         fill=_color(merged["fill"], f"{context}.fill"),
         pressed_fill=_color(merged["pressed_fill"], f"{context}.pressed_fill"),
+        checked_fill=_color(merged["checked_fill"], f"{context}.checked_fill"),
         border=_color(merged["border"], f"{context}.border"),
         text=_color(merged["text"], f"{context}.text"),
         text_scale=_int(merged["text_scale"], f"{context}.text_scale", 1, 16),
         border_width=_int(merged["border_width"], f"{context}.border_width", 0, 32),
+    )
+
+
+def _label_style(value: Any, context: str) -> LabelStyle:
+    merged = _style_mapping(value, LABEL_STYLE_DEFAULTS, context)
+    align = merged["align"]
+    if align not in ALIGNMENTS:
+        raise LayoutError(f"{context}.align must be one of {ALIGNMENTS}, got {align!r}")
+    return LabelStyle(
+        text=_color(merged["text"], f"{context}.text"),
+        fill=None if merged["fill"] is None else _color(merged["fill"], f"{context}.fill"),
+        text_scale=_int(merged["text_scale"], f"{context}.text_scale", 1, 16),
+        align=align,
+        padding=_int(merged["padding"], f"{context}.padding", 0, 64),
     )
 
 
@@ -147,6 +214,16 @@ def _callback(value: Any, context: str) -> str:
     if not isinstance(value, str) or not CPP_IDENTIFIER_RE.match(value):
         raise LayoutError(f"{context} must be a C++ identifier, got {value!r}")
     return value
+
+
+def _text(raw: dict[str, Any], key: str, context: str, allowed: frozenset[str]) -> str:
+    text = raw.get(key, "")
+    if not isinstance(text, str):
+        raise LayoutError(f"{context}.{key} must be a string")
+    bad = sorted({c for c in text if c.upper() not in allowed})
+    if bad:
+        raise LayoutError(f"{context}.{key} contains characters without glyphs: {bad}")
+    return text
 
 
 def parse_layout(document: Any) -> Layout:
@@ -167,7 +244,7 @@ def parse_layout(document: Any) -> Layout:
     widgets_raw = document.get("widgets", [])
     if not isinstance(widgets_raw, list):
         raise LayoutError("widgets must be a list")
-    widgets: list[Button] = []
+    widgets: list[Widget] = []
     seen_ids: set[str] = set()
     allowed = supported_characters()
     for index, raw in enumerate(widgets_raw):
@@ -178,8 +255,8 @@ def parse_layout(document: Any) -> Layout:
         if unknown:
             raise LayoutError(f"{context} has unknown keys {sorted(unknown)}")
         widget_type = raw.get("type", "button")
-        if widget_type != "button":
-            raise LayoutError(f"{context}.type {widget_type!r} is not supported")
+        if widget_type not in WIDGET_TYPES:
+            raise LayoutError(f"{context}.type {widget_type!r} is not one of {WIDGET_TYPES}")
         widget_id = raw.get("id")
         if not isinstance(widget_id, str) or not IDENTIFIER_RE.match(widget_id):
             raise LayoutError(
@@ -187,22 +264,33 @@ def parse_layout(document: Any) -> Layout:
         if widget_id in seen_ids:
             raise LayoutError(f"{context}.id {widget_id!r} is duplicated")
         seen_ids.add(widget_id)
-        label = raw.get("label", "")
-        if not isinstance(label, str):
-            raise LayoutError(f"{context}.label must be a string")
-        bad = sorted({c for c in label if c.upper() not in allowed})
-        if bad:
-            raise LayoutError(
-                f"{context}.label contains characters without glyphs: {bad}")
         x = _int(raw.get("x"), f"{context}.x", 0, width - 1)
         y = _int(raw.get("y"), f"{context}.y", 0, height - 1)
         w = _int(raw.get("width"), f"{context}.width", 1, width - x)
         h = _int(raw.get("height"), f"{context}.height", 1, height - y)
-        widgets.append(Button(
-            id=widget_id, label=label, x=x, y=y, width=w, height=h,
-            style=_style(raw.get("style"), f"{context}.style"),
-            on_tap=_callback(raw.get("on_tap"), f"{context}.on_tap"),
-            on_press=_callback(raw.get("on_press"), f"{context}.on_press")))
+
+        if widget_type == "button":
+            if "text" in raw:
+                raise LayoutError(f"{context}: buttons use 'label', not 'text'")
+            widgets.append(Widget(
+                type="button", id=widget_id,
+                text=_text(raw, "label", context, allowed),
+                x=x, y=y, width=w, height=h,
+                style=_button_style(raw.get("style"), f"{context}.style"),
+                on_tap=_callback(raw.get("on_tap"), f"{context}.on_tap"),
+                on_press=_callback(raw.get("on_press"), f"{context}.on_press")))
+        else:
+            for key in ("label",) + CALLBACK_EVENTS:
+                if key in raw:
+                    raise LayoutError(f"{context}: labels do not support {key!r}")
+            text = _text(raw, "text", context, allowed)
+            if len(text) >= LABEL_TEXT_CAPACITY:
+                raise LayoutError(
+                    f"{context}.text must be shorter than {LABEL_TEXT_CAPACITY} characters")
+            widgets.append(Widget(
+                type="label", id=widget_id, text=text,
+                x=x, y=y, width=w, height=h,
+                style=_label_style(raw.get("style"), f"{context}.style")))
 
     for i, a in enumerate(widgets):
         for b in widgets[i + 1:]:

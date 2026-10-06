@@ -27,9 +27,11 @@
 <header>
   <strong>ui_designer</strong>
   <button id="add">+ Button</button>
+  <button id="add_label">+ Label</button>
   <button id="delete">Delete</button>
   <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="snap" checked> snap 8px</label>
   <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="pressed"> pressed preview</label>
+  <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="checked"> checked preview</label>
   <button id="save">Save</button>
   <button id="reload">Reload</button>
   <a id="png" href="/api/preview.png" target="_blank">preview.png</a>
@@ -40,20 +42,25 @@
   <div id="status"></div>
   <fieldset><legend>Widgets</legend><ul id="widgets" style="list-style:none;margin:0;padding:0"></ul></fieldset>
   <fieldset id="props"><legend>Properties</legend>
+    <label>type <input type="text" id="p_type" disabled></label>
     <label>id <input type="text" id="p_id"></label>
-    <label>label <input type="text" id="p_label"></label>
+    <label class="button-only">label <input type="text" id="p_label"></label>
+    <label class="label-only">text <input type="text" id="p_text_value"></label>
     <label>x <input type="number" id="p_x" min="0"></label>
     <label>y <input type="number" id="p_y" min="0"></label>
     <label>width <input type="number" id="p_width" min="1"></label>
     <label>height <input type="number" id="p_height" min="1"></label>
-    <label>fill <input type="color" id="p_fill"></label>
-    <label>pressed_fill <input type="color" id="p_pressed_fill"></label>
-    <label>border <input type="color" id="p_border"></label>
+    <label>fill <span style="display:flex;gap:4px;align-items:center"><input type="color" id="p_fill"><span class="label-only" style="display:inline-flex;gap:2px;align-items:center;font-size:12px"><input type="checkbox" id="p_fill_none">none</span></span></label>
+    <label class="button-only">pressed_fill <input type="color" id="p_pressed_fill"></label>
+    <label class="button-only">checked_fill <input type="color" id="p_checked_fill"></label>
+    <label class="button-only">border <input type="color" id="p_border"></label>
     <label>text <input type="color" id="p_text"></label>
     <label>text_scale <input type="number" id="p_text_scale" min="1" max="16"></label>
-    <label>border_width <input type="number" id="p_border_width" min="0" max="32"></label>
-    <label>on_tap <input type="text" id="p_on_tap" placeholder="OnXxxTap"></label>
-    <label>on_press <input type="text" id="p_on_press" placeholder="OnXxxPress"></label>
+    <label class="button-only">border_width <input type="number" id="p_border_width" min="0" max="32"></label>
+    <label class="label-only">align <select id="p_align"><option>left</option><option>center</option><option>right</option></select></label>
+    <label class="label-only">padding <input type="number" id="p_padding" min="0" max="64"></label>
+    <label class="button-only">on_tap <input type="text" id="p_on_tap" placeholder="OnXxxTap"></label>
+    <label class="button-only">on_press <input type="text" id="p_on_press" placeholder="OnXxxPress"></label>
   </fieldset>
   <fieldset><legend>Screen</legend>
     <label>namespace <input type="text" id="s_namespace"></label>
@@ -74,10 +81,15 @@
   let drag = null;
 
   const $ = (id) => document.getElementById(id);
-  const propIds = ['id', 'label', 'x', 'y', 'width', 'height'];
+  const propIds = ['id', 'x', 'y', 'width', 'height'];
   const callbackIds = ['on_tap', 'on_press'];
-  const styleIds = ['fill', 'pressed_fill', 'border', 'text', 'text_scale', 'border_width'];
-  const numericStyle = ['text_scale', 'border_width'];
+  const buttonStyleIds = ['fill', 'pressed_fill', 'checked_fill', 'border', 'text', 'text_scale', 'border_width'];
+  const labelStyleIds = ['fill', 'text', 'text_scale', 'align', 'padding'];
+  const numericStyle = ['text_scale', 'border_width', 'padding'];
+  const buttonDefaults = { fill: '#2060C0', pressed_fill: '#103060', checked_fill: '#00A060', border: '#FFFFFF', text: '#FFFFFF', text_scale: 3, border_width: 2 };
+  const labelDefaults = { text: '#FFFFFF', fill: '#000000', text_scale: 2, align: 'left', padding: 4 };
+  const isButton = (w) => (w.type || 'button') === 'button';
+  const widgetText = (w) => isButton(w) ? w.label : w.text;
 
   function setStatus(message, ok) {
     status.textContent = message;
@@ -117,14 +129,25 @@
     }
   }
 
-  function drawButton(b, pressed) {
+  function drawButton(b, pressed, checked) {
     const s = b.style;
-    fillRect(b.x, b.y, b.width, b.height, rgb565(pressed ? s.pressed_fill : s.fill));
+    fillRect(b.x, b.y, b.width, b.height, rgb565(pressed ? s.pressed_fill : checked ? s.checked_fill : s.fill));
     drawFrame(b.x, b.y, b.width, b.height, s.border_width, rgb565(s.border));
     const tw = textWidth(b.label, s.text_scale), th = font.height * s.text_scale;
     const tx = tw < b.width ? b.x + Math.floor((b.width - tw) / 2) : b.x;
     const ty = th < b.height ? b.y + Math.floor((b.height - th) / 2) : b.y;
     drawText(tx, ty, b.label, s.text_scale, rgb565(s.text));
+  }
+
+  function drawLabel(l) {
+    const s = l.style;
+    if (s.fill !== null && s.fill !== undefined) fillRect(l.x, l.y, l.width, l.height, rgb565(s.fill));
+    const tw = textWidth(l.text, s.text_scale), th = font.height * s.text_scale;
+    const pad = 2 * (s.padding || 0) < l.width ? (s.padding || 0) : 0, inner = l.width - 2 * pad;
+    let tx = l.x + pad;
+    if (tw < inner) { if (s.align === 'center') tx += Math.floor((inner - tw) / 2); else if (s.align === 'right') tx += inner - tw; }
+    const ty = th < l.height ? l.y + Math.floor((l.height - th) / 2) : l.y;
+    drawText(tx, ty, l.text, s.text_scale, rgb565(s.text));
   }
 
   function render() {
@@ -134,8 +157,9 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, canvas.height); ctx.stroke(); }
     for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(canvas.width, y + .5); ctx.stroke(); }
-    const pressedPreview = $('pressed').checked;
-    layout.widgets.forEach((b, i) => drawButton(b, pressedPreview && i === selected));
+    const pressedPreview = $('pressed').checked, checkedPreview = $('checked').checked;
+    layout.widgets.forEach((w, i) => { if (isButton(w)) drawButton(w, pressedPreview && i === selected, checkedPreview && i === selected); });
+    layout.widgets.forEach((w) => { if (!isButton(w)) drawLabel(w); });
     if (selected >= 0) {
       const b = layout.widgets[selected];
       ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
@@ -151,7 +175,7 @@
     const ul = $('widgets'); ul.innerHTML = '';
     layout.widgets.forEach((b, i) => {
       const li = document.createElement('li');
-      li.textContent = `${b.id} (${b.x},${b.y} ${b.width}x${b.height}) "${b.label}"` + (b.on_tap ? ` -> ${b.on_tap}` : '');
+      li.textContent = `${isButton(b) ? 'B' : 'L'} ${b.id} (${b.x},${b.y} ${b.width}x${b.height}) "${widgetText(b)}"` + (b.on_tap ? ` -> ${b.on_tap}` : '');
       li.className = i === selected ? 'selected' : '';
       li.onclick = () => { selected = i; render(); };
       ul.appendChild(li);
@@ -162,9 +186,22 @@
     const has = selected >= 0;
     $('props').disabled = !has;
     const b = has ? layout.widgets[selected] : null;
+    const button = has ? isButton(b) : true;
+    document.querySelectorAll('.button-only').forEach((el) => { el.style.display = button ? '' : 'none'; });
+    document.querySelectorAll('.label-only').forEach((el) => { el.style.display = button ? 'none' : ''; });
+    $('p_type').value = has ? (b.type || 'button') : '';
     propIds.forEach((k) => { $('p_' + k).value = has ? b[k] : ''; });
+    $('p_label').value = has && button ? b.label : '';
+    $('p_text_value').value = has && !button ? b.text : '';
     callbackIds.forEach((k) => { $('p_' + k).value = has ? (b[k] || '') : ''; });
-    styleIds.forEach((k) => { $('p_' + k).value = has ? b.style[k] : (numericStyle.includes(k) ? 0 : '#000000'); });
+    const ids = button ? buttonStyleIds : labelStyleIds;
+    [...buttonStyleIds, ...labelStyleIds].forEach((k) => {
+      const el = $('p_' + k);
+      if (!has || !ids.includes(k)) { el.value = numericStyle.includes(k) ? 0 : k === 'align' ? 'left' : '#000000'; return; }
+      el.value = b.style[k] === null || b.style[k] === undefined ? '#000000' : b.style[k];
+    });
+    $('p_fill_none').checked = has && !button && b.style.fill === null;
+    $('p_fill').disabled = $('p_fill_none').checked;
     $('s_namespace').value = layout.namespace; $('s_width').value = layout.screen.width; $('s_height').value = layout.screen.height;
   }
 
@@ -175,22 +212,31 @@
       b[k] = ['x', 'y', 'width', 'height'].includes(k) ? Number(e.target.value) : e.target.value;
       render(); refreshCpp();
     }));
+    $('p_label').addEventListener('change', (e) => { if (selected >= 0) { layout.widgets[selected].label = e.target.value; render(); refreshCpp(); } });
+    $('p_text_value').addEventListener('change', (e) => { if (selected >= 0) { layout.widgets[selected].text = e.target.value; render(); refreshCpp(); } });
     callbackIds.forEach((k) => $('p_' + k).addEventListener('change', (e) => {
       if (selected < 0) return;
       const b = layout.widgets[selected];
       if (e.target.value.trim()) b[k] = e.target.value.trim(); else delete b[k];
       render(); refreshCpp();
     }));
-    styleIds.forEach((k) => $('p_' + k).addEventListener('change', (e) => {
+    [...new Set([...buttonStyleIds, ...labelStyleIds])].forEach((k) => $('p_' + k).addEventListener('change', (e) => {
       if (selected < 0) return;
       const b = layout.widgets[selected];
-      b.style[k] = numericStyle.includes(k) ? Number(e.target.value) : e.target.value.toUpperCase();
+      b.style[k] = numericStyle.includes(k) ? Number(e.target.value) : k === 'align' ? e.target.value : e.target.value.toUpperCase();
       render(); refreshCpp();
     }));
+    $('p_fill_none').addEventListener('change', (e) => {
+      if (selected < 0) return;
+      const b = layout.widgets[selected];
+      b.style.fill = e.target.checked ? null : '#000000';
+      render(); refreshCpp();
+    });
     $('s_namespace').addEventListener('change', (e) => { layout.namespace = e.target.value; refreshCpp(); });
     $('s_width').addEventListener('change', (e) => { layout.screen.width = Number(e.target.value); render(); });
     $('s_height').addEventListener('change', (e) => { layout.screen.height = Number(e.target.value); render(); });
     $('pressed').addEventListener('change', render);
+    $('checked').addEventListener('change', render);
   }
 
   function canvasPoint(e) {
@@ -238,11 +284,19 @@
     if (e.key === 'Delete') $('delete').click();
   });
 
-  $('add').onclick = () => {
+  function nextId(prefix) {
     let n = layout.widgets.length + 1;
-    while (layout.widgets.some((w) => w.id === 'button_' + n)) n++;
-    layout.widgets.push({ type: 'button', id: 'button_' + n, label: 'BTN ' + n, x: 16, y: 16, width: 160, height: 72,
-      style: { fill: '#2060C0', pressed_fill: '#103060', border: '#FFFFFF', text: '#FFFFFF', text_scale: 3, border_width: 2 } });
+    while (layout.widgets.some((w) => w.id === prefix + n)) n++;
+    return n;
+  }
+  $('add').onclick = () => {
+    const n = nextId('button_');
+    layout.widgets.push({ type: 'button', id: 'button_' + n, label: 'BTN ' + n, x: 16, y: 16, width: 160, height: 72, style: { ...buttonDefaults } });
+    selected = layout.widgets.length - 1; render(); refreshCpp();
+  };
+  $('add_label').onclick = () => {
+    const n = nextId('label_');
+    layout.widgets.push({ type: 'label', id: 'label_' + n, text: 'LABEL ' + n, x: 16, y: 16, width: 240, height: 24, style: { ...labelDefaults } });
     selected = layout.widgets.length - 1; render(); refreshCpp();
   };
   $('delete').onclick = () => { if (selected >= 0) { layout.widgets.splice(selected, 1); selected = -1; render(); refreshCpp(); } };

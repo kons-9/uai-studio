@@ -277,6 +277,7 @@ add_executable(${AI_APP_TARGET}
     $<TARGET_OBJECTS:uai-driver-overrides>
     src/task/application_initialize_task.cpp
     src/task/camera_render_task.cpp
+    src/ui/app_ui.cpp
     ${AI_INFERENCE_TASK_SOURCES}
     ${AI_MODEL_SOURCES}
     # Project-owned ref-compatible BSP with a reset fallback for NOR left in

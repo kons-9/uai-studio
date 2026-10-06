@@ -12,17 +12,65 @@ inline constexpr std::uint16_t kScreenWidth = 800U;
 inline constexpr std::uint16_t kScreenHeight = 480U;
 
 enum class WidgetId : std::uint16_t {
-    kToggleBoxes = 1U,
+    kStatus = 1U,
+    kDetections = 2U,
+    kPerson = 3U,
+    kFace = 4U,
+    kSegmentation = 5U,
+    kToggleBoxes = 6U,
 };
 
 inline constexpr ui::ButtonSpec kButtons[] = {
     {
+        static_cast<std::uint16_t>(WidgetId::kPerson),
+        {16U, 400U, 140U, 64U},
+        "PERSON",
+        {
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0x20U, 0x20U, 0x20U),
+            ui::Rgb565(0xC0U, 0x20U, 0x20U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            3U,
+            2U,
+        },
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kFace),
+        {172U, 400U, 140U, 64U},
+        "FACE",
+        {
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0x20U, 0x20U, 0x20U),
+            ui::Rgb565(0x20U, 0x40U, 0xC0U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            3U,
+            2U,
+        },
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kSegmentation),
+        {328U, 400U, 140U, 64U},
+        "SEG",
+        {
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0x20U, 0x20U, 0x20U),
+            ui::Rgb565(0x20U, 0xA0U, 0x40U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            3U,
+            2U,
+        },
+    },
+    {
         static_cast<std::uint16_t>(WidgetId::kToggleBoxes),
-        {624U, 392U, 160U, 72U},
+        {640U, 400U, 144U, 64U},
         "BOXES",
         {
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0x20U, 0x20U, 0x20U),
             ui::Rgb565(0x20U, 0x60U, 0xC0U),
-            ui::Rgb565(0x10U, 0x30U, 0x60U),
             ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
             ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
             3U,
@@ -33,7 +81,41 @@ inline constexpr ui::ButtonSpec kButtons[] = {
 inline constexpr std::size_t kButtonCount =
     sizeof(kButtons) / sizeof(kButtons[0]);
 
+inline constexpr ui::LabelSpec kLabels[] = {
+    {
+        static_cast<std::uint16_t>(WidgetId::kStatus),
+        {0U, 0U, 800U, 24U},
+        "AI STARTING",
+        {
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0x00U, 0x00U, 0x00U),
+            true,
+            2U,
+            ui::TextAlign::kLeft,
+            4U,
+        },
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kDetections),
+        {560U, 32U, 224U, 24U},
+        "",
+        {
+            ui::Rgb565(0xFFU, 0xE0U, 0x00U),
+            0U,
+            false,
+            2U,
+            ui::TextAlign::kRight,
+            4U,
+        },
+    },
+};
+inline constexpr std::size_t kLabelCount =
+    sizeof(kLabels) / sizeof(kLabels[0]);
+
 /* Handler methods the application must provide on its Handlers type:
+ *   void OnFaceTap(const ui::Event &event);
+ *   void OnPersonTap(const ui::Event &event);
+ *   void OnSegmentationTap(const ui::Event &event);
  *   void OnToggleBoxesTap(const ui::Event &event);
  */
 template <typename Handlers>
@@ -41,6 +123,15 @@ bool Dispatch(Handlers &handlers, const ui::Event &event)
 {
     if (event.type == ui::EventType::kTap) {
         switch (static_cast<WidgetId>(event.widget_id)) {
+        case WidgetId::kPerson:
+            handlers.OnPersonTap(event);
+            return true;
+        case WidgetId::kFace:
+            handlers.OnFaceTap(event);
+            return true;
+        case WidgetId::kSegmentation:
+            handlers.OnSegmentationTap(event);
+            return true;
         case WidgetId::kToggleBoxes:
             handlers.OnToggleBoxesTap(event);
             return true;

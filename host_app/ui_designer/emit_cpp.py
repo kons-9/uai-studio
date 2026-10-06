@@ -35,18 +35,20 @@ def generate_header(layout: Layout, source_name: str) -> str:
         lines.append(f"    k{pascal_case(widget.id)} = {index}U,")
     lines += ["};", ""]
 
-    if layout.widgets:
+    buttons = layout.buttons()
+    if buttons:
         lines.append("inline constexpr ui::ButtonSpec kButtons[] = {")
-        for widget in layout.widgets:
+        for widget in buttons:
             style = widget.style
             lines += [
                 "    {",
                 f"        static_cast<std::uint16_t>(WidgetId::k{pascal_case(widget.id)}),",
                 f"        {{{widget.x}U, {widget.y}U, {widget.width}U, {widget.height}U}},",
-                f"        {_cpp_string(widget.label)},",
+                f"        {_cpp_string(widget.text)},",
                 "        {",
                 f"            {_rgb(style.fill)},",
                 f"            {_rgb(style.pressed_fill)},",
+                f"            {_rgb(style.checked_fill)},",
                 f"            {_rgb(style.border)},",
                 f"            {_rgb(style.text)},",
                 f"            {style.text_scale}U,",
@@ -63,6 +65,39 @@ def generate_header(layout: Layout, source_name: str) -> str:
         lines += [
             "inline constexpr const ui::ButtonSpec *kButtons = nullptr;",
             "inline constexpr std::size_t kButtonCount = 0U;",
+        ]
+
+    labels = layout.labels()
+    lines.append("")
+    if labels:
+        lines.append("inline constexpr ui::LabelSpec kLabels[] = {")
+        for widget in labels:
+            style = widget.style
+            fill = _rgb(style.fill) if style.fill is not None else "0U"
+            lines += [
+                "    {",
+                f"        static_cast<std::uint16_t>(WidgetId::k{pascal_case(widget.id)}),",
+                f"        {{{widget.x}U, {widget.y}U, {widget.width}U, {widget.height}U}},",
+                f"        {_cpp_string(widget.text)},",
+                "        {",
+                f"            {_rgb(style.text)},",
+                f"            {fill},",
+                f"            {'true' if style.fill is not None else 'false'},",
+                f"            {style.text_scale}U,",
+                f"            ui::TextAlign::k{style.align.capitalize()},",
+                f"            {style.padding}U,",
+                "        },",
+                "    },",
+            ]
+        lines += [
+            "};",
+            "inline constexpr std::size_t kLabelCount =",
+            "    sizeof(kLabels) / sizeof(kLabels[0]);",
+        ]
+    else:
+        lines += [
+            "inline constexpr const ui::LabelSpec *kLabels = nullptr;",
+            "inline constexpr std::size_t kLabelCount = 0U;",
         ]
     lines += _dispatch(layout)
     lines += [
@@ -83,7 +118,7 @@ def _dispatch(layout: Layout) -> list[str]:
     missing method is a compile error at the application's call site.
     """
     handlers = sorted({
-        getattr(w, event) for w in layout.widgets for event in _EVENT_TYPES
+        getattr(w, event) for w in layout.buttons() for event in _EVENT_TYPES
         if getattr(w, event)})
     lines = [
         "",
@@ -98,7 +133,7 @@ def _dispatch(layout: Layout) -> list[str]:
     ]
     cases_emitted = False
     for event, enum_name in _EVENT_TYPES.items():
-        bound = [(w, getattr(w, event)) for w in layout.widgets if getattr(w, event)]
+        bound = [(w, getattr(w, event)) for w in layout.buttons() if getattr(w, event)]
         if not bound:
             continue
         cases_emitted = True

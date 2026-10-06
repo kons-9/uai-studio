@@ -118,6 +118,13 @@ def _command_all(args: argparse.Namespace) -> int:
     return 0
 
 
+def _command_gui(args: argparse.Namespace) -> int:
+    # Imported here so the build-time generator does not load the HTTP server.
+    from .gui import serve
+
+    return serve(args)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -151,8 +158,6 @@ def _build_parser() -> argparse.ArgumentParser:
     _all_args(all_command)
     all_command.set_defaults(handler=_command_all)
 
-    from .gui import serve
-
     default_app = Path(__file__).resolve().parents[2] / "userspace" / "ai-app"
     gui = subparsers.add_parser("gui", help="open the local browser memory-layout editor")
     gui.add_argument("--board", type=Path, default=default_app / "config/board_memory.json")
@@ -162,7 +167,7 @@ def _build_parser() -> argparse.ArgumentParser:
     gui.add_argument("--linker-base", type=Path, default=default_app / "stm32n6570-dk-npu-ram.ld")
     gui.add_argument("--port", type=int, default=8766)
     gui.add_argument("--open-browser", action="store_true")
-    gui.set_defaults(handler=serve)
+    gui.set_defaults(handler=_command_gui)
     return parser
 
 

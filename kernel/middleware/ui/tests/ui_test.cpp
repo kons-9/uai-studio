@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 
 namespace {
 
@@ -162,6 +163,122 @@ TEST(UiButtonPanel, NullTableIsEmpty)
     uai::ai::ui::ButtonPanel panel(nullptr, 4U);
     EXPECT_EQ(panel.Count(), 0U);
     EXPECT_EQ(panel.Update({true, 1U, 1U}).type, uai::ai::ui::EventType::kNone);
+}
+
+TEST(UiButtonPanel, CheckedFillUntilPressedOverrides)
+{
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    uai::ai::ui::ButtonSpec button{3U, {2U, 2U, 12U, 10U}, "", {}};
+    button.style.fill = 0x1111U;
+    button.style.pressed_fill = 0x2222U;
+    button.style.checked_fill = 0x3333U;
+    button.style.border_width = 0U;
+    uai::ai::ui::ButtonPanel panel(&button, 1U);
+
+    EXPECT_FALSE(panel.IsChecked(3U));
+    panel.SetChecked(3U, true);
+    panel.SetChecked(99U, true);
+    EXPECT_TRUE(panel.IsChecked(3U));
+    EXPECT_FALSE(panel.IsChecked(99U));
+    panel.Paint(canvas);
+    EXPECT_EQ(frame.At(7U, 7U), 0x3333U);
+
+    panel.Update({true, 7U, 7U});
+    panel.Paint(canvas);
+    EXPECT_EQ(frame.At(7U, 7U), 0x2222U);
+    panel.Update({false, 0U, 0U});
+    panel.SetChecked(3U, false);
+    panel.Paint(canvas);
+    EXPECT_EQ(frame.At(7U, 7U), 0x1111U);
+}
+
+TEST(UiLabelPanel, InitialTextAlignmentAndRuntimeReplacement)
+{
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    /* 'I' at scale 1 is 5 px wide; right-aligned in a 20 px box it ends at
+     * x = 2 + 20 - 1 = 21. */
+    uai::ai::ui::LabelSpec label{5U, {2U, 2U, 20U, 9U}, "I", {}};
+    label.style.text = 0x07E0U;
+    label.style.fill = 0x1111U;
+    label.style.text_scale = 1U;
+    label.style.align = uai::ai::ui::TextAlign::kRight;
+    label.style.padding = 0U;
+    uai::ai::ui::LabelPanel panel(&label, 1U);
+
+    EXPECT_STREQ(panel.Text(5U), "I");
+    panel.Paint(canvas);
+    EXPECT_EQ(frame.At(2U, 2U), 0x1111U);
+    EXPECT_EQ(frame.At(17U, 3U), 0x07E0U);
+    EXPECT_EQ(frame.At(21U, 3U), 0x07E0U);
+    EXPECT_EQ(frame.At(16U, 3U), 0x1111U);
+
+    EXPECT_TRUE(panel.SetText(5U, "II"));
+    EXPECT_FALSE(panel.SetText(6U, "X"));
+    EXPECT_FALSE(panel.SetText(5U, nullptr));
+    EXPECT_STREQ(panel.Text(5U), "II");
+    panel.Paint(canvas);
+    EXPECT_EQ(frame.At(11U, 3U), 0x07E0U);
+
+    label.style.has_fill = false;
+    label.style.align = uai::ai::ui::TextAlign::kLeft;
+    Frame clean;
+    uai::ai::ui::Canvas clean_canvas(clean.Begin(), kWidth, kHeight);
+    uai::ai::ui::LabelPanel transparent(&label, 1U);
+    transparent.Paint(clean_canvas);
+    EXPECT_EQ(clean.At(2U, 3U), 0x07E0U);
+    EXPECT_EQ(clean.At(8U, 8U), kBackground);
+    EXPECT_TRUE(clean.GuardsIntact());
+}
+
+TEST(UiLabelPanel, TextIsTruncatedToCapacity)
+{
+    uai::ai::ui::LabelSpec label{1U, {0U, 0U, 8U, 8U}, "", {}};
+    uai::ai::ui::LabelPanel panel(&label, 1U);
+    std::string long_text(uai::ai::ui::kLabelTextCapacity + 10U, 'A');
+    EXPECT_TRUE(panel.SetText(1U, long_text.c_str()));
+    EXPECT_EQ(std::string(panel.Text(1U)).size(),
+              uai::ai::ui::kLabelTextCapacity - 1U);
+}
+
+TEST(UiLabelPanel, PaddingInsetsAlignedText)
+{
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    uai::ai::ui::LabelSpec label{1U, {0U, 0U, 32U, 9U}, "I", {}};
+    label.style.text = 0x07E0U;
+    label.style.has_fill = false;
+    label.style.text_scale = 1U;
+    label.style.padding = 4U;
+    uai::ai::ui::LabelPanel left(&label, 1U);
+    left.Paint(canvas);
+    EXPECT_EQ(frame.At(4U, 1U), 0x07E0U);
+    EXPECT_EQ(frame.At(3U, 1U), kBackground);
+
+    label.style.align = uai::ai::ui::TextAlign::kRight;
+    uai::ai::ui::LabelPanel right(&label, 1U);
+    right.Paint(canvas);
+    EXPECT_EQ(frame.At(27U, 1U), 0x07E0U);
+    EXPECT_EQ(frame.At(28U, 1U), kBackground);
+}
+
+TEST(UiPainterGroup, PaintsInOrder)
+{
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    uai::ai::ui::LabelSpec under{1U, {0U, 0U, 8U, 8U}, "", {}};
+    under.style.fill = 0x1111U;
+    uai::ai::ui::LabelSpec over{2U, {4U, 4U, 8U, 8U}, "", {}};
+    over.style.fill = 0x2222U;
+    uai::ai::ui::LabelPanel first(&under, 1U);
+    uai::ai::ui::LabelPanel second(&over, 1U);
+    const uai::ai::ui::Painter *painters[] = {&first, nullptr, &second};
+    uai::ai::ui::PainterGroup group(painters, 3U);
+    group.Paint(canvas);
+    EXPECT_EQ(frame.At(1U, 1U), 0x1111U);
+    EXPECT_EQ(frame.At(5U, 5U), 0x2222U);
+    EXPECT_EQ(frame.At(11U, 11U), 0x2222U);
 }
 
 } // namespace
