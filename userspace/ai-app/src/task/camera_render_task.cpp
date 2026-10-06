@@ -18,6 +18,7 @@
 #include "middleware/task/task.hpp"
 #include "task/task_context.hpp"
 #include "ui/app_ui.hpp"
+#include "ui/ui_layout.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
