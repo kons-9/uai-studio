@@ -1,5 +1,14 @@
 cmake_minimum_required(VERSION 3.16)
 
+add_library(uai-image-processing STATIC image_resizer/image_processing.cpp)
+add_library(uai::image_processing ALIAS uai-image-processing)
+target_include_directories(uai-image-processing PUBLIC
+    "${PROJECT_SOURCE_DIR}/kernel"
+    "${PROJECT_SOURCE_DIR}/kernel/middleware")
+target_compile_options(uai-image-processing PRIVATE
+    -O3
+    $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
+
 add_library(uai-middleware STATIC
     foundation/error.cpp
     ai_runtime/pipeline.cpp
@@ -30,4 +39,4 @@ target_compile_definitions(uai-middleware PRIVATE
 target_compile_options(uai-middleware PRIVATE
     -O3
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
-target_link_libraries(uai-middleware PUBLIC uai::utkernel)
+target_link_libraries(uai-middleware PUBLIC uai::utkernel uai::image_processing)

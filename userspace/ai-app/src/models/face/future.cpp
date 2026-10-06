@@ -7,7 +7,7 @@
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/npu_driver/npu_driver.hpp"
 #include "driver/npu_driver/npu_network.hpp"
-#include "image_resizer/image_resizer.hpp"
+#include "image_resizer/image_processing.hpp"
 #include "middleware/pipeline/image_format.hpp"
 #include "middleware/memory/buffer_types.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
@@ -350,17 +350,17 @@ common::Error Future::Preprocess()
         common::Error status = context_.cache->PrepareForCpuRead(frame_.source);
         if (!status.Ok()) return status;
 
-        const image_resizer::Rgb888Source source{
+        const uai::image_processing::Rgb888Source source{
             reinterpret_cast<const std::uint8_t *>(frame_.source.address),
             source_width,
             source_height,
             source_width * 3U};
-        const image_resizer::Rgb888Destination destination{
+        const uai::image_processing::Rgb888Destination destination{
             reinterpret_cast<std::uint8_t *>(input.address),
             kInputWidth,
             kInputHeight,
             kInputWidth * 3U};
-        status = image_resizer::ResizeRgb888(source, destination);
+        status = uai::image_processing::ResizeRgb888(source, destination);
         if (!status.Ok()) return status;
         frame_.input_prepared_by_cpu = true;
         status = context_.cache->PrepareForPeripheralRead(
