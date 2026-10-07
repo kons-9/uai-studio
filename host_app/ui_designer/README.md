@@ -161,7 +161,7 @@ bool Dispatch(Handlers &handlers, const ui::Event &event);   // 呼んだらtrue
 
 ## 生成されるヘッダ
 
-`namespace`の中に`kScreenWidth`、`kScreenHeight`、`enum class ScreenId`、`enum class WidgetId`（全画面）、ホイールの選択肢`k<Id>Items[]`、画面ごとの`k<Screen>Buttons[]`/`k<Screen>Labels[]`/`k<Screen>Sliders[]`/`k<Screen>Dials[]`/`k<Screen>Wheels[]`/`k<Screen>Numbers[]`/`k<Screen>Images[]`（空なら省略）、`ScreenId`で引く`constexpr ui::ScreenSpec kScreens[]`と`kScreenCount`、`Dispatch()`を出します。画像があるときは同じディレクトリに`<stem>_images.hpp`（`k<Id>Pixels[]`）も書き、ヘッダから`#include`します。実機では`ui::Screen screen(kScreens[i])`として使い、カメラ背景の画面は`LcdManagement::ComposeAndPresent()`、単色の画面は`PresentOverlay()`に渡します（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。ヘッダは生成物ですがリポジトリに入れており、`generate --check`で両方が最新かどうかを確認できます。
+`namespace`の中に`kScreenWidth`、`kScreenHeight`、`enum class ScreenId`、`enum class WidgetId`（全画面）、ホイールの選択肢`k<Id>Items[]`、画面ごとの`k<Screen>Buttons[]`/`k<Screen>Labels[]`/`k<Screen>Sliders[]`/`k<Screen>Dials[]`/`k<Screen>Wheels[]`/`k<Screen>Numbers[]`/`k<Screen>Images[]`（空なら省略）、`ScreenId`で引く`constexpr ui::ScreenSpec kScreens[]`と`kScreenCount`、`Dispatch()`を出します。画像があるときは同じディレクトリに`<stem>_images.hpp`（`k<Id>Pixels[]`）も書き、ヘッダから`#include`します。ビットマップは`[[gnu::section(".ui_assets")]]`を付けて出すので、`.rodata`を太らせません。ai-appのリンカスクリプトは`.ui_assets`を固定アドレスの`uai_ram_entry`より後ろに置いています（独自のリンカスクリプトでも同様に出力セクションを足してください。無ければorphanセクションとして配置されます）。実機では`ui::Screen screen(kScreens[i])`として使い、カメラ背景の画面は`LcdManagement::ComposeAndPresent()`、単色の画面は`PresentOverlay()`に渡します（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。ヘッダは生成物ですがリポジトリに入れており、`generate --check`で両方が最新かどうかを確認できます。
 
 ## 今後の拡張の方針
 

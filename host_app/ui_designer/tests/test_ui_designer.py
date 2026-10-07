@@ -595,7 +595,8 @@ class EmitTest(unittest.TestCase):
         self.assertIn("kLogoPixels,\n        true, 0xF81FU,", text)
         self.assertIn("case WidgetId::kPeriod:\n            handlers.OnPeriod(event);", text)
         self.assertIn("case WidgetId::kMode:\n            handlers.OnMode(event);", text)
-        self.assertIn("/* logo.png: 4x2 RGB565 */\ninline constexpr std::uint16_t kLogoPixels[] = {", pixels)
+        self.assertIn("/* logo.png: 4x2 RGB565 */\n[[gnu::section(\".ui_assets\")]]\n"
+                      "inline constexpr std::uint16_t kLogoPixels[] = {", pixels)
         self.assertIn("0xF800U, 0xF800U, 0xF800U, 0xF800U,\n    0xF81FU, 0xF81FU, 0xF81FU, 0x001FU,", pixels)
 
     def test_images_header_is_omitted_without_images(self):

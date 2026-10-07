@@ -241,6 +241,9 @@ def load_bitmaps(layout: Layout, layout_path: Path) -> dict[str, Bitmap]:
     return {widget.id: load_bitmap(layout_path, widget) for widget in layout.images()}
 
 
+IMAGE_SECTION = ".ui_assets"
+
+
 def generate_images_header(layout: Layout, bitmaps: dict[str, Bitmap],
                            source_name: str) -> str:
     lines = [
@@ -256,6 +259,9 @@ def generate_images_header(layout: Layout, bitmaps: dict[str, Bitmap],
         lines += [
             "",
             f"/* {widget.source}: {bitmap.width}x{bitmap.height} RGB565 */",
+            # Kept out of .rodata so large bitmaps cannot push it into the
+            # fixed-address launch entry; the linker script places .ui_assets.
+            f'[[gnu::section("{IMAGE_SECTION}")]]',
             f"inline constexpr std::uint16_t {_image_pixels_name(widget)}[] = {{",
         ]
         for row in range(bitmap.height):
