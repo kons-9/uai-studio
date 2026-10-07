@@ -11,7 +11,15 @@ import zlib
 from pathlib import Path
 
 from .font import GLYPH_HEIGHT, GLYPH_WIDTH, GLYPH_ADVANCE, glyph_rows, text_width
-from .schema import Layout, Widget, rgb565
+from .schema import (
+    SLIDER_KNOB_MARGIN,
+    SLIDER_KNOB_WIDTH,
+    SLIDER_TRACK_HEIGHT,
+    Layout,
+    Screen,
+    Widget,
+    rgb565,
+)
 
 
 class Canvas:
@@ -67,6 +75,31 @@ class Canvas:
         self.draw_text(tx, ty, text, scale, color)
 
 
+def paint_icon(canvas: Canvas, x: int, y: int, w: int, h: int, icon: str, color: int) -> None:
+    """Mirror DrawIcon in kernel/middleware/ui/widget.cpp."""
+    extent = min(w, h) // 2
+    if extent < 8:
+        return
+    x0 = x + (w - extent) // 2
+    y0 = y + (h - extent) // 2
+    bar = max(extent // 6, 1)
+    if icon == "menu":
+        for row in range(3):
+            canvas.fill_rect(x0, y0 + row * (extent - bar) // 2, extent, bar, color)
+    elif icon == "back":
+        mid = y0 + extent // 2
+        canvas.fill_rect(x0, mid - bar // 2, extent, bar, color)
+        for i in range(extent // 2):
+            canvas.fill_rect(x0 + i, mid - i, bar, bar, color)
+            canvas.fill_rect(x0 + i, mid + i, bar, bar, color)
+    elif icon == "close":
+        i = 0
+        while i + bar <= extent:
+            canvas.fill_rect(x0 + i, y0 + i, bar, bar, color)
+            canvas.fill_rect(x0 + extent - bar - i, y0 + i, bar, bar, color)
+            i += 1
+
+
 def paint_button(canvas: Canvas, button: Widget, pressed: bool = False,
                  checked: bool = False) -> None:
     style = button.style
@@ -74,8 +107,43 @@ def paint_button(canvas: Canvas, button: Widget, pressed: bool = False,
     canvas.fill_rect(button.x, button.y, button.width, button.height, rgb565(fill))
     canvas.draw_frame(button.x, button.y, button.width, button.height,
                       style.border_width, rgb565(style.border))
-    canvas.draw_text_centered(button.x, button.y, button.width, button.height,
-                              button.text, style.text_scale, rgb565(style.text))
+    if button.icon != "none":
+        paint_icon(canvas, button.x, button.y, button.width, button.height,
+                   button.icon, rgb565(style.text))
+    else:
+        canvas.draw_text_centered(button.x, button.y, button.width, button.height,
+                                  button.text, style.text_scale, rgb565(style.text))
+
+
+def slider_track(slider: Widget) -> tuple[int, int, int, int]:
+    """Mirror ui::SliderPanel::TrackOf."""
+    caption = GLYPH_HEIGHT * slider.style.text_scale + 4
+    inset = SLIDER_KNOB_WIDTH // 2
+    x = slider.x + inset
+    width = slider.width - 2 * inset if slider.width > 2 * inset else 1
+    lower_top = slider.y + caption
+    lower_height = slider.height - caption if slider.height > caption else SLIDER_TRACK_HEIGHT
+    y = lower_top + ((lower_height - SLIDER_TRACK_HEIGHT) // 2
+                     if lower_height > SLIDER_TRACK_HEIGHT else 0)
+    return x, y, width, SLIDER_TRACK_HEIGHT
+
+
+def paint_slider(canvas: Canvas, slider: Widget, value: int | None = None) -> None:
+    """Mirror ui::SliderPanel::Paint; `value` overrides the initial value."""
+    style = slider.style
+    current = slider.value if value is None else max(slider.minimum, min(slider.maximum, value))
+    tx, ty, tw, th = slider_track(slider)
+    span = slider.maximum - slider.minimum
+    position = (current - slider.minimum) * (tw - 1) // span if span > 0 else 0
+    canvas.draw_text(slider.x, slider.y, slider.text, style.text_scale, rgb565(style.text))
+    if style.show_value:
+        value_text = str(current)
+        canvas.draw_text(slider.x + slider.width - text_width(value_text, style.text_scale),
+                         slider.y, value_text, style.text_scale, rgb565(style.text))
+    canvas.fill_rect(tx, ty, tw, th, rgb565(style.track))
+    canvas.fill_rect(tx, ty, position + 1, th, rgb565(style.fill))
+    canvas.fill_rect(tx + position - SLIDER_KNOB_WIDTH // 2, ty - SLIDER_KNOB_MARGIN,
+                     SLIDER_KNOB_WIDTH, th + 2 * SLIDER_KNOB_MARGIN, rgb565(style.knob))
 
 
 def paint_label(canvas: Canvas, label: Widget, text: str | None = None) -> None:
@@ -98,20 +166,32 @@ def paint_label(canvas: Canvas, label: Widget, text: str | None = None) -> None:
     canvas.draw_text(x, y, content, style.text_scale, rgb565(style.text))
 
 
-def render_layout(layout: Layout, pressed_ids: frozenset[str] = frozenset(),
+def render_screen(layout: Layout, screen: Screen,
+                  pressed_ids: frozenset[str] = frozenset(),
                   checked_ids: frozenset[str] = frozenset(),
-                  background: int = 0x4208) -> Canvas:
-    """Draw every widget on a flat background standing in for the camera.
+                  camera_stand_in: int = 0x4208) -> Canvas:
+    """Draw one screen exactly as ui::Screen::Paint would.
 
-    Buttons are drawn before labels, matching the PainterGroup order the
-    generated header suggests.
+    A camera screen uses a flat stand-in color for the live frame; a solid
+    screen uses its own background. Order: buttons, sliders, labels.
     """
+    background = camera_stand_in if screen.is_camera else rgb565(screen.background)
     canvas = Canvas(layout.width, layout.height, background)
-    for button in layout.buttons():
+    for button in screen.buttons():
         paint_button(canvas, button, button.id in pressed_ids, button.id in checked_ids)
-    for label in layout.labels():
+    for slider in screen.sliders():
+        paint_slider(canvas, slider)
+    for label in screen.labels():
         paint_label(canvas, label)
     return canvas
+
+
+def render_layout(layout: Layout, pressed_ids: frozenset[str] = frozenset(),
+                  checked_ids: frozenset[str] = frozenset(),
+                  background: int = 0x4208, screen_id: str | None = None) -> Canvas:
+    """Render the named screen (default: the first one)."""
+    screen = layout.screens[0] if screen_id is None else layout.screen(screen_id)
+    return render_screen(layout, screen, pressed_ids, checked_ids, background)
 
 
 def rgb565_to_rgb888(value: int) -> tuple[int, int, int]:

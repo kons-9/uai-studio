@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .schema import Layout, parse_color, pascal_case
+from .schema import Layout, Screen, Widget, parse_color, pascal_case
 
 
 def _rgb(color: str) -> str:
@@ -12,6 +12,112 @@ def _rgb(color: str) -> str:
 
 def _cpp_string(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _widget_id(widget: Widget) -> str:
+    return f"static_cast<std::uint16_t>(WidgetId::k{pascal_case(widget.id)})"
+
+
+def _bounds(widget: Widget) -> str:
+    return f"{{{widget.x}U, {widget.y}U, {widget.width}U, {widget.height}U}}"
+
+
+def _button_entry(widget: Widget) -> list[str]:
+    style = widget.style
+    return [
+        "    {",
+        f"        {_widget_id(widget)},",
+        f"        {_bounds(widget)},",
+        f"        {_cpp_string(widget.text)},",
+        "        {",
+        f"            {_rgb(style.fill)},",
+        f"            {_rgb(style.pressed_fill)},",
+        f"            {_rgb(style.checked_fill)},",
+        f"            {_rgb(style.border)},",
+        f"            {_rgb(style.text)},",
+        f"            {style.text_scale}U,",
+        f"            {style.border_width}U,",
+        "        },",
+        f"        ui::Icon::k{widget.icon.capitalize()},",
+        "    },",
+    ]
+
+
+def _label_entry(widget: Widget) -> list[str]:
+    style = widget.style
+    fill = _rgb(style.fill) if style.fill is not None else "0U"
+    return [
+        "    {",
+        f"        {_widget_id(widget)},",
+        f"        {_bounds(widget)},",
+        f"        {_cpp_string(widget.text)},",
+        "        {",
+        f"            {_rgb(style.text)},",
+        f"            {fill},",
+        f"            {'true' if style.fill is not None else 'false'},",
+        f"            {style.text_scale}U,",
+        f"            ui::TextAlign::k{style.align.capitalize()},",
+        f"            {style.padding}U,",
+        "        },",
+        "    },",
+    ]
+
+
+def _slider_entry(widget: Widget) -> list[str]:
+    style = widget.style
+    return [
+        "    {",
+        f"        {_widget_id(widget)},",
+        f"        {_bounds(widget)},",
+        f"        {_cpp_string(widget.text)},",
+        f"        {widget.minimum}, {widget.maximum}, {widget.step}, {widget.value},",
+        "        {",
+        f"            {_rgb(style.track)},",
+        f"            {_rgb(style.fill)},",
+        f"            {_rgb(style.knob)},",
+        f"            {_rgb(style.text)},",
+        f"            {style.text_scale}U,",
+        f"            {'true' if style.show_value else 'false'},",
+        "        },",
+        "    },",
+    ]
+
+
+def _table(name: str, type_name: str, widgets: list[Widget], entry) -> list[str]:
+    if not widgets:
+        return []
+    lines = [f"inline constexpr ui::{type_name} {name}[] = {{"]
+    for widget in widgets:
+        lines += entry(widget)
+    lines += ["};", ""]
+    return lines
+
+
+def _screen_tables(screen: Screen) -> list[str]:
+    prefix = f"k{pascal_case(screen.id)}"
+    return (_table(f"{prefix}Buttons", "ButtonSpec", screen.buttons(), _button_entry) +
+            _table(f"{prefix}Labels", "LabelSpec", screen.labels(), _label_entry) +
+            _table(f"{prefix}Sliders", "SliderSpec", screen.sliders(), _slider_entry))
+
+
+def _screen_entry(screen: Screen) -> list[str]:
+    prefix = f"k{pascal_case(screen.id)}"
+
+    def table(kind: str, widgets: list[Widget]) -> list[str]:
+        if not widgets:
+            return ["        nullptr, 0U,"]
+        name = f"{prefix}{kind}"
+        return [f"        {name}, sizeof({name}) / sizeof({name}[0]),"]
+
+    background = ("ui::Background::kCamera, 0U" if screen.is_camera
+                  else f"ui::Background::kSolid, {_rgb(screen.background)}")
+    return (["    {",
+             f"        static_cast<std::uint16_t>(ScreenId::k{pascal_case(screen.id)}),",
+             f"        {background},"]
+            + table("Buttons", screen.buttons())
+            + table("Labels", screen.labels())
+            + table("Sliders", screen.sliders())
+            + ["    },"])
 
 
 def generate_header(layout: Layout, source_name: str) -> str:
@@ -29,76 +135,27 @@ def generate_header(layout: Layout, source_name: str) -> str:
         f"inline constexpr std::uint16_t kScreenWidth = {layout.width}U;",
         f"inline constexpr std::uint16_t kScreenHeight = {layout.height}U;",
         "",
-        "enum class WidgetId : std::uint16_t {",
+        "enum class ScreenId : std::uint16_t {",
     ]
+    for index, screen in enumerate(layout.screens):
+        lines.append(f"    k{pascal_case(screen.id)} = {index}U,")
+    lines += ["};", "", "enum class WidgetId : std::uint16_t {"]
     for index, widget in enumerate(layout.widgets, start=1):
         lines.append(f"    k{pascal_case(widget.id)} = {index}U,")
     lines += ["};", ""]
 
-    buttons = layout.buttons()
-    if buttons:
-        lines.append("inline constexpr ui::ButtonSpec kButtons[] = {")
-        for widget in buttons:
-            style = widget.style
-            lines += [
-                "    {",
-                f"        static_cast<std::uint16_t>(WidgetId::k{pascal_case(widget.id)}),",
-                f"        {{{widget.x}U, {widget.y}U, {widget.width}U, {widget.height}U}},",
-                f"        {_cpp_string(widget.text)},",
-                "        {",
-                f"            {_rgb(style.fill)},",
-                f"            {_rgb(style.pressed_fill)},",
-                f"            {_rgb(style.checked_fill)},",
-                f"            {_rgb(style.border)},",
-                f"            {_rgb(style.text)},",
-                f"            {style.text_scale}U,",
-                f"            {style.border_width}U,",
-                "        },",
-                "    },",
-            ]
-        lines += [
-            "};",
-            "inline constexpr std::size_t kButtonCount =",
-            "    sizeof(kButtons) / sizeof(kButtons[0]);",
-        ]
-    else:
-        lines += [
-            "inline constexpr const ui::ButtonSpec *kButtons = nullptr;",
-            "inline constexpr std::size_t kButtonCount = 0U;",
-        ]
+    for screen in layout.screens:
+        lines += _screen_tables(screen)
 
-    labels = layout.labels()
-    lines.append("")
-    if labels:
-        lines.append("inline constexpr ui::LabelSpec kLabels[] = {")
-        for widget in labels:
-            style = widget.style
-            fill = _rgb(style.fill) if style.fill is not None else "0U"
-            lines += [
-                "    {",
-                f"        static_cast<std::uint16_t>(WidgetId::k{pascal_case(widget.id)}),",
-                f"        {{{widget.x}U, {widget.y}U, {widget.width}U, {widget.height}U}},",
-                f"        {_cpp_string(widget.text)},",
-                "        {",
-                f"            {_rgb(style.text)},",
-                f"            {fill},",
-                f"            {'true' if style.fill is not None else 'false'},",
-                f"            {style.text_scale}U,",
-                f"            ui::TextAlign::k{style.align.capitalize()},",
-                f"            {style.padding}U,",
-                "        },",
-                "    },",
-            ]
-        lines += [
-            "};",
-            "inline constexpr std::size_t kLabelCount =",
-            "    sizeof(kLabels) / sizeof(kLabels[0]);",
-        ]
-    else:
-        lines += [
-            "inline constexpr const ui::LabelSpec *kLabels = nullptr;",
-            "inline constexpr std::size_t kLabelCount = 0U;",
-        ]
+    lines.append("/* Indexed by ScreenId. */")
+    lines.append("inline constexpr ui::ScreenSpec kScreens[] = {")
+    for screen in layout.screens:
+        lines += _screen_entry(screen)
+    lines += [
+        "};",
+        "inline constexpr std::size_t kScreenCount =",
+        "    sizeof(kScreens) / sizeof(kScreens[0]);",
+    ]
     lines += _dispatch(layout)
     lines += [
         "",
@@ -108,23 +165,34 @@ def generate_header(layout: Layout, source_name: str) -> str:
     return "\n".join(lines)
 
 
-_EVENT_TYPES = {"on_tap": "kTap", "on_press": "kPress"}
+# (event key, ui::EventType member, widget filter)
+_EVENT_TYPES = (
+    ("on_tap", "kTap", lambda w: w.is_button),
+    ("on_press", "kPress", lambda w: w.is_button),
+    ("on_change", "kChange", lambda w: w.is_slider),
+)
 
 
 def _dispatch(layout: Layout) -> list[str]:
     """Route events to handler methods named in the layout.
 
-    Handlers is any type with `void <name>(const ui::Event &)` methods; a
-    missing method is a compile error at the application's call site.
+    Handlers is any type with `void <name>(const ui::Event &)` methods and,
+    when any button navigates, `void ShowScreen(ScreenId)`. A missing method
+    is a compile error at the application's call site.
     """
     handlers = sorted({
-        getattr(w, event) for w in layout.buttons() for event in _EVENT_TYPES
-        if getattr(w, event)})
+        getattr(w, event) for w in layout.widgets for event, _, accepts in _EVENT_TYPES
+        if accepts(w) and getattr(w, event)})
+    navigates = any(w.navigate for w in layout.buttons())
     lines = [
         "",
         "/* Handler methods the application must provide on its Handlers type:",
     ]
-    lines += [f" *   void {name}(const ui::Event &event);" for name in handlers] or [" *   (none)"]
+    lines += [f" *   void {name}(const ui::Event &event);" for name in handlers]
+    if navigates:
+        lines.append(" *   void ShowScreen(ScreenId screen);")
+    if not handlers and not navigates:
+        lines.append(" *   (none)")
     lines += [
         " */",
         "template <typename Handlers>",
@@ -132,8 +200,9 @@ def _dispatch(layout: Layout) -> list[str]:
         "{",
     ]
     cases_emitted = False
-    for event, enum_name in _EVENT_TYPES.items():
-        bound = [(w, getattr(w, event)) for w in layout.buttons() if getattr(w, event)]
+    for event, enum_name, accepts in _EVENT_TYPES:
+        bound = [w for w in layout.widgets if accepts(w) and
+                 (getattr(w, event) or (event == "on_tap" and w.navigate))]
         if not bound:
             continue
         cases_emitted = True
@@ -141,12 +210,15 @@ def _dispatch(layout: Layout) -> list[str]:
             f"    if (event.type == ui::EventType::{enum_name}) {{",
             "        switch (static_cast<WidgetId>(event.widget_id)) {",
         ]
-        for widget, handler in bound:
-            lines += [
-                f"        case WidgetId::k{pascal_case(widget.id)}:",
-                f"            handlers.{handler}(event);",
-                "            return true;",
-            ]
+        for widget in bound:
+            lines.append(f"        case WidgetId::k{pascal_case(widget.id)}:")
+            handler = getattr(widget, event)
+            if handler:
+                lines.append(f"            handlers.{handler}(event);")
+            if event == "on_tap" and widget.navigate:
+                lines.append(
+                    f"            handlers.ShowScreen(ScreenId::k{pascal_case(widget.navigate)});")
+            lines.append("            return true;")
         lines += [
             "        default:",
             "            break;",

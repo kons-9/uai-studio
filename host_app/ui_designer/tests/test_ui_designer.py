@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 import unittest
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from ui_designer import emit_cpp, font, render, schema
@@ -12,20 +16,13 @@ from ui_designer import emit_cpp, font, render, schema
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _document(**overrides):
+def _button(**overrides):
     widget = {
         "type": "button", "id": "toggle_boxes", "label": "BOXES",
         "x": 624, "y": 392, "width": 160, "height": 72,
     }
-    widget.update(overrides.pop("widget", {}))
-    document = {
-        "schema_version": 1,
-        "screen": {"width": 800, "height": 480},
-        "namespace": "uai::ai::app_ui",
-        "widgets": [widget],
-    }
-    document.update(overrides)
-    return document
+    widget.update(overrides)
+    return widget
 
 
 def _label(**overrides):
@@ -35,49 +32,102 @@ def _label(**overrides):
     return label
 
 
+def _slider(**overrides):
+    slider = {"type": "slider", "id": "level", "label": "LEVEL",
+              "x": 40, "y": 100, "width": 720, "height": 72,
+              "min": 0, "max": 100, "step": 5, "value": 50}
+    slider.update(overrides)
+    return slider
+
+
+def _document(*widgets, screens=None, **overrides):
+    """Two-screen document; `widgets` go on the camera screen `main`."""
+    if screens is None:
+        screens = [
+            {"id": "main", "background": "camera",
+             "widgets": list(widgets) or [_button()]},
+            {"id": "menu", "background": "#101820", "widgets": []},
+        ]
+    document = {
+        "schema_version": 2,
+        "screen": {"width": 800, "height": 480},
+        "namespace": "uai::ai::app_ui",
+        "screens": screens,
+    }
+    document.update(overrides)
+    return document
+
+
+def _legacy_document(widget=None):
+    return {
+        "schema_version": 1,
+        "screen": {"width": 800, "height": 480},
+        "namespace": "uai::ai::app_ui",
+        "widgets": [widget or _button()],
+    }
+
+
 class SchemaTest(unittest.TestCase):
     def test_defaults_and_round_trip(self):
         layout = schema.parse_layout(_document())
-        self.assertEqual(layout.widgets[0].style.text_scale, 3)
-        self.assertEqual(layout.widgets[0].style.fill, "#2060C0")
+        button = layout.buttons()[0]
+        self.assertEqual(button.style.text_scale, 3)
+        self.assertEqual(button.style.fill, "#2060C0")
+        self.assertEqual(button.icon, "none")
+        self.assertEqual([s.id for s in layout.screens], ["main", "menu"])
+        self.assertTrue(layout.screens[0].is_camera)
+        self.assertFalse(layout.screens[1].is_camera)
         again = schema.parse_layout(json.loads(schema.dump_layout(layout)))
         self.assertEqual(again, layout)
 
+    def test_legacy_single_screen_document_is_upgraded(self):
+        layout = schema.parse_layout(_legacy_document())
+        self.assertEqual(len(layout.screens), 1)
+        self.assertEqual(layout.screens[0].id, "main")
+        self.assertTrue(layout.screens[0].is_camera)
+        self.assertEqual(layout.to_document()["schema_version"], 2)
+        with self.assertRaises(schema.LayoutError):
+            schema.parse_layout({**_legacy_document(), "screens": []})
+
     def test_rejects_out_of_screen_widget(self):
         with self.assertRaises(schema.LayoutError):
-            schema.parse_layout(_document(widget={"x": 700, "width": 200}))
+            schema.parse_layout(_document(_button(x=700, width=200)))
 
-    def test_rejects_bad_identifier_and_duplicates(self):
+    def test_rejects_bad_identifier_and_duplicates_across_screens(self):
         with self.assertRaises(schema.LayoutError):
-            schema.parse_layout(_document(widget={"id": "ToggleBoxes"}))
+            schema.parse_layout(_document(_button(id="ToggleBoxes")))
         document = _document()
-        document["widgets"].append(dict(document["widgets"][0], y=16))
+        document["screens"][1]["widgets"].append(_button(y=16))
         with self.assertRaises(schema.LayoutError):
             schema.parse_layout(document)
+        with self.assertRaises(schema.LayoutError):
+            schema.parse_layout(_document(screens=[
+                {"id": "main", "widgets": []}, {"id": "main", "widgets": []}]))
 
     def test_rejects_label_without_glyph(self):
         with self.assertRaises(schema.LayoutError):
-            schema.parse_layout(_document(widget={"label": "ボタン"}))
-        schema.parse_layout(_document(widget={"label": "boxes 1/2"}))
+            schema.parse_layout(_document(_button(label="ボタン")))
+        schema.parse_layout(_document(_button(label="boxes 1/2")))
 
-    def test_rejects_overlap(self):
-        document = _document()
-        document["widgets"].append(
-            dict(document["widgets"][0], id="second", x=700, width=80))
+    def test_overlap_is_per_screen(self):
+        document = _document(_button(), _button(id="second", x=700, width=80))
         with self.assertRaises(schema.LayoutError):
             schema.parse_layout(document)
+        document = _document()
+        document["screens"][1]["widgets"].append(_button(id="second"))
+        schema.parse_layout(document)  # same bounds on another screen is fine
 
     def test_callbacks_are_cpp_identifiers_and_round_trip(self):
-        layout = schema.parse_layout(_document(widget={"on_tap": "OnBoxes"}))
+        layout = schema.parse_layout(_document(_button(on_tap="OnBoxes")))
         self.assertEqual(layout.widgets[0].on_tap, "OnBoxes")
         self.assertEqual(layout.widgets[0].on_press, "")
-        document = layout.to_document()
-        self.assertEqual(document["widgets"][0]["on_tap"], "OnBoxes")
-        self.assertNotIn("on_press", document["widgets"][0])
+        document = layout.to_document()["screens"][0]["widgets"][0]
+        self.assertEqual(document["on_tap"], "OnBoxes")
+        self.assertNotIn("on_press", document)
         with self.assertRaises(schema.LayoutError):
-            schema.parse_layout(_document(widget={"on_tap": "on-boxes"}))
+            schema.parse_layout(_document(_button(on_tap="on-boxes")))
         with self.assertRaises(schema.LayoutError):
-            schema.parse_layout(_document(widget={"on_tab": "OnBoxes"}))
+            schema.parse_layout(_document(_button(on_tab="OnBoxes")))
 
     def test_rgb565_matches_device_formula(self):
         self.assertEqual(schema.rgb565("#FFFFFF"), 0xFFFF)
@@ -86,32 +136,69 @@ class SchemaTest(unittest.TestCase):
         self.assertEqual(schema.rgb565("#0000FF"), 0x001F)
 
     def test_label_widget_defaults_and_constraints(self):
-        document = _document()
-        document["widgets"].append(_label(style={"fill": None, "align": "right"}))
-        layout = schema.parse_layout(document)
+        layout = schema.parse_layout(_document(_label(style={"fill": None, "align": "right"})))
         label = layout.labels()[0]
         self.assertEqual(label.text, "HELLO")
         self.assertIsNone(label.style.fill)
         self.assertEqual(label.style.align, "right")
         self.assertEqual(label.style.text_scale, 2)
         self.assertEqual(label.style.padding, 4)
-        self.assertEqual(len(layout.buttons()), 1)
         again = schema.parse_layout(json.loads(schema.dump_layout(layout)))
         self.assertEqual(again, layout)
 
         for bad in (
             _label(on_tap="OnX"),
             _label(label="X"),
+            _label(icon="menu"),
             _label(style={"align": "middle"}),
             _label(style={"border": "#FFFFFF"}),
             _label(text="A" * schema.LABEL_TEXT_CAPACITY),
         ):
             with self.assertRaises(schema.LayoutError, msg=str(bad)):
-                schema.parse_layout(_document(widgets=[bad]))
+                schema.parse_layout(_document(bad))
         with self.assertRaises(schema.LayoutError):
-            schema.parse_layout(_document(widget={"text": "X"}))
+            schema.parse_layout(_document(_button(text="X")))
         with self.assertRaises(schema.LayoutError):
-            schema.parse_layout(_document(widgets=[_label(type="slider")]))
+            schema.parse_layout(_document(_label(type="knob")))
+
+    def test_slider_widget_defaults_and_constraints(self):
+        layout = schema.parse_layout(_document(_slider(on_change="OnLevel")))
+        slider = layout.sliders()[0]
+        self.assertEqual((slider.minimum, slider.maximum, slider.step, slider.value), (0, 100, 5, 50))
+        self.assertEqual(slider.on_change, "OnLevel")
+        self.assertTrue(slider.style.show_value)
+        self.assertEqual(slider.style.track, "#404040")
+        again = schema.parse_layout(json.loads(schema.dump_layout(layout)))
+        self.assertEqual(again, layout)
+
+        for bad in (
+            _slider(min=10, max=10),
+            _slider(step=0),
+            _slider(step=500),
+            _slider(value=101),
+            _slider(on_tap="OnX"),
+            _slider(icon="menu"),
+            _slider(height=8),
+            _slider(style={"show_value": "yes"}),
+        ):
+            with self.assertRaises(schema.LayoutError, msg=str(bad)):
+                schema.parse_layout(_document(bad))
+
+    def test_icon_and_navigate(self):
+        layout = schema.parse_layout(_document(_button(icon="menu", navigate="menu", label="")))
+        button = layout.buttons()[0]
+        self.assertEqual(button.icon, "menu")
+        self.assertEqual(button.navigate, "menu")
+        document = layout.to_document()["screens"][0]["widgets"][0]
+        self.assertEqual(document["icon"], "menu")
+        self.assertEqual(document["navigate"], "menu")
+        with self.assertRaises(schema.LayoutError):
+            schema.parse_layout(_document(_button(icon="hamburger")))
+        with self.assertRaises(schema.LayoutError):
+            schema.parse_layout(_document(_button(navigate="settings")))
+        with self.assertRaises(schema.LayoutError):
+            schema.parse_layout(_document(screens=[
+                {"id": "main", "background": "red", "widgets": []}]))
 
 
 class FontTest(unittest.TestCase):
@@ -136,7 +223,7 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(canvas.pixels[7 * 32 + 1], 0)
         self.assertEqual(canvas.pixels[1 * 32 + 11], 0)
 
-    def test_button_paint_and_pressed_state(self):
+    def test_button_paint_states(self):
         layout = schema.parse_layout(_document())
         button = layout.widgets[0]
         normal = render.render_layout(layout)
@@ -150,17 +237,54 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(normal.pixels[corner], 0xFFFF)
         self.assertEqual(normal.pixels[(button.y - 1) * 800 + button.x], 0x4208)
 
+    def test_icon_matches_device_geometry(self):
+        """Same case as UiButtonPanel.IconReplacesLabel in ui_test.cpp."""
+        canvas = render.Canvas(16, 16, 0x0001)
+        layout = schema.parse_layout(_document(
+            _button(id="m", x=0, y=0, width=16, height=16, icon="menu", label="X",
+                    style={"fill": "#000000", "border_width": 0, "text": "#FFFFFF"})))
+        render.paint_button(canvas, layout.buttons()[0])
+        self.assertEqual(canvas.pixels[4 * 16 + 4], 0xFFFF)
+        self.assertEqual(canvas.pixels[4 * 16 + 11], 0xFFFF)
+        self.assertEqual(canvas.pixels[11 * 16 + 4], 0xFFFF)
+        self.assertEqual(canvas.pixels[5 * 16 + 4], 0x0000)
+        self.assertEqual(canvas.pixels[4 * 16 + 3], 0x0000)
+
+    def test_slider_track_matches_device_geometry(self):
+        """Same case as UiSlider in ui_test.cpp: 32 px wide, 1x caption."""
+        layout = schema.parse_layout(_document(
+            _slider(id="s", x=0, y=0, width=32, height=19, min=0, max=30, step=10, value=30,
+                    style={"text_scale": 1, "show_value": False, "track": "#101010",
+                           "fill": "#202020", "knob": "#303030"})))
+        slider = layout.sliders()[0]
+        tx, ty, tw, th = render.slider_track(slider)
+        self.assertEqual((tx, tw, th), (8, 16, 8))
+        canvas = render.Canvas(32, 32)
+        render.paint_slider(canvas, slider)
+        self.assertEqual(canvas.pixels[ty * 32 + tx], schema.rgb565("#202020"))
+        self.assertEqual(canvas.pixels[ty * 32 + tx + tw - 1], schema.rgb565("#303030"))
+        render.paint_slider(canvas, slider, value=0)
+        self.assertEqual(canvas.pixels[ty * 32 + tx + tw - 1], schema.rgb565("#101010"))
+        self.assertEqual(canvas.pixels[ty * 32 + tx], schema.rgb565("#303030"))
+
     def test_label_paint_alignment_and_transparency(self):
-        document = _document(widgets=[
+        document = _document(
             _label(id="a", text="I", x=0, y=0, width=32, height=9,
                    style={"text_scale": 1, "align": "right", "padding": 4, "fill": None}),
             _label(id="b", text="", x=0, y=20, width=16, height=8, style={"fill": "#FF0000"}),
-        ])
+        )
         canvas = render.render_layout(schema.parse_layout(document))
         self.assertEqual(canvas.pixels[1 * 800 + 27], 0xFFFF)
         self.assertEqual(canvas.pixels[1 * 800 + 28], 0x4208)
         self.assertEqual(canvas.pixels[0], 0x4208)  # transparent background
         self.assertEqual(canvas.pixels[20 * 800 + 3], 0xF800)
+
+    def test_solid_screen_background(self):
+        layout = schema.parse_layout(_document())
+        menu = render.render_layout(layout, screen_id="menu")
+        self.assertEqual(menu.pixels[0], schema.rgb565("#101820"))
+        with self.assertRaises(schema.LayoutError):
+            render.render_layout(layout, screen_id="nope")
 
     def test_png_header(self):
         data = render.encode_png(render.Canvas(4, 2, 0xF800))
@@ -174,47 +298,55 @@ class EmitTest(unittest.TestCase):
         layout = schema.parse_layout(_document())
         text = emit_cpp.generate_header(layout, "ui_layout.json")
         self.assertIn("#pragma once", text)
+        self.assertIn("kMain = 0U,", text)
+        self.assertIn("kMenu = 1U,", text)
         self.assertIn("kToggleBoxes = 1U,", text)
+        self.assertIn("inline constexpr ui::ButtonSpec kMainButtons[] = {", text)
         self.assertIn('"BOXES"', text)
         self.assertIn("{624U, 392U, 160U, 72U}", text)
-        self.assertIn("ui::Rgb565(0x20U, 0x60U, 0xC0U)", text)
         self.assertIn("ui::Rgb565(0x00U, 0xA0U, 0x60U)", text)  # checked_fill
-        self.assertIn("namespace uai::ai::app_ui {", text)
-        self.assertIn("kLabels = nullptr", text)
-
-    def test_label_emission(self):
-        document = _document()
-        document["widgets"].append(_label(style={"fill": None, "align": "center", "padding": 0}))
-        text = emit_cpp.generate_header(schema.parse_layout(document), "x.json")
-        self.assertIn("kStatus = 2U,", text)
-        self.assertIn("inline constexpr ui::LabelSpec kLabels[] = {", text)
-        self.assertIn('"HELLO"', text)
-        self.assertIn("            false,", text)
-        self.assertIn("ui::TextAlign::kCenter,", text)
-        self.assertIn("            0U,\n        },", text)
-        self.assertNotIn("kStatus:", text[text.index("Dispatch("):])
+        self.assertIn("ui::Icon::kNone,", text)
+        self.assertIn("ui::Background::kCamera, 0U,", text)
+        self.assertIn("ui::Background::kSolid, ui::Rgb565(0x10U, 0x18U, 0x20U),", text)
+        self.assertIn("kMainButtons, sizeof(kMainButtons) / sizeof(kMainButtons[0]),", text)
+        self.assertIn("inline constexpr std::size_t kScreenCount =", text)
+        self.assertNotIn("kMenuButtons", text)
 
     def test_empty_layout_header(self):
-        layout = schema.parse_layout(_document(widgets=[]))
+        layout = schema.parse_layout(_document(screens=[{"id": "main", "widgets": []}]))
         text = emit_cpp.generate_header(layout, "x.json")
-        self.assertIn("kButtons = nullptr", text)
-        self.assertIn("kButtonCount = 0U", text)
-        self.assertIn("bool Dispatch(Handlers &handlers, const ui::Event &event)", text)
+        self.assertIn("enum class WidgetId : std::uint16_t {\n};", text)
+        self.assertIn("        nullptr, 0U,\n        nullptr, 0U,\n        nullptr, 0U,", text)
         self.assertIn("(void)handlers;", text)
 
-    def test_dispatch_routes_each_bound_event(self):
-        document = _document(widget={"on_tap": "OnBoxes", "on_press": "OnBoxesDown"})
-        document["widgets"].append({
-            "type": "button", "id": "quiet", "label": "Q",
-            "x": 16, "y": 16, "width": 80, "height": 40})
+    def test_label_and_slider_emission(self):
+        text = emit_cpp.generate_header(schema.parse_layout(_document(
+            _button(), _label(style={"fill": None, "align": "center", "padding": 0}),
+            _slider(on_change="OnLevel"))), "x.json")
+        self.assertIn("inline constexpr ui::LabelSpec kMainLabels[] = {", text)
+        self.assertIn("ui::TextAlign::kCenter,", text)
+        self.assertIn("inline constexpr ui::SliderSpec kMainSliders[] = {", text)
+        self.assertIn("        0, 100, 5, 50,", text)
+        self.assertIn("            true,\n        },", text)
+        self.assertIn("if (event.type == ui::EventType::kChange)", text)
+        self.assertIn("handlers.OnLevel(event);", text)
+        self.assertIn("void OnLevel(const ui::Event &event);", text)
+
+    def test_dispatch_routes_navigation_and_callbacks(self):
+        document = _document(
+            _button(on_tap="OnBoxes", on_press="OnBoxesDown"),
+            _button(id="go_menu", x=16, y=16, width=56, height=48, icon="menu", navigate="menu"),
+            _button(id="both", x=100, y=16, width=56, height=48, navigate="menu", on_tap="OnBoth"))
         text = emit_cpp.generate_header(schema.parse_layout(document), "x.json")
-        self.assertIn("void OnBoxes(const ui::Event &event);", text)
-        self.assertIn("void OnBoxesDown(const ui::Event &event);", text)
+        self.assertIn("void ShowScreen(ScreenId screen);", text)
         tap = text.index("ui::EventType::kTap")
         press = text.index("ui::EventType::kPress")
-        self.assertIn("handlers.OnBoxes(event);", text[tap:press])
+        tap_block = text[tap:press]
+        self.assertIn("case WidgetId::kGoMenu:\n            handlers.ShowScreen(ScreenId::kMenu);", tap_block)
+        self.assertIn("handlers.OnBoth(event);\n            handlers.ShowScreen(ScreenId::kMenu);", tap_block)
+        self.assertIn("handlers.OnBoxes(event);", tap_block)
         self.assertIn("handlers.OnBoxesDown(event);", text[press:])
-        self.assertNotIn("kQuiet:", text[text.index("Dispatch("):])
+        self.assertNotIn("kGoMenu", text[press:])
 
     def test_checked_in_header_is_current(self):
         layout_path = REPO_ROOT / "userspace/ai-app/config/ui_layout.json"
@@ -238,6 +370,8 @@ class CliTest(unittest.TestCase):
             png = Path(tmp, "preview.png")
             self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png)]), 0)
             self.assertTrue(png.stat().st_size > 100)
+            self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png), "--screen", "menu"]), 0)
+            self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png), "--screen", "x"]), 2)
             self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png), "--pressed", "nope"]), 2)
 
     def test_edit_commands(self):
@@ -246,6 +380,7 @@ class CliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             layout = Path(tmp, "ui.json")
             header = Path(tmp, "ui_layout.hpp")
+            png = Path(tmp, "edit.png")
             self.assertEqual(main(["init", "--layout", str(layout)]), 0)
             self.assertEqual(main(["init", "--layout", str(layout)]), 2)
             self.assertEqual(main([
@@ -253,10 +388,11 @@ class CliTest(unittest.TestCase):
                 "--width", "160", "--height", "72", "--on-tap", "OnStart",
                 "--fill", "#00AA00", "--header", str(header)]), 0)
             doc = json.loads(layout.read_text())
-            self.assertEqual(doc["widgets"][0]["label"], "START")
-            self.assertEqual(doc["widgets"][0]["on_tap"], "OnStart")
-            self.assertEqual(doc["widgets"][0]["style"]["fill"], "#00AA00")
-            self.assertEqual(doc["widgets"][0]["style"]["text_scale"], 3)
+            widget = doc["screens"][0]["widgets"][0]
+            self.assertEqual(widget["label"], "START")
+            self.assertEqual(widget["on_tap"], "OnStart")
+            self.assertEqual(widget["style"]["fill"], "#00AA00")
+            self.assertEqual(widget["style"]["text_scale"], 3)
             self.assertIn("handlers.OnStart(event);", header.read_text())
 
             # Duplicate id and an edit that leaves the screen are rejected and
@@ -273,22 +409,69 @@ class CliTest(unittest.TestCase):
                 "--label", "GO", "--on-tap", "", "--on-press", "OnGoDown",
                 "--header", str(header)]), 0)
             doc = json.loads(layout.read_text())
-            self.assertEqual(doc["widgets"][0]["id"], "go")
-            self.assertNotIn("on_tap", doc["widgets"][0])
-            self.assertEqual(doc["widgets"][0]["on_press"], "OnGoDown")
+            widget = doc["screens"][0]["widgets"][0]
+            self.assertEqual(widget["id"], "go")
+            self.assertNotIn("on_tap", widget)
+            self.assertEqual(widget["on_press"], "OnGoDown")
             self.assertIn("kGo = 1U", header.read_text())
 
-            self.assertEqual(main(["screen", "--layout", str(layout), "--namespace", "demo::ui"]), 0)
-            self.assertEqual(main(["screen", "--layout", str(layout), "--width", "100"]), 2)
-            self.assertEqual(main(["list", "--layout", str(layout)]), 0)
+            # Screens: add a solid menu, navigate to it, move a slider there.
+            self.assertEqual(main(["screen-add", "--layout", str(layout), "--id", "menu",
+                                   "--background", "#101820"]), 0)
+            self.assertEqual(main(["screen-add", "--layout", str(layout), "--id", "menu"]), 2)
+            self.assertEqual(main(["screen-add", "--layout", str(layout), "--id", "bad",
+                                   "--background", "blue"]), 2)
+            self.assertEqual(main([
+                "add", "--layout", str(layout), "--id", "open", "--x", "744", "--y", "0",
+                "--width", "56", "--height", "48", "--icon", "menu", "--navigate", "menu"]), 0)
+            self.assertEqual(main([
+                "add", "--layout", str(layout), "--id", "open2", "--x", "600", "--y", "0",
+                "--width", "56", "--height", "48", "--navigate", "nowhere"]), 2)
+            self.assertEqual(main([
+                "add", "--layout", str(layout), "--type", "slider", "--id", "level",
+                "--screen", "menu", "--x", "40", "--y", "100", "--width", "720", "--height", "72",
+                "--min", "0", "--max", "10", "--step", "2", "--value", "4",
+                "--on-change", "OnLevel", "--show-value", "false", "--header", str(header)]), 0)
+            doc = json.loads(layout.read_text())
+            menu = next(s for s in doc["screens"] if s["id"] == "menu")
+            slider = menu["widgets"][0]
+            self.assertEqual(slider["type"], "slider")
+            self.assertEqual((slider["min"], slider["max"], slider["step"], slider["value"]), (0, 10, 2, 4))
+            self.assertFalse(slider["style"]["show_value"])
+            text = header.read_text()
+            self.assertIn("handlers.ShowScreen(ScreenId::kMenu);", text)
+            self.assertIn("handlers.OnLevel(event);", text)
+            # Button-only / slider-only options are rejected for the wrong kind.
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "level", "--icon", "back"]), 2)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "go", "--min", "1"]), 2)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "level", "--value", "11"]), 2)
+            # Move the slider to main (no overlap there), then back.
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "level", "--screen", "main"]), 0)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "level", "--screen", "menu"]), 0)
+            # Renaming a screen updates navigate references.
+            self.assertEqual(main(["screen-set", "--layout", str(layout), "--id", "menu",
+                                   "--rename", "settings", "--background", "#000000"]), 0)
+            doc = json.loads(layout.read_text())
+            self.assertEqual(doc["screens"][1]["id"], "settings")
+            self.assertEqual(doc["screens"][1]["background"], "#000000")
+            self.assertEqual(doc["screens"][0]["widgets"][1]["navigate"], "settings")
+            self.assertEqual(main(["screen-remove", "--layout", str(layout), "--id", "settings"]), 2)
+            self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png),
+                                   "--screen", "settings"]), 0)
+            self.assertEqual(main(["screen-remove", "--layout", str(layout), "--id", "settings", "--force"]), 2)
+            # Removing the target leaves a dangling navigate, so it is refused;
+            # clear it first.
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "open", "--navigate", ""]), 0)
+            self.assertEqual(main(["screen-remove", "--layout", str(layout), "--id", "settings", "--force"]), 0)
+            self.assertEqual(len(json.loads(layout.read_text())["screens"]), 1)
 
             # Labels: --text, --align, transparent fill; button-only options rejected.
             self.assertEqual(main([
                 "add", "--layout", str(layout), "--type", "label", "--id", "fps_label",
-                "--x", "0", "--y", "0", "--width", "300", "--height", "24",
+                "--x", "0", "--y", "100", "--width", "300", "--height", "24",
                 "--align", "center", "--fill", "none", "--text-color", "#FFE000"]), 0)
             doc = json.loads(layout.read_text())
-            fps = next(w for w in doc["widgets"] if w["id"] == "fps_label")
+            fps = next(w for w in doc["screens"][0]["widgets"] if w["id"] == "fps_label")
             self.assertEqual(fps["text"], "FPS LABEL")
             self.assertIsNone(fps["style"]["fill"])
             self.assertEqual(fps["style"]["text"], "#FFE000")
@@ -296,23 +479,30 @@ class CliTest(unittest.TestCase):
             self.assertEqual(main(["set", "--layout", str(layout), "--id", "fps_label", "--on-tap", "OnX"]), 2)
             self.assertEqual(main(["set", "--layout", str(layout), "--id", "fps_label", "--border-width", "1"]), 2)
             self.assertEqual(main(["set", "--layout", str(layout), "--id", "go", "--text", "X"]), 2)
-            png = Path(tmp, "edit.png")
             self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png), "--checked", "fps_label"]), 2)
             self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png), "--checked", "go"]), 0)
-            self.assertEqual(main(["remove", "--layout", str(layout), "--id", "fps_label"]), 0)
 
+            self.assertEqual(main(["screen", "--layout", str(layout), "--namespace", "demo::ui"]), 0)
+            self.assertEqual(main(["screen", "--layout", str(layout), "--width", "100"]), 2)
+            self.assertEqual(main(["list", "--layout", str(layout)]), 0)
             self.assertEqual(main(["remove", "--layout", str(layout), "--id", "go"]), 0)
             self.assertEqual(main(["remove", "--layout", str(layout), "--id", "go"]), 2)
-            self.assertEqual(json.loads(layout.read_text())["widgets"], [])
+
+    def test_legacy_file_is_upgraded_on_edit(self):
+        from ui_designer.cli import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            layout = Path(tmp, "ui.json")
+            layout.write_text(json.dumps(_legacy_document()), encoding="utf-8")
+            self.assertEqual(main(["screen-add", "--layout", str(layout), "--id", "menu"]), 0)
+            doc = json.loads(layout.read_text())
+            self.assertEqual(doc["schema_version"], 2)
+            self.assertEqual([s["id"] for s in doc["screens"]], ["main", "menu"])
+            self.assertNotIn("widgets", doc)
 
 
 class ServerTest(unittest.TestCase):
     def test_writes_require_loopback_host_and_session_token(self):
-        import threading
-        import urllib.error
-        import urllib.request
-        from http.server import ThreadingHTTPServer
-
         from ui_designer.server import EditorState, _make_handler
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -325,7 +515,7 @@ class ServerTest(unittest.TestCase):
                 url = f"http://127.0.0.1:{server.server_address[1]}"
                 with urllib.request.urlopen(url + "/api/layout") as response:
                     token = json.load(response)["token"]
-                body = json.dumps(_document(widget={"x": 16})).encode()
+                body = json.dumps(_document(_button(x=16))).encode()
                 for headers, status in (
                     ({}, 403),
                     ({"X-Editor-Token": token, "Host": "evil.example"}, 403),
@@ -335,13 +525,15 @@ class ServerTest(unittest.TestCase):
                         urllib.request.urlopen(request)
                     self.assertEqual(caught.exception.code, status)
                     caught.exception.close()
-                self.assertEqual(json.loads(layout.read_text())["widgets"][0]["x"], 624)
+                self.assertEqual(json.loads(layout.read_text())["screens"][0]["widgets"][0]["x"], 624)
 
                 request = urllib.request.Request(
                     url + "/api/layout", data=body, headers={"X-Editor-Token": token})
                 with urllib.request.urlopen(request) as response:
                     self.assertTrue(json.load(response)["ok"])
-                self.assertEqual(json.loads(layout.read_text())["widgets"][0]["x"], 16)
+                self.assertEqual(json.loads(layout.read_text())["screens"][0]["widgets"][0]["x"], 16)
+                with urllib.request.urlopen(url + "/api/preview.png?screen=menu") as response:
+                    self.assertEqual(response.headers["Content-Type"], "image/png")
             finally:
                 server.shutdown()
                 server.server_close()

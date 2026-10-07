@@ -12,11 +12,15 @@ from .font import GLYPHS, device_font_path, load_device_font
 from .render import render_layout, write_png
 from .schema import (
     ALIGNMENTS,
-    BUTTON_STYLE_DEFAULTS,
+    BUTTON_EVENTS,
     CALLBACK_EVENTS,
+    CAMERA_BACKGROUND,
     GEOMETRY_KEYS,
-    LABEL_STYLE_DEFAULTS,
+    ICONS,
     SCHEMA_VERSION,
+    SLIDER_EVENTS,
+    SLIDER_RANGE_KEYS,
+    STYLE_DEFAULTS,
     WIDGET_TYPES,
     LayoutError,
     dump_layout,
@@ -26,13 +30,18 @@ from .schema import (
 
 # Every style key across widget kinds, with the kinds that accept it.
 STYLE_OPTIONS: dict[str, tuple[str, ...]] = {}
-for _key in BUTTON_STYLE_DEFAULTS:
-    STYLE_OPTIONS[_key] = ("button",)
-for _key in LABEL_STYLE_DEFAULTS:
-    STYLE_OPTIONS[_key] = STYLE_OPTIONS.get(_key, ()) + ("label",)
+for _kind, _defaults in STYLE_DEFAULTS.items():
+    for _key in _defaults:
+        STYLE_OPTIONS[_key] = STYLE_OPTIONS.get(_key, ()) + (_kind,)
 INT_STYLE_KEYS = frozenset(
-    k for k, v in {**LABEL_STYLE_DEFAULTS, **BUTTON_STYLE_DEFAULTS}.items()
-    if isinstance(v, int))
+    k for defaults in STYLE_DEFAULTS.values() for k, v in defaults.items()
+    if isinstance(v, int) and not isinstance(v, bool))
+BOOL_STYLE_KEYS = frozenset(
+    k for defaults in STYLE_DEFAULTS.values() for k, v in defaults.items()
+    if isinstance(v, bool))
+# Per widget kind: the key holding its caption text.
+TEXT_KEY = {"button": "label", "label": "text", "slider": "label"}
+EVENTS_FOR = {"button": BUTTON_EVENTS, "label": (), "slider": SLIDER_EVENTS}
 
 
 def _write_if_changed(path: Path, text: str) -> bool:
@@ -49,7 +58,7 @@ def _repo_root() -> Path:
 
 def _command_validate(args: argparse.Namespace) -> int:
     layout = load_layout(args.layout)
-    print(f"{args.layout}: {len(layout.widgets)} widget(s), "
+    print(f"{args.layout}: {len(layout.screens)} screen(s), {len(layout.widgets)} widget(s), "
           f"{layout.width}x{layout.height}, namespace {layout.namespace}")
     if args.check_font:
         device = load_device_font(device_font_path(_repo_root()))
@@ -71,7 +80,7 @@ def _command_render(args: argparse.Namespace) -> int:
         unknown = ids - button_ids
         if unknown:
             raise LayoutError(f"{option} names unknown buttons: {sorted(unknown)}")
-    write_png(args.output, render_layout(layout, pressed, checked))
+    write_png(args.output, render_layout(layout, pressed, checked, screen_id=args.screen))
     print(f"wrote {args.output}")
     return 0
 
@@ -106,6 +115,11 @@ def _read_document(path: Path) -> dict:
         raise LayoutError(f"could not read {path}: {error}") from error
     if not isinstance(document, dict):
         raise LayoutError("layout root must be an object")
+    # Upgrade legacy single-screen documents in place so edits can add screens.
+    if "screens" not in document:
+        document["screens"] = [{"id": "main", "background": CAMERA_BACKGROUND,
+                                "widgets": document.pop("widgets", [])}]
+        document["schema_version"] = SCHEMA_VERSION
     return document
 
 
@@ -120,16 +134,31 @@ def _save_document(args: argparse.Namespace, document: dict) -> int:
     return 0
 
 
-def _find_widget(document: dict, widget_id: str) -> dict:
-    for widget in document.get("widgets", []):
-        if isinstance(widget, dict) and widget.get("id") == widget_id:
-            return widget
+def _screens(document: dict) -> list[dict]:
+    screens = document.get("screens")
+    if not isinstance(screens, list):
+        raise LayoutError("screens must be a list")
+    return screens
+
+
+def _find_screen(document: dict, screen_id: str) -> dict:
+    for screen in _screens(document):
+        if isinstance(screen, dict) and screen.get("id") == screen_id:
+            return screen
+    raise LayoutError(f"no screen with id {screen_id!r}")
+
+
+def _find_widget(document: dict, widget_id: str) -> tuple[dict, dict]:
+    for screen in _screens(document):
+        for widget in screen.get("widgets", []):
+            if isinstance(widget, dict) and widget.get("id") == widget_id:
+                return screen, widget
     raise LayoutError(f"no widget with id {widget_id!r}")
 
 
 def _apply_widget_options(widget: dict, args: argparse.Namespace) -> None:
     widget_type = widget.get("type", "button")
-    text_key = "label" if widget_type == "button" else "text"
+    text_key = TEXT_KEY[widget_type]
     for key in ("label", "text"):
         value = getattr(args, key)
         if value is None:
@@ -141,6 +170,24 @@ def _apply_widget_options(widget: dict, args: argparse.Namespace) -> None:
         value = getattr(args, key)
         if value is not None:
             widget[key] = value
+
+    for key, value in (("icon", args.icon), ("navigate", args.navigate)):
+        if value is None:
+            continue
+        if widget_type != "button":
+            raise LayoutError(f"--{key} applies to buttons only")
+        if value in ("", "none"):
+            widget.pop(key, None)
+        else:
+            widget[key] = value
+    for key in SLIDER_RANGE_KEYS:
+        value = getattr(args, key)
+        if value is None:
+            continue
+        if widget_type != "slider":
+            raise LayoutError(f"--{key} applies to sliders only")
+        widget[key] = value
+
     style = widget.setdefault("style", {})
     for key, kinds in STYLE_OPTIONS.items():
         value = getattr(args, "style_" + key)
@@ -155,8 +202,8 @@ def _apply_widget_options(widget: dict, args: argparse.Namespace) -> None:
         value = getattr(args, event)
         if value is None:
             continue
-        if widget_type != "button":
-            raise LayoutError(f"--{event.replace('_', '-')} applies to buttons only")
+        if event not in EVENTS_FOR[widget_type]:
+            raise LayoutError(f"--{event.replace('_', '-')} does not apply to a {widget_type}")
         if value == "":
             widget.pop(event, None)
         else:
@@ -170,7 +217,7 @@ def _command_init(args: argparse.Namespace) -> int:
         "schema_version": SCHEMA_VERSION,
         "screen": {"width": args.width, "height": args.height},
         "namespace": args.namespace,
-        "widgets": [],
+        "screens": [{"id": "main", "background": CAMERA_BACKGROUND, "widgets": []}],
     }
     args.layout.parent.mkdir(parents=True, exist_ok=True)
     return _save_document(args, document)
@@ -182,48 +229,68 @@ def _command_list(args: argparse.Namespace) -> int:
         print(json.dumps(layout.to_document(), indent=2))
         return 0
     print(f"screen {layout.width}x{layout.height}  namespace {layout.namespace}")
-    if not layout.widgets:
-        print("(no widgets)")
-        return 0
-    print(f"{'id':<20} {'type':<6} {'text':<16} {'x':>5} {'y':>5} {'w':>5} {'h':>5}  callbacks")
-    for widget in layout.widgets:
-        callbacks = ", ".join(
-            f"{event}={getattr(widget, event)}" for event in CALLBACK_EVENTS
-            if getattr(widget, event)) or "-"
-        print(f"{widget.id:<20} {widget.type:<6} {widget.text[:16]:<16} {widget.x:>5} "
-              f"{widget.y:>5} {widget.width:>5} {widget.height:>5}  {callbacks}")
+    for screen in layout.screens:
+        print(f"[{screen.id}] background={screen.background}")
+        if not screen.widgets:
+            print("  (no widgets)")
+            continue
+        print(f"  {'id':<20} {'type':<6} {'text':<16} {'x':>5} {'y':>5} {'w':>5} {'h':>5}  extra")
+        for widget in screen.widgets:
+            extra = [f"{event}={getattr(widget, event)}" for event in CALLBACK_EVENTS
+                     if getattr(widget, event)]
+            if widget.is_button and widget.icon != "none":
+                extra.append(f"icon={widget.icon}")
+            if widget.is_button and widget.navigate:
+                extra.append(f"navigate={widget.navigate}")
+            if widget.is_slider:
+                extra.append(f"range={widget.minimum}..{widget.maximum}/{widget.step}={widget.value}")
+            print(f"  {widget.id:<20} {widget.type:<6} {widget.text[:16]:<16} {widget.x:>5} "
+                  f"{widget.y:>5} {widget.width:>5} {widget.height:>5}  {', '.join(extra) or '-'}")
     return 0
+
+
+def _default_widget(widget_type: str, widget_id: str) -> dict:
+    caption = widget_id.upper().replace("_", " ")
+    widget = {"type": widget_type, "id": widget_id, TEXT_KEY[widget_type]: caption}
+    if widget_type == "slider":
+        widget.update({"min": 0, "max": 100, "step": 1, "value": 0})
+    return widget
 
 
 def _command_add(args: argparse.Namespace) -> int:
     document = _read_document(args.layout)
-    widgets = document.setdefault("widgets", [])
-    if any(isinstance(w, dict) and w.get("id") == args.id for w in widgets):
-        raise LayoutError(f"widget {args.id!r} already exists; use 'set' to change it")
-    text_key = "label" if args.type == "button" else "text"
-    widget = {"type": args.type, "id": args.id,
-              text_key: args.id.upper().replace("_", " ")}
+    for screen in _screens(document):
+        if any(isinstance(w, dict) and w.get("id") == args.id for w in screen.get("widgets", [])):
+            raise LayoutError(f"widget {args.id!r} already exists; use 'set' to change it")
+    screens = _screens(document)
+    screen = _find_screen(document, args.screen) if args.screen else screens[0]
     for key in GEOMETRY_KEYS:
         if getattr(args, key) is None:
             raise LayoutError(f"add requires --{key}")
+    widget = _default_widget(args.type, args.id)
     _apply_widget_options(widget, args)
-    widgets.append(widget)
+    screen.setdefault("widgets", []).append(widget)
     return _save_document(args, document)
 
 
 def _command_set(args: argparse.Namespace) -> int:
     document = _read_document(args.layout)
-    widget = _find_widget(document, args.id)
+    screen, widget = _find_widget(document, args.id)
     _apply_widget_options(widget, args)
     if args.rename is not None:
         widget["id"] = args.rename
+    if args.screen is not None:
+        target = _find_screen(document, args.screen)
+        if target is not screen:
+            screen["widgets"].remove(widget)
+            target.setdefault("widgets", []).append(widget)
     return _save_document(args, document)
 
 
 def _command_remove(args: argparse.Namespace) -> int:
     document = _read_document(args.layout)
-    widget = _find_widget(document, args.id)
-    document["widgets"].remove(widget)
+    screen, widget = _find_widget(document, args.id)
+    screen["widgets"].remove(widget)
     return _save_document(args, document)
 
 
@@ -239,12 +306,50 @@ def _command_screen(args: argparse.Namespace) -> int:
     return _save_document(args, document)
 
 
+def _command_screen_add(args: argparse.Namespace) -> int:
+    document = _read_document(args.layout)
+    if any(isinstance(s, dict) and s.get("id") == args.id for s in _screens(document)):
+        raise LayoutError(f"screen {args.id!r} already exists")
+    _screens(document).append({"id": args.id, "background": args.background, "widgets": []})
+    return _save_document(args, document)
+
+
+def _command_screen_set(args: argparse.Namespace) -> int:
+    document = _read_document(args.layout)
+    screen = _find_screen(document, args.id)
+    if args.background is not None:
+        screen["background"] = args.background
+    if args.rename is not None:
+        for s in _screens(document):
+            for w in s.get("widgets", []):
+                if isinstance(w, dict) and w.get("navigate") == args.id:
+                    w["navigate"] = args.rename
+        screen["id"] = args.rename
+    return _save_document(args, document)
+
+
+def _command_screen_remove(args: argparse.Namespace) -> int:
+    document = _read_document(args.layout)
+    screen = _find_screen(document, args.id)
+    if screen.get("widgets") and not args.force:
+        raise LayoutError(f"screen {args.id!r} still has widgets (use --force)")
+    _screens(document).remove(screen)
+    return _save_document(args, document)
+
+
 def _add_widget_options(parser: argparse.ArgumentParser) -> None:
     geometry = parser.add_argument_group("geometry")
-    geometry.add_argument("--label", help="button caption")
+    geometry.add_argument("--label", help="button or slider caption")
     geometry.add_argument("--text", help="initial label text")
     for key in GEOMETRY_KEYS:
         geometry.add_argument(f"--{key}", type=int)
+    button = parser.add_argument_group("button")
+    button.add_argument("--icon", choices=ICONS, help="draw an icon instead of the label")
+    button.add_argument("--navigate", metavar="SCREEN_ID",
+                        help="screen shown on tap; '' clears")
+    slider = parser.add_argument_group("slider")
+    for key in SLIDER_RANGE_KEYS:
+        slider.add_argument(f"--{key}", type=int)
     style = parser.add_argument_group(
         "style", "colors are #RRGGBB; label --fill accepts 'none' for transparent")
     for key, kinds in STYLE_OPTIONS.items():
@@ -254,6 +359,9 @@ def _add_widget_options(parser: argparse.ArgumentParser) -> None:
         dest = "style_" + key
         if key == "align":
             style.add_argument(option, dest=dest, choices=ALIGNMENTS, help=applies)
+        elif key in BOOL_STYLE_KEYS:
+            style.add_argument(option, dest=dest, type=lambda v: v.lower() in ("1", "true", "yes"),
+                               metavar="BOOL", help=applies)
         elif key in INT_STYLE_KEYS:
             style.add_argument(option, dest=dest, type=int, help=applies)
         else:
@@ -282,9 +390,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="also verify the glyph table matches canvas.cpp")
     p.set_defaults(func=_command_validate)
 
-    p = sub.add_parser("render", help="render a PNG preview of the layout")
+    p = sub.add_parser("render", help="render a PNG preview of one screen")
     p.add_argument("--layout", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--screen", metavar="SCREEN_ID", help="screen to draw (default: first)")
     p.add_argument("--pressed", action="append", metavar="ID",
                    help="draw this button in its pressed state (repeatable)")
     p.add_argument("--checked", action="append", metavar="ID",
@@ -304,7 +413,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-browser", action="store_true")
     p.set_defaults(func=_command_serve)
 
-    p = sub.add_parser("init", help="create an empty layout file")
+    p = sub.add_parser("init", help="create a layout with one empty camera screen")
     _add_edit_common(p)
     p.add_argument("--width", type=int, default=800)
     p.add_argument("--height", type=int, default=480)
@@ -312,15 +421,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=_command_init)
 
-    p = sub.add_parser("list", help="print the widgets in a layout")
+    p = sub.add_parser("list", help="print the screens and widgets in a layout")
     p.add_argument("--layout", type=Path, required=True)
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=_command_list)
 
-    p = sub.add_parser("add", help="add a button or label")
+    p = sub.add_parser("add", help="add a button, label, or slider")
     _add_edit_common(p)
     p.add_argument("--id", required=True)
     p.add_argument("--type", choices=WIDGET_TYPES, default="button")
+    p.add_argument("--screen", metavar="SCREEN_ID", help="target screen (default: first)")
     _add_widget_options(p)
     p.set_defaults(func=_command_add)
 
@@ -328,6 +438,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_edit_common(p)
     p.add_argument("--id", required=True)
     p.add_argument("--rename", metavar="NEW_ID")
+    p.add_argument("--screen", metavar="SCREEN_ID", help="move the widget to this screen")
     _add_widget_options(p)
     p.set_defaults(func=_command_set)
 
@@ -336,12 +447,32 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--id", required=True)
     p.set_defaults(func=_command_remove)
 
-    p = sub.add_parser("screen", help="change screen size or namespace")
+    p = sub.add_parser("screen", help="change display size or namespace")
     _add_edit_common(p)
     p.add_argument("--width", type=int)
     p.add_argument("--height", type=int)
     p.add_argument("--namespace")
     p.set_defaults(func=_command_screen)
+
+    p = sub.add_parser("screen-add", help="add a screen (page)")
+    _add_edit_common(p)
+    p.add_argument("--id", required=True)
+    p.add_argument("--background", default=CAMERA_BACKGROUND,
+                   help=f"'{CAMERA_BACKGROUND}' or #RRGGBB (default: camera)")
+    p.set_defaults(func=_command_screen_add)
+
+    p = sub.add_parser("screen-set", help="change a screen's background or id")
+    _add_edit_common(p)
+    p.add_argument("--id", required=True)
+    p.add_argument("--background")
+    p.add_argument("--rename", metavar="NEW_ID")
+    p.set_defaults(func=_command_screen_set)
+
+    p = sub.add_parser("screen-remove", help="remove a screen")
+    _add_edit_common(p)
+    p.add_argument("--id", required=True)
+    p.add_argument("--force", action="store_true", help="remove even if it has widgets")
+    p.set_defaults(func=_command_screen_remove)
     return parser
 
 

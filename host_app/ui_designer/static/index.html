@@ -5,20 +5,23 @@
 <title>uai ui_designer</title>
 <style>
   :root { color-scheme: light; font-family: system-ui, sans-serif; font-size: 14px; }
-  body { margin: 0; display: grid; grid-template-columns: 1fr 320px; grid-template-rows: auto 1fr; height: 100vh; }
-  header { grid-column: 1 / 3; display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #ccc; background: #f6f6f6; }
+  body { margin: 0; display: grid; grid-template-columns: 1fr 340px; grid-template-rows: auto auto 1fr; height: 100vh; }
+  header { grid-column: 1 / 3; display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #ccc; background: #f6f6f6; flex-wrap: wrap; }
   header .path { color: #555; font-family: monospace; margin-left: auto; }
+  nav#tabs { grid-column: 1 / 3; display: flex; gap: 4px; align-items: center; padding: 4px 12px; background: #eee; border-bottom: 1px solid #ccc; }
+  nav#tabs button.tab { border: 1px solid #bbb; background: #f8f8f8; border-radius: 4px 4px 0 0; }
+  nav#tabs button.tab.active { background: #fff; font-weight: 600; border-bottom-color: #fff; }
   main { overflow: auto; display: flex; align-items: flex-start; justify-content: center; background: #ddd; padding: 16px; }
   canvas#screen { background: #000; image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 0 1px #888; max-width: 100%; height: auto; }
   aside { border-left: 1px solid #ccc; padding: 12px; overflow: auto; background: #fafafa; }
   fieldset { border: 1px solid #ccc; margin: 0 0 12px; padding: 8px; }
   legend { font-weight: 600; }
-  label { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 6px; margin: 4px 0; }
-  input[type=number], input[type=text] { width: 100%; box-sizing: border-box; }
+  label { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 6px; margin: 4px 0; }
+  input[type=number], input[type=text], select { width: 100%; box-sizing: border-box; }
   button { padding: 4px 10px; }
   #status { font-family: monospace; white-space: pre-wrap; color: #a00; min-height: 1.5em; }
   #status.ok { color: #060; }
-  #widgets li { cursor: pointer; padding: 2px 4px; font-family: monospace; }
+  #widgets li { cursor: pointer; padding: 2px 4px; font-family: monospace; font-size: 12px; }
   #widgets li.selected { background: #cde; }
   pre#cpp { font-size: 12px; background: #fff; border: 1px solid #ccc; padding: 8px; max-height: 240px; overflow: auto; }
 </style>
@@ -28,41 +31,58 @@
   <strong>ui_designer</strong>
   <button id="add">+ Button</button>
   <button id="add_label">+ Label</button>
+  <button id="add_slider">+ Slider</button>
   <button id="delete">Delete</button>
   <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="snap" checked> snap 8px</label>
-  <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="pressed"> pressed preview</label>
-  <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="checked"> checked preview</label>
+  <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="pressed"> pressed</label>
+  <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="checked"> checked</label>
   <button id="save">Save</button>
   <button id="reload">Reload</button>
   <a id="png" href="/api/preview.png" target="_blank">preview.png</a>
   <span class="path" id="path"></span>
 </header>
+<nav id="tabs"></nav>
 <main><canvas id="screen" width="800" height="480"></canvas></main>
 <aside>
   <div id="status"></div>
+  <fieldset><legend>Screen page</legend>
+    <label>id <input type="text" id="sc_id"></label>
+    <label>background <span style="display:flex;gap:4px;align-items:center"><select id="sc_kind"><option value="camera">camera</option><option value="solid">solid</option></select><input type="color" id="sc_color"></span></label>
+    <div style="display:flex;gap:6px"><button id="screen_add">+ Screen</button><button id="screen_remove">Remove screen</button></div>
+  </fieldset>
   <fieldset><legend>Widgets</legend><ul id="widgets" style="list-style:none;margin:0;padding:0"></ul></fieldset>
   <fieldset id="props"><legend>Properties</legend>
     <label>type <input type="text" id="p_type" disabled></label>
     <label>id <input type="text" id="p_id"></label>
-    <label class="button-only">label <input type="text" id="p_label"></label>
-    <label class="label-only">text <input type="text" id="p_text_value"></label>
+    <label class="k-button k-slider">label <input type="text" id="p_label"></label>
+    <label class="k-label">text <input type="text" id="p_text_value"></label>
     <label>x <input type="number" id="p_x" min="0"></label>
     <label>y <input type="number" id="p_y" min="0"></label>
     <label>width <input type="number" id="p_width" min="1"></label>
     <label>height <input type="number" id="p_height" min="1"></label>
-    <label>fill <span style="display:flex;gap:4px;align-items:center"><input type="color" id="p_fill"><span class="label-only" style="display:inline-flex;gap:2px;align-items:center;font-size:12px"><input type="checkbox" id="p_fill_none">none</span></span></label>
-    <label class="button-only">pressed_fill <input type="color" id="p_pressed_fill"></label>
-    <label class="button-only">checked_fill <input type="color" id="p_checked_fill"></label>
-    <label class="button-only">border <input type="color" id="p_border"></label>
-    <label>text <input type="color" id="p_text"></label>
+    <label class="k-button">icon <select id="p_icon"><option>none</option><option>menu</option><option>back</option><option>close</option></select></label>
+    <label class="k-button">navigate <select id="p_navigate"></select></label>
+    <label class="k-slider">min <input type="number" id="p_min"></label>
+    <label class="k-slider">max <input type="number" id="p_max"></label>
+    <label class="k-slider">step <input type="number" id="p_step" min="1"></label>
+    <label class="k-slider">value <input type="number" id="p_value"></label>
+    <label class="k-button k-label k-slider">fill <span style="display:flex;gap:4px;align-items:center"><input type="color" id="p_fill"><span class="k-label" style="display:inline-flex;gap:2px;align-items:center;font-size:12px"><input type="checkbox" id="p_fill_none">none</span></span></label>
+    <label class="k-button">pressed_fill <input type="color" id="p_pressed_fill"></label>
+    <label class="k-button">checked_fill <input type="color" id="p_checked_fill"></label>
+    <label class="k-button">border <input type="color" id="p_border"></label>
+    <label class="k-slider">track <input type="color" id="p_track"></label>
+    <label class="k-slider">knob <input type="color" id="p_knob"></label>
+    <label>text color <input type="color" id="p_text"></label>
     <label>text_scale <input type="number" id="p_text_scale" min="1" max="16"></label>
-    <label class="button-only">border_width <input type="number" id="p_border_width" min="0" max="32"></label>
-    <label class="label-only">align <select id="p_align"><option>left</option><option>center</option><option>right</option></select></label>
-    <label class="label-only">padding <input type="number" id="p_padding" min="0" max="64"></label>
-    <label class="button-only">on_tap <input type="text" id="p_on_tap" placeholder="OnXxxTap"></label>
-    <label class="button-only">on_press <input type="text" id="p_on_press" placeholder="OnXxxPress"></label>
+    <label class="k-button">border_width <input type="number" id="p_border_width" min="0" max="32"></label>
+    <label class="k-label">align <select id="p_align"><option>left</option><option>center</option><option>right</option></select></label>
+    <label class="k-label">padding <input type="number" id="p_padding" min="0" max="64"></label>
+    <label class="k-slider">show_value <input type="checkbox" id="p_show_value"></label>
+    <label class="k-button">on_tap <input type="text" id="p_on_tap" placeholder="OnXxxTap"></label>
+    <label class="k-button">on_press <input type="text" id="p_on_press" placeholder="OnXxxPress"></label>
+    <label class="k-slider">on_change <input type="text" id="p_on_change" placeholder="OnXxxChange"></label>
   </fieldset>
-  <fieldset><legend>Screen</legend>
+  <fieldset><legend>Display</legend>
     <label>namespace <input type="text" id="s_namespace"></label>
     <label>width <input type="number" id="s_width" min="1"></label>
     <label>height <input type="number" id="s_height" min="1"></label>
@@ -77,24 +97,31 @@
   let font = null;
   let layout = null;
   let token = '';
+  let screenIndex = 0;
   let selected = -1;
   let drag = null;
 
   const $ = (id) => document.getElementById(id);
-  const propIds = ['id', 'x', 'y', 'width', 'height'];
-  const callbackIds = ['on_tap', 'on_press'];
-  const buttonStyleIds = ['fill', 'pressed_fill', 'checked_fill', 'border', 'text', 'text_scale', 'border_width'];
-  const labelStyleIds = ['fill', 'text', 'text_scale', 'align', 'padding'];
+  const geometryIds = ['x', 'y', 'width', 'height'];
+  const styleIds = {
+    button: ['fill', 'pressed_fill', 'checked_fill', 'border', 'text', 'text_scale', 'border_width'],
+    label: ['fill', 'text', 'text_scale', 'align', 'padding'],
+    slider: ['track', 'fill', 'knob', 'text', 'text_scale', 'show_value'],
+  };
+  const allStyleIds = [...new Set(Object.values(styleIds).flat())];
   const numericStyle = ['text_scale', 'border_width', 'padding'];
-  const buttonDefaults = { fill: '#2060C0', pressed_fill: '#103060', checked_fill: '#00A060', border: '#FFFFFF', text: '#FFFFFF', text_scale: 3, border_width: 2 };
-  const labelDefaults = { text: '#FFFFFF', fill: '#000000', text_scale: 2, align: 'left', padding: 4 };
-  const isButton = (w) => (w.type || 'button') === 'button';
-  const widgetText = (w) => isButton(w) ? w.label : w.text;
+  const defaults = {
+    button: { fill: '#2060C0', pressed_fill: '#103060', checked_fill: '#00A060', border: '#FFFFFF', text: '#FFFFFF', text_scale: 3, border_width: 2 },
+    label: { text: '#FFFFFF', fill: '#000000', text_scale: 2, align: 'left', padding: 4 },
+    slider: { track: '#404040', fill: '#2060C0', knob: '#FFFFFF', text: '#FFFFFF', text_scale: 2, show_value: true },
+  };
+  const TRACK_H = 8, KNOB_W = 16, KNOB_M = 6;
+  const kind = (w) => w.type || 'button';
+  const captionOf = (w) => kind(w) === 'label' ? w.text : w.label;
+  const screen = () => layout.screens[screenIndex];
+  const widgets = () => screen().widgets;
 
-  function setStatus(message, ok) {
-    status.textContent = message;
-    status.className = ok ? 'ok' : '';
-  }
+  function setStatus(message, ok) { status.textContent = message; status.className = ok ? 'ok' : ''; }
 
   function rgb565(hex) {
     const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
@@ -102,43 +129,45 @@
     const rr = (v >> 11) & 0x1F, gg = (v >> 5) & 0x3F, bb = v & 0x1F;
     return `rgb(${(rr << 3) | (rr >> 2)},${(gg << 2) | (gg >> 4)},${(bb << 3) | (bb >> 2)})`;
   }
-
   function fillRect(x, y, w, h, color) { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); }
-
   function drawFrame(x, y, w, h, t, color) {
     if (!t || !w || !h) return;
     const tx = Math.min(t, w), ty = Math.min(t, h);
     fillRect(x, y, w, ty, color); fillRect(x, y + h - ty, w, ty, color);
     fillRect(x, y, tx, h, color); fillRect(x + w - tx, y, tx, h, color);
   }
-
-  function textWidth(text, scale) {
-    return text.length ? (text.length * font.advance - (font.advance - font.width)) * scale : 0;
-  }
-
+  function textWidth(text, scale) { return text.length ? (text.length * font.advance - (font.advance - font.width)) * scale : 0; }
   function drawText(x, y, text, scale, color) {
     let pen = x;
     for (const ch of text) {
       const rows = font.glyphs[ch.toUpperCase()] || new Array(font.height).fill(0);
-      for (let r = 0; r < font.height; r++) {
-        for (let c = 0; c < font.width; c++) {
-          if (rows[r] & (1 << (font.width - 1 - c))) fillRect(pen + c * scale, y + r * scale, scale, scale, color);
-        }
+      for (let r = 0; r < font.height; r++) for (let c = 0; c < font.width; c++) {
+        if (rows[r] & (1 << (font.width - 1 - c))) fillRect(pen + c * scale, y + r * scale, scale, scale, color);
       }
       pen += font.advance * scale;
     }
   }
-
+  function drawIcon(x, y, w, h, icon, color) {
+    const extent = Math.floor(Math.min(w, h) / 2);
+    if (extent < 8) return;
+    const x0 = x + Math.floor((w - extent) / 2), y0 = y + Math.floor((h - extent) / 2), bar = Math.max(Math.floor(extent / 6), 1);
+    if (icon === 'menu') { for (let r = 0; r < 3; r++) fillRect(x0, y0 + Math.floor(r * (extent - bar) / 2), extent, bar, color); }
+    else if (icon === 'back') {
+      const mid = y0 + Math.floor(extent / 2);
+      fillRect(x0, mid - Math.floor(bar / 2), extent, bar, color);
+      for (let i = 0; i < Math.floor(extent / 2); i++) { fillRect(x0 + i, mid - i, bar, bar, color); fillRect(x0 + i, mid + i, bar, bar, color); }
+    } else if (icon === 'close') {
+      for (let i = 0; i + bar <= extent; i++) { fillRect(x0 + i, y0 + i, bar, bar, color); fillRect(x0 + extent - bar - i, y0 + i, bar, bar, color); }
+    }
+  }
   function drawButton(b, pressed, checked) {
     const s = b.style;
     fillRect(b.x, b.y, b.width, b.height, rgb565(pressed ? s.pressed_fill : checked ? s.checked_fill : s.fill));
     drawFrame(b.x, b.y, b.width, b.height, s.border_width, rgb565(s.border));
+    if (b.icon && b.icon !== 'none') { drawIcon(b.x, b.y, b.width, b.height, b.icon, rgb565(s.text)); return; }
     const tw = textWidth(b.label, s.text_scale), th = font.height * s.text_scale;
-    const tx = tw < b.width ? b.x + Math.floor((b.width - tw) / 2) : b.x;
-    const ty = th < b.height ? b.y + Math.floor((b.height - th) / 2) : b.y;
-    drawText(tx, ty, b.label, s.text_scale, rgb565(s.text));
+    drawText(tw < b.width ? b.x + Math.floor((b.width - tw) / 2) : b.x, th < b.height ? b.y + Math.floor((b.height - th) / 2) : b.y, b.label, s.text_scale, rgb565(s.text));
   }
-
   function drawLabel(l) {
     const s = l.style;
     if (s.fill !== null && s.fill !== undefined) fillRect(l.x, l.y, l.width, l.height, rgb565(s.fill));
@@ -146,36 +175,66 @@
     const pad = 2 * (s.padding || 0) < l.width ? (s.padding || 0) : 0, inner = l.width - 2 * pad;
     let tx = l.x + pad;
     if (tw < inner) { if (s.align === 'center') tx += Math.floor((inner - tw) / 2); else if (s.align === 'right') tx += inner - tw; }
-    const ty = th < l.height ? l.y + Math.floor((l.height - th) / 2) : l.y;
-    drawText(tx, ty, l.text, s.text_scale, rgb565(s.text));
+    drawText(tx, th < l.height ? l.y + Math.floor((l.height - th) / 2) : l.y, l.text, s.text_scale, rgb565(s.text));
+  }
+  function sliderTrack(w) {
+    const caption = font.height * w.style.text_scale + 4, inset = KNOB_W / 2;
+    const width = w.width > 2 * inset ? w.width - 2 * inset : 1;
+    const lowerTop = w.y + caption, lowerH = w.height > caption ? w.height - caption : TRACK_H;
+    return { x: w.x + inset, y: lowerTop + (lowerH > TRACK_H ? Math.floor((lowerH - TRACK_H) / 2) : 0), w: width, h: TRACK_H };
+  }
+  function drawSlider(w) {
+    const s = w.style, t = sliderTrack(w), span = w.max - w.min;
+    const pos = span > 0 ? Math.floor((w.value - w.min) * (t.w - 1) / span) : 0;
+    drawText(w.x, w.y, w.label, s.text_scale, rgb565(s.text));
+    if (s.show_value) { const v = String(w.value); drawText(w.x + w.width - textWidth(v, s.text_scale), w.y, v, s.text_scale, rgb565(s.text)); }
+    fillRect(t.x, t.y, t.w, t.h, rgb565(s.track));
+    fillRect(t.x, t.y, pos + 1, t.h, rgb565(s.fill));
+    fillRect(t.x + pos - KNOB_W / 2, t.y - KNOB_M, KNOB_W, t.h + 2 * KNOB_M, rgb565(s.knob));
   }
 
   function render() {
     if (!layout || !font) return;
     canvas.width = layout.screen.width; canvas.height = layout.screen.height;
-    fillRect(0, 0, canvas.width, canvas.height, '#424242');
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, canvas.height); ctx.stroke(); }
-    for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(canvas.width, y + .5); ctx.stroke(); }
+    const sc = screen();
+    fillRect(0, 0, canvas.width, canvas.height, sc.background === 'camera' ? '#424242' : rgb565(sc.background));
+    if (sc.background === 'camera') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, canvas.height); ctx.stroke(); }
+      for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(canvas.width, y + .5); ctx.stroke(); }
+    }
     const pressedPreview = $('pressed').checked, checkedPreview = $('checked').checked;
-    layout.widgets.forEach((w, i) => { if (isButton(w)) drawButton(w, pressedPreview && i === selected, checkedPreview && i === selected); });
-    layout.widgets.forEach((w) => { if (!isButton(w)) drawLabel(w); });
+    widgets().forEach((w, i) => { if (kind(w) === 'button') drawButton(w, pressedPreview && i === selected, checkedPreview && i === selected); });
+    widgets().forEach((w) => { if (kind(w) === 'slider') drawSlider(w); });
+    widgets().forEach((w) => { if (kind(w) === 'label') drawLabel(w); });
     if (selected >= 0) {
-      const b = layout.widgets[selected];
+      const b = widgets()[selected];
       ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
       ctx.strokeRect(b.x - 1.5, b.y - 1.5, b.width + 3, b.height + 3);
       ctx.setLineDash([]);
       fillRect(b.x + b.width - 6, b.y + b.height - 6, 6, 6, '#ffeb3b');
     }
-    renderList();
-    renderProps();
+    renderTabs(); renderList(); renderProps();
+    $('png').href = '/api/preview.png?screen=' + encodeURIComponent(sc.id);
+  }
+
+  function renderTabs() {
+    const nav = $('tabs'); nav.textContent = '';
+    layout.screens.forEach((sc, i) => {
+      const b = document.createElement('button');
+      b.className = 'tab' + (i === screenIndex ? ' active' : '');
+      b.textContent = `${sc.id} (${sc.background})`;
+      b.onclick = () => { screenIndex = i; selected = -1; render(); };
+      nav.appendChild(b);
+    });
   }
 
   function renderList() {
-    const ul = $('widgets'); ul.innerHTML = '';
-    layout.widgets.forEach((b, i) => {
+    const ul = $('widgets'); ul.textContent = '';
+    widgets().forEach((w, i) => {
       const li = document.createElement('li');
-      li.textContent = `${isButton(b) ? 'B' : 'L'} ${b.id} (${b.x},${b.y} ${b.width}x${b.height}) "${widgetText(b)}"` + (b.on_tap ? ` -> ${b.on_tap}` : '');
+      const extra = [w.on_tap, w.on_press, w.on_change].filter(Boolean).map((h) => '-> ' + h).join(' ') + (w.navigate ? ` => ${w.navigate}` : '');
+      li.textContent = `${kind(w)[0].toUpperCase()} ${w.id} (${w.x},${w.y} ${w.width}x${w.height}) "${captionOf(w) ?? ''}" ${extra}`;
       li.className = i === selected ? 'selected' : '';
       li.onclick = () => { selected = i; render(); };
       ul.appendChild(li);
@@ -183,55 +242,84 @@
   }
 
   function renderProps() {
+    const sc = screen();
+    $('sc_id').value = sc.id;
+    $('sc_kind').value = sc.background === 'camera' ? 'camera' : 'solid';
+    $('sc_color').value = sc.background === 'camera' ? '#000000' : sc.background;
+    $('sc_color').disabled = sc.background === 'camera';
+    $('screen_remove').disabled = layout.screens.length <= 1;
+
     const has = selected >= 0;
     $('props').disabled = !has;
-    const b = has ? layout.widgets[selected] : null;
-    const button = has ? isButton(b) : true;
-    document.querySelectorAll('.button-only').forEach((el) => { el.style.display = button ? '' : 'none'; });
-    document.querySelectorAll('.label-only').forEach((el) => { el.style.display = button ? 'none' : ''; });
-    $('p_type').value = has ? (b.type || 'button') : '';
-    propIds.forEach((k) => { $('p_' + k).value = has ? b[k] : ''; });
-    $('p_label').value = has && button ? b.label : '';
-    $('p_text_value').value = has && !button ? b.text : '';
-    callbackIds.forEach((k) => { $('p_' + k).value = has ? (b[k] || '') : ''; });
-    const ids = button ? buttonStyleIds : labelStyleIds;
-    [...buttonStyleIds, ...labelStyleIds].forEach((k) => {
-      const el = $('p_' + k);
-      if (!has || !ids.includes(k)) { el.value = numericStyle.includes(k) ? 0 : k === 'align' ? 'left' : '#000000'; return; }
-      el.value = b.style[k] === null || b.style[k] === undefined ? '#000000' : b.style[k];
+    const w = has ? widgets()[selected] : null;
+    const k = has ? kind(w) : 'button';
+    document.querySelectorAll('#props label[class]').forEach((el) => { el.style.display = el.classList.contains('k-' + k) ? '' : 'none'; });
+    $('p_type').value = has ? k : '';
+    $('p_id').value = has ? w.id : '';
+    $('p_label').value = has && k !== 'label' ? (w.label ?? '') : '';
+    $('p_text_value').value = has && k === 'label' ? w.text : '';
+    geometryIds.forEach((g) => { $('p_' + g).value = has ? w[g] : ''; });
+    $('p_icon').value = has && w.icon ? w.icon : 'none';
+    const nav = $('p_navigate'); nav.textContent = '';
+    [''].concat(layout.screens.map((s) => s.id)).forEach((id) => { const o = document.createElement('option'); o.value = id; o.textContent = id || '(none)'; nav.appendChild(o); });
+    nav.value = has && w.navigate ? w.navigate : '';
+    ['min', 'max', 'step', 'value'].forEach((r) => { $('p_' + r).value = has && k === 'slider' ? w[r] : ''; });
+    ['on_tap', 'on_press', 'on_change'].forEach((e) => { $('p_' + e).value = has ? (w[e] || '') : ''; });
+    allStyleIds.forEach((s) => {
+      const el = $('p_' + s);
+      if (!has || !styleIds[k].includes(s)) { if (el.type === 'checkbox') el.checked = false; else el.value = numericStyle.includes(s) ? 0 : s === 'align' ? 'left' : '#000000'; return; }
+      if (el.type === 'checkbox') el.checked = !!w.style[s];
+      else el.value = w.style[s] === null || w.style[s] === undefined ? '#000000' : w.style[s];
     });
-    $('p_fill_none').checked = has && !button && b.style.fill === null;
+    $('p_fill_none').checked = has && k === 'label' && w.style.fill === null;
     $('p_fill').disabled = $('p_fill_none').checked;
     $('s_namespace').value = layout.namespace; $('s_width').value = layout.screen.width; $('s_height').value = layout.screen.height;
   }
 
+  function changed() { render(); refreshCpp(); }
   function bindProps() {
-    propIds.forEach((k) => $('p_' + k).addEventListener('change', (e) => {
+    $('p_id').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].id = e.target.value; changed(); } });
+    geometryIds.forEach((g) => $('p_' + g).addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected][g] = Number(e.target.value); changed(); } }));
+    $('p_label').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].label = e.target.value; changed(); } });
+    $('p_text_value').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].text = e.target.value; changed(); } });
+    $('p_icon').addEventListener('change', (e) => { if (selected >= 0) { const w = widgets()[selected]; if (e.target.value === 'none') delete w.icon; else w.icon = e.target.value; changed(); } });
+    $('p_navigate').addEventListener('change', (e) => { if (selected >= 0) { const w = widgets()[selected]; if (e.target.value) w.navigate = e.target.value; else delete w.navigate; changed(); } });
+    ['min', 'max', 'step', 'value'].forEach((r) => $('p_' + r).addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected][r] = Number(e.target.value); changed(); } }));
+    ['on_tap', 'on_press', 'on_change'].forEach((ev) => $('p_' + ev).addEventListener('change', (e) => {
       if (selected < 0) return;
-      const b = layout.widgets[selected];
-      b[k] = ['x', 'y', 'width', 'height'].includes(k) ? Number(e.target.value) : e.target.value;
-      render(); refreshCpp();
+      const w = widgets()[selected];
+      if (e.target.value.trim()) w[ev] = e.target.value.trim(); else delete w[ev];
+      changed();
     }));
-    $('p_label').addEventListener('change', (e) => { if (selected >= 0) { layout.widgets[selected].label = e.target.value; render(); refreshCpp(); } });
-    $('p_text_value').addEventListener('change', (e) => { if (selected >= 0) { layout.widgets[selected].text = e.target.value; render(); refreshCpp(); } });
-    callbackIds.forEach((k) => $('p_' + k).addEventListener('change', (e) => {
+    allStyleIds.forEach((s) => $('p_' + s).addEventListener('change', (e) => {
       if (selected < 0) return;
-      const b = layout.widgets[selected];
-      if (e.target.value.trim()) b[k] = e.target.value.trim(); else delete b[k];
-      render(); refreshCpp();
+      const w = widgets()[selected];
+      if (e.target.type === 'checkbox') w.style[s] = e.target.checked;
+      else w.style[s] = numericStyle.includes(s) ? Number(e.target.value) : s === 'align' ? e.target.value : e.target.value.toUpperCase();
+      changed();
     }));
-    [...new Set([...buttonStyleIds, ...labelStyleIds])].forEach((k) => $('p_' + k).addEventListener('change', (e) => {
-      if (selected < 0) return;
-      const b = layout.widgets[selected];
-      b.style[k] = numericStyle.includes(k) ? Number(e.target.value) : k === 'align' ? e.target.value : e.target.value.toUpperCase();
-      render(); refreshCpp();
-    }));
-    $('p_fill_none').addEventListener('change', (e) => {
-      if (selected < 0) return;
-      const b = layout.widgets[selected];
-      b.style.fill = e.target.checked ? null : '#000000';
-      render(); refreshCpp();
+    $('p_fill_none').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].style.fill = e.target.checked ? null : '#000000'; changed(); } });
+    $('sc_id').addEventListener('change', (e) => {
+      const old = screen().id, next = e.target.value;
+      layout.screens.forEach((s) => s.widgets.forEach((w) => { if (w.navigate === old) w.navigate = next; }));
+      screen().id = next; changed();
     });
+    const setBackground = () => { screen().background = $('sc_kind').value === 'camera' ? 'camera' : $('sc_color').value.toUpperCase(); changed(); };
+    $('sc_kind').addEventListener('change', setBackground);
+    $('sc_color').addEventListener('change', setBackground);
+    $('screen_add').onclick = () => {
+      let n = layout.screens.length + 1;
+      while (layout.screens.some((s) => s.id === 'screen_' + n)) n++;
+      layout.screens.push({ id: 'screen_' + n, background: '#101820', widgets: [] });
+      screenIndex = layout.screens.length - 1; selected = -1; changed();
+    };
+    $('screen_remove').onclick = () => {
+      if (layout.screens.length <= 1) return;
+      const id = screen().id;
+      layout.screens.forEach((s) => s.widgets.forEach((w) => { if (w.navigate === id) delete w.navigate; }));
+      layout.screens.splice(screenIndex, 1);
+      screenIndex = 0; selected = -1; changed();
+    };
     $('s_namespace').addEventListener('change', (e) => { layout.namespace = e.target.value; refreshCpp(); });
     $('s_width').addEventListener('change', (e) => { layout.screen.width = Number(e.target.value); render(); });
     $('s_height').addEventListener('change', (e) => { layout.screen.height = Number(e.target.value); render(); });
@@ -245,19 +333,18 @@
   }
   function snap(v) { return $('snap').checked ? Math.round(v / 8) * 8 : v; }
   function hit(p) {
-    for (let i = layout.widgets.length - 1; i >= 0; i--) {
-      const b = layout.widgets[i];
+    const list = widgets();
+    for (let i = list.length - 1; i >= 0; i--) {
+      const b = list[i];
       if (p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height) return i;
     }
     return -1;
   }
-
   canvas.addEventListener('mousedown', (e) => {
-    const p = canvasPoint(e);
-    const i = hit(p);
+    const p = canvasPoint(e), i = hit(p);
     selected = i;
     if (i >= 0) {
-      const b = layout.widgets[i];
+      const b = widgets()[i];
       const resize = p.x >= b.x + b.width - 10 && p.y >= b.y + b.height - 10;
       drag = { mode: resize ? 'resize' : 'move', start: p, orig: { x: b.x, y: b.y, width: b.width, height: b.height } };
     }
@@ -265,7 +352,7 @@
   });
   window.addEventListener('mousemove', (e) => {
     if (!drag || selected < 0) return;
-    const p = canvasPoint(e), b = layout.widgets[selected], dx = p.x - drag.start.x, dy = p.y - drag.start.y;
+    const p = canvasPoint(e), b = widgets()[selected], dx = p.x - drag.start.x, dy = p.y - drag.start.y;
     if (drag.mode === 'move') {
       b.x = Math.max(0, Math.min(layout.screen.width - b.width, snap(drag.orig.x + dx)));
       b.y = Math.max(0, Math.min(layout.screen.height - b.height, snap(drag.orig.y + dy)));
@@ -277,40 +364,33 @@
   });
   window.addEventListener('mouseup', () => { if (drag) { drag = null; refreshCpp(); } });
   window.addEventListener('keydown', (e) => {
-    if (selected < 0 || e.target.tagName === 'INPUT') return;
-    const b = layout.widgets[selected], step = e.shiftKey ? 8 : 1;
+    if (selected < 0 || ['INPUT', 'SELECT'].includes(e.target.tagName)) return;
+    const b = widgets()[selected], step = e.shiftKey ? 8 : 1;
     const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
-    if (moves[e.key]) { b.x = Math.max(0, b.x + moves[e.key][0]); b.y = Math.max(0, b.y + moves[e.key][1]); render(); refreshCpp(); e.preventDefault(); }
+    if (moves[e.key]) { b.x = Math.max(0, b.x + moves[e.key][0]); b.y = Math.max(0, b.y + moves[e.key][1]); changed(); e.preventDefault(); }
     if (e.key === 'Delete') $('delete').click();
   });
 
   function nextId(prefix) {
-    let n = layout.widgets.length + 1;
-    while (layout.widgets.some((w) => w.id === prefix + n)) n++;
+    const all = layout.screens.flatMap((s) => s.widgets);
+    let n = all.length + 1;
+    while (all.some((w) => w.id === prefix + n)) n++;
     return n;
   }
-  $('add').onclick = () => {
-    const n = nextId('button_');
-    layout.widgets.push({ type: 'button', id: 'button_' + n, label: 'BTN ' + n, x: 16, y: 16, width: 160, height: 72, style: { ...buttonDefaults } });
-    selected = layout.widgets.length - 1; render(); refreshCpp();
-  };
-  $('add_label').onclick = () => {
-    const n = nextId('label_');
-    layout.widgets.push({ type: 'label', id: 'label_' + n, text: 'LABEL ' + n, x: 16, y: 16, width: 240, height: 24, style: { ...labelDefaults } });
-    selected = layout.widgets.length - 1; render(); refreshCpp();
-  };
-  $('delete').onclick = () => { if (selected >= 0) { layout.widgets.splice(selected, 1); selected = -1; render(); refreshCpp(); } };
+  function addWidget(w) { widgets().push(w); selected = widgets().length - 1; changed(); }
+  $('add').onclick = () => { const n = nextId('button_'); addWidget({ type: 'button', id: 'button_' + n, label: 'BTN ' + n, x: 16, y: 16, width: 160, height: 72, style: { ...defaults.button } }); };
+  $('add_label').onclick = () => { const n = nextId('label_'); addWidget({ type: 'label', id: 'label_' + n, text: 'LABEL ' + n, x: 16, y: 16, width: 240, height: 24, style: { ...defaults.label } }); };
+  $('add_slider').onclick = () => { const n = nextId('slider_'); addWidget({ type: 'slider', id: 'slider_' + n, label: 'SLIDER ' + n, x: 40, y: 100, width: 720, height: 72, min: 0, max: 100, step: 1, value: 50, style: { ...defaults.slider } }); };
+  $('delete').onclick = () => { if (selected >= 0) { widgets().splice(selected, 1); selected = -1; changed(); } };
 
   function post(url) {
     return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Editor-Token': token }, body: JSON.stringify(layout) });
   }
-
   async function refreshCpp() {
     const r = await post('/api/cpp');
     if (r.ok) { $('cpp').textContent = await r.text(); setStatus('ok', true); }
     else { const j = await r.json(); $('cpp').textContent = ''; setStatus('invalid: ' + j.error, false); }
   }
-
   $('save').onclick = async () => {
     const r = await post('/api/layout');
     const j = await r.json();
@@ -322,7 +402,7 @@
     const [f, l] = await Promise.all([fetch('/api/font').then((r) => r.json()), fetch('/api/layout').then((r) => r.json())]);
     font = f;
     if (l.error) { setStatus('layout invalid: ' + l.error, false); return; }
-    layout = l.layout; token = l.token; $('path').textContent = l.path; selected = -1;
+    layout = l.layout; token = l.token; $('path').textContent = l.path; screenIndex = 0; selected = -1;
     render(); refreshCpp();
   }
   bindProps();

@@ -41,8 +41,8 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | `src/task/task_context.hpp` | 共有資源とタスク参照の保持、各タスク用コンテキストの組み立て |
 | `src/task/application_initialize_task.hpp`、`src/task/camera_render_task.hpp`、`src/task/pipeline_task.hpp` | タスクごとに必要な依存を列挙するコンテキストとスタック。パイプラインのフレーム解放と結果選別 |
 | `src/task/task_config.hpp` | 動作モード、診断設定、キュー・スタックのサイズ |
-| `src/ui/ui_layout.hpp` | 画面上のボタンとラベルの表。`config/ui_layout.json`から[host_app/ui_designer](../../host_app/ui_designer/README.md)が生成（`make ui-layout`） |
-| `src/ui/app_ui.cpp` | 画面の実行時状態とタップのハンドラ。モデルの有効/無効、枠表示、ステータスラベルの更新 |
+| `src/ui/ui_layout.hpp` | 画面（ページ）とボタン・ラベル・スライダーの表。`config/ui_layout.json`から[host_app/ui_designer](../../host_app/ui_designer/README.md)が生成（`make ui-layout`） |
+| `src/ui/app_ui.cpp` | 画面の実行時状態とハンドラ。画面遷移、モデルの有効/無効、枠表示と信頼度しきい値、ステータスラベルの更新 |
 | `src/task/model_control.hpp` | モデルマスクとパイプライン統計のインターフェース。`PipelineTask`が実装し、UIが参照 |
 | `kernel/middleware/foundation/error_code.hpp` | ログ・OS非依存のエラーコードとコード名 |
 | `kernel/middleware/foundation/error.hpp` | ログ・OS非依存のエラー構造体と判定。`LogStatus()`の実装は`error.cpp`に配置 |
@@ -78,7 +78,7 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 
 メモリ配置はビルド時に`host_app/auto_static_memory_layout`が解決し、リンカスクリプトと`static_memory_layout`用ヘッダを`build-ai-app-person/generated/`へ生成します。
 
-画面下段の`PERSON`、`FACE`、`SEG`ボタンは各モデルの推論を有効/無効にし（有効なモデルは色付き）、`BOXES`は検出枠とマスクの表示を切り替えます。上端のラベルはモデルごとの推論レート（`PERSON 7.5  FACE 7.3  SEG --  FPS`）、右上は検出数（`DET 2`）を表示します。タップはUARTに`ui: tap id=3 models=6`、`ui: tap id=6 boxes=off`のように出ます。タッチコントローラ（GT911、I2C2）の初期化に失敗しても起動は続行し、`touch: controller unavailable; on-screen UI disabled`を出します。ウィジェットの追加や配置の変更は`make -C userspace/ai-app ui-designer`（または`host_app/ui_designer`のCLI）で行い、`make -C userspace/ai-app ui-layout`でヘッダを再生成します。ハンドラは`src/ui/app_ui.cpp`にあります（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。
+画面は2つあります。カメラ画面では下段の`PERSON`、`FACE`、`SEG`ボタンが各モデルの推論を有効/無効にし（有効なモデルは色付き）、`BOXES`は検出枠とマスクの表示を切り替えます。上端のラベルはモデルごとの推論レート（`PERSON 7.5  FACE 7.3  SEG --  FPS`）、右上は検出数（`DET 2`）を表示します。右上のハンバーガーをタップすると単色背景の設定画面に切り替わり、スライダーで表示する枠の最小信頼度（`MIN CONFIDENCE %`）とステータスの更新周期（`STATUS UPDATE MS`）を変えられます。左上の矢印でカメラ画面に戻ります。操作はUARTに`ui: tap id=4 models=6`、`ui: screen=1`、`ui: min confidence=35%`のように出ます。タッチコントローラ（GT911、I2C2）の初期化に失敗しても起動は続行し、`touch: controller unavailable; on-screen UI disabled`を出します。ウィジェットや画面の追加・変更は`make -C userspace/ai-app ui-designer`（または`host_app/ui_designer`のCLI）で行い、`make -C userspace/ai-app ui-layout`でヘッダを再生成します。ハンドラは`src/ui/app_ui.cpp`にあります（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。
 
 ## 主な生成物
 

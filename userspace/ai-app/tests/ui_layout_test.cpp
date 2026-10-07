@@ -21,13 +21,30 @@ struct FakeModels final : public uai::ai::task::ModelControl {
 
 uai::ai::ui::Rect BoundsOf(uai::ai::app_ui::WidgetId id)
 {
-    for (const auto &button : uai::ai::app_ui::kButtons) {
-        if (button.id == static_cast<std::uint16_t>(id)) return button.bounds;
-    }
-    for (const auto &label : uai::ai::app_ui::kLabels) {
-        if (label.id == static_cast<std::uint16_t>(id)) return label.bounds;
+    const std::uint16_t wanted = static_cast<std::uint16_t>(id);
+    for (const uai::ai::ui::ScreenSpec &screen : uai::ai::app_ui::kScreens) {
+        for (std::size_t i = 0U; i < screen.button_count; ++i) {
+            if (screen.buttons[i].id == wanted) return screen.buttons[i].bounds;
+        }
+        for (std::size_t i = 0U; i < screen.label_count; ++i) {
+            if (screen.labels[i].id == wanted) return screen.labels[i].bounds;
+        }
+        for (std::size_t i = 0U; i < screen.slider_count; ++i) {
+            if (screen.sliders[i].id == wanted) return screen.sliders[i].bounds;
+        }
     }
     return {};
+}
+
+const uai::ai::ui::ButtonSpec &ButtonOf(uai::ai::app_ui::WidgetId id)
+{
+    const std::uint16_t wanted = static_cast<std::uint16_t>(id);
+    for (const uai::ai::ui::ScreenSpec &screen : uai::ai::app_ui::kScreens) {
+        for (std::size_t i = 0U; i < screen.button_count; ++i) {
+            if (screen.buttons[i].id == wanted) return screen.buttons[i];
+        }
+    }
+    return uai::ai::app_ui::kMainButtons[0];
 }
 
 void Tap(uai::ai::app_ui::AppUi &ui, uai::ai::app_ui::WidgetId id)
@@ -38,25 +55,45 @@ void Tap(uai::ai::app_ui::AppUi &ui, uai::ai::app_ui::WidgetId id)
     ui.HandleTouch({false, 0U, 0U});
 }
 
-/* Guards the generated header: it must compile against ui::ButtonSpec and
- * describe widgets that lie on the screen. */
-TEST(AiAppUiLayout, GeneratedWidgetsFitScreen)
+std::vector<std::uint16_t> PaintToPixels(const uai::ai::app_ui::AppUi &ui)
 {
-    static_assert(uai::ai::app_ui::kButtonCount >= 1U);
-    static_assert(uai::ai::app_ui::kLabelCount >= 1U);
-    for (std::size_t i = 0U; i < uai::ai::app_ui::kButtonCount; ++i) {
-        const uai::ai::ui::Rect &bounds = uai::ai::app_ui::kButtons[i].bounds;
+    std::vector<std::uint16_t> pixels(
+        static_cast<std::size_t>(uai::ai::app_ui::kScreenWidth) *
+            uai::ai::app_ui::kScreenHeight, 0x0000U);
+    uai::ai::ui::Canvas canvas(pixels.data(), uai::ai::app_ui::kScreenWidth,
+                               uai::ai::app_ui::kScreenHeight);
+    ui.Overlay().Paint(canvas);
+    return pixels;
+}
+
+std::uint16_t PixelAt(const std::vector<std::uint16_t> &pixels, std::uint16_t x,
+                      std::uint16_t y)
+{
+    return pixels[static_cast<std::size_t>(y) * uai::ai::app_ui::kScreenWidth + x];
+}
+
+/* Guards the generated header: every widget of every screen must lie on the
+ * screen and the main screen must be the camera one. */
+TEST(AiAppUiLayout, GeneratedScreensFitDisplay)
+{
+    static_assert(uai::ai::app_ui::kScreenCount >= 2U);
+    static_assert(static_cast<std::size_t>(uai::ai::app_ui::ScreenId::kMain) == 0U);
+    EXPECT_EQ(uai::ai::app_ui::kScreens[0].background, uai::ai::ui::Background::kCamera);
+    EXPECT_EQ(uai::ai::app_ui::kScreens[1].background, uai::ai::ui::Background::kSolid);
+
+    const auto check = [](const uai::ai::ui::Rect &bounds) {
         EXPECT_LE(bounds.x + bounds.width, uai::ai::app_ui::kScreenWidth);
         EXPECT_LE(bounds.y + bounds.height, uai::ai::app_ui::kScreenHeight);
         EXPECT_GT(bounds.width, 0U);
         EXPECT_GT(bounds.height, 0U);
-    }
-    for (std::size_t i = 0U; i < uai::ai::app_ui::kLabelCount; ++i) {
-        const uai::ai::ui::Rect &bounds = uai::ai::app_ui::kLabels[i].bounds;
-        EXPECT_LE(bounds.x + bounds.width, uai::ai::app_ui::kScreenWidth);
-        EXPECT_LE(bounds.y + bounds.height, uai::ai::app_ui::kScreenHeight);
-        EXPECT_LT(std::strlen(uai::ai::app_ui::kLabels[i].text),
-                  uai::ai::ui::kLabelTextCapacity);
+    };
+    for (const uai::ai::ui::ScreenSpec &screen : uai::ai::app_ui::kScreens) {
+        for (std::size_t i = 0U; i < screen.button_count; ++i) check(screen.buttons[i].bounds);
+        for (std::size_t i = 0U; i < screen.slider_count; ++i) check(screen.sliders[i].bounds);
+        for (std::size_t i = 0U; i < screen.label_count; ++i) {
+            check(screen.labels[i].bounds);
+            EXPECT_LT(std::strlen(screen.labels[i].text), uai::ai::ui::kLabelTextCapacity);
+        }
     }
 }
 
@@ -77,36 +114,38 @@ TEST(AiAppUi, ModelButtonsToggleMaskAndCheckedState)
 
     /* The overlay reflects the mask: the checked FACE button is painted with
      * checked_fill, the unchecked PERSON button with fill. */
-    std::vector<std::uint16_t> pixels(
-        static_cast<std::size_t>(uai::ai::app_ui::kScreenWidth) *
-            uai::ai::app_ui::kScreenHeight, 0U);
-    uai::ai::ui::Canvas canvas(pixels.data(), uai::ai::app_ui::kScreenWidth,
-                               uai::ai::app_ui::kScreenHeight);
-    ui.Overlay().Paint(canvas);
+    const std::vector<std::uint16_t> pixels = PaintToPixels(ui);
     const auto sample = [&](uai::ai::app_ui::WidgetId id) {
         const uai::ai::ui::Rect b = BoundsOf(id);
-        return pixels[static_cast<std::size_t>(b.y + 6U) *
-                          uai::ai::app_ui::kScreenWidth + b.x + 6U];
+        return PixelAt(pixels, static_cast<std::uint16_t>(b.x + 6U),
+                       static_cast<std::uint16_t>(b.y + 6U));
     };
     EXPECT_EQ(sample(uai::ai::app_ui::WidgetId::kFace),
-              uai::ai::app_ui::kButtons[1].style.checked_fill);
+              ButtonOf(uai::ai::app_ui::WidgetId::kFace).style.checked_fill);
     EXPECT_EQ(sample(uai::ai::app_ui::WidgetId::kPerson),
-              uai::ai::app_ui::kButtons[0].style.fill);
+              ButtonOf(uai::ai::app_ui::WidgetId::kPerson).style.fill);
 }
 
-TEST(AiAppUi, BoxesToggleAndMaskFilterVisibleBoxes)
+TEST(AiAppUi, BoxesToggleMaskAndConfidenceFilterVisibleBoxes)
 {
     FakeModels models;
     uai::ai::app_ui::AppUi ui(models);
     uai::ai::inference::BoxSet latest{};
     latest.person_valid = true;
     latest.person.count = 2U;
+    latest.person.boxes[0].confidence = 0.9F;
+    latest.person.boxes[1].confidence = 0.3F;
     latest.face_valid = true;
     latest.face.count = 1U;
+    latest.face.boxes[0].confidence = 0.7F;
     latest.segmentation_valid = true;
 
+    /* The layout's initial MIN CONFIDENCE is 50 %: the 0.3 box is hidden. */
+    EXPECT_EQ(ui.MinConfidencePercent(), 50);
     uai::ai::inference::BoxSet visible = ui.VisibleBoxes(latest);
-    EXPECT_EQ(visible.person.count, 2U);
+    EXPECT_EQ(visible.person.count, 1U);
+    EXPECT_FLOAT_EQ(visible.person.boxes[0].confidence, 0.9F);
+    EXPECT_EQ(visible.face.count, 1U);
     EXPECT_TRUE(visible.segmentation_valid);
 
     Tap(ui, uai::ai::app_ui::WidgetId::kPerson);
@@ -125,6 +164,51 @@ TEST(AiAppUi, BoxesToggleAndMaskFilterVisibleBoxes)
     ui.HandleTouch({true, 400U, 200U});
     ui.HandleTouch({false, 0U, 0U});
     EXPECT_FALSE(ui.ShowBoxes());
+}
+
+TEST(AiAppUi, MenuNavigationAndSliders)
+{
+    FakeModels models;
+    uai::ai::app_ui::AppUi ui(models);
+    EXPECT_EQ(ui.CurrentScreen(), uai::ai::app_ui::ScreenId::kMain);
+    EXPECT_TRUE(ui.ShowsCamera());
+
+    /* Hamburger -> settings screen, drawn with a solid background. */
+    Tap(ui, uai::ai::app_ui::WidgetId::kOpenMenu);
+    EXPECT_EQ(ui.CurrentScreen(), uai::ai::app_ui::ScreenId::kMenu);
+    EXPECT_FALSE(ui.ShowsCamera());
+    const std::vector<std::uint16_t> menu = PaintToPixels(ui);
+    EXPECT_EQ(PixelAt(menu, 400U, 350U), uai::ai::app_ui::kScreens[1].color);
+
+    /* Main-screen buttons are not reachable while the menu is shown. */
+    const std::uint8_t mask_before = models.mask;
+    Tap(ui, uai::ai::app_ui::WidgetId::kPerson);
+    EXPECT_EQ(models.mask, mask_before);
+
+    /* Dragging the confidence slider to its right end sets 100 %. */
+    const uai::ai::ui::Rect slider = BoundsOf(uai::ai::app_ui::WidgetId::kMinConfidence);
+    const std::uint16_t y = static_cast<std::uint16_t>(slider.y + slider.height - 4U);
+    uai::ai::ui::Event event = ui.HandleTouch(
+        {true, static_cast<std::uint16_t>(slider.x + slider.width - 1U), y});
+    EXPECT_EQ(event.type, uai::ai::ui::EventType::kChange);
+    EXPECT_EQ(ui.MinConfidencePercent(), 100);
+    event = ui.HandleTouch({true, slider.x, y});
+    EXPECT_EQ(event.value, 0);
+    EXPECT_EQ(ui.MinConfidencePercent(), 0);
+    ui.HandleTouch({false, 0U, 0U});
+
+    /* The second slider drives the status refresh period. */
+    EXPECT_EQ(ui.StatusPeriod(), 500U);
+    const uai::ai::ui::Rect period = BoundsOf(uai::ai::app_ui::WidgetId::kStatusPeriod);
+    ui.HandleTouch({true, static_cast<std::uint16_t>(period.x + period.width - 1U),
+                    static_cast<std::uint16_t>(period.y + period.height - 4U)});
+    ui.HandleTouch({false, 0U, 0U});
+    EXPECT_EQ(ui.StatusPeriod(), 2000U);
+
+    /* Back arrow returns to the camera screen. */
+    Tap(ui, uai::ai::app_ui::WidgetId::kCloseMenu);
+    EXPECT_EQ(ui.CurrentScreen(), uai::ai::app_ui::ScreenId::kMain);
+    EXPECT_TRUE(ui.ShowsCamera());
 }
 
 TEST(AiAppUi, StatusLabelShowsRatesPerEnabledModel)
@@ -155,30 +239,38 @@ TEST(AiAppUi, StatusLabelShowsRatesPerEnabledModel)
     EXPECT_STREQ(ui.StatusText(), "PERSON 2.5  FACE 0.0  SEG --  FPS");
 }
 
-/* The handler bound in config/ui_layout.json must be called for a tap on the
- * BOXES button and for nothing else. */
-TEST(AiAppUiLayout, DispatchRoutesTapToBoundHandler)
+/* Dispatch routes taps, navigation, and slider changes to the bound
+ * handlers and nothing else. */
+TEST(AiAppUiLayout, DispatchRoutesEventsToBoundHandlers)
 {
     struct Handlers {
-        int tap_count = 0;
-        std::uint16_t last_id = 0U;
-        void OnToggleBoxesTap(const uai::ai::ui::Event &event)
-        {
-            ++tap_count;
-            last_id = event.widget_id;
-        }
-        void OnPersonTap(const uai::ai::ui::Event &) { ++tap_count; }
-        void OnFaceTap(const uai::ai::ui::Event &) { ++tap_count; }
-        void OnSegmentationTap(const uai::ai::ui::Event &) { ++tap_count; }
+        int taps = 0;
+        int changes = 0;
+        std::int32_t last_value = 0;
+        uai::ai::app_ui::ScreenId shown = uai::ai::app_ui::ScreenId::kMain;
+        void OnToggleBoxesTap(const uai::ai::ui::Event &) { ++taps; }
+        void OnPersonTap(const uai::ai::ui::Event &) { ++taps; }
+        void OnFaceTap(const uai::ai::ui::Event &) { ++taps; }
+        void OnSegmentationTap(const uai::ai::ui::Event &) { ++taps; }
+        void OnMinConfidenceChange(const uai::ai::ui::Event &e) { ++changes; last_value = e.value; }
+        void OnStatusPeriodChange(const uai::ai::ui::Event &e) { ++changes; last_value = e.value; }
+        void ShowScreen(uai::ai::app_ui::ScreenId screen) { shown = screen; }
     } handlers;
 
     uai::ai::ui::Event tap{};
     tap.type = uai::ai::ui::EventType::kTap;
-    tap.widget_id = static_cast<std::uint16_t>(
-        uai::ai::app_ui::WidgetId::kToggleBoxes);
+    tap.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kOpenMenu);
     EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, tap));
-    EXPECT_EQ(handlers.tap_count, 1);
-    EXPECT_EQ(handlers.last_id, tap.widget_id);
+    EXPECT_EQ(handlers.shown, uai::ai::app_ui::ScreenId::kMenu);
+    EXPECT_EQ(handlers.taps, 0);
+
+    uai::ai::ui::Event change{};
+    change.type = uai::ai::ui::EventType::kChange;
+    change.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kMinConfidence);
+    change.value = 35;
+    EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, change));
+    EXPECT_EQ(handlers.changes, 1);
+    EXPECT_EQ(handlers.last_value, 35);
 
     uai::ai::ui::Event press = tap;
     press.type = uai::ai::ui::EventType::kPress;
@@ -187,7 +279,6 @@ TEST(AiAppUiLayout, DispatchRoutesTapToBoundHandler)
     uai::ai::ui::Event label_tap = tap;
     label_tap.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kStatus);
     EXPECT_FALSE(uai::ai::app_ui::Dispatch(handlers, label_tap));
-    EXPECT_EQ(handlers.tap_count, 1);
 }
 
 } // namespace

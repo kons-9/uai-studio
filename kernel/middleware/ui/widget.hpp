@@ -18,6 +18,14 @@ struct ButtonStyle {
     std::uint8_t border_width = 2U;
 };
 
+/* Built-in glyph-free icons drawn instead of the label when set. */
+enum class Icon : std::uint8_t {
+    kNone,
+    kMenu,   /* three bars (hamburger) */
+    kBack,   /* left arrow */
+    kClose,  /* cross */
+};
+
 /* Static description of one button. Tables of these are the contract that
  * host_app/ui_designer generates; runtime state lives in ButtonPanel. */
 struct ButtonSpec {
@@ -25,6 +33,7 @@ struct ButtonSpec {
     Rect bounds{};
     const char *label = "";
     ButtonStyle style{};
+    Icon icon = Icon::kNone;
 };
 
 enum class TextAlign : std::uint8_t {
@@ -50,10 +59,33 @@ struct LabelSpec {
     LabelStyle style{};
 };
 
+struct SliderStyle {
+    std::uint16_t track = Rgb565(0x40U, 0x40U, 0x40U);
+    std::uint16_t fill = Rgb565(0x20U, 0x60U, 0xC0U);
+    std::uint16_t knob = Rgb565(0xFFU, 0xFFU, 0xFFU);
+    std::uint16_t text = Rgb565(0xFFU, 0xFFU, 0xFFU);
+    std::uint8_t text_scale = 2U;
+    bool show_value = true;
+};
+
+/* Horizontal slider. The caption and current value are drawn above the
+ * track; the knob follows the finger while it stays down. */
+struct SliderSpec {
+    std::uint16_t id = 0U;
+    Rect bounds{};
+    const char *label = "";
+    std::int32_t minimum = 0;
+    std::int32_t maximum = 100;
+    std::int32_t step = 1;
+    std::int32_t initial = 0;
+    SliderStyle style{};
+};
+
 enum class EventType : std::uint8_t {
     kNone,
     kPress,
     kTap,
+    kChange,  /* slider value changed; Event::value holds the new value */
 };
 
 struct Event {
@@ -61,6 +93,7 @@ struct Event {
     std::uint16_t widget_id = 0U;
     std::uint16_t x = 0U;
     std::uint16_t y = 0U;
+    std::int32_t value = 0;
 };
 
 /* Something that draws itself onto a frame already holding the camera image. */
@@ -131,6 +164,78 @@ public:
 private:
     const Painter *const *painters_;
     std::size_t count_;
+};
+
+inline constexpr std::size_t kMaxSliders = 8U;
+
+class SliderPanel final : public Painter {
+public:
+    SliderPanel(const SliderSpec *sliders, std::size_t count);
+
+    /* kChange is returned whenever the finger moves the value, including on
+     * the initial press. */
+    Event Update(const TouchPoint &sample);
+    void Paint(Canvas &canvas) const override;
+    std::int32_t Value(std::uint16_t id) const;
+    bool SetValue(std::uint16_t id, std::int32_t value);
+    bool IsDragging() const { return active_index_ >= 0; }
+    std::size_t Count() const { return count_; }
+
+    /* Track geometry inside the bounds; shared with the host preview. */
+    static Rect TrackOf(const SliderSpec &slider);
+    static std::int32_t ValueAt(const SliderSpec &slider, std::uint16_t x);
+
+private:
+    std::int32_t IndexOf(std::uint16_t id) const;
+    static std::int32_t Clamp(const SliderSpec &slider, std::int32_t value);
+    const SliderSpec *sliders_;
+    std::size_t count_;
+    std::int32_t values_[kMaxSliders] = {};
+    std::int32_t active_index_ = -1;
+    bool touch_active_ = false;
+};
+
+enum class Background : std::uint8_t {
+    kCamera,  /* widgets are drawn over the live Pipe1 frame */
+    kSolid,   /* the frame is filled with `color` first */
+};
+
+/* One page of the UI. Tables of these are generated; Screen holds state. */
+struct ScreenSpec {
+    std::uint16_t id = 0U;
+    Background background = Background::kCamera;
+    std::uint16_t color = 0U;
+    const ButtonSpec *buttons = nullptr;
+    std::size_t button_count = 0U;
+    const LabelSpec *labels = nullptr;
+    std::size_t label_count = 0U;
+    const SliderSpec *sliders = nullptr;
+    std::size_t slider_count = 0U;
+};
+
+class Screen final : public Painter {
+public:
+    explicit Screen(const ScreenSpec &spec);
+
+    /* Routes the sample to the buttons and sliders of this screen. */
+    Event Update(const TouchPoint &sample);
+    /* Fills a solid background when configured, then draws buttons,
+     * sliders, and labels in that order. */
+    void Paint(Canvas &canvas) const override;
+
+    const ScreenSpec &Spec() const { return spec_; }
+    ButtonPanel &Buttons() { return buttons_; }
+    LabelPanel &Labels() { return labels_; }
+    SliderPanel &Sliders() { return sliders_; }
+    const ButtonPanel &Buttons() const { return buttons_; }
+    const LabelPanel &Labels() const { return labels_; }
+    const SliderPanel &Sliders() const { return sliders_; }
+
+private:
+    const ScreenSpec &spec_;
+    ButtonPanel buttons_;
+    LabelPanel labels_;
+    SliderPanel sliders_;
 };
 
 } // namespace uai::ai::ui

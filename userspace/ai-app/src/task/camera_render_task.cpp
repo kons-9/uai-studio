@@ -384,10 +384,9 @@ void CameraRenderTask::Run(CameraRenderContext context)
 
     app_ui::AppUi screen_ui(context.pipeline_task);
     std::uint32_t next_touch_poll = common::Task::Now();
-    UAI_LOG_INFO("ui: touch=%s buttons=%u labels=%u\n",
+    UAI_LOG_INFO("ui: touch=%s screens=%u\n",
                  context.touch_ready ? "ready" : "disabled",
-                 static_cast<unsigned int>(app_ui::kButtonCount),
-                 static_cast<unsigned int>(app_ui::kLabelCount));
+                 static_cast<unsigned int>(app_ui::kScreenCount));
 
     std::uint32_t loop_count = 0U;
     unsigned int reported_pipe_errors = 0U;
@@ -595,8 +594,13 @@ void CameraRenderTask::Run(CameraRenderContext context)
                 UAI_LOG_DEBUG("lcd: compose begin sequence=%u\n",
                           static_cast<unsigned int>(capture.sequence));
             }
-            status = context.lcd.ComposeAndPresent(
-                capture, screen_ui.VisibleBoxes(active_boxes), &screen_ui.Overlay());
+            /* Screens without the camera repaint from scratch; the capture
+             * is still taken above so its buffer returns to the pool. */
+            status = screen_ui.ShowsCamera()
+                ? context.lcd.ComposeAndPresent(
+                      capture, screen_ui.VisibleBoxes(active_boxes),
+                      &screen_ui.Overlay())
+                : context.lcd.PresentOverlay(screen_ui.Overlay());
             if (!status.Ok()) {
                 status.LogStatus("lcd");
                 if (!status.IsRoutine()) {

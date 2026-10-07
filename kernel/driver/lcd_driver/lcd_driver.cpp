@@ -621,4 +621,59 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
     return memory_->CommitDisplayBuffer(display);
 }
 
+common::Error LcdDriver::PresentOverlay(const ui::Painter &overlay)
+{
+    Writer writer;
+    common::Error status = management_->Acquire(&writer);
+    if (!status.Ok()) return status;
+    return PresentOverlay(overlay, writer);
+}
+
+common::Error LcdDriver::PresentOverlay(const ui::Painter &overlay,
+                                        const Writer &writer)
+{
+    common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok()) return ownership;
+    if (!initialized_ || memory_ == nullptr || cache_ == nullptr) {
+        return {common::ErrorCode::kNotInitialized};
+    }
+
+    /* Same surface handoff discipline as ComposeAndPresent(). */
+    const uai::driver::DriverStatus sync_status = registers_.Synchronize();
+    if (sync_status == uai::driver::DriverStatus::kBusy) {
+        return {common::ErrorCode::kNoBuffer};
+    }
+    if (!uai::driver::IsOk(sync_status)) {
+        return FromBackend(sync_status);
+    }
+    common::Error status = memory_->CompleteDisplayHandoff();
+    if (!status.Ok()) {
+        return status;
+    }
+
+    pipeline::DisplayBuffer display{};
+    status = memory_->AcquireDisplayBuffer(&display);
+    if (!status.Ok()) {
+        return status;
+    }
+    ui::Canvas canvas(
+        reinterpret_cast<std::uint16_t *>(display.buffer.address),
+        static_cast<std::uint16_t>(pipeline::kCaptureFormat.width),
+        static_cast<std::uint16_t>(pipeline::kCaptureFormat.height));
+    overlay.Paint(canvas);
+
+    status = cache_->PrepareForPeripheralRead(display.buffer);
+    if (!status.Ok()) {
+        (void)memory_->ReleaseDisplayBuffer(display);
+        return status;
+    }
+    const uai::driver::DriverStatus backend_status =
+        registers_.Present(display.buffer.address);
+    if (!uai::driver::IsOk(backend_status)) {
+        (void)memory_->ReleaseDisplayBuffer(display);
+        return FromBackend(backend_status);
+    }
+    return memory_->CommitDisplayBuffer(display);
+}
+
 } // namespace uai::ai::lcd

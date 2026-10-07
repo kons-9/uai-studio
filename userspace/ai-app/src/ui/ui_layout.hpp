@@ -11,16 +11,42 @@ namespace uai::ai::app_ui {
 inline constexpr std::uint16_t kScreenWidth = 800U;
 inline constexpr std::uint16_t kScreenHeight = 480U;
 
-enum class WidgetId : std::uint16_t {
-    kStatus = 1U,
-    kDetections = 2U,
-    kPerson = 3U,
-    kFace = 4U,
-    kSegmentation = 5U,
-    kToggleBoxes = 6U,
+enum class ScreenId : std::uint16_t {
+    kMain = 0U,
+    kMenu = 1U,
 };
 
-inline constexpr ui::ButtonSpec kButtons[] = {
+enum class WidgetId : std::uint16_t {
+    kStatus = 1U,
+    kOpenMenu = 2U,
+    kDetections = 3U,
+    kPerson = 4U,
+    kFace = 5U,
+    kSegmentation = 6U,
+    kToggleBoxes = 7U,
+    kCloseMenu = 8U,
+    kMenuTitle = 9U,
+    kMinConfidence = 10U,
+    kStatusPeriod = 11U,
+    kMenuHint = 12U,
+};
+
+inline constexpr ui::ButtonSpec kMainButtons[] = {
+    {
+        static_cast<std::uint16_t>(WidgetId::kOpenMenu),
+        {744U, 0U, 56U, 48U},
+        "",
+        {
+            ui::Rgb565(0x00U, 0x00U, 0x00U),
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0x00U, 0x00U, 0x00U),
+            ui::Rgb565(0x00U, 0x00U, 0x00U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            2U,
+            0U,
+        },
+        ui::Icon::kMenu,
+    },
     {
         static_cast<std::uint16_t>(WidgetId::kPerson),
         {16U, 400U, 140U, 64U},
@@ -34,6 +60,7 @@ inline constexpr ui::ButtonSpec kButtons[] = {
             3U,
             2U,
         },
+        ui::Icon::kNone,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kFace),
@@ -48,6 +75,7 @@ inline constexpr ui::ButtonSpec kButtons[] = {
             3U,
             2U,
         },
+        ui::Icon::kNone,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kSegmentation),
@@ -62,6 +90,7 @@ inline constexpr ui::ButtonSpec kButtons[] = {
             3U,
             2U,
         },
+        ui::Icon::kNone,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kToggleBoxes),
@@ -76,15 +105,14 @@ inline constexpr ui::ButtonSpec kButtons[] = {
             3U,
             2U,
         },
+        ui::Icon::kNone,
     },
 };
-inline constexpr std::size_t kButtonCount =
-    sizeof(kButtons) / sizeof(kButtons[0]);
 
-inline constexpr ui::LabelSpec kLabels[] = {
+inline constexpr ui::LabelSpec kMainLabels[] = {
     {
         static_cast<std::uint16_t>(WidgetId::kStatus),
-        {0U, 0U, 800U, 24U},
+        {0U, 0U, 736U, 24U},
         "AI STARTING",
         {
             ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
@@ -97,7 +125,7 @@ inline constexpr ui::LabelSpec kLabels[] = {
     },
     {
         static_cast<std::uint16_t>(WidgetId::kDetections),
-        {560U, 32U, 224U, 24U},
+        {520U, 56U, 264U, 24U},
         "",
         {
             ui::Rgb565(0xFFU, 0xE0U, 0x00U),
@@ -109,20 +137,122 @@ inline constexpr ui::LabelSpec kLabels[] = {
         },
     },
 };
-inline constexpr std::size_t kLabelCount =
-    sizeof(kLabels) / sizeof(kLabels[0]);
+
+inline constexpr ui::ButtonSpec kMenuButtons[] = {
+    {
+        static_cast<std::uint16_t>(WidgetId::kCloseMenu),
+        {16U, 16U, 64U, 56U},
+        "",
+        {
+            ui::Rgb565(0x10U, 0x18U, 0x20U),
+            ui::Rgb565(0x30U, 0x40U, 0x50U),
+            ui::Rgb565(0x10U, 0x18U, 0x20U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            2U,
+            2U,
+        },
+        ui::Icon::kBack,
+    },
+};
+
+inline constexpr ui::LabelSpec kMenuLabels[] = {
+    {
+        static_cast<std::uint16_t>(WidgetId::kMenuTitle),
+        {96U, 24U, 400U, 40U},
+        "SETTINGS",
+        {
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            0U,
+            false,
+            4U,
+            ui::TextAlign::kLeft,
+            0U,
+        },
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kMenuHint),
+        {40U, 420U, 720U, 24U},
+        "TAP BACK TO RETURN TO THE CAMERA",
+        {
+            ui::Rgb565(0x80U, 0x90U, 0xA0U),
+            0U,
+            false,
+            2U,
+            ui::TextAlign::kCenter,
+            0U,
+        },
+    },
+};
+
+inline constexpr ui::SliderSpec kMenuSliders[] = {
+    {
+        static_cast<std::uint16_t>(WidgetId::kMinConfidence),
+        {40U, 120U, 720U, 72U},
+        "MIN CONFIDENCE %",
+        0, 100, 5, 50,
+        {
+            ui::Rgb565(0x30U, 0x40U, 0x50U),
+            ui::Rgb565(0x20U, 0x60U, 0xC0U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            2U,
+            true,
+        },
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kStatusPeriod),
+        {40U, 220U, 720U, 72U},
+        "STATUS UPDATE MS",
+        100, 2000, 100, 500,
+        {
+            ui::Rgb565(0x30U, 0x40U, 0x50U),
+            ui::Rgb565(0x20U, 0xA0U, 0x60U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            2U,
+            true,
+        },
+    },
+};
+
+/* Indexed by ScreenId. */
+inline constexpr ui::ScreenSpec kScreens[] = {
+    {
+        static_cast<std::uint16_t>(ScreenId::kMain),
+        ui::Background::kCamera, 0U,
+        kMainButtons, sizeof(kMainButtons) / sizeof(kMainButtons[0]),
+        kMainLabels, sizeof(kMainLabels) / sizeof(kMainLabels[0]),
+        nullptr, 0U,
+    },
+    {
+        static_cast<std::uint16_t>(ScreenId::kMenu),
+        ui::Background::kSolid, ui::Rgb565(0x10U, 0x18U, 0x20U),
+        kMenuButtons, sizeof(kMenuButtons) / sizeof(kMenuButtons[0]),
+        kMenuLabels, sizeof(kMenuLabels) / sizeof(kMenuLabels[0]),
+        kMenuSliders, sizeof(kMenuSliders) / sizeof(kMenuSliders[0]),
+    },
+};
+inline constexpr std::size_t kScreenCount =
+    sizeof(kScreens) / sizeof(kScreens[0]);
 
 /* Handler methods the application must provide on its Handlers type:
  *   void OnFaceTap(const ui::Event &event);
+ *   void OnMinConfidenceChange(const ui::Event &event);
  *   void OnPersonTap(const ui::Event &event);
  *   void OnSegmentationTap(const ui::Event &event);
+ *   void OnStatusPeriodChange(const ui::Event &event);
  *   void OnToggleBoxesTap(const ui::Event &event);
+ *   void ShowScreen(ScreenId screen);
  */
 template <typename Handlers>
 bool Dispatch(Handlers &handlers, const ui::Event &event)
 {
     if (event.type == ui::EventType::kTap) {
         switch (static_cast<WidgetId>(event.widget_id)) {
+        case WidgetId::kOpenMenu:
+            handlers.ShowScreen(ScreenId::kMenu);
+            return true;
         case WidgetId::kPerson:
             handlers.OnPersonTap(event);
             return true;
@@ -134,6 +264,21 @@ bool Dispatch(Handlers &handlers, const ui::Event &event)
             return true;
         case WidgetId::kToggleBoxes:
             handlers.OnToggleBoxesTap(event);
+            return true;
+        case WidgetId::kCloseMenu:
+            handlers.ShowScreen(ScreenId::kMain);
+            return true;
+        default:
+            break;
+        }
+    }
+    if (event.type == ui::EventType::kChange) {
+        switch (static_cast<WidgetId>(event.widget_id)) {
+        case WidgetId::kMinConfidence:
+            handlers.OnMinConfidenceChange(event);
+            return true;
+        case WidgetId::kStatusPeriod:
+            handlers.OnStatusPeriodChange(event);
             return true;
         default:
             break;

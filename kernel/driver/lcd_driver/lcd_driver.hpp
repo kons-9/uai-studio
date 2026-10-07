@@ -51,6 +51,10 @@ public:
         const pipeline::InferenceFrame &frame);
     common::Error ComposeInferenceAndPresent(
         const pipeline::InferenceFrame &frame, const Writer &writer);
+    /* Presents the overlay alone (it must paint every pixel, e.g. a solid
+     * background screen); no capture frame is copied. */
+    common::Error PresentOverlay(const ui::Painter &overlay);
+    common::Error PresentOverlay(const ui::Painter &overlay, const Writer &writer);
     void SetTimingDiagnostics(bool enabled, const Writer &writer);
 
 private:
@@ -98,6 +102,7 @@ public:
     common::Error GenerateCoordinatePattern(const buffer::Buffer &b) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.GenerateCoordinatePattern(b, w); }); }
     common::Error ComposeAndPresent(const pipeline::CaptureFrame &f, const inference::BoxSet &b, const ui::Painter *overlay = nullptr, bool crc = false) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ComposeAndPresent(f, b, w, overlay, crc); }); }
     common::Error ComposeInferenceAndPresent(const pipeline::InferenceFrame &f) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ComposeInferenceAndPresent(f, w); }); }
+    common::Error PresentOverlay(const ui::Painter &overlay) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.PresentOverlay(overlay, w); }); }
     void SetTimingDiagnostics(bool enabled) { (void)WithWriter([&](LcdDriver &d, const Writer &w) { d.SetTimingDiagnostics(enabled, w); return common::Error{}; }); }
     LcdManagement(const LcdManagement &) = delete;
     LcdManagement &operator=(const LcdManagement &) = delete;

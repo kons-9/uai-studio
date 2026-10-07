@@ -281,4 +281,132 @@ TEST(UiPainterGroup, PaintsInOrder)
     EXPECT_EQ(frame.At(11U, 11U), 0x2222U);
 }
 
+TEST(UiButtonPanel, IconReplacesLabel)
+{
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    uai::ai::ui::ButtonSpec button{1U, {0U, 0U, 16U, 16U}, "X", {}, uai::ai::ui::Icon::kMenu};
+    button.style.fill = 0x0001U;
+    button.style.text = 0xFFFFU;
+    button.style.border_width = 0U;
+    uai::ai::ui::ButtonPanel panel(&button, 1U);
+    panel.Paint(canvas);
+    /* extent 8, bar 1: bars at y = 4, 7.5->7, 11 spanning x = 4..11 */
+    EXPECT_EQ(frame.At(4U, 4U), 0xFFFFU);
+    EXPECT_EQ(frame.At(11U, 4U), 0xFFFFU);
+    EXPECT_EQ(frame.At(4U, 11U), 0xFFFFU);
+    EXPECT_EQ(frame.At(4U, 5U), 0x0001U);
+    EXPECT_EQ(frame.At(3U, 4U), 0x0001U);
+}
+
+/* 32 px wide: track x = 8..23 (width 16), so 15 px of travel across the
+ * value span. A 1x caption keeps the track inside the 16-row frame. */
+constexpr uai::ai::ui::SliderStyle SmallSliderStyle()
+{
+    uai::ai::ui::SliderStyle style{};
+    style.text_scale = 1U;
+    style.show_value = false;
+    return style;
+}
+constexpr uai::ai::ui::SliderSpec kSlider{
+    9U, {0U, 0U, 32U, 16U}, "", 0, 30, 10, 10, SmallSliderStyle()};
+
+TEST(UiSlider, ValueFollowsFingerAndSnapsToStep)
+{
+    uai::ai::ui::SliderPanel panel(&kSlider, 1U);
+    EXPECT_EQ(panel.Value(9U), 10);
+    const uai::ai::ui::Rect track = uai::ai::ui::SliderPanel::TrackOf(kSlider);
+    EXPECT_EQ(track.x, 8U);
+    EXPECT_EQ(track.width, 16U);
+
+    /* Press at the far right: value jumps to max and reports kChange. */
+    uai::ai::ui::Event event = panel.Update({true, 23U, 8U});
+    EXPECT_EQ(event.type, uai::ai::ui::EventType::kChange);
+    EXPECT_EQ(event.widget_id, 9U);
+    EXPECT_EQ(event.value, 30);
+    EXPECT_TRUE(panel.IsDragging());
+
+    /* Dragging left of the track clamps to min; the same value is silent. */
+    event = panel.Update({true, 0U, 8U});
+    EXPECT_EQ(event.value, 0);
+    EXPECT_EQ(panel.Update({true, 2U, 8U}).type, uai::ai::ui::EventType::kNone);
+
+    /* Mid-track snaps to the 10 step grid. */
+    event = panel.Update({true, 15U, 8U});
+    EXPECT_EQ(event.value, 10);
+    EXPECT_EQ(panel.Update({true, 19U, 8U}).value, 20);
+
+    EXPECT_EQ(panel.Update({false, 0U, 0U}).type, uai::ai::ui::EventType::kNone);
+    EXPECT_FALSE(panel.IsDragging());
+    EXPECT_EQ(panel.Value(9U), 20);
+
+    /* A touch that starts outside never captures the slider. */
+    EXPECT_EQ(panel.Update({true, 10U, 20U}).type, uai::ai::ui::EventType::kNone);
+    EXPECT_EQ(panel.Update({true, 23U, 8U}).type, uai::ai::ui::EventType::kNone);
+    panel.Update({false, 0U, 0U});
+
+    EXPECT_TRUE(panel.SetValue(9U, 99));
+    EXPECT_EQ(panel.Value(9U), 30);
+    EXPECT_FALSE(panel.SetValue(1U, 0));
+}
+
+TEST(UiSlider, PaintShowsFillUpToKnob)
+{
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    uai::ai::ui::SliderSpec slider = kSlider;
+    slider.style.track = 0x1111U;
+    slider.style.fill = 0x2222U;
+    slider.style.knob = 0x3333U;
+    slider.initial = 30;
+    uai::ai::ui::SliderPanel panel(&slider, 1U);
+    panel.Paint(canvas);
+    const uai::ai::ui::Rect track = uai::ai::ui::SliderPanel::TrackOf(slider);
+    /* Fully filled: left of the knob is fill, the knob covers the right end. */
+    EXPECT_EQ(frame.At(track.x, track.y), 0x2222U);
+    EXPECT_EQ(frame.At(static_cast<std::uint16_t>(track.x + track.width - 1U), track.y), 0x3333U);
+
+    panel.SetValue(9U, 0);
+    panel.Paint(canvas);
+    EXPECT_EQ(frame.At(static_cast<std::uint16_t>(track.x + track.width - 1U), track.y), 0x1111U);
+    EXPECT_EQ(frame.At(track.x, track.y), 0x3333U);
+}
+
+TEST(UiScreen, SolidBackgroundAndRouting)
+{
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    static constexpr uai::ai::ui::ButtonSpec buttons[] = {
+        {1U, {0U, 0U, 8U, 8U}, "", {}},
+    };
+    static constexpr uai::ai::ui::SliderSpec sliders[] = {kSlider};
+    uai::ai::ui::ScreenSpec spec{};
+    spec.id = 1U;
+    spec.background = uai::ai::ui::Background::kSolid;
+    spec.color = 0x4444U;
+    spec.buttons = buttons;
+    spec.button_count = 1U;
+    spec.sliders = sliders;
+    spec.slider_count = 1U;
+    uai::ai::ui::Screen screen(spec);
+
+    screen.Paint(canvas);
+    EXPECT_EQ(frame.At(31U, 15U), 0x4444U);
+    EXPECT_TRUE(frame.GuardsIntact());
+
+    EXPECT_EQ(screen.Update({true, 2U, 2U}).type, uai::ai::ui::EventType::kPress);
+    EXPECT_EQ(screen.Update({false, 0U, 0U}).widget_id, 1U);
+    const uai::ai::ui::Event change = screen.Update({true, 23U, 10U});
+    EXPECT_EQ(change.type, uai::ai::ui::EventType::kChange);
+    EXPECT_EQ(change.widget_id, 9U);
+    EXPECT_EQ(screen.Sliders().Value(9U), 30);
+
+    uai::ai::ui::ScreenSpec camera{};
+    uai::ai::ui::Screen empty(camera);
+    Frame untouched;
+    uai::ai::ui::Canvas untouched_canvas(untouched.Begin(), kWidth, kHeight);
+    empty.Paint(untouched_canvas);
+    EXPECT_EQ(untouched.At(0U, 0U), kBackground);
+}
+
 } // namespace

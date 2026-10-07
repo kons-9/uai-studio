@@ -1,83 +1,91 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "screen": {"width": 800, "height": 480},
   "namespace": "uai::ai::app_ui",
-  "widgets": [
+  "screens": [
     {
-      "type": "label",
-      "id": "status",
-      "text": "AI STARTING",
-      "x": 0,
-      "y": 0,
-      "width": 800,
-      "height": 24,
-      "style": {"text": "#FFFFFF", "fill": "#000000", "text_scale": 2, "align": "left"}
+      "id": "main",
+      "background": "camera",
+      "widgets": [
+        {
+          "type": "label", "id": "status", "text": "AI STARTING",
+          "x": 0, "y": 0, "width": 736, "height": 24,
+          "style": {"text": "#FFFFFF", "fill": "#000000", "text_scale": 2, "align": "left", "padding": 4}
+        },
+        {
+          "type": "button", "id": "open_menu", "label": "", "icon": "menu", "navigate": "menu",
+          "x": 744, "y": 0, "width": 56, "height": 48,
+          "style": {"fill": "#000000", "pressed_fill": "#404040", "checked_fill": "#000000",
+                    "border": "#000000", "text": "#FFFFFF", "text_scale": 2, "border_width": 0}
+        },
+        {
+          "type": "label", "id": "detections", "text": "",
+          "x": 520, "y": 56, "width": 264, "height": 24,
+          "style": {"text": "#FFE000", "fill": null, "text_scale": 2, "align": "right", "padding": 4}
+        },
+        {
+          "type": "button", "id": "person", "label": "PERSON", "on_tap": "OnPersonTap",
+          "x": 16, "y": 400, "width": 140, "height": 64,
+          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#C02020",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
+        },
+        {
+          "type": "button", "id": "face", "label": "FACE", "on_tap": "OnFaceTap",
+          "x": 172, "y": 400, "width": 140, "height": 64,
+          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2040C0",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
+        },
+        {
+          "type": "button", "id": "segmentation", "label": "SEG", "on_tap": "OnSegmentationTap",
+          "x": 328, "y": 400, "width": 140, "height": 64,
+          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#20A040",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
+        },
+        {
+          "type": "button", "id": "toggle_boxes", "label": "BOXES", "on_tap": "OnToggleBoxesTap",
+          "x": 640, "y": 400, "width": 144, "height": 64,
+          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2060C0",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
+        }
+      ]
     },
     {
-      "type": "label",
-      "id": "detections",
-      "text": "",
-      "x": 560,
-      "y": 32,
-      "width": 224,
-      "height": 24,
-      "style": {"text": "#FFE000", "fill": null, "text_scale": 2, "align": "right"}
-    },
-    {
-      "type": "button",
-      "id": "person",
-      "label": "PERSON",
-      "x": 16,
-      "y": 400,
-      "width": 140,
-      "height": 64,
-      "on_tap": "OnPersonTap",
-      "style": {
-        "fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#C02020",
-        "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2
-      }
-    },
-    {
-      "type": "button",
-      "id": "face",
-      "label": "FACE",
-      "x": 172,
-      "y": 400,
-      "width": 140,
-      "height": 64,
-      "on_tap": "OnFaceTap",
-      "style": {
-        "fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2040C0",
-        "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2
-      }
-    },
-    {
-      "type": "button",
-      "id": "segmentation",
-      "label": "SEG",
-      "x": 328,
-      "y": 400,
-      "width": 140,
-      "height": 64,
-      "on_tap": "OnSegmentationTap",
-      "style": {
-        "fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#20A040",
-        "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2
-      }
-    },
-    {
-      "type": "button",
-      "id": "toggle_boxes",
-      "label": "BOXES",
-      "x": 640,
-      "y": 400,
-      "width": 144,
-      "height": 64,
-      "on_tap": "OnToggleBoxesTap",
-      "style": {
-        "fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2060C0",
-        "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2
-      }
+      "id": "menu",
+      "background": "#101820",
+      "widgets": [
+        {
+          "type": "button", "id": "close_menu", "label": "", "icon": "back", "navigate": "main",
+          "x": 16, "y": 16, "width": 64, "height": 56,
+          "style": {"fill": "#101820", "pressed_fill": "#304050", "checked_fill": "#101820",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}
+        },
+        {
+          "type": "label", "id": "menu_title", "text": "SETTINGS",
+          "x": 96, "y": 24, "width": 400, "height": 40,
+          "style": {"text": "#FFFFFF", "fill": null, "text_scale": 4, "align": "left", "padding": 0}
+        },
+        {
+          "type": "slider", "id": "min_confidence", "label": "MIN CONFIDENCE %",
+          "on_change": "OnMinConfidenceChange",
+          "x": 40, "y": 120, "width": 720, "height": 72,
+          "min": 0, "max": 100, "step": 5, "value": 50,
+          "style": {"track": "#304050", "fill": "#2060C0", "knob": "#FFFFFF", "text": "#FFFFFF",
+                    "text_scale": 2, "show_value": true}
+        },
+        {
+          "type": "slider", "id": "status_period", "label": "STATUS UPDATE MS",
+          "on_change": "OnStatusPeriodChange",
+          "x": 40, "y": 220, "width": 720, "height": 72,
+          "min": 100, "max": 2000, "step": 100, "value": 500,
+          "style": {"track": "#304050", "fill": "#20A060", "knob": "#FFFFFF", "text": "#FFFFFF",
+                    "text_scale": 2, "show_value": true}
+        },
+        {
+          "type": "label", "id": "menu_hint", "text": "TAP BACK TO RETURN TO THE CAMERA",
+          "x": 40, "y": 420, "width": 720, "height": 24,
+          "style": {"text": "#8090A0", "fill": null, "text_scale": 2, "align": "center", "padding": 0}
+        }
+      ]
     }
   ]
 }

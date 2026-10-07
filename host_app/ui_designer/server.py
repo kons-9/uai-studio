@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import secrets
 import threading
+import urllib.parse
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -69,7 +70,8 @@ def _make_handler(state: EditorState):
             if not self._loopback_host():
                 self._json(HTTPStatus.FORBIDDEN, {"error": "loopback Host required"})
                 return
-            path = self.path.split("?", 1)[0]
+            path, _, query = self.path.partition("?")
+            params = urllib.parse.parse_qs(query)
             if path == "/":
                 self._send(HTTPStatus.OK, (STATIC_DIR / "index.html").read_bytes(),
                            "text/html; charset=utf-8")
@@ -104,10 +106,12 @@ def _make_handler(state: EditorState):
                 with state.lock:
                     try:
                         layout = load_layout(state.layout_path)
+                        screen_id = params.get("screen", [None])[0]
+                        canvas = render_layout(layout, screen_id=screen_id)
                     except LayoutError as error:
                         self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
                         return
-                self._send(HTTPStatus.OK, encode_png(render_layout(layout)), "image/png")
+                self._send(HTTPStatus.OK, encode_png(canvas), "image/png")
             else:
                 self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
 
