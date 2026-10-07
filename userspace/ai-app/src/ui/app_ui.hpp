@@ -13,10 +13,11 @@
 namespace uai::ai::app_ui {
 
 /*
- * On-screen UI for ai-app: a camera screen with model toggles and status
- * labels, and a settings screen with sliders. Widget geometry comes from the
- * generated ui_layout.hpp; this class owns the run-time state of every
- * screen and the handlers that the generated Dispatch() calls.
+ * On-screen UI for ai-app: a camera screen with model toggles, a status
+ * label and a detection counter, and a settings screen with a slider, a
+ * dial, a model-preset wheel, a rate read-out and a logo. Widget geometry
+ * comes from the generated ui_layout.hpp; this class owns the run-time
+ * state of every screen and the handlers that the generated Dispatch() calls.
  */
 class AppUi final {
 public:
@@ -44,7 +45,8 @@ public:
     bool ShowBoxes() const { return show_boxes_; }
     std::int32_t MinConfidencePercent() const { return min_confidence_percent_; }
     const char *StatusText() const;
-    const char *DetectionsText() const;
+    std::int32_t DetectionsValue() const;
+    std::int32_t PersonRateTenths() const;
 
     /* Handlers bound in config/ui_layout.json. */
     void ShowScreen(ScreenId screen);
@@ -54,6 +56,7 @@ public:
     void OnToggleBoxesTap(const ui::Event &event);
     void OnMinConfidenceChange(const ui::Event &event);
     void OnStatusPeriodChange(const ui::Event &event);
+    void OnModelsChange(const ui::Event &event);
 
 private:
     template <std::size_t... Index>
@@ -64,9 +67,11 @@ private:
     }
     void Initialize();
     void ToggleModel(task::ModelBit bit, std::uint16_t widget_id);
-    void SyncButtons();
+    /* Reflects the model mask on the main buttons and the menu wheel. */
+    void SyncModelWidgets();
     ui::Screen &Main() { return screens_[static_cast<std::size_t>(ScreenId::kMain)]; }
     const ui::Screen &Main() const { return screens_[static_cast<std::size_t>(ScreenId::kMain)]; }
+    ui::Screen &Menu() { return screens_[static_cast<std::size_t>(ScreenId::kMenu)]; }
 
     task::ModelControl &models_;
     ui::Screen screens_[kScreenCount];

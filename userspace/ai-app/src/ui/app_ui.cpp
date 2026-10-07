@@ -45,19 +45,31 @@ void DropBelow(inference::DetectionSet &set, float min_confidence)
     set.count = kept;
 }
 
+/* Model masks of the MODELS wheel items, in kModelsItems order. */
+constexpr std::uint8_t kModelsWheelMasks[] = {
+    task::kAllModelsMask,
+    task::ModelMaskBit(task::ModelBit::kPerson),
+    task::ModelMaskBit(task::ModelBit::kFace),
+    task::ModelMaskBit(task::ModelBit::kSegmentation),
+    static_cast<std::uint8_t>(task::ModelMaskBit(task::ModelBit::kPerson) |
+                              task::ModelMaskBit(task::ModelBit::kFace)),
+};
+constexpr std::size_t kModelsWheelCount =
+    sizeof(kModelsWheelMasks) / sizeof(kModelsWheelMasks[0]);
+static_assert(kModelsWheelCount == sizeof(kModelsItems) / sizeof(kModelsItems[0]),
+              "kModelsWheelMasks must match the wheel items in ui_layout.json");
+
 } // namespace
 
 void AppUi::Initialize()
 {
-    /* Sliders start from the layout's initial values; mirror them here so
-     * the application state and the knob agree before the first touch. */
-    ui::SliderPanel &sliders =
-        screens_[static_cast<std::size_t>(ScreenId::kMenu)].Sliders();
-    min_confidence_percent_ = sliders.Value(Id(WidgetId::kMinConfidence));
+    /* Controls start from the layout's initial values; mirror them here so
+     * the application state and the widgets agree before the first touch. */
+    min_confidence_percent_ = Menu().Sliders().Value(Id(WidgetId::kMinConfidence));
     status_period_ms_ =
-        static_cast<std::uint32_t>(sliders.Value(Id(WidgetId::kStatusPeriod)));
+        static_cast<std::uint32_t>(Menu().Dials().Value(Id(WidgetId::kStatusPeriod)));
     Main().Buttons().SetChecked(Id(WidgetId::kToggleBoxes), show_boxes_);
-    SyncButtons();
+    SyncModelWidgets();
 }
 
 bool AppUi::ShowsCamera() const
@@ -82,7 +94,7 @@ void AppUi::ShowScreen(ScreenId screen)
     UAI_LOG_INFO("ui: screen=%u\n", static_cast<unsigned int>(index));
 }
 
-void AppUi::SyncButtons()
+void AppUi::SyncModelWidgets()
 {
     const std::uint8_t mask = models_.ModelMask();
     ui::ButtonPanel &buttons = Main().Buttons();
@@ -92,6 +104,14 @@ void AppUi::SyncButtons()
                        (mask & task::ModelMaskBit(task::ModelBit::kFace)) != 0U);
     buttons.SetChecked(Id(WidgetId::kSegmentation),
                        (mask & task::ModelMaskBit(task::ModelBit::kSegmentation)) != 0U);
+    /* The wheel only moves when the mask matches one of its presets; other
+     * combinations keep the last selection. */
+    for (std::size_t i = 0U; i < kModelsWheelCount; ++i) {
+        if (kModelsWheelMasks[i] == mask) {
+            Menu().Wheels().SetValue(Id(WidgetId::kModels), static_cast<std::int32_t>(i));
+            break;
+        }
+    }
 }
 
 void AppUi::ToggleModel(task::ModelBit bit, std::uint16_t widget_id)
@@ -99,9 +119,22 @@ void AppUi::ToggleModel(task::ModelBit bit, std::uint16_t widget_id)
     const std::uint8_t mask = static_cast<std::uint8_t>(
         models_.ModelMask() ^ task::ModelMaskBit(bit));
     models_.SetModelMask(mask);
-    SyncButtons();
+    SyncModelWidgets();
     UAI_LOG_INFO("ui: tap id=%u models=%x\n",
                  static_cast<unsigned int>(widget_id),
+                 static_cast<unsigned int>(mask));
+}
+
+void AppUi::OnModelsChange(const ui::Event &event)
+{
+    if (event.value < 0 || static_cast<std::size_t>(event.value) >= kModelsWheelCount) {
+        return;
+    }
+    const std::uint8_t mask = kModelsWheelMasks[static_cast<std::size_t>(event.value)];
+    models_.SetModelMask(mask);
+    SyncModelWidgets();
+    UAI_LOG_INFO("ui: wheel=%s models=%x\n",
+                 Menu().Wheels().ItemText(Id(WidgetId::kModels)),
                  static_cast<unsigned int>(mask));
 }
 
@@ -151,6 +184,9 @@ void AppUi::UpdateStatus(std::uint32_t now_ms)
     const std::uint32_t elapsed =
         last_stats_tick_ == 0U ? 0U : now_ms - last_stats_tick_;
     const std::uint8_t mask = models_.ModelMask();
+    const std::int32_t person_tenths =
+        RateTenths(stats.person_completed - last_stats_.person_completed, elapsed,
+                   (mask & task::ModelMaskBit(task::ModelBit::kPerson)) != 0U);
 
     char status[ui::kLabelTextCapacity];
     if (!stats.enabled) {
@@ -158,9 +194,7 @@ void AppUi::UpdateStatus(std::uint32_t now_ms)
     } else {
         int used = 0;
         used += AppendRate(status + used, static_cast<int>(sizeof(status)) - used, "PERSON",
-                           RateTenths(stats.person_completed - last_stats_.person_completed,
-                                      elapsed,
-                                      (mask & task::ModelMaskBit(task::ModelBit::kPerson)) != 0U));
+                           person_tenths);
         used += AppendRate(status + used, static_cast<int>(sizeof(status)) - used, "FACE",
                            RateTenths(stats.face_completed - last_stats_.face_completed,
                                       elapsed,
@@ -174,13 +208,15 @@ void AppUi::UpdateStatus(std::uint32_t now_ms)
             std::snprintf(status + used, sizeof(status) - static_cast<std::size_t>(used), "FPS");
         }
     }
-    ui::LabelPanel &labels = Main().Labels();
-    labels.SetText(Id(WidgetId::kStatus), status);
-
-    char detections[ui::kLabelTextCapacity];
-    std::snprintf(detections, sizeof(detections), "DET %u",
-                  static_cast<unsigned int>(stats.last_detection_count));
-    labels.SetText(Id(WidgetId::kDetections), stats.enabled ? detections : "");
+    Main().Labels().SetText(Id(WidgetId::kStatus), status);
+    /* Program-driven numbers: detection count on the camera screen and
+     * the PERSON rate on the menu. */
+    Main().Numbers().SetValue(Id(WidgetId::kDetections),
+                              stats.enabled
+                                  ? static_cast<std::int32_t>(stats.last_detection_count)
+                                  : 0);
+    Menu().Numbers().SetValue(Id(WidgetId::kPersonRate),
+                              person_tenths > 0 && stats.enabled ? person_tenths : 0);
 
     last_stats_ = stats;
     last_stats_tick_ = now_ms;
@@ -218,9 +254,15 @@ const char *AppUi::StatusText() const
     return Main().Labels().Text(Id(WidgetId::kStatus));
 }
 
-const char *AppUi::DetectionsText() const
+std::int32_t AppUi::DetectionsValue() const
 {
-    return Main().Labels().Text(Id(WidgetId::kDetections));
+    return Main().Numbers().Value(Id(WidgetId::kDetections));
+}
+
+std::int32_t AppUi::PersonRateTenths() const
+{
+    return screens_[static_cast<std::size_t>(ScreenId::kMenu)].Numbers().Value(
+        Id(WidgetId::kPersonRate));
 }
 
 } // namespace uai::ai::app_ui

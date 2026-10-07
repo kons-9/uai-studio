@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from .emit_cpp import generate_header
+from .emit_cpp import generate_header, generate_images_header, images_header_name, load_bitmaps
 from .font import GLYPHS, device_font_path, load_device_font
 from .render import render_layout, write_png
 from .schema import (
@@ -18,6 +18,7 @@ from .schema import (
     GEOMETRY_KEYS,
     ICONS,
     SCHEMA_VERSION,
+    SHAPES,
     SLIDER_EVENTS,
     SLIDER_RANGE_KEYS,
     STYLE_DEFAULTS,
@@ -39,9 +40,13 @@ INT_STYLE_KEYS = frozenset(
 BOOL_STYLE_KEYS = frozenset(
     k for defaults in STYLE_DEFAULTS.values() for k, v in defaults.items()
     if isinstance(v, bool))
-# Per widget kind: the key holding its caption text.
-TEXT_KEY = {"button": "label", "label": "text", "slider": "label"}
-EVENTS_FOR = {"button": BUTTON_EVENTS, "label": (), "slider": SLIDER_EVENTS}
+# Per widget kind: the key holding its caption text (None: no caption).
+TEXT_KEY = {"button": "label", "label": "text", "slider": "label", "dial": "label",
+            "wheel": None, "number": "label", "image": None}
+EVENTS_FOR = {"button": BUTTON_EVENTS, "label": (), "slider": SLIDER_EVENTS,
+              "dial": SLIDER_EVENTS, "wheel": SLIDER_EVENTS, "number": (), "image": ()}
+RANGE_FOR = {"slider": SLIDER_RANGE_KEYS, "dial": SLIDER_RANGE_KEYS, "wheel": ("value",),
+             "number": ("value",)}
 
 
 def _write_if_changed(path: Path, text: str) -> bool:
@@ -80,23 +85,39 @@ def _command_render(args: argparse.Namespace) -> int:
         unknown = ids - button_ids
         if unknown:
             raise LayoutError(f"{option} names unknown buttons: {sorted(unknown)}")
-    write_png(args.output, render_layout(layout, pressed, checked, screen_id=args.screen))
+    bitmaps = load_bitmaps(layout, args.layout)
+    write_png(args.output, render_layout(layout, pressed, checked, screen_id=args.screen,
+                                         bitmaps=bitmaps))
     print(f"wrote {args.output}")
     return 0
 
 
+def _generated_files(layout, layout_path: Path, output: Path) -> dict[Path, str]:
+    """Header text keyed by path: the layout header and, with images, the
+    bitmap header next to it."""
+    bitmaps = load_bitmaps(layout, layout_path)
+    images_path = images_header_name(output)
+    files = {output: generate_header(layout, layout_path.name, bitmaps, images_path.name)}
+    if layout.images():
+        files[images_path] = generate_images_header(layout, bitmaps, layout_path.name)
+    return files
+
+
 def _command_generate(args: argparse.Namespace) -> int:
     layout = load_layout(args.layout)
-    text = generate_header(layout, args.layout.name)
+    files = _generated_files(layout, args.layout, args.output)
     if args.check:
-        current = args.output.read_text(encoding="utf-8") if args.output.exists() else None
-        if current != text:
-            print(f"{args.output} is out of date; rerun generate", file=sys.stderr)
+        stale = [path for path, text in files.items()
+                 if not path.exists() or path.read_text(encoding="utf-8") != text]
+        if stale:
+            for path in stale:
+                print(f"{path} is out of date; rerun generate", file=sys.stderr)
             return 1
         print(f"{args.output} is up to date")
         return 0
-    changed = _write_if_changed(args.output, text)
-    print(f"{'wrote' if changed else 'unchanged'} {args.output}")
+    for path, text in files.items():
+        changed = _write_if_changed(path, text)
+        print(f"{'wrote' if changed else 'unchanged'} {path}")
     return 0
 
 
@@ -126,11 +147,17 @@ def _read_document(path: Path) -> dict:
 def _save_document(args: argparse.Namespace, document: dict) -> int:
     """Validate, write the layout, and regenerate the header when requested."""
     layout = parse_layout(document)
+    if args.header is not None:
+        # Resolve bitmaps before writing so a missing PNG leaves both untouched.
+        files = _generated_files(layout, args.layout, args.header)
+    elif layout.images():
+        load_bitmaps(layout, args.layout)  # image sources must resolve
     args.layout.write_text(dump_layout(layout), encoding="utf-8")
     print(f"wrote {args.layout}")
     if args.header is not None:
-        changed = _write_if_changed(args.header, generate_header(layout, args.layout.name))
-        print(f"{'wrote' if changed else 'unchanged'} {args.header}")
+        for path, text in files.items():
+            changed = _write_if_changed(path, text)
+            print(f"{'wrote' if changed else 'unchanged'} {path}")
     return 0
 
 
@@ -164,19 +191,20 @@ def _apply_widget_options(widget: dict, args: argparse.Namespace) -> None:
         if value is None:
             continue
         if key != text_key:
-            raise LayoutError(f"--{key} does not apply to a {widget_type}; use --{text_key}")
+            hint = f"; use --{text_key}" if text_key else ""
+            raise LayoutError(f"--{key} does not apply to a {widget_type}{hint}")
         widget[key] = value
     for key in GEOMETRY_KEYS:
         value = getattr(args, key)
         if value is not None:
             widget[key] = value
 
-    for key, value in (("icon", args.icon), ("navigate", args.navigate)):
+    for key, value in (("icon", args.icon), ("shape", args.shape), ("navigate", args.navigate)):
         if value is None:
             continue
         if widget_type != "button":
             raise LayoutError(f"--{key} applies to buttons only")
-        if value in ("", "none"):
+        if value in ("", "none", "rectangle"):
             widget.pop(key, None)
         else:
             widget[key] = value
@@ -184,19 +212,40 @@ def _apply_widget_options(widget: dict, args: argparse.Namespace) -> None:
         value = getattr(args, key)
         if value is None:
             continue
-        if widget_type != "slider":
-            raise LayoutError(f"--{key} applies to sliders only")
+        if key not in RANGE_FOR.get(widget_type, ()):
+            raise LayoutError(f"--{key} does not apply to a {widget_type}")
         widget[key] = value
+    if args.items is not None:
+        if widget_type != "wheel":
+            raise LayoutError("--items applies to wheels only")
+        widget["items"] = [item.strip() for item in args.items.split(",")]
+    for key in ("unit", "decimals"):
+        value = getattr(args, key)
+        if value is None:
+            continue
+        if widget_type != "number":
+            raise LayoutError(f"--{key} applies to numbers only")
+        widget[key] = value
+    for key in ("source", "transparent"):
+        value = getattr(args, key)
+        if value is None:
+            continue
+        if widget_type != "image":
+            raise LayoutError(f"--{key} applies to images only")
+        if key == "transparent" and value == "none":
+            widget.pop(key, None)
+        else:
+            widget[key] = value
 
-    style = widget.setdefault("style", {})
+    style = widget.setdefault("style", {}) if widget_type != "image" else {}
     for key, kinds in STYLE_OPTIONS.items():
         value = getattr(args, "style_" + key)
         if value is None:
             continue
         if widget_type not in kinds:
             raise LayoutError(f"--{key.replace('_', '-')} does not apply to a {widget_type}")
-        # "none" makes a label background transparent.
-        style[key] = None if (key == "fill" and widget_type == "label" and
+        # "none" makes a label/number background transparent.
+        style[key] = None if (key == "fill" and widget_type in ("label", "number") and
                               value == "none") else value
     for event in CALLBACK_EVENTS:
         value = getattr(args, event)
@@ -242,8 +291,16 @@ def _command_list(args: argparse.Namespace) -> int:
                 extra.append(f"icon={widget.icon}")
             if widget.is_button and widget.navigate:
                 extra.append(f"navigate={widget.navigate}")
-            if widget.is_slider:
+            if widget.is_button and widget.shape != "rectangle":
+                extra.append(f"shape={widget.shape}")
+            if widget.is_slider or widget.is_dial:
                 extra.append(f"range={widget.minimum}..{widget.maximum}/{widget.step}={widget.value}")
+            if widget.is_wheel:
+                extra.append(f"items={len(widget.items)} value={widget.value}")
+            if widget.is_number:
+                extra.append(f"unit={widget.unit!r} decimals={widget.decimals} value={widget.value}")
+            if widget.is_image:
+                extra.append(f"source={widget.source}")
             print(f"  {widget.id:<20} {widget.type:<6} {widget.text[:16]:<16} {widget.x:>5} "
                   f"{widget.y:>5} {widget.width:>5} {widget.height:>5}  {', '.join(extra) or '-'}")
     return 0
@@ -251,9 +308,13 @@ def _command_list(args: argparse.Namespace) -> int:
 
 def _default_widget(widget_type: str, widget_id: str) -> dict:
     caption = widget_id.upper().replace("_", " ")
-    widget = {"type": widget_type, "id": widget_id, TEXT_KEY[widget_type]: caption}
-    if widget_type == "slider":
+    widget = {"type": widget_type, "id": widget_id}
+    if TEXT_KEY[widget_type]:
+        widget[TEXT_KEY[widget_type]] = caption
+    if widget_type in ("slider", "dial"):
         widget.update({"min": 0, "max": 100, "step": 1, "value": 0})
+    if widget_type == "wheel":
+        widget["items"] = [caption]
     return widget
 
 
@@ -345,11 +406,18 @@ def _add_widget_options(parser: argparse.ArgumentParser) -> None:
         geometry.add_argument(f"--{key}", type=int)
     button = parser.add_argument_group("button")
     button.add_argument("--icon", choices=ICONS, help="draw an icon instead of the label")
+    button.add_argument("--shape", choices=SHAPES)
     button.add_argument("--navigate", metavar="SCREEN_ID",
                         help="screen shown on tap; '' clears")
-    slider = parser.add_argument_group("slider")
+    ranged = parser.add_argument_group("slider / dial / wheel / number")
     for key in SLIDER_RANGE_KEYS:
-        slider.add_argument(f"--{key}", type=int)
+        ranged.add_argument(f"--{key}", type=int)
+    ranged.add_argument("--items", metavar="A,B,C", help="wheel items, comma separated")
+    ranged.add_argument("--unit", help="number suffix")
+    ranged.add_argument("--decimals", type=int, help="number decimal places")
+    image = parser.add_argument_group("image")
+    image.add_argument("--source", metavar="PNG", help="path relative to the layout file")
+    image.add_argument("--transparent", metavar="COLOR", help="#RRGGBB key or 'none'")
     style = parser.add_argument_group(
         "style", "colors are #RRGGBB; label --fill accepts 'none' for transparent")
     for key, kinds in STYLE_OPTIONS.items():
@@ -426,7 +494,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=_command_list)
 
-    p = sub.add_parser("add", help="add a button, label, or slider")
+    p = sub.add_parser("add", help="add a widget (button, label, slider, dial, wheel, number, image)")
     _add_edit_common(p)
     p.add_argument("--id", required=True)
     p.add_argument("--type", choices=WIDGET_TYPES, default="button")

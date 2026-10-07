@@ -11,7 +11,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from ui_designer import emit_cpp, font, render, schema
+from ui_designer import emit_cpp, font, images, png, render, schema
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -38,6 +38,41 @@ def _slider(**overrides):
               "min": 0, "max": 100, "step": 5, "value": 50}
     slider.update(overrides)
     return slider
+
+
+def _dial(**overrides):
+    dial = {"type": "dial", "id": "period", "label": "MS",
+            "x": 500, "y": 100, "width": 200, "height": 220,
+            "min": 100, "max": 2000, "step": 100, "value": 500}
+    dial.update(overrides)
+    return dial
+
+
+def _wheel(**overrides):
+    wheel = {"type": "wheel", "id": "mode", "items": ["ALL", "PERSON", "FACE"],
+             "value": 0, "x": 40, "y": 200, "width": 240, "height": 150}
+    wheel.update(overrides)
+    return wheel
+
+
+def _number(**overrides):
+    number = {"type": "number", "id": "count", "label": "DET", "unit": "%",
+              "decimals": 1, "value": 1234, "x": 300, "y": 200, "width": 200, "height": 72}
+    number.update(overrides)
+    return number
+
+
+def _image(**overrides):
+    image = {"type": "image", "id": "logo", "source": "logo.png",
+             "x": 700, "y": 16, "width": 8, "height": 4}
+    image.update(overrides)
+    return image
+
+
+def _write_test_png(path: Path) -> None:
+    """4x2 RGBA: top row opaque red, bottom row transparent except (3, 1) blue."""
+    pixels = [(255, 0, 0, 255)] * 4 + [(0, 0, 0, 0)] * 3 + [(0, 0, 255, 255)]
+    png.write_png(path, 4, 2, pixels)
 
 
 def _document(*widgets, screens=None, **overrides):
@@ -200,6 +235,115 @@ class SchemaTest(unittest.TestCase):
             schema.parse_layout(_document(screens=[
                 {"id": "main", "background": "red", "widgets": []}]))
 
+    def test_button_shape(self):
+        layout = schema.parse_layout(_document(_button(shape="ellipse")))
+        self.assertEqual(layout.buttons()[0].shape, "ellipse")
+        self.assertEqual(layout.to_document()["screens"][0]["widgets"][0]["shape"], "ellipse")
+        self.assertEqual(schema.parse_layout(_document(_button())).buttons()[0].shape, "rectangle")
+        with self.assertRaises(schema.LayoutError):
+            schema.parse_layout(_document(_button(shape="circle")))
+        with self.assertRaises(schema.LayoutError):
+            schema.parse_layout(_document(_label(shape="ellipse")))
+
+    def test_dial_wheel_number_defaults_and_constraints(self):
+        layout = schema.parse_layout(_document(
+            _dial(on_change="OnPeriod"), _wheel(on_change="OnMode", value=2), _number()))
+        dial, wheel, number = layout.dials()[0], layout.wheels()[0], layout.numbers()[0]
+        self.assertEqual((dial.minimum, dial.maximum, dial.step, dial.value), (100, 2000, 100, 500))
+        self.assertEqual(dial.style.pointer, schema.DIAL_STYLE_DEFAULTS["pointer"])
+        self.assertEqual(wheel.items, ["ALL", "PERSON", "FACE"])
+        self.assertEqual(wheel.value, 2)
+        self.assertEqual((number.text, number.unit, number.decimals, number.value), ("DET", "%", 1, 1234))
+        self.assertEqual(number.style.align, "right")
+        self.assertEqual(number.style.text_scale, 4)
+        again = schema.parse_layout(json.loads(schema.dump_layout(layout)))
+        self.assertEqual(again, layout)
+
+        for bad in (
+            _dial(min=5, max=5),
+            _dial(value=50),
+            _dial(height=10),
+            _dial(on_tap="OnX"),
+            _wheel(items=[]),
+            _wheel(items=["A"] * (schema.MAX_WHEEL_ITEMS + 1)),
+            _wheel(value=3),
+            _wheel(items=["ボタン"]),
+            _wheel(min=0),
+            _number(decimals=-1),
+            _number(decimals=7),
+            _number(on_change="OnX"),
+            _number(unit="A" * 20),
+        ):
+            with self.assertRaises(schema.LayoutError, msg=str(bad)):
+                schema.parse_layout(_document(bad))
+
+    def test_image_source_is_relative_to_layout(self):
+        layout = schema.parse_layout(_document(_image(transparent="#00FF00")))
+        image = layout.images()[0]
+        self.assertEqual(image.source, "logo.png")
+        self.assertEqual(image.transparent, "#00FF00")
+        document = layout.to_document()["screens"][0]["widgets"][0]
+        self.assertEqual(document["source"], "logo.png")
+        self.assertIsNone(schema.parse_layout(_document(_image())).images()[0].transparent)
+        for bad in (
+            _image(source=""),
+            _image(source="/etc/passwd"),
+            _image(source="../logo.png"),
+            _image(on_tap="OnX"),
+            _image(label="X"),
+            _image(width=400, height=400),  # exceeds IMAGE_MAX_BYTES
+        ):
+            with self.assertRaises(schema.LayoutError, msg=str(bad)):
+                schema.parse_layout(_document(bad))
+
+
+class PngTest(unittest.TestCase):
+    def test_write_and_read_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "t.png")
+            _write_test_png(path)
+            width, height, pixels = png.read_png(path)
+        self.assertEqual((width, height), (4, 2))
+        self.assertEqual(pixels[0], (255, 0, 0, 255))
+        self.assertEqual(pixels[4], (0, 0, 0, 0))
+        self.assertEqual(pixels[7], (0, 0, 255, 255))
+
+    def test_rejects_non_png(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "t.png")
+            path.write_bytes(b"not a png")
+            with self.assertRaises(png.PngError):
+                png.read_png(path)
+
+    def test_load_bitmap_resamples_and_keys_transparency(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layout_path = Path(tmp, "ui.json")
+            _write_test_png(Path(tmp, "logo.png"))
+            layout = schema.parse_layout(_document(_image(width=8, height=4)))
+            bitmap = images.load_bitmap(layout_path, layout.images()[0])
+            self.assertEqual((bitmap.width, bitmap.height), (8, 4))
+            key = schema.rgb565(schema.DEFAULT_TRANSPARENT_KEY)
+            self.assertEqual(bitmap.transparent, key)
+            self.assertEqual(bitmap.pixels[0], 0xF800)          # red, 2x upscaled
+            self.assertEqual(bitmap.pixels[1 * 8 + 7], 0xF800)
+            self.assertEqual(bitmap.pixels[2 * 8 + 0], key)     # alpha 0 -> key
+            self.assertEqual(bitmap.pixels[3 * 8 + 7], 0x001F)  # blue
+
+            # An opaque pixel equal to the key is nudged so it stays visible;
+            # without alpha and without an explicit key nothing is keyed.
+            png.write_png(Path(tmp, "logo.png"), 1, 1, [(255, 0, 255, 255)])
+            layout = schema.parse_layout(_document(_image(width=1, height=1, transparent="#FF00FF")))
+            bitmap = images.load_bitmap(layout_path, layout.images()[0])
+            self.assertNotEqual(bitmap.pixels[0], key)
+            layout = schema.parse_layout(_document(_image(width=1, height=1)))
+            bitmap = images.load_bitmap(layout_path, layout.images()[0])
+            self.assertIsNone(bitmap.transparent)
+            self.assertEqual(bitmap.pixels[0], key)
+
+            layout = schema.parse_layout(_document(_image(source="missing.png")))
+            with self.assertRaises(schema.LayoutError):
+                images.load_bitmap(layout_path, layout.images()[0])
+
 
 class FontTest(unittest.TestCase):
     def test_table_matches_canvas_cpp(self):
@@ -292,6 +436,74 @@ class RenderTest(unittest.TestCase):
         self.assertIn(b"IHDR", data)
         self.assertTrue(data.endswith(b"IEND\xaeB`\x82"))
 
+    def test_ellipse_button_matches_device_hit_test(self):
+        """Corners of a round button stay transparent, like InsideEllipse()."""
+        layout = schema.parse_layout(_document(
+            _button(id="r", x=0, y=0, width=16, height=16, shape="ellipse", label="",
+                    style={"fill": "#FF0000", "border_width": 0})))
+        canvas = render.Canvas(16, 16, 0x0001)
+        render.paint_button(canvas, layout.buttons()[0])
+        self.assertEqual(canvas.pixels[0], 0x0001)
+        self.assertEqual(canvas.pixels[15], 0x0001)
+        self.assertEqual(canvas.pixels[8 * 16 + 8], 0xF800)
+        self.assertEqual(canvas.pixels[8 * 16 + 0], 0xF800)
+        self.assertTrue(render.inside_ellipse(0, 0, 16, 16, 8, 8))
+        self.assertFalse(render.inside_ellipse(0, 0, 16, 16, 0, 0))
+
+    def test_dial_geometry_matches_device(self):
+        """Same constants as DialPanel: caption 7*scale+4, 270 degree sweep."""
+        layout = schema.parse_layout(_document(
+            _dial(id="d", x=0, y=0, width=64, height=80, min=0, max=100, step=10, value=0,
+                  style={"text_scale": 2, "show_value": False, "face": "#111111",
+                         "track": "#222222", "fill": "#333333", "pointer": "#444444"})))
+        dial = layout.dials()[0]
+        # caption 18 px, free height 62 -> 62 px disc centred horizontally.
+        self.assertEqual(render.dial_disc(dial), (1, 18, 62))
+        self.assertEqual(render.dial_value_at(dial, 2, 78), 0)     # bottom-left end
+        self.assertEqual(render.dial_value_at(dial, 61, 78), 100)  # bottom-right end
+        self.assertEqual(render.dial_value_at(dial, 32, 20), 50)   # top centre
+        canvas = render.Canvas(64, 96)
+        render.paint_dial(canvas, dial, value=50)
+        self.assertEqual(canvas.pixels[49 * 64 + 32], schema.rgb565("#111111"))  # face
+        self.assertEqual(canvas.pixels[49 * 64 + 3], schema.rgb565("#333333"))   # left: filled
+        self.assertEqual(canvas.pixels[49 * 64 + 60], schema.rgb565("#222222"))  # right: track
+        self.assertEqual(canvas.pixels[79 * 64 + 32], 0)  # bottom gap stays open
+
+    def test_wheel_and_number_paint(self):
+        layout = schema.parse_layout(_document(
+            _wheel(id="w", x=0, y=0, width=100, height=66, value=1,
+                   style={"text_scale": 2, "fill": "#111111", "highlight": "#222222", "border": "#333333"}),
+            _number(id="n", x=0, y=100, width=120, height=40, label="", unit="%", decimals=1,
+                    value=1234, style={"text_scale": 1, "fill": None, "text": "#FFFFFF", "align": "right"})))
+        wheel, number = layout.wheels()[0], layout.numbers()[0]
+        self.assertEqual(render.wheel_row_height(wheel), 22)
+        canvas = render.Canvas(200, 200)
+        render.paint_wheel(canvas, wheel)
+        self.assertEqual(canvas.pixels[2 * 200 + 2], schema.rgb565("#111111"))
+        self.assertEqual(canvas.pixels[33 * 200 + 2], schema.rgb565("#222222"))
+        self.assertEqual(canvas.pixels[0], schema.rgb565("#333333"))
+        self.assertEqual(render.format_number(number, 1234), "123.4%")
+        self.assertEqual(render.format_number(number, -5), "-0.5%")
+        self.assertEqual(render.format_number(schema.parse_layout(
+            _document(_number(decimals=0, unit=""))).numbers()[0], 7), "7")
+        render.paint_number(canvas, number, value=1234)
+        # Right aligned with padding 4 and vertically centred: the '%' glyph
+        # ends at x = 120 - 4 - 1 and its second row has the corner pixel set.
+        self.assertEqual(canvas.pixels[117 * 200 + 115], 0xFFFF)
+        self.assertEqual(canvas.pixels[117 * 200 + 116], 0)
+        self.assertEqual(canvas.pixels[115 * 200 + 115], 0)  # above the text
+
+    def test_image_blit_with_transparency(self):
+        bitmap = images.Bitmap(2, 1, [0xF800, 0x07E0], transparent=0x07E0)
+        canvas = render.Canvas(4, 1, 0x0001)
+        canvas.blit(1, 0, bitmap)
+        self.assertEqual(canvas.pixels, [0x0001, 0xF800, 0x0001, 0x0001])
+        layout = schema.parse_layout(_document(_image(x=10, y=10, width=2, height=1)))
+        with_bitmap = render.render_layout(layout, bitmaps={"logo": bitmap})
+        self.assertEqual(with_bitmap.pixels[10 * 800 + 10], 0xF800)
+        placeholder = render.render_layout(layout)
+        self.assertEqual(placeholder.pixels[10 * 800 + 10], schema.rgb565("#FF00FF"))
+
 
 class EmitTest(unittest.TestCase):
     def test_header_contents(self):
@@ -351,8 +563,45 @@ class EmitTest(unittest.TestCase):
     def test_checked_in_header_is_current(self):
         layout_path = REPO_ROOT / "userspace/ai-app/config/ui_layout.json"
         header_path = REPO_ROOT / "userspace/ai-app/src/ui/ui_layout.hpp"
-        expected = emit_cpp.generate_header(schema.load_layout(layout_path), layout_path.name)
+        layout = schema.load_layout(layout_path)
+        bitmaps = emit_cpp.load_bitmaps(layout, layout_path)
+        images_path = emit_cpp.images_header_name(header_path)
+        expected = emit_cpp.generate_header(layout, layout_path.name, bitmaps, images_path.name)
         self.assertEqual(header_path.read_text(encoding="utf-8"), expected)
+        self.assertEqual(images_path.read_text(encoding="utf-8"),
+                         emit_cpp.generate_images_header(layout, bitmaps, layout_path.name))
+
+    def test_new_widget_kinds_emission(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            layout_path = Path(tmp, "ui.json")
+            _write_test_png(Path(tmp, "logo.png"))
+            layout = schema.parse_layout(_document(
+                _button(shape="ellipse"), _dial(on_change="OnPeriod"),
+                _wheel(on_change="OnMode"), _number(), _image(width=4, height=2)))
+            bitmaps = emit_cpp.load_bitmaps(layout, layout_path)
+            with self.assertRaises(ValueError):
+                emit_cpp.generate_header(layout, "ui.json")
+            text = emit_cpp.generate_header(layout, "ui.json", bitmaps, "ui_layout_images.hpp")
+            pixels = emit_cpp.generate_images_header(layout, bitmaps, "ui.json")
+        self.assertIn('#include "ui_layout_images.hpp"', text)
+        self.assertIn("ui::Icon::kNone,\n        ui::Shape::kEllipse,", text)
+        self.assertIn("inline constexpr ui::DialSpec kMainDials[] = {", text)
+        self.assertIn("        100, 2000, 100, 500,", text)
+        self.assertIn('inline constexpr const char *const kModeItems[] = {\n    "ALL",\n    "PERSON",\n    "FACE",\n};', text)
+        self.assertIn("kModeItems, sizeof(kModeItems) / sizeof(kModeItems[0]), 0U,", text)
+        self.assertIn("inline constexpr ui::NumberSpec kMainNumbers[] = {", text)
+        self.assertIn('        "DET",\n        "%",\n        1U,\n        1234,', text)
+        self.assertIn("inline constexpr ui::ImageSpec kMainImages[] = {", text)
+        self.assertIn("kLogoPixels,\n        true, 0xF81FU,", text)
+        self.assertIn("case WidgetId::kPeriod:\n            handlers.OnPeriod(event);", text)
+        self.assertIn("case WidgetId::kMode:\n            handlers.OnMode(event);", text)
+        self.assertIn("/* logo.png: 4x2 RGB565 */\ninline constexpr std::uint16_t kLogoPixels[] = {", pixels)
+        self.assertIn("0xF800U, 0xF800U, 0xF800U, 0xF800U,\n    0xF81FU, 0xF81FU, 0xF81FU, 0x001FU,", pixels)
+
+    def test_images_header_is_omitted_without_images(self):
+        layout = schema.parse_layout(_document())
+        text = emit_cpp.generate_header(layout, "ui.json", {}, "ui_layout_images.hpp")
+        self.assertNotIn("ui_layout_images.hpp", text)
 
 
 class CliTest(unittest.TestCase):
@@ -488,6 +737,64 @@ class CliTest(unittest.TestCase):
             self.assertEqual(main(["remove", "--layout", str(layout), "--id", "go"]), 0)
             self.assertEqual(main(["remove", "--layout", str(layout), "--id", "go"]), 2)
 
+    def test_new_widget_kinds_via_cli(self):
+        from ui_designer.cli import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            layout = Path(tmp, "ui.json")
+            header = Path(tmp, "out", "ui_layout.hpp")
+            images_header = Path(tmp, "out", "ui_layout_images.hpp")
+            png_path = Path(tmp, "preview.png")
+            Path(tmp, "art").mkdir()
+            _write_test_png(Path(tmp, "art", "logo.png"))
+            self.assertEqual(main(["init", "--layout", str(layout)]), 0)
+            self.assertEqual(main([
+                "add", "--layout", str(layout), "--id", "round", "--x", "700", "--y", "8",
+                "--width", "56", "--height", "56", "--shape", "ellipse", "--icon", "menu"]), 0)
+            self.assertEqual(main([
+                "add", "--layout", str(layout), "--type", "dial", "--id", "period",
+                "--x", "500", "--y", "100", "--width", "200", "--height", "220",
+                "--min", "100", "--max", "2000", "--step", "100", "--value", "500",
+                "--on-change", "OnPeriod"]), 0)
+            self.assertEqual(main([
+                "add", "--layout", str(layout), "--type", "wheel", "--id", "mode",
+                "--x", "40", "--y", "200", "--width", "240", "--height", "150",
+                "--items", "ALL,PERSON,FACE", "--value", "1", "--on-change", "OnMode"]), 0)
+            self.assertEqual(main([
+                "add", "--layout", str(layout), "--type", "number", "--id", "count",
+                "--x", "300", "--y", "200", "--width", "180", "--height", "72",
+                "--label", "DET", "--unit", "%", "--decimals", "1", "--fill", "none"]), 0)
+            self.assertEqual(main([
+                "add", "--layout", str(layout), "--type", "image", "--id", "logo",
+                "--x", "40", "--y", "8", "--width", "8", "--height", "4",
+                "--source", "art/logo.png", "--header", str(header)]), 0)
+            doc = json.loads(layout.read_text())
+            widgets = {w["id"]: w for w in doc["screens"][0]["widgets"]}
+            self.assertEqual(widgets["round"]["shape"], "ellipse")
+            self.assertEqual(widgets["mode"]["items"], ["ALL", "PERSON", "FACE"])
+            self.assertEqual(widgets["mode"]["value"], 1)
+            self.assertEqual((widgets["count"]["unit"], widgets["count"]["decimals"]), ("%", 1))
+            self.assertIsNone(widgets["count"]["style"]["fill"])
+            self.assertEqual(widgets["logo"]["source"], "art/logo.png")
+            self.assertTrue(images_header.exists())
+            self.assertIn("kLogoPixels", header.read_text())
+            self.assertEqual(main(["generate", "--layout", str(layout), "--output", str(header), "--check"]), 0)
+            images_header.write_text("stale", encoding="utf-8")
+            self.assertEqual(main(["generate", "--layout", str(layout), "--output", str(header), "--check"]), 1)
+
+            # Kind-specific options are rejected for other kinds; transparent
+            # can be cleared; a missing source fails validation.
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "round", "--items", "A,B"]), 2)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "period", "--unit", "ms"]), 2)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "mode", "--value", "3"]), 2)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "logo", "--transparent", "#00FF00"]), 0)
+            self.assertEqual(json.loads(layout.read_text())["screens"][0]["widgets"][4]["transparent"], "#00FF00")
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "logo", "--transparent", "none"]), 0)
+            self.assertNotIn("transparent", json.loads(layout.read_text())["screens"][0]["widgets"][4])
+            self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png_path)]), 0)
+            self.assertEqual(main(["list", "--layout", str(layout)]), 0)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "logo", "--source", "art/none.png"]), 2)
+
     def test_legacy_file_is_upgraded_on_edit(self):
         from ui_designer.cli import main
 
@@ -534,6 +841,37 @@ class ServerTest(unittest.TestCase):
                 self.assertEqual(json.loads(layout.read_text())["screens"][0]["widgets"][0]["x"], 16)
                 with urllib.request.urlopen(url + "/api/preview.png?screen=menu") as response:
                     self.assertEqual(response.headers["Content-Type"], "image/png")
+            finally:
+                server.shutdown()
+                server.server_close()
+                worker.join()
+
+    def test_image_endpoint_and_cpp_with_bitmaps(self):
+        from ui_designer.server import EditorState, _make_handler
+
+        with tempfile.TemporaryDirectory() as tmp:
+            layout = Path(tmp, "ui.json")
+            _write_test_png(Path(tmp, "logo.png"))
+            layout.write_text(json.dumps(_document(_image(width=4, height=2))), encoding="utf-8")
+            server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(EditorState(layout)))
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                url = f"http://127.0.0.1:{server.server_address[1]}"
+                with urllib.request.urlopen(url + "/api/image.png?id=logo") as response:
+                    self.assertEqual(response.headers["Content-Type"], "image/png")
+                    data = response.read()
+                self.assertTrue(data.startswith(b"\x89PNG"))
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    urllib.request.urlopen(url + "/api/image.png?id=nope")
+                self.assertEqual(caught.exception.code, 404)
+                caught.exception.close()
+                with urllib.request.urlopen(url + "/api/cpp") as response:
+                    text = response.read().decode()
+                self.assertIn("kLogoPixels", text)
+                self.assertIn('#include "ui_layout_images.hpp"', text)
+                with urllib.request.urlopen(url + "/api/preview.png") as response:
+                    self.assertEqual(response.status, 200)
             finally:
                 server.shutdown()
                 server.server_close()

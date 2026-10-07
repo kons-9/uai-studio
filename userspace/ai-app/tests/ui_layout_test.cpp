@@ -32,8 +32,31 @@ uai::ai::ui::Rect BoundsOf(uai::ai::app_ui::WidgetId id)
         for (std::size_t i = 0U; i < screen.slider_count; ++i) {
             if (screen.sliders[i].id == wanted) return screen.sliders[i].bounds;
         }
+        for (std::size_t i = 0U; i < screen.dial_count; ++i) {
+            if (screen.dials[i].id == wanted) return screen.dials[i].bounds;
+        }
+        for (std::size_t i = 0U; i < screen.wheel_count; ++i) {
+            if (screen.wheels[i].id == wanted) return screen.wheels[i].bounds;
+        }
+        for (std::size_t i = 0U; i < screen.number_count; ++i) {
+            if (screen.numbers[i].id == wanted) return screen.numbers[i].bounds;
+        }
+        for (std::size_t i = 0U; i < screen.image_count; ++i) {
+            if (screen.images[i].id == wanted) return screen.images[i].bounds;
+        }
     }
     return {};
+}
+
+const uai::ai::ui::DialSpec &DialOf(uai::ai::app_ui::WidgetId id)
+{
+    const std::uint16_t wanted = static_cast<std::uint16_t>(id);
+    for (const uai::ai::ui::ScreenSpec &screen : uai::ai::app_ui::kScreens) {
+        for (std::size_t i = 0U; i < screen.dial_count; ++i) {
+            if (screen.dials[i].id == wanted) return screen.dials[i];
+        }
+    }
+    return uai::ai::app_ui::kMenuDials[0];
 }
 
 const uai::ai::ui::ButtonSpec &ButtonOf(uai::ai::app_ui::WidgetId id)
@@ -90,6 +113,16 @@ TEST(AiAppUiLayout, GeneratedScreensFitDisplay)
     for (const uai::ai::ui::ScreenSpec &screen : uai::ai::app_ui::kScreens) {
         for (std::size_t i = 0U; i < screen.button_count; ++i) check(screen.buttons[i].bounds);
         for (std::size_t i = 0U; i < screen.slider_count; ++i) check(screen.sliders[i].bounds);
+        for (std::size_t i = 0U; i < screen.dial_count; ++i) check(screen.dials[i].bounds);
+        for (std::size_t i = 0U; i < screen.number_count; ++i) check(screen.numbers[i].bounds);
+        for (std::size_t i = 0U; i < screen.wheel_count; ++i) {
+            check(screen.wheels[i].bounds);
+            EXPECT_GT(screen.wheels[i].item_count, 0U);
+        }
+        for (std::size_t i = 0U; i < screen.image_count; ++i) {
+            check(screen.images[i].bounds);
+            EXPECT_NE(screen.images[i].pixels, nullptr);
+        }
         for (std::size_t i = 0U; i < screen.label_count; ++i) {
             check(screen.labels[i].bounds);
             EXPECT_LT(std::strlen(screen.labels[i].text), uai::ai::ui::kLabelTextCapacity);
@@ -197,11 +230,13 @@ TEST(AiAppUi, MenuNavigationAndSliders)
     EXPECT_EQ(ui.MinConfidencePercent(), 0);
     ui.HandleTouch({false, 0U, 0U});
 
-    /* The second slider drives the status refresh period. */
+    /* The dial drives the status refresh period: touching the ring just
+     * right of the bottom gap snaps to the maximum. */
     EXPECT_EQ(ui.StatusPeriod(), 500U);
-    const uai::ai::ui::Rect period = BoundsOf(uai::ai::app_ui::WidgetId::kStatusPeriod);
-    ui.HandleTouch({true, static_cast<std::uint16_t>(period.x + period.width - 1U),
-                    static_cast<std::uint16_t>(period.y + period.height - 4U)});
+    const uai::ai::ui::Rect disc =
+        uai::ai::ui::DialPanel::DiscOf(DialOf(uai::ai::app_ui::WidgetId::kStatusPeriod));
+    ui.HandleTouch({true, static_cast<std::uint16_t>(disc.x + disc.width / 2U + disc.width / 10U),
+                    static_cast<std::uint16_t>(disc.y + disc.height - disc.height / 20U)});
     ui.HandleTouch({false, 0U, 0U});
     EXPECT_EQ(ui.StatusPeriod(), 2000U);
 
@@ -209,6 +244,39 @@ TEST(AiAppUi, MenuNavigationAndSliders)
     Tap(ui, uai::ai::app_ui::WidgetId::kCloseMenu);
     EXPECT_EQ(ui.CurrentScreen(), uai::ai::app_ui::ScreenId::kMain);
     EXPECT_TRUE(ui.ShowsCamera());
+}
+
+/* The MODELS wheel selects a preset mask, and the main-screen buttons keep
+ * the wheel on the matching preset. */
+TEST(AiAppUi, ModelsWheelSelectsPresetsAndFollowsButtons)
+{
+    FakeModels models;
+    uai::ai::app_ui::AppUi ui(models);
+    Tap(ui, uai::ai::app_ui::WidgetId::kOpenMenu);
+
+    const uai::ai::ui::Rect wheel = BoundsOf(uai::ai::app_ui::WidgetId::kModels);
+    const std::uint16_t row = uai::ai::ui::WheelPanel::RowHeightOf(uai::ai::app_ui::kMenuWheels[0]);
+    const std::uint16_t x = static_cast<std::uint16_t>(wheel.x + wheel.width / 2U);
+    const std::uint16_t start = static_cast<std::uint16_t>(wheel.y + wheel.height - 4U);
+    /* Drag up by two rows: ALL -> FACE. */
+    ui.HandleTouch({true, x, start});
+    const uai::ai::ui::Event event = ui.HandleTouch({true, x, static_cast<std::uint16_t>(start - 2U * row)});
+    ui.HandleTouch({false, 0U, 0U});
+    EXPECT_EQ(event.type, uai::ai::ui::EventType::kChange);
+    EXPECT_EQ(event.value, 2);
+    EXPECT_EQ(models.mask, uai::ai::task::ModelMaskBit(uai::ai::task::ModelBit::kFace));
+
+    /* Turning PERSON back on gives PERSON+FACE, the last wheel item. */
+    Tap(ui, uai::ai::app_ui::WidgetId::kCloseMenu);
+    Tap(ui, uai::ai::app_ui::WidgetId::kPerson);
+    EXPECT_EQ(models.mask, uai::ai::task::ModelMaskBit(uai::ai::task::ModelBit::kPerson) |
+                               uai::ai::task::ModelMaskBit(uai::ai::task::ModelBit::kFace));
+    Tap(ui, uai::ai::app_ui::WidgetId::kOpenMenu);
+    const std::vector<std::uint16_t> menu = PaintToPixels(ui);
+    /* The highlight band sits in the middle row of the wheel. */
+    EXPECT_EQ(PixelAt(menu, static_cast<std::uint16_t>(wheel.x + 4U),
+                      static_cast<std::uint16_t>(wheel.y + wheel.height / 2U)),
+              uai::ai::app_ui::kMenuWheels[0].style.highlight);
 }
 
 TEST(AiAppUi, StatusLabelShowsRatesPerEnabledModel)
@@ -220,7 +288,7 @@ TEST(AiAppUi, StatusLabelShowsRatesPerEnabledModel)
     models.stats.enabled = false;
     ui.UpdateStatus(1000U);
     EXPECT_STREQ(ui.StatusText(), "AI PIPELINE OFF");
-    EXPECT_STREQ(ui.DetectionsText(), "");
+    EXPECT_EQ(ui.DetectionsValue(), 0);
 
     models.stats.enabled = true;
     models.stats.last_detection_count = 3U;
@@ -232,11 +300,33 @@ TEST(AiAppUi, StatusLabelShowsRatesPerEnabledModel)
     Tap(ui, uai::ai::app_ui::WidgetId::kSegmentation);
     ui.UpdateStatus(2000U);  /* 1000 ms since the last sample */
     EXPECT_STREQ(ui.StatusText(), "PERSON 15.0  FACE 5.0  SEG --  FPS");
-    EXPECT_STREQ(ui.DetectionsText(), "DET 3");
+    EXPECT_EQ(ui.DetectionsValue(), 3);
+    EXPECT_EQ(ui.PersonRateTenths(), 150);
 
     models.stats.person_completed = 20U;
     ui.UpdateStatus(4000U);  /* 5 completions in 2000 ms */
     EXPECT_STREQ(ui.StatusText(), "PERSON 2.5  FACE 0.0  SEG --  FPS");
+    EXPECT_EQ(ui.PersonRateTenths(), 25);
+}
+
+/* The logo bitmap is blitted with its transparent corners left to the
+ * background. */
+TEST(AiAppUi, MenuLogoIsBlittedWithTransparency)
+{
+    FakeModels models;
+    uai::ai::app_ui::AppUi ui(models);
+    Tap(ui, uai::ai::app_ui::WidgetId::kOpenMenu);
+    const std::vector<std::uint16_t> menu = PaintToPixels(ui);
+    const uai::ai::ui::Rect logo = BoundsOf(uai::ai::app_ui::WidgetId::kLogo);
+    const uai::ai::ui::ImageSpec &spec = uai::ai::app_ui::kMenuImages[0];
+    EXPECT_TRUE(spec.has_transparent);
+    EXPECT_EQ(PixelAt(menu, logo.x, logo.y), uai::ai::app_ui::kScreens[1].color);
+    EXPECT_EQ(PixelAt(menu, static_cast<std::uint16_t>(logo.x + logo.width / 2U),
+                      static_cast<std::uint16_t>(logo.y + 2U)),
+              spec.pixels[2U * logo.width + logo.width / 2U]);
+    EXPECT_NE(PixelAt(menu, static_cast<std::uint16_t>(logo.x + logo.width / 2U),
+                      static_cast<std::uint16_t>(logo.y + 2U)),
+              uai::ai::app_ui::kScreens[1].color);
 }
 
 /* Dispatch routes taps, navigation, and slider changes to the bound
@@ -254,6 +344,7 @@ TEST(AiAppUiLayout, DispatchRoutesEventsToBoundHandlers)
         void OnSegmentationTap(const uai::ai::ui::Event &) { ++taps; }
         void OnMinConfidenceChange(const uai::ai::ui::Event &e) { ++changes; last_value = e.value; }
         void OnStatusPeriodChange(const uai::ai::ui::Event &e) { ++changes; last_value = e.value; }
+        void OnModelsChange(const uai::ai::ui::Event &e) { ++changes; last_value = e.value; }
         void ShowScreen(uai::ai::app_ui::ScreenId screen) { shown = screen; }
     } handlers;
 
@@ -271,6 +362,16 @@ TEST(AiAppUiLayout, DispatchRoutesEventsToBoundHandlers)
     EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, change));
     EXPECT_EQ(handlers.changes, 1);
     EXPECT_EQ(handlers.last_value, 35);
+
+    change.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kModels);
+    change.value = 4;
+    EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, change));
+    EXPECT_EQ(handlers.changes, 2);
+    EXPECT_EQ(handlers.last_value, 4);
+
+    /* Numbers and images have no events. */
+    change.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kDetections);
+    EXPECT_FALSE(uai::ai::app_ui::Dispatch(handlers, change));
 
     uai::ai::ui::Event press = tap;
     press.type = uai::ai::ui::EventType::kPress;

@@ -4,7 +4,8 @@ RGB565のフレームに描く表示部品と、タッチ入力を受ける部�
 
 ```text
   host_app/ui_designer                       実機
-  ui_layout.json ──generate──> ui_layout.hpp（ScreenSpec / ButtonSpec / LabelSpec / SliderSpecの表、Dispatch）
+  ui_layout.json ──generate──> ui_layout.hpp（ScreenSpec / ButtonSpec / LabelSpec / SliderSpec / DialSpec / WheelSpec / NumberSpec / ImageSpecの表、Dispatch）
+  *.png          ──generate──> ui_layout_images.hpp（RGB565のビットマップ配列）
                                      │
                  TouchManagement::Read() ──TouchPoint──> Screen::Update() ──Event──> Dispatch() ──> アプリのハンドラ
                                                               │                                     ShowScreen()
@@ -20,8 +21,13 @@ RGB565のフレームに描く表示部品と、タッチ入力を受ける部�
 | --- | --- |
 | `FillRect(rect, color)` | 矩形を塗る |
 | `DrawFrame(rect, thickness, color)` | 矩形の枠線を描く |
+| `FillEllipse(rect, color)` | 矩形に内接する楕円を塗る |
+| `DrawEllipseFrame(rect, thickness, color)` | 楕円の枠線を描く |
+| `Blit(x, y, pixels, width, height, has_transparent, transparent)` | RGB565のビットマップを貼る。`has_transparent`なら`transparent`色の画素を飛ばす |
 | `DrawText(x, y, text, scale, color)` | 5x7フォントで文字を描く。`scale`倍に拡大 |
 | `DrawTextCentered(rect, text, scale, color)` | 矩形の中央に文字を描く |
+
+`InsideEllipse(rect, x, y)`は矩形に内接する楕円の当たり判定（`constexpr`、整数演算）で、丸いボタンのタッチ判定と描画が同じ式を使います。
 
 フォントは`canvas.cpp`の`kGlyphs`にあり、英大文字、数字、空白、`- + . : / %`を持ちます。小文字は大文字として描きます。`host_app/ui_designer/font.py`は同じ表を持ち、`ui_designer validate --check-font`とユニットテストで一致を確認します。表を変えるときは両方を更新してください。
 
@@ -33,17 +39,21 @@ RGB565のフレームに描く表示部品と、タッチ入力を受ける部�
 
 | 種類 | Spec | Panel | 入力 | 内容 |
 | --- | --- | --- | --- | --- |
-| ボタン | `ButtonSpec` | `ButtonPanel` | `kPress`、`kTap` | `label`または`Icon`（`kMenu`ハンバーガー、`kBack`矢印、`kClose`×）。`ButtonStyle`は`fill`、押下中の`pressed_fill`、`SetChecked()`中の`checked_fill`、枠、文字色、倍率、枠幅 |
+| ボタン | `ButtonSpec` | `ButtonPanel` | `kPress`、`kTap` | `label`または`Icon`（`kMenu`ハンバーガー、`kBack`矢印、`kClose`×）。`Shape`は`kRectangle`か`kEllipse`（丸ボタン。角はタッチに反応しない）。`ButtonStyle`は`fill`、押下中の`pressed_fill`、`SetChecked()`中の`checked_fill`、枠、文字色、倍率、枠幅 |
 | ラベル | `LabelSpec` | `LabelPanel` | なし | 実行時に`SetText(id, text)`で差し替える文字欄（`kLabelTextCapacity` = 64）。`LabelStyle`は文字色、背景色と有無、倍率、`TextAlign`、左右`padding` |
 | スライダー | `SliderSpec` | `SliderPanel` | `kChange` | 横方向の値入力。`minimum`〜`maximum`を`step`刻み、見出しと現在値を上段に描画。指が触れている間はノブが追従し、値が変わるたびに`Event::value`付きの`kChange`を返す。`Value(id)`、`SetValue(id, v)` |
+| ダイヤル | `DialSpec` | `DialPanel` | `kChange` | 回転式の値入力。見出しの下に円盤を置き、左下から時計回りに270°の弧で`minimum`〜`maximum`を表す（下の90°は隙間）。円盤の中でタッチした角度から値を決め、スライダーと同じ`kChange`を返す。`DialStyle`は`face`、`track`、`fill`、`pointer`、文字色、倍率、`show_value` |
+| ホイール | `WheelSpec` | `WheelPanel` | `kChange` | 文字列の選択肢（最大32件）を縦に並べ、中央の帯が現在の選択。上にドラッグすると次の項目へ進み、`Event::value`は選択した添字。`Value(id)`、`SetValue(id, index)`、`ItemText(id)` |
+| 数値 | `NumberSpec` | `NumberPanel` | なし | プログラムから`SetValue(id, v)`で更新する数値表示。`decimals`桁の小数（値は`10^decimals`倍の整数で持つ）と`unit`を付けて`123.4%`のように描き、`label`は小さな見出しとして左上に出す。`NumberStyle`は文字色、背景色と有無、倍率、`TextAlign` |
+| 画像 | `ImageSpec` | `ImagePanel` | なし | 生成済みのRGB565ビットマップ（`pixels`、矩形と同じ大きさ）を貼る。`has_transparent`なら`transparent`色を透過。元のPNGは`ui_designer`が`ui_layout_images.hpp`に変換する |
 
-`ButtonPanel::Update()`と`SliderPanel::Update()`はポーリングごとに1回呼びます。タッチが始まった位置で担当する部品が決まり、ボタンは離したときに`kTap`、スライダーは動いたときに`kChange`を返します。
+`ButtonPanel`、`SliderPanel`、`DialPanel`、`WheelPanel`の`Update()`はポーリングごとに1回呼びます。タッチが始まった位置で担当する部品が決まり、ボタンは離したときに`kTap`、スライダー・ダイヤル・ホイールは値が変わったときに`kChange`を返します。
 
 `Painter`はフレームに描く側のインターフェースで、各Panelと`PainterGroup`（複数のPainterを順に描く）、`Screen`が実装します。
 
 ## ScreenSpecとScreen
 
-`ScreenSpec`は1ページ分の記述で、`Background`（`kCamera`: カメラ画像の上に描く、`kSolid`: `color`で塗りつぶしてから描く）と、そのページのボタン・ラベル・スライダーの表を持ちます。`Screen`は1つの`ScreenSpec`に対する実行時状態（3つのPanel）で、`Update()`はボタンとスライダーへ振り分け、`Paint()`は背景、ボタン、スライダー、ラベルの順に描きます。
+`ScreenSpec`は1ページ分の記述で、`Background`（`kCamera`: カメラ画像の上に描く、`kSolid`: `color`で塗りつぶしてから描く）と、そのページの各ウィジェットの表を持ちます。`Screen`は1つの`ScreenSpec`に対する実行時状態（種類ごとのPanel）で、`Update()`はボタン、スライダー、ダイヤル、ホイールへ振り分け、`Paint()`は背景、画像、ボタン、スライダー、ダイヤル、ホイール、数値、ラベルの順に描きます。
 
 ```cpp
 ui::Screen screens[] = {ui::Screen(app_ui::kScreens[0]), ui::Screen(app_ui::kScreens[1])};

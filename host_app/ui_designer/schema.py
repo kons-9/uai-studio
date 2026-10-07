@@ -11,10 +11,15 @@ Document shape (schema_version 2)::
                   "widgets": [...]}, ...]}
 
 Widget kinds:
-  button  tappable; ``label`` or ``icon``, ButtonStyle, on_tap/on_press,
-          optional ``navigate`` to another screen id
+  button  tappable; ``label`` or ``icon``, rectangle or ellipse ``shape``,
+          ButtonStyle, on_tap/on_press, optional ``navigate`` to a screen id
   label   text the firmware replaces at run time; ``text`` is the initial value
   slider  horizontal value control; min/max/step/value, on_change
+  dial    rotary value control (270-degree arc); min/max/step/value, on_change
+  wheel   vertical item picker; ``items``, ``value`` (index), on_change
+  number  numeric read-out set by the firmware; ``unit``, ``decimals``, ``value``
+  image   RGB565 bitmap generated from ``source`` (PNG, relative to the layout
+          file), resampled to the bounds; optional ``transparent`` key color
 
 A schema_version 1 document (top-level ``widgets``) is read as a single
 ``main`` screen with the camera background.
@@ -36,20 +41,27 @@ CPP_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 NAMESPACE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*$")
 COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
-WIDGET_TYPES = ("button", "label", "slider")
+WIDGET_TYPES = ("button", "label", "slider", "dial", "wheel", "number", "image")
 # Event names map to ui::EventType members and to the per-widget callback keys.
 CALLBACK_EVENTS: tuple[str, ...] = ("on_tap", "on_press", "on_change")
 BUTTON_EVENTS: tuple[str, ...] = ("on_tap", "on_press")
 SLIDER_EVENTS: tuple[str, ...] = ("on_change",)
+VALUE_WIDGETS = ("slider", "dial")      # share min/max/step/value
 GEOMETRY_KEYS = ("x", "y", "width", "height")
 SLIDER_RANGE_KEYS = ("min", "max", "step", "value")
 WIDGET_KEYS = frozenset(
-    ("type", "id", "label", "text", "style", "icon", "navigate")
+    ("type", "id", "label", "text", "style", "icon", "shape", "navigate",
+     "items", "unit", "decimals", "source", "transparent")
     + GEOMETRY_KEYS + CALLBACK_EVENTS + SLIDER_RANGE_KEYS)
 SCREEN_KEYS = frozenset(("id", "background", "widgets"))
 ALIGNMENTS = ("left", "center", "right")
 ICONS = ("none", "menu", "back", "close")
+SHAPES = ("rectangle", "ellipse")
 CAMERA_BACKGROUND = "camera"
+DEFAULT_TRANSPARENT_KEY = "#FF00FF"
+# Bitmaps live in the firmware image (RAM on the N6); keep them small.
+IMAGE_MAX_BYTES = 128 * 1024
+MAX_WHEEL_ITEMS = 32
 
 # Keep these defaults equal to ui::*Style in widget.hpp.
 BUTTON_STYLE_DEFAULTS: dict[str, Any] = {
@@ -76,10 +88,37 @@ SLIDER_STYLE_DEFAULTS: dict[str, Any] = {
     "text_scale": 2,
     "show_value": True,
 }
+DIAL_STYLE_DEFAULTS: dict[str, Any] = {
+    "face": "#202830",
+    "track": "#404040",
+    "fill": "#2060C0",
+    "pointer": "#FFFFFF",
+    "text": "#FFFFFF",
+    "text_scale": 2,
+    "show_value": True,
+}
+WHEEL_STYLE_DEFAULTS: dict[str, Any] = {
+    "fill": "#182028",
+    "highlight": "#2060C0",
+    "text": "#8090A0",
+    "selected_text": "#FFFFFF",
+    "border": "#FFFFFF",
+    "text_scale": 2,
+}
+NUMBER_STYLE_DEFAULTS: dict[str, Any] = {
+    "text": "#FFFFFF",
+    "fill": "#000000",      # null means transparent
+    "text_scale": 4,
+    "align": "right",
+}
 STYLE_DEFAULTS: dict[str, dict[str, Any]] = {
     "button": BUTTON_STYLE_DEFAULTS,
     "label": LABEL_STYLE_DEFAULTS,
     "slider": SLIDER_STYLE_DEFAULTS,
+    "dial": DIAL_STYLE_DEFAULTS,
+    "wheel": WHEEL_STYLE_DEFAULTS,
+    "number": NUMBER_STYLE_DEFAULTS,
+    "image": {},
 }
 # Mirrors ui::kLabelTextCapacity; longer initial text would be truncated.
 LABEL_TEXT_CAPACITY = 64
@@ -133,6 +172,53 @@ class SliderStyle:
 
 
 @dataclass
+class DialStyle:
+    face: str = DIAL_STYLE_DEFAULTS["face"]
+    track: str = DIAL_STYLE_DEFAULTS["track"]
+    fill: str = DIAL_STYLE_DEFAULTS["fill"]
+    pointer: str = DIAL_STYLE_DEFAULTS["pointer"]
+    text: str = DIAL_STYLE_DEFAULTS["text"]
+    text_scale: int = DIAL_STYLE_DEFAULTS["text_scale"]
+    show_value: bool = DIAL_STYLE_DEFAULTS["show_value"]
+
+    def to_document(self) -> dict[str, Any]:
+        return dict(vars(self))
+
+
+@dataclass
+class WheelStyle:
+    fill: str = WHEEL_STYLE_DEFAULTS["fill"]
+    highlight: str = WHEEL_STYLE_DEFAULTS["highlight"]
+    text: str = WHEEL_STYLE_DEFAULTS["text"]
+    selected_text: str = WHEEL_STYLE_DEFAULTS["selected_text"]
+    border: str = WHEEL_STYLE_DEFAULTS["border"]
+    text_scale: int = WHEEL_STYLE_DEFAULTS["text_scale"]
+
+    def to_document(self) -> dict[str, Any]:
+        return dict(vars(self))
+
+
+@dataclass
+class NumberStyle:
+    text: str = NUMBER_STYLE_DEFAULTS["text"]
+    fill: str | None = NUMBER_STYLE_DEFAULTS["fill"]
+    text_scale: int = NUMBER_STYLE_DEFAULTS["text_scale"]
+    align: str = NUMBER_STYLE_DEFAULTS["align"]
+
+    def to_document(self) -> dict[str, Any]:
+        return dict(vars(self))
+
+
+@dataclass
+class ImageStyle:
+    def to_document(self) -> dict[str, Any]:
+        return {}
+
+
+Style = ButtonStyle | LabelStyle | SliderStyle | DialStyle | WheelStyle | NumberStyle | ImageStyle
+
+
+@dataclass
 class Widget:
     type: str
     id: str
@@ -141,17 +227,23 @@ class Widget:
     y: int
     width: int
     height: int
-    style: ButtonStyle | LabelStyle | SliderStyle = field(default_factory=ButtonStyle)
+    style: Style = field(default_factory=ButtonStyle)
     # C++ method names invoked by the generated Dispatch(); empty means none.
     on_tap: str = ""
     on_press: str = ""
     on_change: str = ""
     icon: str = "none"
+    shape: str = "rectangle"
     navigate: str = ""
     minimum: int = 0
     maximum: int = 100
     step: int = 1
     value: int = 0
+    items: list[str] = field(default_factory=list)
+    unit: str = ""
+    decimals: int = 0
+    source: str = ""
+    transparent: str | None = None
 
     @property
     def is_button(self) -> bool:
@@ -165,29 +257,53 @@ class Widget:
     def is_slider(self) -> bool:
         return self.type == "slider"
 
+    @property
+    def is_dial(self) -> bool:
+        return self.type == "dial"
+
+    @property
+    def is_wheel(self) -> bool:
+        return self.type == "wheel"
+
+    @property
+    def is_number(self) -> bool:
+        return self.type == "number"
+
+    @property
+    def is_image(self) -> bool:
+        return self.type == "image"
+
     def to_document(self) -> dict[str, Any]:
-        entry: dict[str, Any] = {
-            "type": self.type,
-            "id": self.id,
-            "text" if self.is_label else "label": self.text,
-            "x": self.x,
-            "y": self.y,
-            "width": self.width,
-            "height": self.height,
-        }
+        entry: dict[str, Any] = {"type": self.type, "id": self.id}
+        if self.is_label:
+            entry["text"] = self.text
+        elif not self.is_wheel and not self.is_image:
+            entry["label"] = self.text
+        entry.update({"x": self.x, "y": self.y, "width": self.width, "height": self.height})
         if self.is_button:
             if self.icon != "none":
                 entry["icon"] = self.icon
+            if self.shape != "rectangle":
+                entry["shape"] = self.shape
             if self.navigate:
                 entry["navigate"] = self.navigate
-        if self.is_slider:
+        if self.is_slider or self.is_dial:
             entry.update({"min": self.minimum, "max": self.maximum,
                           "step": self.step, "value": self.value})
+        if self.is_wheel:
+            entry.update({"items": list(self.items), "value": self.value})
+        if self.is_number:
+            entry.update({"unit": self.unit, "decimals": self.decimals, "value": self.value})
+        if self.is_image:
+            entry["source"] = self.source
+            if self.transparent is not None:
+                entry["transparent"] = self.transparent
         for event in CALLBACK_EVENTS:
             name = getattr(self, event)
             if name:
                 entry[event] = name
-        entry["style"] = self.style.to_document()
+        if not self.is_image:
+            entry["style"] = self.style.to_document()
         return entry
 
 
@@ -213,6 +329,18 @@ class Screen:
 
     def sliders(self) -> list[Widget]:
         return [w for w in self.widgets if w.is_slider]
+
+    def dials(self) -> list[Widget]:
+        return [w for w in self.widgets if w.is_dial]
+
+    def wheels(self) -> list[Widget]:
+        return [w for w in self.widgets if w.is_wheel]
+
+    def numbers(self) -> list[Widget]:
+        return [w for w in self.widgets if w.is_number]
+
+    def images(self) -> list[Widget]:
+        return [w for w in self.widgets if w.is_image]
 
     def to_document(self) -> dict[str, Any]:
         return {
@@ -242,6 +370,18 @@ class Layout:
 
     def sliders(self) -> list[Widget]:
         return [w for w in self.widgets if w.is_slider]
+
+    def dials(self) -> list[Widget]:
+        return [w for w in self.widgets if w.is_dial]
+
+    def wheels(self) -> list[Widget]:
+        return [w for w in self.widgets if w.is_wheel]
+
+    def numbers(self) -> list[Widget]:
+        return [w for w in self.widgets if w.is_number]
+
+    def images(self) -> list[Widget]:
+        return [w for w in self.widgets if w.is_image]
 
     def screen(self, screen_id: str) -> Screen:
         for screen in self.screens:
@@ -336,6 +476,46 @@ def _slider_style(value: Any, context: str) -> SliderStyle:
     )
 
 
+def _dial_style(value: Any, context: str) -> DialStyle:
+    merged = _style_mapping(value, DIAL_STYLE_DEFAULTS, context)
+    if not isinstance(merged["show_value"], bool):
+        raise LayoutError(f"{context}.show_value must be true or false")
+    return DialStyle(
+        face=_color(merged["face"], f"{context}.face"),
+        track=_color(merged["track"], f"{context}.track"),
+        fill=_color(merged["fill"], f"{context}.fill"),
+        pointer=_color(merged["pointer"], f"{context}.pointer"),
+        text=_color(merged["text"], f"{context}.text"),
+        text_scale=_int(merged["text_scale"], f"{context}.text_scale", 1, 16),
+        show_value=merged["show_value"],
+    )
+
+
+def _wheel_style(value: Any, context: str) -> WheelStyle:
+    merged = _style_mapping(value, WHEEL_STYLE_DEFAULTS, context)
+    return WheelStyle(
+        fill=_color(merged["fill"], f"{context}.fill"),
+        highlight=_color(merged["highlight"], f"{context}.highlight"),
+        text=_color(merged["text"], f"{context}.text"),
+        selected_text=_color(merged["selected_text"], f"{context}.selected_text"),
+        border=_color(merged["border"], f"{context}.border"),
+        text_scale=_int(merged["text_scale"], f"{context}.text_scale", 1, 16),
+    )
+
+
+def _number_style(value: Any, context: str) -> NumberStyle:
+    merged = _style_mapping(value, NUMBER_STYLE_DEFAULTS, context)
+    align = merged["align"]
+    if align not in ALIGNMENTS:
+        raise LayoutError(f"{context}.align must be one of {ALIGNMENTS}, got {align!r}")
+    return NumberStyle(
+        text=_color(merged["text"], f"{context}.text"),
+        fill=None if merged["fill"] is None else _color(merged["fill"], f"{context}.fill"),
+        text_scale=_int(merged["text_scale"], f"{context}.text_scale", 1, 16),
+        align=align,
+    )
+
+
 def _callback(value: Any, context: str) -> str:
     if value is None or value == "":
         return ""
@@ -384,10 +564,14 @@ def _parse_widget(raw: Any, context: str, width: int, height: int,
     base = dict(type=widget_type, id=widget_id, x=x, y=y, width=w, height=h)
 
     if widget_type == "button":
-        _reject_keys(raw, ("text",) + SLIDER_EVENTS + SLIDER_RANGE_KEYS, context, "button")
+        _reject_keys(raw, ("text", "items", "unit", "decimals", "source", "transparent")
+                     + SLIDER_EVENTS + SLIDER_RANGE_KEYS, context, "button")
         icon = raw.get("icon", "none")
         if icon not in ICONS:
             raise LayoutError(f"{context}.icon must be one of {ICONS}, got {icon!r}")
+        shape = raw.get("shape", "rectangle")
+        if shape not in SHAPES:
+            raise LayoutError(f"{context}.shape must be one of {SHAPES}, got {shape!r}")
         navigate = raw.get("navigate", "")
         if navigate:
             navigate = _identifier(navigate, f"{context}.navigate")
@@ -396,10 +580,11 @@ def _parse_widget(raw: Any, context: str, width: int, height: int,
             style=_button_style(raw.get("style"), f"{context}.style"),
             on_tap=_callback(raw.get("on_tap"), f"{context}.on_tap"),
             on_press=_callback(raw.get("on_press"), f"{context}.on_press"),
-            icon=icon, navigate=navigate, **base)
+            icon=icon, shape=shape, navigate=navigate, **base)
 
     if widget_type == "label":
-        _reject_keys(raw, ("label", "icon", "navigate") + CALLBACK_EVENTS + SLIDER_RANGE_KEYS,
+        _reject_keys(raw, ("label", "icon", "shape", "navigate", "items", "unit", "decimals",
+                           "source", "transparent") + CALLBACK_EVENTS + SLIDER_RANGE_KEYS,
                      context, "label")
         text = _text(raw, "text", context, allowed)
         if len(text) >= LABEL_TEXT_CAPACITY:
@@ -408,20 +593,72 @@ def _parse_widget(raw: Any, context: str, width: int, height: int,
         return Widget(text=text, style=_label_style(raw.get("style"), f"{context}.style"),
                       **base)
 
-    _reject_keys(raw, ("text", "icon", "navigate") + BUTTON_EVENTS, context, "slider")
-    minimum = _int(raw.get("min", 0), f"{context}.min", None, None)
-    maximum = _int(raw.get("max", 100), f"{context}.max", None, None)
-    if maximum <= minimum:
-        raise LayoutError(f"{context}: max must be greater than min")
-    step = _int(raw.get("step", 1), f"{context}.step", 1, maximum - minimum)
-    value = _int(raw.get("value", minimum), f"{context}.value", minimum, maximum)
-    if h < 7 * 1 + 4 + SLIDER_TRACK_HEIGHT:
-        raise LayoutError(f"{context}.height is too small for a caption and track")
+    if widget_type in VALUE_WIDGETS:
+        _reject_keys(raw, ("text", "icon", "shape", "navigate", "items", "unit", "decimals",
+                           "source", "transparent") + BUTTON_EVENTS, context, widget_type)
+        minimum = _int(raw.get("min", 0), f"{context}.min", None, None)
+        maximum = _int(raw.get("max", 100), f"{context}.max", None, None)
+        if maximum <= minimum:
+            raise LayoutError(f"{context}: max must be greater than min")
+        step = _int(raw.get("step", 1), f"{context}.step", 1, maximum - minimum)
+        value = _int(raw.get("value", minimum), f"{context}.value", minimum, maximum)
+        if widget_type == "slider":
+            if h < 7 + 4 + SLIDER_TRACK_HEIGHT:
+                raise LayoutError(f"{context}.height is too small for a caption and track")
+            style: Style = _slider_style(raw.get("style"), f"{context}.style")
+        else:
+            if h < 7 + 4 + 16 or w < 16:
+                raise LayoutError(f"{context} is too small for a caption and dial")
+            style = _dial_style(raw.get("style"), f"{context}.style")
+        return Widget(
+            text=_text(raw, "label", context, allowed), style=style,
+            on_change=_callback(raw.get("on_change"), f"{context}.on_change"),
+            minimum=minimum, maximum=maximum, step=step, value=value, **base)
+
+    if widget_type == "wheel":
+        _reject_keys(raw, ("text", "label", "icon", "shape", "navigate", "unit", "decimals",
+                           "source", "transparent", "min", "max", "step") + BUTTON_EVENTS,
+                     context, "wheel")
+        items = raw.get("items")
+        if (not isinstance(items, list) or not items or len(items) > MAX_WHEEL_ITEMS or
+                not all(isinstance(item, str) for item in items)):
+            raise LayoutError(f"{context}.items must be 1..{MAX_WHEEL_ITEMS} strings")
+        for index, item in enumerate(items):
+            _text({"item": item}, "item", f"{context}.items[{index}]", allowed)
+        value = _int(raw.get("value", 0), f"{context}.value", 0, len(items) - 1)
+        return Widget(
+            text="", style=_wheel_style(raw.get("style"), f"{context}.style"),
+            on_change=_callback(raw.get("on_change"), f"{context}.on_change"),
+            items=list(items), value=value, **base)
+
+    if widget_type == "number":
+        _reject_keys(raw, ("text", "icon", "shape", "navigate", "items", "source",
+                           "transparent", "min", "max", "step") + CALLBACK_EVENTS,
+                     context, "number")
+        unit = _text(raw, "unit", context, allowed)
+        if len(unit) > 8:
+            raise LayoutError(f"{context}.unit must be at most 8 characters")
+        return Widget(
+            text=_text(raw, "label", context, allowed),
+            style=_number_style(raw.get("style"), f"{context}.style"),
+            unit=unit,
+            decimals=_int(raw.get("decimals", 0), f"{context}.decimals", 0, 6),
+            value=_int(raw.get("value", 0), f"{context}.value", -2**31, 2**31 - 1), **base)
+
+    _reject_keys(raw, ("text", "label", "icon", "shape", "navigate", "items", "unit",
+                       "decimals", "style") + CALLBACK_EVENTS + SLIDER_RANGE_KEYS,
+                 context, "image")
+    source = raw.get("source")
+    if not isinstance(source, str) or not source or source.startswith(("/", "..")):
+        raise LayoutError(f"{context}.source must be a relative path below the layout file")
+    if w * h * 2 > IMAGE_MAX_BYTES:
+        raise LayoutError(
+            f"{context}: {w}x{h} RGB565 bitmap exceeds {IMAGE_MAX_BYTES} bytes")
+    transparent = raw.get("transparent")
     return Widget(
-        text=_text(raw, "label", context, allowed),
-        style=_slider_style(raw.get("style"), f"{context}.style"),
-        on_change=_callback(raw.get("on_change"), f"{context}.on_change"),
-        minimum=minimum, maximum=maximum, step=step, value=value, **base)
+        text="", style=ImageStyle(), source=source,
+        transparent=None if transparent is None else _color(transparent, f"{context}.transparent"),
+        **base)
 
 
 def _parse_screen(raw: Any, context: str, width: int, height: int,

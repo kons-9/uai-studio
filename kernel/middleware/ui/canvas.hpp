@@ -19,6 +19,18 @@ struct Rect {
     }
 };
 
+/* True when pixel (px, py) lies inside the ellipse inscribed in `rect`.
+ * Integer math on doubled coordinates; the host preview uses the same test. */
+constexpr bool InsideEllipse(const Rect &rect, std::int32_t px, std::int32_t py)
+{
+    if (rect.width == 0U || rect.height == 0U) return false;
+    const std::int64_t a = rect.width;   /* doubled semi-axes */
+    const std::int64_t b = rect.height;
+    const std::int64_t dx = 2 * (px - rect.x) + 1 - a;
+    const std::int64_t dy = 2 * (py - rect.y) + 1 - b;
+    return dx * dx * b * b + dy * dy * a * a <= a * a * b * b;
+}
+
 constexpr std::uint16_t Rgb565(std::uint8_t red, std::uint8_t green,
                                std::uint8_t blue)
 {
@@ -61,6 +73,15 @@ public:
     void FillRect(const Rect &rect, std::uint16_t color);
     void DrawFrame(const Rect &rect, std::uint16_t thickness,
                    std::uint16_t color);
+    void FillEllipse(const Rect &rect, std::uint16_t color);
+    /* Ring between the ellipse of `rect` and the one inset by `thickness`. */
+    void DrawEllipseFrame(const Rect &rect, std::uint16_t thickness,
+                          std::uint16_t color);
+    /* Copies an RGB565 bitmap; pixels equal to `transparent` are skipped
+     * when `has_transparent` is set. */
+    void Blit(std::uint16_t x, std::uint16_t y, const std::uint16_t *pixels,
+              std::uint16_t width, std::uint16_t height,
+              bool has_transparent = false, std::uint16_t transparent = 0U);
     void DrawText(std::uint16_t x, std::uint16_t y, const char *text,
                   std::uint8_t scale, std::uint16_t color);
     void DrawTextCentered(const Rect &rect, const char *text,

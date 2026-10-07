@@ -15,12 +15,21 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .emit_cpp import generate_header
+from .emit_cpp import generate_header, images_header_name, load_bitmaps
 from .font import GLYPHS, GLYPH_ADVANCE, GLYPH_HEIGHT, GLYPH_WIDTH
-from .render import encode_png, render_layout
+from .images import load_bitmap
+from .render import Canvas, encode_png, render_layout
 from .schema import LayoutError, dump_layout, load_layout, parse_layout, save_layout
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+
+def _header_text(state: "EditorState", layout) -> str:
+    """Layout header as `generate` would write it next to a hypothetical
+    ui_layout.hpp; bitmaps are resolved against the layout file."""
+    bitmaps = load_bitmaps(layout, state.layout_path)
+    return generate_header(layout, state.layout_path.name, bitmaps,
+                           images_header_name(Path("ui_layout.hpp")).name)
 
 
 class EditorState:
@@ -96,21 +105,39 @@ def _make_handler(state: EditorState):
                 with state.lock:
                     try:
                         layout = load_layout(state.layout_path)
+                        text = _header_text(state, layout)
                     except LayoutError as error:
                         self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
                         return
-                self._send(HTTPStatus.OK,
-                           generate_header(layout, state.layout_path.name).encode("utf-8"),
-                           "text/plain; charset=utf-8")
+                self._send(HTTPStatus.OK, text.encode("utf-8"), "text/plain; charset=utf-8")
             elif path == "/api/preview.png":
                 with state.lock:
                     try:
                         layout = load_layout(state.layout_path)
                         screen_id = params.get("screen", [None])[0]
-                        canvas = render_layout(layout, screen_id=screen_id)
+                        canvas = render_layout(layout, screen_id=screen_id,
+                                               bitmaps=load_bitmaps(layout, state.layout_path))
                     except LayoutError as error:
                         self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
                         return
+                self._send(HTTPStatus.OK, encode_png(canvas), "image/png")
+            elif path == "/api/image.png":
+                # The device-side bitmap of one image widget from the saved
+                # layout, so the editor shows the exact RGB565 result.
+                widget_id = params.get("id", [""])[0]
+                with state.lock:
+                    try:
+                        layout = load_layout(state.layout_path)
+                        widget = next(w for w in layout.images() if w.id == widget_id)
+                        bitmap = load_bitmap(state.layout_path, widget)
+                    except StopIteration:
+                        self._json(HTTPStatus.NOT_FOUND, {"error": f"no image {widget_id!r}"})
+                        return
+                    except LayoutError as error:
+                        self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
+                        return
+                canvas = Canvas(bitmap.width, bitmap.height, 0x0000)
+                canvas.blit(0, 0, bitmap)
                 self._send(HTTPStatus.OK, encode_png(canvas), "image/png")
             else:
                 self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
@@ -130,9 +157,12 @@ def _make_handler(state: EditorState):
             if path == "/api/validate":
                 self._json(HTTPStatus.OK, {"ok": True, "layout": layout.to_document()})
             elif path == "/api/cpp":
-                self._send(HTTPStatus.OK,
-                           generate_header(layout, state.layout_path.name).encode("utf-8"),
-                           "text/plain; charset=utf-8")
+                try:
+                    text = _header_text(state, layout)
+                except LayoutError as error:
+                    self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
+                    return
+                self._send(HTTPStatus.OK, text.encode("utf-8"), "text/plain; charset=utf-8")
             elif path == "/api/layout":
                 with state.lock:
                     save_layout(state.layout_path, layout)

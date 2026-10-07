@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "middleware/ui/widget.hpp"
+#include "ui_layout_images.hpp"
 
 namespace uai::ai::app_ui {
 
@@ -26,26 +27,31 @@ enum class WidgetId : std::uint16_t {
     kToggleBoxes = 7U,
     kCloseMenu = 8U,
     kMenuTitle = 9U,
-    kMinConfidence = 10U,
-    kStatusPeriod = 11U,
-    kMenuHint = 12U,
+    kLogo = 10U,
+    kMinConfidence = 11U,
+    kStatusPeriod = 12U,
+    kModelsCaption = 13U,
+    kModels = 14U,
+    kPersonRate = 15U,
+    kMenuHint = 16U,
 };
 
 inline constexpr ui::ButtonSpec kMainButtons[] = {
     {
         static_cast<std::uint16_t>(WidgetId::kOpenMenu),
-        {744U, 0U, 56U, 48U},
+        {732U, 8U, 56U, 56U},
         "",
         {
-            ui::Rgb565(0x00U, 0x00U, 0x00U),
-            ui::Rgb565(0x40U, 0x40U, 0x40U),
-            ui::Rgb565(0x00U, 0x00U, 0x00U),
-            ui::Rgb565(0x00U, 0x00U, 0x00U),
+            ui::Rgb565(0x20U, 0x20U, 0x20U),
+            ui::Rgb565(0x60U, 0x60U, 0x60U),
+            ui::Rgb565(0x20U, 0x20U, 0x20U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
             ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
             2U,
-            0U,
+            2U,
         },
         ui::Icon::kMenu,
+        ui::Shape::kEllipse,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kPerson),
@@ -61,6 +67,7 @@ inline constexpr ui::ButtonSpec kMainButtons[] = {
             2U,
         },
         ui::Icon::kNone,
+        ui::Shape::kRectangle,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kFace),
@@ -76,6 +83,7 @@ inline constexpr ui::ButtonSpec kMainButtons[] = {
             2U,
         },
         ui::Icon::kNone,
+        ui::Shape::kRectangle,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kSegmentation),
@@ -91,6 +99,7 @@ inline constexpr ui::ButtonSpec kMainButtons[] = {
             2U,
         },
         ui::Icon::kNone,
+        ui::Shape::kRectangle,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kToggleBoxes),
@@ -106,13 +115,14 @@ inline constexpr ui::ButtonSpec kMainButtons[] = {
             2U,
         },
         ui::Icon::kNone,
+        ui::Shape::kRectangle,
     },
 };
 
 inline constexpr ui::LabelSpec kMainLabels[] = {
     {
         static_cast<std::uint16_t>(WidgetId::kStatus),
-        {0U, 0U, 736U, 24U},
+        {0U, 0U, 720U, 24U},
         "AI STARTING",
         {
             ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
@@ -123,25 +133,38 @@ inline constexpr ui::LabelSpec kMainLabels[] = {
             4U,
         },
     },
+};
+
+inline constexpr ui::NumberSpec kMainNumbers[] = {
     {
         static_cast<std::uint16_t>(WidgetId::kDetections),
-        {520U, 56U, 264U, 24U},
+        {600U, 72U, 188U, 56U},
+        "DET",
         "",
+        0U,
+        0,
         {
             ui::Rgb565(0xFFU, 0xE0U, 0x00U),
             0U,
             false,
-            2U,
-            ui::TextAlign::kRight,
             4U,
+            ui::TextAlign::kRight,
         },
     },
+};
+
+inline constexpr const char *const kModelsItems[] = {
+    "ALL",
+    "PERSON",
+    "FACE",
+    "SEG",
+    "PERSON+FACE",
 };
 
 inline constexpr ui::ButtonSpec kMenuButtons[] = {
     {
         static_cast<std::uint16_t>(WidgetId::kCloseMenu),
-        {16U, 16U, 64U, 56U},
+        {16U, 16U, 56U, 56U},
         "",
         {
             ui::Rgb565(0x10U, 0x18U, 0x20U),
@@ -153,19 +176,33 @@ inline constexpr ui::ButtonSpec kMenuButtons[] = {
             2U,
         },
         ui::Icon::kBack,
+        ui::Shape::kEllipse,
     },
 };
 
 inline constexpr ui::LabelSpec kMenuLabels[] = {
     {
         static_cast<std::uint16_t>(WidgetId::kMenuTitle),
-        {96U, 24U, 400U, 40U},
+        {88U, 24U, 400U, 40U},
         "SETTINGS",
         {
             ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
             0U,
             false,
             4U,
+            ui::TextAlign::kLeft,
+            0U,
+        },
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kModelsCaption),
+        {40U, 196U, 200U, 24U},
+        "MODELS",
+        {
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            0U,
+            false,
+            2U,
             ui::TextAlign::kLeft,
             0U,
         },
@@ -188,7 +225,7 @@ inline constexpr ui::LabelSpec kMenuLabels[] = {
 inline constexpr ui::SliderSpec kMenuSliders[] = {
     {
         static_cast<std::uint16_t>(WidgetId::kMinConfidence),
-        {40U, 120U, 720U, 72U},
+        {40U, 104U, 480U, 72U},
         "MIN CONFIDENCE %",
         0, 100, 5, 50,
         {
@@ -200,12 +237,16 @@ inline constexpr ui::SliderSpec kMenuSliders[] = {
             true,
         },
     },
+};
+
+inline constexpr ui::DialSpec kMenuDials[] = {
     {
         static_cast<std::uint16_t>(WidgetId::kStatusPeriod),
-        {40U, 220U, 720U, 72U},
-        "STATUS UPDATE MS",
+        {560U, 104U, 200U, 220U},
+        "STATUS MS",
         100, 2000, 100, 500,
         {
+            ui::Rgb565(0x20U, 0x28U, 0x30U),
             ui::Rgb565(0x30U, 0x40U, 0x50U),
             ui::Rgb565(0x20U, 0xA0U, 0x60U),
             ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
@@ -213,6 +254,49 @@ inline constexpr ui::SliderSpec kMenuSliders[] = {
             2U,
             true,
         },
+    },
+};
+
+inline constexpr ui::WheelSpec kMenuWheels[] = {
+    {
+        static_cast<std::uint16_t>(WidgetId::kModels),
+        {40U, 224U, 240U, 150U},
+        kModelsItems, sizeof(kModelsItems) / sizeof(kModelsItems[0]), 0U,
+        {
+            ui::Rgb565(0x18U, 0x20U, 0x28U),
+            ui::Rgb565(0x20U, 0x60U, 0xC0U),
+            ui::Rgb565(0x80U, 0x90U, 0xA0U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            2U,
+        },
+    },
+};
+
+inline constexpr ui::NumberSpec kMenuNumbers[] = {
+    {
+        static_cast<std::uint16_t>(WidgetId::kPersonRate),
+        {320U, 224U, 200U, 72U},
+        "PERSON FPS",
+        "",
+        1U,
+        0,
+        {
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0x18U, 0x20U, 0x28U),
+            true,
+            4U,
+            ui::TextAlign::kRight,
+        },
+    },
+};
+
+inline constexpr ui::ImageSpec kMenuImages[] = {
+    {
+        static_cast<std::uint16_t>(WidgetId::kLogo),
+        {670U, 16U, 114U, 54U},
+        kLogoPixels,
+        true, 0xF81FU,
     },
 };
 
@@ -224,6 +308,10 @@ inline constexpr ui::ScreenSpec kScreens[] = {
         kMainButtons, sizeof(kMainButtons) / sizeof(kMainButtons[0]),
         kMainLabels, sizeof(kMainLabels) / sizeof(kMainLabels[0]),
         nullptr, 0U,
+        nullptr, 0U,
+        nullptr, 0U,
+        kMainNumbers, sizeof(kMainNumbers) / sizeof(kMainNumbers[0]),
+        nullptr, 0U,
     },
     {
         static_cast<std::uint16_t>(ScreenId::kMenu),
@@ -231,6 +319,10 @@ inline constexpr ui::ScreenSpec kScreens[] = {
         kMenuButtons, sizeof(kMenuButtons) / sizeof(kMenuButtons[0]),
         kMenuLabels, sizeof(kMenuLabels) / sizeof(kMenuLabels[0]),
         kMenuSliders, sizeof(kMenuSliders) / sizeof(kMenuSliders[0]),
+        kMenuDials, sizeof(kMenuDials) / sizeof(kMenuDials[0]),
+        kMenuWheels, sizeof(kMenuWheels) / sizeof(kMenuWheels[0]),
+        kMenuNumbers, sizeof(kMenuNumbers) / sizeof(kMenuNumbers[0]),
+        kMenuImages, sizeof(kMenuImages) / sizeof(kMenuImages[0]),
     },
 };
 inline constexpr std::size_t kScreenCount =
@@ -239,6 +331,7 @@ inline constexpr std::size_t kScreenCount =
 /* Handler methods the application must provide on its Handlers type:
  *   void OnFaceTap(const ui::Event &event);
  *   void OnMinConfidenceChange(const ui::Event &event);
+ *   void OnModelsChange(const ui::Event &event);
  *   void OnPersonTap(const ui::Event &event);
  *   void OnSegmentationTap(const ui::Event &event);
  *   void OnStatusPeriodChange(const ui::Event &event);
@@ -279,6 +372,9 @@ bool Dispatch(Handlers &handlers, const ui::Event &event)
             return true;
         case WidgetId::kStatusPeriod:
             handlers.OnStatusPeriodChange(event);
+            return true;
+        case WidgetId::kModels:
+            handlers.OnModelsChange(event);
             return true;
         default:
             break;

@@ -14,33 +14,36 @@ constexpr std::uint16_t kHeight = 16U;
 constexpr std::uint16_t kBackground = 0x0000U;
 constexpr std::uint16_t kGuard = 0xA5A5U;
 
-struct Frame {
+template <std::uint16_t Height>
+struct FrameOf {
     /* One extra row on each side detects writes outside the canvas. */
-    std::array<std::uint16_t, kWidth * (kHeight + 2U)> pixels{};
+    std::array<std::uint16_t, kWidth * (Height + 2U)> pixels{};
 
-    Frame()
+    FrameOf()
     {
         pixels.fill(kGuard);
-        for (std::size_t i = kWidth; i < kWidth * (kHeight + 1U); ++i) {
+        for (std::size_t i = kWidth; i < kWidth * (Height + 1U); ++i) {
             pixels[i] = kBackground;
         }
     }
     std::uint16_t *Begin() { return pixels.data() + kWidth; }
     std::uint16_t At(std::uint16_t x, std::uint16_t y) const
     {
-        return pixels[kWidth + static_cast<std::size_t>(y) * kWidth + x];
+        return pixels.at(kWidth + static_cast<std::size_t>(y) * kWidth + x);
     }
     bool GuardsIntact() const
     {
         for (std::size_t i = 0U; i < kWidth; ++i) {
             if (pixels[i] != kGuard ||
-                pixels[kWidth * (kHeight + 1U) + i] != kGuard) {
+                pixels[kWidth * (Height + 1U) + i] != kGuard) {
                 return false;
             }
         }
         return true;
     }
 };
+using Frame = FrameOf<kHeight>;
+using TallFrame = FrameOf<32U>;
 
 TEST(UiCanvas, FillRectClipsToCanvasBounds)
 {
@@ -407,6 +410,230 @@ TEST(UiScreen, SolidBackgroundAndRouting)
     uai::ai::ui::Canvas untouched_canvas(untouched.Begin(), kWidth, kHeight);
     empty.Paint(untouched_canvas);
     EXPECT_EQ(untouched.At(0U, 0U), kBackground);
+}
+
+TEST(UiCanvas, EllipseFillAndFrameStayInsideBounds)
+{
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    const uai::ai::ui::Rect rect{2U, 2U, 16U, 12U};
+    canvas.FillEllipse(rect, 0x1111U);
+    EXPECT_EQ(frame.At(10U, 8U), 0x1111U);   /* centre */
+    EXPECT_EQ(frame.At(2U, 8U), 0x1111U);    /* left extreme on the centre row */
+    EXPECT_EQ(frame.At(2U, 2U), kBackground); /* corner stays empty */
+    EXPECT_EQ(frame.At(17U, 13U), kBackground);
+    EXPECT_FALSE(uai::ai::ui::InsideEllipse(rect, 2, 2));
+    EXPECT_TRUE(uai::ai::ui::InsideEllipse(rect, 10, 8));
+
+    canvas.DrawEllipseFrame(rect, 2U, 0x2222U);
+    EXPECT_EQ(frame.At(2U, 8U), 0x2222U);
+    EXPECT_EQ(frame.At(10U, 8U), 0x1111U);  /* interior keeps the fill */
+    EXPECT_TRUE(frame.GuardsIntact());
+}
+
+TEST(UiButtonPanel, EllipseShapeHitTestFollowsOutline)
+{
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    uai::ai::ui::ButtonSpec button{1U, {0U, 0U, 16U, 16U}, "", {}, uai::ai::ui::Icon::kNone,
+                                   uai::ai::ui::Shape::kEllipse};
+    button.style.fill = 0x1111U;
+    button.style.border_width = 0U;
+    uai::ai::ui::ButtonPanel panel(&button, 1U);
+    panel.Paint(canvas);
+    EXPECT_EQ(frame.At(8U, 8U), 0x1111U);
+    EXPECT_EQ(frame.At(0U, 0U), kBackground);
+    /* The corner is inside the bounds but outside the circle. */
+    EXPECT_EQ(panel.Update({true, 0U, 0U}).type, uai::ai::ui::EventType::kNone);
+    panel.Update({false, 0U, 0U});
+    EXPECT_EQ(panel.Update({true, 8U, 8U}).type, uai::ai::ui::EventType::kPress);
+}
+
+/* 32x32 bounds, 1x caption (11 px): disc 21x21 at (5, 11). */
+constexpr uai::ai::ui::DialStyle SmallDialStyle()
+{
+    uai::ai::ui::DialStyle style{};
+    style.text_scale = 1U;
+    style.show_value = false;
+    return style;
+}
+constexpr uai::ai::ui::DialSpec kDial{
+    4U, {0U, 0U, 32U, 32U}, "", 0, 100, 10, 50, SmallDialStyle()};
+
+TEST(UiDial, AngleMapsToValueAcrossTheArc)
+{
+    const uai::ai::ui::Rect disc = uai::ai::ui::DialPanel::DiscOf(kDial);
+    EXPECT_EQ(disc.width, 21U);
+    EXPECT_EQ(disc.x, 5U);
+    EXPECT_EQ(disc.y, 11U);
+    const std::uint16_t cx = static_cast<std::uint16_t>(disc.x + disc.width / 2U);
+    const std::uint16_t cy = static_cast<std::uint16_t>(disc.y + disc.height / 2U);
+    /* Straight up is the middle of the 270-degree sweep. */
+    EXPECT_EQ(uai::ai::ui::DialPanel::ValueAt(kDial, cx, static_cast<std::uint16_t>(cy - 8U)), 50);
+    /* Left (180 degrees) is 45 of 270 into the sweep: 16.7 -> snaps to 20. */
+    EXPECT_EQ(uai::ai::ui::DialPanel::ValueAt(kDial, static_cast<std::uint16_t>(cx - 8U), cy), 20);
+    EXPECT_EQ(uai::ai::ui::DialPanel::ValueAt(kDial, static_cast<std::uint16_t>(cx + 8U), cy), 80);
+    /* Bottom-left corner of the gap snaps to min, bottom-right to max. */
+    EXPECT_EQ(uai::ai::ui::DialPanel::ValueAt(kDial, static_cast<std::uint16_t>(cx - 2U),
+                                              static_cast<std::uint16_t>(cy + 9U)), 0);
+    EXPECT_EQ(uai::ai::ui::DialPanel::ValueAt(kDial, static_cast<std::uint16_t>(cx + 2U),
+                                              static_cast<std::uint16_t>(cy + 9U)), 100);
+    EXPECT_EQ(uai::ai::ui::DialPanel::SweepOf(kDial, 50), 135U);
+    EXPECT_EQ(uai::ai::ui::DialPanel::SweepOf(kDial, 100), 270U);
+}
+
+TEST(UiDial, DragInsideDiscChangesValueAndPaintsArc)
+{
+    uai::ai::ui::DialPanel panel(&kDial, 1U);
+    EXPECT_EQ(panel.Value(4U), 50);
+    const uai::ai::ui::Rect disc = uai::ai::ui::DialPanel::DiscOf(kDial);
+    const std::uint16_t cx = static_cast<std::uint16_t>(disc.x + disc.width / 2U);
+    const std::uint16_t cy = static_cast<std::uint16_t>(disc.y + disc.height / 2U);
+
+    /* Touching the caption row (outside the disc) does nothing. */
+    EXPECT_EQ(panel.Update({true, cx, 2U}).type, uai::ai::ui::EventType::kNone);
+    panel.Update({false, 0U, 0U});
+
+    uai::ai::ui::Event event = panel.Update({true, static_cast<std::uint16_t>(cx + 8U), cy});
+    EXPECT_EQ(event.type, uai::ai::ui::EventType::kChange);
+    EXPECT_EQ(event.value, 80);
+    EXPECT_TRUE(panel.IsDragging());
+    EXPECT_EQ(panel.Update({true, static_cast<std::uint16_t>(cx + 8U), cy}).type,
+              uai::ai::ui::EventType::kNone);
+    panel.Update({false, 0U, 0U});
+    EXPECT_EQ(panel.Value(4U), 80);
+    EXPECT_TRUE(panel.SetValue(4U, 500));
+    EXPECT_EQ(panel.Value(4U), 100);
+
+    TallFrame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, 32U);
+    uai::ai::ui::DialSpec dial = kDial;
+    dial.style.face = 0x1111U;
+    dial.style.track = 0x2222U;
+    dial.style.fill = 0x3333U;
+    dial.style.pointer = 0x4444U;
+    dial.initial = 50;
+    uai::ai::ui::DialPanel painted(&dial, 1U);
+    painted.Paint(canvas);
+    EXPECT_EQ(frame.At(cx, cy), 0x1111U);                                   /* face */
+    EXPECT_EQ(frame.At(static_cast<std::uint16_t>(cx - 9U), cy), 0x3333U); /* left ring: swept */
+    EXPECT_EQ(frame.At(static_cast<std::uint16_t>(cx + 9U), cy), 0x2222U); /* right ring: not yet */
+    EXPECT_EQ(frame.At(cx, static_cast<std::uint16_t>(cy - 9U)), 0x4444U); /* pointer at top */
+    EXPECT_EQ(frame.At(cx, static_cast<std::uint16_t>(cy + 9U)), kBackground); /* gap */
+}
+
+constexpr const char *const kWheelItems[] = {"A", "B", "C", "D"};
+constexpr uai::ai::ui::WheelStyle SmallWheelStyle()
+{
+    uai::ai::ui::WheelStyle style{};
+    style.text_scale = 1U;
+    return style;
+}
+/* Row height 15; bounds show one band plus partial neighbours. */
+constexpr uai::ai::ui::WheelSpec kWheel{
+    6U, {0U, 0U, 32U, 16U}, kWheelItems, 4U, 1U, SmallWheelStyle()};
+
+TEST(UiWheel, DragStepsThroughItems)
+{
+    uai::ai::ui::WheelPanel panel(&kWheel, 1U);
+    EXPECT_EQ(panel.Value(6U), 1);
+    EXPECT_STREQ(panel.ItemText(6U), "B");
+    EXPECT_EQ(uai::ai::ui::WheelPanel::RowHeightOf(kWheel), 15U);
+
+    /* Dragging up by one row selects the next item; two rows the one after. */
+    EXPECT_EQ(panel.Update({true, 16U, 15U}).type, uai::ai::ui::EventType::kNone);
+    EXPECT_EQ(panel.Update({true, 16U, 10U}).type, uai::ai::ui::EventType::kNone);
+    uai::ai::ui::Event event = panel.Update({true, 16U, 0U});
+    EXPECT_EQ(event.type, uai::ai::ui::EventType::kChange);
+    EXPECT_EQ(event.value, 2);
+    EXPECT_STREQ(panel.ItemText(6U), "C");
+    panel.Update({false, 0U, 0U});
+
+    /* Dragging down past the first item clamps at 0. */
+    panel.Update({true, 16U, 0U});
+    event = panel.Update({true, 16U, 15U});
+    EXPECT_EQ(event.value, 1);
+    EXPECT_EQ(panel.Update({true, 16U, 15U}).type, uai::ai::ui::EventType::kNone);
+    panel.Update({false, 0U, 0U});
+    panel.Update({true, 16U, 0U});
+    panel.Update({true, 16U, 15U});
+    EXPECT_EQ(panel.Value(6U), 0);
+    panel.Update({false, 0U, 0U});
+
+    EXPECT_TRUE(panel.SetValue(6U, 3));
+    EXPECT_FALSE(panel.SetValue(6U, 4));
+    EXPECT_STREQ(panel.ItemText(6U), "D");
+
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    uai::ai::ui::WheelSpec wheel = kWheel;
+    wheel.style.fill = 0x1111U;
+    wheel.style.highlight = 0x2222U;
+    wheel.style.border = 0x3333U;
+    uai::ai::ui::WheelPanel painted(&wheel, 1U);
+    painted.Paint(canvas);
+    EXPECT_EQ(frame.At(0U, 0U), 0x3333U);  /* border */
+    EXPECT_EQ(frame.At(2U, 8U), 0x2222U);  /* band covers the middle row */
+    EXPECT_TRUE(frame.GuardsIntact());
+}
+
+TEST(UiNumber, FormatsDecimalsAndUnit)
+{
+    uai::ai::ui::NumberSpec number{7U, {0U, 0U, 32U, 16U}, "", "%", 1U, 0, {}};
+    char text[uai::ai::ui::kNumberTextCapacity];
+    uai::ai::ui::NumberPanel::Format(number, 1234, text);
+    EXPECT_STREQ(text, "123.4%");
+    uai::ai::ui::NumberPanel::Format(number, -5, text);
+    EXPECT_STREQ(text, "-0.5%");
+    number.decimals = 0U;
+    number.unit = "";
+    uai::ai::ui::NumberPanel::Format(number, 42, text);
+    EXPECT_STREQ(text, "42");
+
+    uai::ai::ui::NumberPanel panel(&number, 1U);
+    EXPECT_EQ(panel.Value(7U), 0);
+    EXPECT_TRUE(panel.SetValue(7U, 9));
+    EXPECT_FALSE(panel.SetValue(8U, 9));
+    EXPECT_EQ(panel.Value(7U), 9);
+
+    /* Right-aligned 1x "9" ends 4 px before the right edge. */
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    number.style.text_scale = 1U;
+    number.style.fill = 0x1111U;
+    number.style.text = 0x2222U;
+    uai::ai::ui::NumberPanel painted(&number, 1U);
+    painted.SetValue(7U, 9);
+    painted.Paint(canvas);
+    EXPECT_EQ(frame.At(1U, 1U), 0x1111U);
+    EXPECT_EQ(frame.At(25U, 4U), 0x2222U);  /* top bar of the '9' */
+    EXPECT_EQ(frame.At(27U, 5U), 0x2222U);  /* right stem */
+    EXPECT_EQ(frame.At(28U, 5U), 0x1111U);
+}
+
+TEST(UiImage, BlitSkipsTransparentKey)
+{
+    static constexpr std::uint16_t kBitmap[] = {
+        0xAAAAU, 0xF81FU,
+        0xF81FU, 0xBBBBU,
+    };
+    uai::ai::ui::ImageSpec image{9U, {30U, 14U, 2U, 2U}, kBitmap, true, 0xF81FU};
+    uai::ai::ui::ImagePanel panel(&image, 1U);
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    panel.Paint(canvas);
+    EXPECT_EQ(frame.At(30U, 14U), 0xAAAAU);
+    EXPECT_EQ(frame.At(31U, 14U), kBackground);
+    EXPECT_EQ(frame.At(30U, 15U), kBackground);
+    EXPECT_EQ(frame.At(31U, 15U), 0xBBBBU);
+
+    /* Partially off-canvas images are clipped, never wrapped. */
+    uai::ai::ui::ImageSpec edge{10U, {31U, 15U, 2U, 2U}, kBitmap, false, 0U};
+    uai::ai::ui::ImagePanel clipped(&edge, 1U);
+    clipped.Paint(canvas);
+    EXPECT_EQ(frame.At(31U, 15U), 0xAAAAU);
+    EXPECT_EQ(frame.At(0U, 0U), kBackground);
+    EXPECT_TRUE(frame.GuardsIntact());
 }
 
 } // namespace

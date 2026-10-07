@@ -26,6 +26,11 @@ enum class Icon : std::uint8_t {
     kClose,  /* cross */
 };
 
+enum class Shape : std::uint8_t {
+    kRectangle,
+    kEllipse,  /* inscribed in the bounds; hit test follows the outline */
+};
+
 /* Static description of one button. Tables of these are the contract that
  * host_app/ui_designer generates; runtime state lives in ButtonPanel. */
 struct ButtonSpec {
@@ -34,6 +39,13 @@ struct ButtonSpec {
     const char *label = "";
     ButtonStyle style{};
     Icon icon = Icon::kNone;
+    Shape shape = Shape::kRectangle;
+
+    constexpr bool Contains(std::uint16_t x, std::uint16_t y) const
+    {
+        return bounds.Contains(x, y) &&
+               (shape == Shape::kRectangle || InsideEllipse(bounds, x, y));
+    }
 };
 
 enum class TextAlign : std::uint8_t {
@@ -79,6 +91,80 @@ struct SliderSpec {
     std::int32_t step = 1;
     std::int32_t initial = 0;
     SliderStyle style{};
+};
+
+struct DialStyle {
+    std::uint16_t face = Rgb565(0x20U, 0x28U, 0x30U);
+    std::uint16_t track = Rgb565(0x40U, 0x40U, 0x40U);
+    std::uint16_t fill = Rgb565(0x20U, 0x60U, 0xC0U);
+    std::uint16_t pointer = Rgb565(0xFFU, 0xFFU, 0xFFU);
+    std::uint16_t text = Rgb565(0xFFU, 0xFFU, 0xFFU);
+    std::uint8_t text_scale = 2U;
+    bool show_value = true;
+};
+
+/* Rotary knob: a 270-degree arc from bottom-left to bottom-right. The
+ * caption and current value are drawn above the dial like the slider. */
+struct DialSpec {
+    std::uint16_t id = 0U;
+    Rect bounds{};
+    const char *label = "";
+    std::int32_t minimum = 0;
+    std::int32_t maximum = 100;
+    std::int32_t step = 1;
+    std::int32_t initial = 0;
+    DialStyle style{};
+};
+
+struct WheelStyle {
+    std::uint16_t fill = Rgb565(0x18U, 0x20U, 0x28U);
+    std::uint16_t highlight = Rgb565(0x20U, 0x60U, 0xC0U);
+    std::uint16_t text = Rgb565(0x80U, 0x90U, 0xA0U);
+    std::uint16_t selected_text = Rgb565(0xFFU, 0xFFU, 0xFFU);
+    std::uint16_t border = Rgb565(0xFFU, 0xFFU, 0xFFU);
+    std::uint8_t text_scale = 2U;
+};
+
+/* Vertical picker: the selected item sits in a highlighted band in the
+ * middle, neighbours above and below; dragging up or down steps through
+ * the items. Event::value is the selected index. */
+struct WheelSpec {
+    std::uint16_t id = 0U;
+    Rect bounds{};
+    const char *const *items = nullptr;
+    std::size_t item_count = 0U;
+    std::size_t initial = 0U;
+    WheelStyle style{};
+};
+
+struct NumberStyle {
+    std::uint16_t text = Rgb565(0xFFU, 0xFFU, 0xFFU);
+    std::uint16_t fill = Rgb565(0x00U, 0x00U, 0x00U);
+    bool has_fill = true;
+    std::uint8_t text_scale = 4U;
+    TextAlign align = TextAlign::kRight;
+};
+
+/* Numeric read-out set by the application. `decimals` places the point:
+ * value 1234 with decimals 1 shows "123.4"; `unit` is appended. */
+struct NumberSpec {
+    std::uint16_t id = 0U;
+    Rect bounds{};
+    const char *label = "";
+    const char *unit = "";
+    std::uint8_t decimals = 0U;
+    std::int32_t initial = 0;
+    NumberStyle style{};
+};
+
+/* RGB565 bitmap generated from a PNG by host_app/ui_designer. The bitmap
+ * dimensions equal the bounds; `transparent` pixels are skipped. */
+struct ImageSpec {
+    std::uint16_t id = 0U;
+    Rect bounds{};
+    const std::uint16_t *pixels = nullptr;
+    bool has_transparent = false;
+    std::uint16_t transparent = 0U;
 };
 
 enum class EventType : std::uint8_t {
@@ -200,6 +286,100 @@ enum class Background : std::uint8_t {
     kSolid,   /* the frame is filled with `color` first */
 };
 
+inline constexpr std::size_t kMaxDials = 4U;
+
+class DialPanel final : public Painter {
+public:
+    DialPanel(const DialSpec *dials, std::size_t count);
+
+    Event Update(const TouchPoint &sample);
+    void Paint(Canvas &canvas) const override;
+    std::int32_t Value(std::uint16_t id) const;
+    bool SetValue(std::uint16_t id, std::int32_t value);
+    bool IsDragging() const { return active_index_ >= 0; }
+    std::size_t Count() const { return count_; }
+
+    /* Dial disc below the caption row; shared with the host preview. */
+    static Rect DiscOf(const DialSpec &dial);
+    /* Value for a finger at (x, y); points in the bottom gap clamp to the
+     * nearer end. */
+    static std::int32_t ValueAt(const DialSpec &dial, std::uint16_t x,
+                                std::uint16_t y);
+    /* Clockwise degrees from the arc start (bottom-left) for a value. */
+    static std::uint16_t SweepOf(const DialSpec &dial, std::int32_t value);
+
+private:
+    std::int32_t IndexOf(std::uint16_t id) const;
+    static std::int32_t Clamp(const DialSpec &dial, std::int32_t value);
+    const DialSpec *dials_;
+    std::size_t count_;
+    std::int32_t values_[kMaxDials] = {};
+    std::int32_t active_index_ = -1;
+    bool touch_active_ = false;
+};
+
+inline constexpr std::size_t kMaxWheels = 4U;
+
+class WheelPanel final : public Painter {
+public:
+    WheelPanel(const WheelSpec *wheels, std::size_t count);
+
+    Event Update(const TouchPoint &sample);
+    void Paint(Canvas &canvas) const override;
+    std::int32_t Value(std::uint16_t id) const;
+    bool SetValue(std::uint16_t id, std::int32_t index);
+    const char *ItemText(std::uint16_t id) const;
+    std::size_t Count() const { return count_; }
+
+    /* Height of one item row; dragging this far moves one item. */
+    static std::uint16_t RowHeightOf(const WheelSpec &wheel);
+
+private:
+    std::int32_t IndexOf(std::uint16_t id) const;
+    const WheelSpec *wheels_;
+    std::size_t count_;
+    std::int32_t selected_[kMaxWheels] = {};
+    std::int32_t active_index_ = -1;
+    std::int32_t anchor_selected_ = 0;
+    std::uint16_t anchor_y_ = 0U;
+    bool touch_active_ = false;
+};
+
+inline constexpr std::size_t kMaxNumbers = 8U;
+inline constexpr std::size_t kNumberTextCapacity = 24U;
+
+class NumberPanel final : public Painter {
+public:
+    NumberPanel(const NumberSpec *numbers, std::size_t count);
+
+    bool SetValue(std::uint16_t id, std::int32_t value);
+    std::int32_t Value(std::uint16_t id) const;
+    void Paint(Canvas &canvas) const override;
+    std::size_t Count() const { return count_; }
+
+    /* Formats `value` with the spec's decimals and unit into `out`. */
+    static void Format(const NumberSpec &number, std::int32_t value,
+                       char (&out)[kNumberTextCapacity]);
+
+private:
+    std::int32_t IndexOf(std::uint16_t id) const;
+    const NumberSpec *numbers_;
+    std::size_t count_;
+    std::int32_t values_[kMaxNumbers] = {};
+};
+
+class ImagePanel final : public Painter {
+public:
+    ImagePanel(const ImageSpec *images, std::size_t count)
+        : images_(images), count_(images != nullptr ? count : 0U) {}
+    void Paint(Canvas &canvas) const override;
+    std::size_t Count() const { return count_; }
+
+private:
+    const ImageSpec *images_;
+    std::size_t count_;
+};
+
 /* One page of the UI. Tables of these are generated; Screen holds state. */
 struct ScreenSpec {
     std::uint16_t id = 0U;
@@ -211,31 +391,49 @@ struct ScreenSpec {
     std::size_t label_count = 0U;
     const SliderSpec *sliders = nullptr;
     std::size_t slider_count = 0U;
+    const DialSpec *dials = nullptr;
+    std::size_t dial_count = 0U;
+    const WheelSpec *wheels = nullptr;
+    std::size_t wheel_count = 0U;
+    const NumberSpec *numbers = nullptr;
+    std::size_t number_count = 0U;
+    const ImageSpec *images = nullptr;
+    std::size_t image_count = 0U;
 };
 
 class Screen final : public Painter {
 public:
     explicit Screen(const ScreenSpec &spec);
 
-    /* Routes the sample to the buttons and sliders of this screen. */
+    /* Routes the sample to the touch-sensitive panels of this screen. */
     Event Update(const TouchPoint &sample);
-    /* Fills a solid background when configured, then draws buttons,
-     * sliders, and labels in that order. */
+    /* Fills a solid background when configured, then draws images,
+     * buttons, sliders, dials, wheels, numbers, and labels in that order. */
     void Paint(Canvas &canvas) const override;
 
     const ScreenSpec &Spec() const { return spec_; }
     ButtonPanel &Buttons() { return buttons_; }
     LabelPanel &Labels() { return labels_; }
     SliderPanel &Sliders() { return sliders_; }
+    DialPanel &Dials() { return dials_; }
+    WheelPanel &Wheels() { return wheels_; }
+    NumberPanel &Numbers() { return numbers_; }
     const ButtonPanel &Buttons() const { return buttons_; }
     const LabelPanel &Labels() const { return labels_; }
     const SliderPanel &Sliders() const { return sliders_; }
+    const DialPanel &Dials() const { return dials_; }
+    const WheelPanel &Wheels() const { return wheels_; }
+    const NumberPanel &Numbers() const { return numbers_; }
 
 private:
     const ScreenSpec &spec_;
     ButtonPanel buttons_;
     LabelPanel labels_;
     SliderPanel sliders_;
+    DialPanel dials_;
+    WheelPanel wheels_;
+    NumberPanel numbers_;
+    ImagePanel images_;
 };
 
 } // namespace uai::ai::ui

@@ -32,6 +32,10 @@
   <button id="add">+ Button</button>
   <button id="add_label">+ Label</button>
   <button id="add_slider">+ Slider</button>
+  <button id="add_dial">+ Dial</button>
+  <button id="add_wheel">+ Wheel</button>
+  <button id="add_number">+ Number</button>
+  <button id="add_image">+ Image</button>
   <button id="delete">Delete</button>
   <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="snap" checked> snap 8px</label>
   <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="pressed"> pressed</label>
@@ -54,33 +58,43 @@
   <fieldset id="props"><legend>Properties</legend>
     <label>type <input type="text" id="p_type" disabled></label>
     <label>id <input type="text" id="p_id"></label>
-    <label class="k-button k-slider">label <input type="text" id="p_label"></label>
+    <label class="k-button k-slider k-dial k-number">label <input type="text" id="p_label"></label>
     <label class="k-label">text <input type="text" id="p_text_value"></label>
     <label>x <input type="number" id="p_x" min="0"></label>
     <label>y <input type="number" id="p_y" min="0"></label>
     <label>width <input type="number" id="p_width" min="1"></label>
     <label>height <input type="number" id="p_height" min="1"></label>
+    <label class="k-button">shape <select id="p_shape"><option>rectangle</option><option>ellipse</option></select></label>
     <label class="k-button">icon <select id="p_icon"><option>none</option><option>menu</option><option>back</option><option>close</option></select></label>
     <label class="k-button">navigate <select id="p_navigate"></select></label>
-    <label class="k-slider">min <input type="number" id="p_min"></label>
-    <label class="k-slider">max <input type="number" id="p_max"></label>
-    <label class="k-slider">step <input type="number" id="p_step" min="1"></label>
-    <label class="k-slider">value <input type="number" id="p_value"></label>
-    <label class="k-button k-label k-slider">fill <span style="display:flex;gap:4px;align-items:center"><input type="color" id="p_fill"><span class="k-label" style="display:inline-flex;gap:2px;align-items:center;font-size:12px"><input type="checkbox" id="p_fill_none">none</span></span></label>
+    <label class="k-slider k-dial">min <input type="number" id="p_min"></label>
+    <label class="k-slider k-dial">max <input type="number" id="p_max"></label>
+    <label class="k-slider k-dial">step <input type="number" id="p_step" min="1"></label>
+    <label class="k-slider k-dial k-wheel k-number">value <input type="number" id="p_value"></label>
+    <label class="k-wheel">items <input type="text" id="p_items" placeholder="A,B,C"></label>
+    <label class="k-number">unit <input type="text" id="p_unit" placeholder="%"></label>
+    <label class="k-number">decimals <input type="number" id="p_decimals" min="0" max="6"></label>
+    <label class="k-image">source <input type="text" id="p_source" placeholder="ui/logo.png"></label>
+    <label class="k-image">transparent <span style="display:flex;gap:4px;align-items:center"><input type="color" id="p_transparent"><span style="display:inline-flex;gap:2px;align-items:center;font-size:12px"><input type="checkbox" id="p_transparent_auto">auto</span></span></label>
+    <label class="k-button k-label k-slider k-dial k-wheel k-number">fill <span style="display:flex;gap:4px;align-items:center"><input type="color" id="p_fill"><span id="p_fill_none_wrap" style="display:inline-flex;gap:2px;align-items:center;font-size:12px"><input type="checkbox" id="p_fill_none">none</span></span></label>
     <label class="k-button">pressed_fill <input type="color" id="p_pressed_fill"></label>
     <label class="k-button">checked_fill <input type="color" id="p_checked_fill"></label>
-    <label class="k-button">border <input type="color" id="p_border"></label>
-    <label class="k-slider">track <input type="color" id="p_track"></label>
+    <label class="k-button k-wheel">border <input type="color" id="p_border"></label>
+    <label class="k-slider k-dial">track <input type="color" id="p_track"></label>
     <label class="k-slider">knob <input type="color" id="p_knob"></label>
-    <label>text color <input type="color" id="p_text"></label>
-    <label>text_scale <input type="number" id="p_text_scale" min="1" max="16"></label>
+    <label class="k-dial">face <input type="color" id="p_face"></label>
+    <label class="k-dial">pointer <input type="color" id="p_pointer"></label>
+    <label class="k-wheel">highlight <input type="color" id="p_highlight"></label>
+    <label class="k-wheel">selected_text <input type="color" id="p_selected_text"></label>
+    <label class="k-button k-label k-slider k-dial k-wheel k-number">text color <input type="color" id="p_text"></label>
+    <label class="k-button k-label k-slider k-dial k-wheel k-number">text_scale <input type="number" id="p_text_scale" min="1" max="16"></label>
     <label class="k-button">border_width <input type="number" id="p_border_width" min="0" max="32"></label>
-    <label class="k-label">align <select id="p_align"><option>left</option><option>center</option><option>right</option></select></label>
+    <label class="k-label k-number">align <select id="p_align"><option>left</option><option>center</option><option>right</option></select></label>
     <label class="k-label">padding <input type="number" id="p_padding" min="0" max="64"></label>
-    <label class="k-slider">show_value <input type="checkbox" id="p_show_value"></label>
+    <label class="k-slider k-dial">show_value <input type="checkbox" id="p_show_value"></label>
     <label class="k-button">on_tap <input type="text" id="p_on_tap" placeholder="OnXxxTap"></label>
     <label class="k-button">on_press <input type="text" id="p_on_press" placeholder="OnXxxPress"></label>
-    <label class="k-slider">on_change <input type="text" id="p_on_change" placeholder="OnXxxChange"></label>
+    <label class="k-slider k-dial k-wheel">on_change <input type="text" id="p_on_change" placeholder="OnXxxChange"></label>
   </fieldset>
   <fieldset><legend>Display</legend>
     <label>namespace <input type="text" id="s_namespace"></label>
@@ -107,6 +121,10 @@
     button: ['fill', 'pressed_fill', 'checked_fill', 'border', 'text', 'text_scale', 'border_width'],
     label: ['fill', 'text', 'text_scale', 'align', 'padding'],
     slider: ['track', 'fill', 'knob', 'text', 'text_scale', 'show_value'],
+    dial: ['face', 'track', 'fill', 'pointer', 'text', 'text_scale', 'show_value'],
+    wheel: ['fill', 'highlight', 'text', 'selected_text', 'border', 'text_scale'],
+    number: ['text', 'fill', 'text_scale', 'align'],
+    image: [],
   };
   const allStyleIds = [...new Set(Object.values(styleIds).flat())];
   const numericStyle = ['text_scale', 'border_width', 'padding'];
@@ -114,12 +132,18 @@
     button: { fill: '#2060C0', pressed_fill: '#103060', checked_fill: '#00A060', border: '#FFFFFF', text: '#FFFFFF', text_scale: 3, border_width: 2 },
     label: { text: '#FFFFFF', fill: '#000000', text_scale: 2, align: 'left', padding: 4 },
     slider: { track: '#404040', fill: '#2060C0', knob: '#FFFFFF', text: '#FFFFFF', text_scale: 2, show_value: true },
+    dial: { face: '#202830', track: '#404040', fill: '#2060C0', pointer: '#FFFFFF', text: '#FFFFFF', text_scale: 2, show_value: true },
+    wheel: { fill: '#182028', highlight: '#2060C0', text: '#8090A0', selected_text: '#FFFFFF', border: '#FFFFFF', text_scale: 2 },
+    number: { text: '#FFFFFF', fill: '#000000', text_scale: 4, align: 'right' },
   };
-  const TRACK_H = 8, KNOB_W = 16, KNOB_M = 6;
+  const TRACK_H = 8, KNOB_W = 16, KNOB_M = 6, DIAL_START = 135, DIAL_SWEEP = 270, NUM_PAD = 4;
+  const rangeKinds = { slider: ['min', 'max', 'step', 'value'], dial: ['min', 'max', 'step', 'value'], wheel: ['value'], number: ['value'] };
   const kind = (w) => w.type || 'button';
-  const captionOf = (w) => kind(w) === 'label' ? w.text : w.label;
+  const captionOf = (w) => { const k = kind(w); return k === 'label' ? w.text : k === 'image' ? w.source : k === 'wheel' ? (w.items || []).join(',') : w.label; };
   const screen = () => layout.screens[screenIndex];
   const widgets = () => screen().widgets;
+  // Device-side bitmaps of saved image widgets, keyed by widget id.
+  const imageCache = new Map();
 
   function setStatus(message, ok) { status.textContent = message; status.className = ok ? 'ok' : ''; }
 
@@ -136,6 +160,16 @@
     fillRect(x, y, w, ty, color); fillRect(x, y + h - ty, w, ty, color);
     fillRect(x, y, tx, h, color); fillRect(x + w - tx, y, tx, h, color);
   }
+  function ellipsePath(x, y, w, h) { ctx.beginPath(); ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, 2 * Math.PI); }
+  function fillEllipse(x, y, w, h, color) { ellipsePath(x, y, w, h); ctx.fillStyle = color; ctx.fill(); }
+  function drawEllipseFrame(x, y, w, h, t, color) {
+    if (!t || w <= 2 * t || h <= 2 * t) { fillEllipse(x, y, w, h, color); return; }
+    ellipsePath(x + t / 2, y + t / 2, w - t, h - t); ctx.strokeStyle = color; ctx.lineWidth = t; ctx.stroke();
+  }
+  const insideEllipse = (b, px, py) => {
+    const dx = 2 * (px - b.x) + 1 - b.width, dy = 2 * (py - b.y) + 1 - b.height;
+    return dx * dx * b.height * b.height + dy * dy * b.width * b.width <= b.width * b.width * b.height * b.height;
+  };
   function textWidth(text, scale) { return text.length ? (text.length * font.advance - (font.advance - font.width)) * scale : 0; }
   function drawText(x, y, text, scale, color) {
     let pen = x;
@@ -161,9 +195,9 @@
     }
   }
   function drawButton(b, pressed, checked) {
-    const s = b.style;
-    fillRect(b.x, b.y, b.width, b.height, rgb565(pressed ? s.pressed_fill : checked ? s.checked_fill : s.fill));
-    drawFrame(b.x, b.y, b.width, b.height, s.border_width, rgb565(s.border));
+    const s = b.style, color = rgb565(pressed ? s.pressed_fill : checked ? s.checked_fill : s.fill);
+    if (b.shape === 'ellipse') { fillEllipse(b.x, b.y, b.width, b.height, color); drawEllipseFrame(b.x, b.y, b.width, b.height, s.border_width, rgb565(s.border)); }
+    else { fillRect(b.x, b.y, b.width, b.height, color); drawFrame(b.x, b.y, b.width, b.height, s.border_width, rgb565(s.border)); }
     if (b.icon && b.icon !== 'none') { drawIcon(b.x, b.y, b.width, b.height, b.icon, rgb565(s.text)); return; }
     const tw = textWidth(b.label, s.text_scale), th = font.height * s.text_scale;
     drawText(tw < b.width ? b.x + Math.floor((b.width - tw) / 2) : b.x, th < b.height ? b.y + Math.floor((b.height - th) / 2) : b.y, b.label, s.text_scale, rgb565(s.text));
@@ -192,6 +226,74 @@
     fillRect(t.x, t.y, pos + 1, t.h, rgb565(s.fill));
     fillRect(t.x + pos - KNOB_W / 2, t.y - KNOB_M, KNOB_W, t.h + 2 * KNOB_M, rgb565(s.knob));
   }
+  function dialDisc(w) {
+    const caption = font.height * w.style.text_scale + 4;
+    const free = w.height > caption ? w.height - caption : 1, side = Math.min(w.width, free);
+    return { x: w.x + Math.floor((w.width - side) / 2), y: w.y + caption + Math.floor((free - side) / 2), side };
+  }
+  function drawDial(w) {
+    const s = w.style, d = dialDisc(w), span = w.max - w.min;
+    const thickness = Math.max(Math.floor(d.side / 8), 4), r = d.side / 2, cx = d.x + r, cy = d.y + r;
+    const sweep = span > 0 ? Math.floor((Math.max(w.min, Math.min(w.max, w.value)) - w.min) * DIAL_SWEEP / span) : 0;
+    drawText(w.x, w.y, w.label, s.text_scale, rgb565(s.text));
+    if (s.show_value) { const v = String(w.value); drawText(w.x + w.width - textWidth(v, s.text_scale), w.y, v, s.text_scale, rgb565(s.text)); }
+    const rad = (deg) => deg * Math.PI / 180, mid = r - thickness / 2;
+    const arc = (from, to, color) => { ctx.beginPath(); ctx.arc(cx, cy, mid, rad(from), rad(to)); ctx.strokeStyle = color; ctx.lineWidth = thickness; ctx.stroke(); };
+    fillEllipse(d.x + thickness, d.y + thickness, d.side - 2 * thickness, d.side - 2 * thickness, rgb565(s.face));
+    arc(DIAL_START, DIAL_START + DIAL_SWEEP, rgb565(s.track));
+    if (sweep > 0) arc(DIAL_START, DIAL_START + sweep, rgb565(s.fill));
+    const pointer = Math.floor(thickness / 2) + 2, a = rad(DIAL_START + sweep);
+    fillEllipse(Math.floor(cx + mid * Math.cos(a)) - pointer, Math.floor(cy + mid * Math.sin(a)) - pointer, 2 * pointer, 2 * pointer, rgb565(s.pointer));
+  }
+  function drawWheel(w) {
+    const s = w.style, items = w.items || [], row = font.height * s.text_scale + 8, bandY = w.y + Math.floor((w.height - row) / 2);
+    fillRect(w.x, w.y, w.width, w.height, rgb565(s.fill));
+    fillRect(w.x, bandY, w.width, row, rgb565(s.highlight));
+    drawFrame(w.x, w.y, w.width, w.height, 1, rgb565(s.border));
+    const reach = Math.floor(Math.floor(w.height / row) / 2) + 1;
+    for (let off = -reach; off <= reach; off++) {
+      const item = w.value + off, top = bandY + off * row;
+      if (item < 0 || item >= items.length || top < w.y || top + row > w.y + w.height) continue;
+      const tw = textWidth(items[item], s.text_scale), th = font.height * s.text_scale;
+      drawText(tw < w.width ? w.x + Math.floor((w.width - tw) / 2) : w.x, top + Math.floor((row - th) / 2), items[item], s.text_scale, rgb565(off === 0 ? s.selected_text : s.text));
+    }
+  }
+  function formatNumber(w, value) {
+    const sign = value < 0 ? '-' : '', mag = Math.abs(value), unit = w.unit || '';
+    if (!w.decimals) return `${sign}${mag}${unit}`;
+    const div = 10 ** w.decimals;
+    return `${sign}${Math.floor(mag / div)}.${String(mag % div).padStart(w.decimals, '0')}${unit}`;
+  }
+  function drawNumber(w) {
+    const s = w.style;
+    if (s.fill !== null && s.fill !== undefined) fillRect(w.x, w.y, w.width, w.height, rgb565(s.fill));
+    const capScale = Math.max(Math.floor(s.text_scale / 2), 1);
+    let caption = 0;
+    if (w.label) { drawText(w.x + NUM_PAD, w.y + NUM_PAD, w.label, capScale, rgb565(s.text)); caption = font.height * capScale + 2 * NUM_PAD; }
+    const text = formatNumber(w, w.value), tw = textWidth(text, s.text_scale), th = font.height * s.text_scale;
+    const inner = w.width > 2 * NUM_PAD ? w.width - 2 * NUM_PAD : 0;
+    let x = w.x + NUM_PAD;
+    if (tw < inner) { if (s.align === 'center') x += Math.floor((inner - tw) / 2); else if (s.align === 'right') x += inner - tw; }
+    const areaH = w.height > caption ? w.height - caption : 0;
+    drawText(x, w.y + caption + (th < areaH ? Math.floor((areaH - th) / 2) : 0), text, s.text_scale, rgb565(s.text));
+  }
+  function drawImage(w) {
+    const cached = imageCache.get(w.id);
+    if (cached && cached.ok && cached.source === w.source) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(cached.img, w.x, w.y, w.width, w.height);
+      return;
+    }
+    if (!cached || cached.source !== w.source) {
+      // Bitmaps come from the saved layout; unsaved sources show the placeholder until Save.
+      const img = new Image(), entry = { img, ok: false, source: w.source };
+      imageCache.set(w.id, entry);
+      img.onload = () => { entry.ok = true; render(); };
+      img.src = '/api/image.png?id=' + encodeURIComponent(w.id) + '&t=' + Date.now();
+    }
+    drawFrame(w.x, w.y, w.width, w.height, 2, '#FF00FF');
+    drawText(w.x + 4, w.y + 4, 'IMG', 1, '#FF00FF');
+  }
 
   function render() {
     if (!layout || !font) return;
@@ -204,9 +306,14 @@
       for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(canvas.width, y + .5); ctx.stroke(); }
     }
     const pressedPreview = $('pressed').checked, checkedPreview = $('checked').checked;
-    widgets().forEach((w, i) => { if (kind(w) === 'button') drawButton(w, pressedPreview && i === selected, checkedPreview && i === selected); });
-    widgets().forEach((w) => { if (kind(w) === 'slider') drawSlider(w); });
-    widgets().forEach((w) => { if (kind(w) === 'label') drawLabel(w); });
+    const byKind = (k, fn) => widgets().forEach((w, i) => { if (kind(w) === k) fn(w, i); });
+    byKind('image', drawImage);
+    byKind('button', (w, i) => drawButton(w, pressedPreview && i === selected, checkedPreview && i === selected));
+    byKind('slider', drawSlider);
+    byKind('dial', drawDial);
+    byKind('wheel', drawWheel);
+    byKind('number', drawNumber);
+    byKind('label', drawLabel);
     if (selected >= 0) {
       const b = widgets()[selected];
       ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
@@ -259,11 +366,19 @@
     $('p_label').value = has && k !== 'label' ? (w.label ?? '') : '';
     $('p_text_value').value = has && k === 'label' ? w.text : '';
     geometryIds.forEach((g) => { $('p_' + g).value = has ? w[g] : ''; });
+    $('p_shape').value = has && w.shape ? w.shape : 'rectangle';
     $('p_icon').value = has && w.icon ? w.icon : 'none';
     const nav = $('p_navigate'); nav.textContent = '';
     [''].concat(layout.screens.map((s) => s.id)).forEach((id) => { const o = document.createElement('option'); o.value = id; o.textContent = id || '(none)'; nav.appendChild(o); });
     nav.value = has && w.navigate ? w.navigate : '';
-    ['min', 'max', 'step', 'value'].forEach((r) => { $('p_' + r).value = has && k === 'slider' ? w[r] : ''; });
+    ['min', 'max', 'step', 'value'].forEach((r) => { $('p_' + r).value = has && (rangeKinds[k] || []).includes(r) ? w[r] : ''; });
+    $('p_items').value = has && k === 'wheel' ? (w.items || []).join(',') : '';
+    $('p_unit').value = has && k === 'number' ? (w.unit || '') : '';
+    $('p_decimals').value = has && k === 'number' ? (w.decimals || 0) : '';
+    $('p_source').value = has && k === 'image' ? (w.source || '') : '';
+    $('p_transparent_auto').checked = has && k === 'image' && (w.transparent === undefined || w.transparent === null);
+    $('p_transparent').value = has && k === 'image' && w.transparent ? w.transparent : '#FF00FF';
+    $('p_transparent').disabled = $('p_transparent_auto').checked;
     ['on_tap', 'on_press', 'on_change'].forEach((e) => { $('p_' + e).value = has ? (w[e] || '') : ''; });
     allStyleIds.forEach((s) => {
       const el = $('p_' + s);
@@ -271,7 +386,9 @@
       if (el.type === 'checkbox') el.checked = !!w.style[s];
       else el.value = w.style[s] === null || w.style[s] === undefined ? '#000000' : w.style[s];
     });
-    $('p_fill_none').checked = has && k === 'label' && w.style.fill === null;
+    const fillOptional = has && (k === 'label' || k === 'number');
+    $('p_fill_none_wrap').style.display = fillOptional ? '' : 'none';
+    $('p_fill_none').checked = fillOptional && w.style.fill === null;
     $('p_fill').disabled = $('p_fill_none').checked;
     $('s_namespace').value = layout.namespace; $('s_width').value = layout.screen.width; $('s_height').value = layout.screen.height;
   }
@@ -283,6 +400,19 @@
     $('p_label').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].label = e.target.value; changed(); } });
     $('p_text_value').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].text = e.target.value; changed(); } });
     $('p_icon').addEventListener('change', (e) => { if (selected >= 0) { const w = widgets()[selected]; if (e.target.value === 'none') delete w.icon; else w.icon = e.target.value; changed(); } });
+    $('p_shape').addEventListener('change', (e) => { if (selected >= 0) { const w = widgets()[selected]; if (e.target.value === 'rectangle') delete w.shape; else w.shape = e.target.value; changed(); } });
+    $('p_items').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].items = e.target.value.split(',').map((s) => s.trim()); changed(); } });
+    $('p_unit').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].unit = e.target.value; changed(); } });
+    $('p_decimals').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].decimals = Number(e.target.value); changed(); } });
+    $('p_source').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].source = e.target.value.trim(); changed(); } });
+    const setTransparent = () => {
+      if (selected < 0) return;
+      const w = widgets()[selected];
+      if ($('p_transparent_auto').checked) delete w.transparent; else w.transparent = $('p_transparent').value.toUpperCase();
+      changed();
+    };
+    $('p_transparent').addEventListener('change', setTransparent);
+    $('p_transparent_auto').addEventListener('change', setTransparent);
     $('p_navigate').addEventListener('change', (e) => { if (selected >= 0) { const w = widgets()[selected]; if (e.target.value) w.navigate = e.target.value; else delete w.navigate; changed(); } });
     ['min', 'max', 'step', 'value'].forEach((r) => $('p_' + r).addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected][r] = Number(e.target.value); changed(); } }));
     ['on_tap', 'on_press', 'on_change'].forEach((ev) => $('p_' + ev).addEventListener('change', (e) => {
@@ -336,7 +466,13 @@
     const list = widgets();
     for (let i = list.length - 1; i >= 0; i--) {
       const b = list[i];
-      if (p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height) return i;
+      if (p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height) {
+        // Round buttons miss their corners, like the device hit test; the
+        // resize handle in the corner still works.
+        const handle = p.x >= b.x + b.width - 10 && p.y >= b.y + b.height - 10;
+        if (kind(b) === 'button' && b.shape === 'ellipse' && !handle && !insideEllipse(b, p.x, p.y)) continue;
+        return i;
+      }
     }
     return -1;
   }
@@ -381,6 +517,10 @@
   $('add').onclick = () => { const n = nextId('button_'); addWidget({ type: 'button', id: 'button_' + n, label: 'BTN ' + n, x: 16, y: 16, width: 160, height: 72, style: { ...defaults.button } }); };
   $('add_label').onclick = () => { const n = nextId('label_'); addWidget({ type: 'label', id: 'label_' + n, text: 'LABEL ' + n, x: 16, y: 16, width: 240, height: 24, style: { ...defaults.label } }); };
   $('add_slider').onclick = () => { const n = nextId('slider_'); addWidget({ type: 'slider', id: 'slider_' + n, label: 'SLIDER ' + n, x: 40, y: 100, width: 720, height: 72, min: 0, max: 100, step: 1, value: 50, style: { ...defaults.slider } }); };
+  $('add_dial').onclick = () => { const n = nextId('dial_'); addWidget({ type: 'dial', id: 'dial_' + n, label: 'DIAL ' + n, x: 40, y: 100, width: 160, height: 180, min: 0, max: 100, step: 1, value: 50, style: { ...defaults.dial } }); };
+  $('add_wheel').onclick = () => { const n = nextId('wheel_'); addWidget({ type: 'wheel', id: 'wheel_' + n, items: ['ONE', 'TWO', 'THREE'], value: 0, x: 40, y: 100, width: 240, height: 150, style: { ...defaults.wheel } }); };
+  $('add_number').onclick = () => { const n = nextId('number_'); addWidget({ type: 'number', id: 'number_' + n, label: 'VALUE', unit: '', decimals: 0, value: 0, x: 40, y: 100, width: 200, height: 72, style: { ...defaults.number } }); };
+  $('add_image').onclick = () => { const n = nextId('image_'); addWidget({ type: 'image', id: 'image_' + n, source: 'image.png', x: 40, y: 100, width: 64, height: 64 }); };
   $('delete').onclick = () => { if (selected >= 0) { widgets().splice(selected, 1); selected = -1; changed(); } };
 
   function post(url) {
@@ -395,6 +535,7 @@
     const r = await post('/api/layout');
     const j = await r.json();
     setStatus(r.ok ? 'saved' : 'save failed: ' + j.error, r.ok);
+    if (r.ok) { imageCache.clear(); render(); }
   };
   $('reload').onclick = load;
 
@@ -403,6 +544,7 @@
     font = f;
     if (l.error) { setStatus('layout invalid: ' + l.error, false); return; }
     layout = l.layout; token = l.token; $('path').textContent = l.path; screenIndex = 0; selected = -1;
+    imageCache.clear();
     render(); refreshCpp();
   }
   bindProps();
