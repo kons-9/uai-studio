@@ -71,7 +71,7 @@ void AppUi::Initialize()
     min_confidence_percent_ = Menu().Sliders().Value(Id(WidgetId::kMinConfidence));
     status_period_ms_ =
         static_cast<std::uint32_t>(Menu().Dials().Value(Id(WidgetId::kStatusPeriod)));
-    Main().Buttons().SetChecked(Id(WidgetId::kToggleBoxes), show_boxes_);
+    Menu().Buttons().SetChecked(Id(WidgetId::kToggleBoxes), show_boxes_);
     SyncModelWidgets();
 }
 
@@ -100,7 +100,7 @@ void AppUi::ShowScreen(ScreenId screen)
 void AppUi::SyncModelWidgets()
 {
     const std::uint8_t mask = models_.ModelMask();
-    ui::ButtonPanel &buttons = Main().Buttons();
+    ui::ButtonPanel &buttons = Menu().Buttons();
     buttons.SetChecked(Id(WidgetId::kPerson),
                        (mask & task::ModelMaskBit(task::ModelBit::kPerson)) != 0U);
     buttons.SetChecked(Id(WidgetId::kFace),
@@ -222,7 +222,7 @@ void AppUi::OnToggleBoxesTap(const ui::Event &)
 void AppUi::ToggleBoxes()
 {
     show_boxes_ = !show_boxes_;
-    Main().Buttons().SetChecked(Id(WidgetId::kToggleBoxes), show_boxes_);
+    Menu().Buttons().SetChecked(Id(WidgetId::kToggleBoxes), show_boxes_);
     UAI_LOG_INFO("ui: boxes=%s\n", show_boxes_ ? "on" : "off");
 }
 
@@ -272,9 +272,7 @@ void AppUi::UpdateStatus(std::uint32_t now_ms)
         }
     }
     Main().Labels().SetText(Id(WidgetId::kStatus), status);
-    /* Program-driven numbers: detection count on the camera screen and
-     * the PERSON rate on the menu. */
-    Main().Numbers().SetValue(Id(WidgetId::kDetections),
+    Menu().Numbers().SetValue(Id(WidgetId::kDetections),
                               stats.enabled
                                   ? static_cast<std::int32_t>(stats.last_detection_count)
                                   : 0);
@@ -319,7 +317,8 @@ const char *AppUi::StatusText() const
 
 std::int32_t AppUi::DetectionsValue() const
 {
-    return Main().Numbers().Value(Id(WidgetId::kDetections));
+    return screens_[static_cast<std::size_t>(ScreenId::kMenu)].Numbers().Value(
+        Id(WidgetId::kDetections));
 }
 
 std::int32_t AppUi::PersonRateTenths() const

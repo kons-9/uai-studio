@@ -9,50 +9,14 @@
       "widgets": [
         {
           "type": "label", "id": "status", "text": "AI STARTING",
-          "x": 0, "y": 0, "width": 720, "height": 24,
-          "style": {"text": "#FFFFFF", "fill": "#000000", "text_scale": 2, "align": "left", "padding": 4}
+          "x": 0, "y": 0, "width": 736, "height": 64,
+          "style": {"text": "#FFFFFF", "fill": "#000000", "text_scale": 2, "align": "left", "padding": 16}
         },
         {
-          "type": "button", "id": "open_menu", "label": "", "icon": "menu", "shape": "ellipse", "navigate": "menu",
-          "x": 732, "y": 8, "width": 56, "height": 56,
-          "style": {"fill": "#202020", "pressed_fill": "#606060", "checked_fill": "#202020",
-                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}
-        },
-        {
-          "type": "number", "id": "detections", "label": "DET", "unit": "", "decimals": 0, "value": 0,
-          "x": 600, "y": 72, "width": 188, "height": 56,
-          "style": {"text": "#FFE000", "fill": null, "text_scale": 4, "align": "right"}
-        },
-        {
-          "type": "pad", "id": "nav", "center": true,
-          "on_tap": "OnNavTap", "on_change": "OnNavRotate",
-          "x": 620, "y": 144, "width": 160, "height": 160,
-          "style": {"fill": "#303030", "pressed_fill": "#606060", "center_fill": "#2060C0",
-                    "border": "#FFFFFF", "arrow": "#FFFFFF", "border_width": 2}
-        },
-        {
-          "type": "button", "id": "person", "label": "PERSON", "shape": "rounded", "on_tap": "OnPersonTap",
-          "x": 16, "y": 400, "width": 140, "height": 64,
-          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#C02020",
-                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
-        },
-        {
-          "type": "button", "id": "face", "label": "FACE", "shape": "rounded", "on_tap": "OnFaceTap",
-          "x": 172, "y": 400, "width": 140, "height": 64,
-          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2040C0",
-                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
-        },
-        {
-          "type": "button", "id": "segmentation", "label": "SEG", "shape": "rounded", "on_tap": "OnSegmentationTap",
-          "x": 328, "y": 400, "width": 140, "height": 64,
-          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#20A040",
-                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
-        },
-        {
-          "type": "button", "id": "toggle_boxes", "label": "BOXES", "shape": "pill", "on_tap": "OnToggleBoxesTap",
-          "x": 640, "y": 400, "width": 144, "height": 64,
-          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2060C0",
-                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
+          "type": "button", "id": "open_menu", "label": "", "icon": "menu", "navigate": "menu",
+          "x": 736, "y": 0, "width": 64, "height": 64,
+          "style": {"fill": "#000000", "pressed_fill": "#404040", "checked_fill": "#000000",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 0}
         }
       ]
     },
@@ -77,9 +41,33 @@
           "source": "ui/logo.png"
         },
         {
+          "type": "button", "id": "person", "label": "PERSON", "shape": "rounded", "on_tap": "OnPersonTap",
+          "x": 24, "y": 88, "width": 164, "height": 56,
+          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#C02020",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
+        },
+        {
+          "type": "button", "id": "face", "label": "FACE", "shape": "rounded", "on_tap": "OnFaceTap",
+          "x": 220, "y": 88, "width": 164, "height": 56,
+          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2040C0",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
+        },
+        {
+          "type": "button", "id": "segmentation", "label": "SEG", "shape": "rounded", "on_tap": "OnSegmentationTap",
+          "x": 416, "y": 88, "width": 164, "height": 56,
+          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#20A040",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
+        },
+        {
+          "type": "button", "id": "toggle_boxes", "label": "BOXES", "shape": "pill", "on_tap": "OnToggleBoxesTap",
+          "x": 612, "y": 88, "width": 164, "height": 56,
+          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2060C0",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
+        },
+        {
           "type": "slider", "id": "min_confidence", "label": "MIN CONFIDENCE %",
           "on_change": "OnMinConfidenceChange",
-          "x": 40, "y": 104, "width": 480, "height": 72,
+          "x": 24, "y": 168, "width": 480, "height": 72,
           "min": 0, "max": 100, "step": 5, "value": 50,
           "style": {"track": "#304050", "fill": "#2060C0", "knob": "#FFFFFF", "text": "#FFFFFF",
                     "text_scale": 2, "show_value": true}
@@ -87,44 +75,51 @@
         {
           "type": "dial", "id": "status_period", "label": "STATUS MS",
           "on_change": "OnStatusPeriodChange",
-          "x": 560, "y": 104, "width": 200, "height": 220,
+          "x": 568, "y": 176, "width": 208, "height": 232,
           "min": 100, "max": 2000, "step": 100, "value": 500,
           "style": {"face": "#202830", "track": "#304050", "fill": "#20A060", "pointer": "#FFFFFF",
                     "text": "#FFFFFF", "text_scale": 2, "show_value": true}
         },
         {
           "type": "label", "id": "models_caption", "text": "MODELS",
-          "x": 40, "y": 196, "width": 200, "height": 24,
+          "x": 24, "y": 248, "width": 200, "height": 24,
           "style": {"text": "#FFFFFF", "fill": null, "text_scale": 2, "align": "left", "padding": 0}
         },
         {
           "type": "wheel", "id": "models", "on_change": "OnModelsChange",
-          "x": 40, "y": 224, "width": 240, "height": 150,
+          "x": 24, "y": 280, "width": 224, "height": 144,
           "items": ["ALL", "PERSON", "FACE", "SEG", "PERSON+FACE"], "value": 0,
           "style": {"fill": "#182028", "highlight": "#2060C0", "text": "#8090A0", "selected_text": "#FFFFFF",
                     "border": "#FFFFFF", "text_scale": 2}
         },
         {
           "type": "number", "id": "person_rate", "label": "PERSON FPS", "unit": "", "decimals": 1, "value": 0,
-          "x": 320, "y": 224, "width": 200, "height": 72,
-          "style": {"text": "#FFFFFF", "fill": "#182028", "text_scale": 4, "align": "right"}
+          "x": 24, "y": 440, "width": 256, "height": 32,
+          "style": {"text": "#FFFFFF", "fill": null, "text_scale": 2, "align": "left"}
+        },
+        {
+          "type": "number", "id": "detections", "label": "DET", "unit": "", "decimals": 0, "value": 0,
+          "x": 344, "y": 440, "width": 160, "height": 32,
+          "style": {"text": "#FFFFFF", "fill": null, "text_scale": 2, "align": "left"}
         },
         {
           "type": "button", "id": "models_prev", "label": "", "shape": "triangle_left", "on_tap": "OnModelsPrevTap",
-          "x": 320, "y": 308, "width": 56, "height": 56,
+          "x": 264, "y": 288, "width": 56, "height": 56,
           "style": {"fill": "#2060C0", "pressed_fill": "#103060", "checked_fill": "#2060C0",
                     "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}
         },
         {
           "type": "button", "id": "models_next", "label": "", "shape": "triangle_right", "on_tap": "OnModelsNextTap",
-          "x": 392, "y": 308, "width": 56, "height": 56,
+          "x": 264, "y": 368, "width": 56, "height": 56,
           "style": {"fill": "#2060C0", "pressed_fill": "#103060", "checked_fill": "#2060C0",
                     "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}
         },
         {
-          "type": "label", "id": "menu_hint", "text": "TAP BACK TO RETURN TO THE CAMERA",
-          "x": 40, "y": 420, "width": 720, "height": 24,
-          "style": {"text": "#8090A0", "fill": null, "text_scale": 2, "align": "center", "padding": 0}
+          "type": "pad", "id": "nav", "center": true,
+          "on_tap": "OnNavTap", "on_change": "OnNavRotate",
+          "x": 344, "y": 264, "width": 160, "height": 160,
+          "style": {"fill": "#303030", "pressed_fill": "#606060", "center_fill": "#2060C0",
+                    "border": "#FFFFFF", "arrow": "#FFFFFF", "border_width": 2}
         }
       ]
     }

@@ -275,6 +275,12 @@ class SchemaTest(unittest.TestCase):
         ):
             with self.assertRaises(schema.LayoutError, msg=str(bad)):
                 schema.parse_layout(_document(bad))
+        pads = [_pad(id=f"nav_{index}", x=index * 200) for index in range(3)]
+        with self.assertRaisesRegex(schema.LayoutError, "at most 2 pads"):
+            schema.parse_layout(_document(*pads))
+        valid = _document(*pads[:2])
+        valid["screens"][1]["widgets"] = [pads[2]]
+        self.assertEqual(len(schema.parse_layout(valid).pads()), 3)
 
     def test_dial_wheel_number_defaults_and_constraints(self):
         layout = schema.parse_layout(_document(

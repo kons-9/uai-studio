@@ -2,13 +2,14 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>uai ui_designer</title>
 <style>
   :root { color-scheme: light; font-family: system-ui, sans-serif; font-size: 14px; }
-  body { margin: 0; display: grid; grid-template-columns: 1fr 340px; grid-template-rows: auto auto 1fr; height: 100vh; }
+  body { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto auto minmax(0, 1fr); height: 100vh; }
   header { grid-column: 1 / 3; display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #ccc; background: #f6f6f6; flex-wrap: wrap; }
-  header .path { color: #555; font-family: monospace; margin-left: auto; }
-  nav#tabs { grid-column: 1 / 3; display: flex; gap: 4px; align-items: center; padding: 4px 12px; background: #eee; border-bottom: 1px solid #ccc; }
+  header .path { color: #555; font-family: monospace; margin-left: auto; min-width: 0; overflow-wrap: anywhere; }
+  nav#tabs { grid-column: 1 / 3; display: flex; gap: 4px; align-items: center; padding: 4px 12px; background: #eee; border-bottom: 1px solid #ccc; flex-wrap: wrap; }
   nav#tabs button.tab { border: 1px solid #bbb; background: #f8f8f8; border-radius: 4px 4px 0 0; }
   nav#tabs button.tab.active { background: #fff; font-weight: 600; border-bottom-color: #fff; }
   main { overflow: auto; display: flex; align-items: flex-start; justify-content: center; background: #ddd; padding: 16px; }
@@ -24,6 +25,13 @@
   #widgets li { cursor: pointer; padding: 2px 4px; font-family: monospace; font-size: 12px; }
   #widgets li.selected { background: #cde; }
   pre#cpp { font-size: 12px; background: #fff; border: 1px solid #ccc; padding: 8px; max-height: 240px; overflow: auto; }
+  @media (max-width: 760px) {
+    body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto; height: auto; min-height: 100vh; }
+    header, nav#tabs { grid-column: 1; }
+    main { padding: 12px; }
+    canvas#screen { width: 100%; max-width: 800px; }
+    aside { border-left: 0; border-top: 1px solid #ccc; }
+  }
 </style>
 </head>
 <body>

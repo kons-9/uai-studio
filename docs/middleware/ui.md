@@ -48,7 +48,7 @@ RGB565のフレームに描く表示部品と、タッチ入力を受ける部�
 | ホイール | `WheelSpec` | `WheelPanel` | `kChange` | 文字列の選択肢（最大32件）を縦に並べ、中央の帯が現在の選択。上にドラッグすると次の項目へ進み、`Event::value`は選択した添字。`Value(id)`、`SetValue(id, index)`、`ItemText(id)` |
 | 数値 | `NumberSpec` | `NumberPanel` | なし | プログラムから`SetValue(id, v)`で更新する数値表示。`decimals`桁の小数（値は`10^decimals`倍の整数で持つ）と`unit`を付けて`123.4%`のように描き、`label`は小さな見出しとして左上に出す。`NumberStyle`は文字色、背景色と有無、倍率、`TextAlign` |
 | 画像 | `ImageSpec` | `ImagePanel` | なし | 生成済みのRGB565ビットマップ（`pixels`、矩形と同じ大きさ）を貼る。`has_transparent`なら`transparent`色を透過。元のPNGは`ui_designer`が`ui_layout_images.hpp`に変換する |
-| パッド | `PadSpec` | `PadPanel` | `kPress`、`kTap`、`kChange` | カメラ背面のコントロールホイールやゲームパッドのような丸い十字キー。上下左右の4象限と任意の中央ボタン（`has_center`）を持ち、押した象限を`PadSegment`（`kUp`、`kRight`、`kDown`、`kLeft`、`kCenter`）として`Event::value`に入れて`kPress`、同じ象限で離すと`kTap`を返す。指をリングに沿って回すと45°ごとに`value`が+1（時計回り）または-1の`kChange`を返し、回した後の離しはタップにならない。`PadStyle`は`fill`、`pressed_fill`、`center_fill`、枠、矢印色`arrow`、枠幅 |
+| パッド | `PadSpec` | `PadPanel` | `kPress`、`kTap`、`kChange` | カメラ背面のコントロールホイールやゲームパッドのような丸い十字キー。上下左右の4象限と任意の中央ボタン（`has_center`）を持ち、押した象限を`PadSegment`（`kUp`、`kRight`、`kDown`、`kLeft`、`kCenter`）として`Event::value`に入れて`kPress`、同じ象限で離すと`kTap`を返す。リング上の回転は45°を1段とし、`kChange`の`value`に方向付き段数（時計回りが正）を返す。回転後の離しはタップにならず、中心や外側へ移動した間は回転を計算しない。`PadStyle`は`fill`、`pressed_fill`、`center_fill`、枠、矢印色`arrow`、枠幅 |
 
 `ButtonPanel`、`SliderPanel`、`DialPanel`、`WheelPanel`、`PadPanel`の`Update()`はポーリングごとに1回呼びます。タッチが始まった位置で担当する部品が決まり、ボタンとパッドは離したときに`kTap`、スライダー・ダイヤル・ホイール・パッドの回転は値が変わったときに`kChange`を返します。
 

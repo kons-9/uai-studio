@@ -13,9 +13,9 @@
 namespace uai::ai::app_ui {
 
 /*
- * On-screen UI for ai-app: a camera screen with model toggles, a status
- * label and a detection counter, and a settings screen with a slider, a
- * dial, a model-preset wheel, a rate read-out and a logo. Widget geometry
+ * On-screen UI for ai-app: a camera screen with a status bar and menu
+ * button, and a settings screen with model toggles, sliders, dials and
+ * diagnostic read-outs. Widget geometry
  * comes from the generated ui_layout.hpp; this class owns the run-time
  * state of every screen and the handlers that the generated Dispatch() calls.
  */
@@ -57,7 +57,7 @@ public:
     void OnMinConfidenceChange(const ui::Event &event);
     void OnStatusPeriodChange(const ui::Event &event);
     void OnModelsChange(const ui::Event &event);
-    /* Control pad on the camera screen: up/down and the ring change the
+    /* Control pad on the settings screen: up/down and the ring change the
      * minimum confidence, left/right step the model preset, centre
      * toggles the boxes. */
     void OnNavTap(const ui::Event &event);
@@ -80,7 +80,7 @@ private:
      * item with wrap-around. */
     void ApplyModelPreset(std::int32_t index);
     void StepModelPreset(std::int32_t delta);
-    /* Reflects the model mask on the main buttons and the menu wheel. */
+    /* Reflects the model mask on the menu buttons and wheel. */
     void SyncModelWidgets();
     ui::Screen &Main() { return screens_[static_cast<std::size_t>(ScreenId::kMain)]; }
     const ui::Screen &Main() const { return screens_[static_cast<std::size_t>(ScreenId::kMain)]; }

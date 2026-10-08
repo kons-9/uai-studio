@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -81,11 +82,12 @@ void Tap(uai::ai::app_ui::AppUi &ui, uai::ai::app_ui::WidgetId id)
     ui.HandleTouch({false, 0U, 0U});
 }
 
-std::vector<std::uint16_t> PaintToPixels(const uai::ai::app_ui::AppUi &ui)
+std::vector<std::uint16_t> PaintToPixels(const uai::ai::app_ui::AppUi &ui,
+                                       std::uint16_t background = 0x0000U)
 {
     std::vector<std::uint16_t> pixels(
         static_cast<std::size_t>(uai::ai::app_ui::kScreenWidth) *
-            uai::ai::app_ui::kScreenHeight, 0x0000U);
+            uai::ai::app_ui::kScreenHeight, background);
     uai::ai::ui::Canvas canvas(pixels.data(), uai::ai::app_ui::kScreenWidth,
                                uai::ai::app_ui::kScreenHeight);
     ui.Overlay().Paint(canvas);
@@ -134,10 +136,47 @@ TEST(AiAppUiLayout, GeneratedScreensFitDisplay)
     }
 }
 
+TEST(AiAppUi, CameraScreenKeepsControlsAndNumbersInMenu)
+{
+    FakeModels models;
+    uai::ai::app_ui::AppUi ui(models);
+    const auto header = BoundsOf(uai::ai::app_ui::WidgetId::kStatus);
+    const auto menu_button = BoundsOf(uai::ai::app_ui::WidgetId::kOpenMenu);
+    const std::uint16_t camera_pixel = 0x07e0U;
+    const auto pixels = PaintToPixels(ui, camera_pixel);
+
+    EXPECT_EQ(header.x, 0U);
+    EXPECT_EQ(header.y, 0U);
+    EXPECT_EQ(header.x + header.width, menu_button.x);
+    EXPECT_EQ(menu_button.y, 0U);
+    EXPECT_EQ(menu_button.height, header.height);
+    EXPECT_EQ(menu_button.x + menu_button.width, uai::ai::app_ui::kScreenWidth);
+    for (std::uint16_t column = 0U; column < uai::ai::app_ui::kScreenWidth; ++column) {
+        EXPECT_EQ(PixelAt(pixels, column, 0U), 0x0000U);
+    }
+    const auto camera_start = pixels.begin() +
+        static_cast<std::size_t>(header.height) * uai::ai::app_ui::kScreenWidth;
+    EXPECT_EQ(std::count(camera_start, pixels.end(), camera_pixel),
+              pixels.end() - camera_start);
+
+    for (const auto id : {uai::ai::app_ui::WidgetId::kPerson,
+                          uai::ai::app_ui::WidgetId::kFace,
+                          uai::ai::app_ui::WidgetId::kSegmentation,
+                          uai::ai::app_ui::WidgetId::kToggleBoxes,
+                          uai::ai::app_ui::WidgetId::kNav}) {
+        Tap(ui, id);
+    }
+    EXPECT_EQ(models.mask, uai::ai::task::kAllModelsMask);
+    EXPECT_TRUE(ui.ShowBoxes());
+    EXPECT_EQ(ui.MinConfidencePercent(), 50);
+    EXPECT_EQ(ui.CurrentScreen(), uai::ai::app_ui::ScreenId::kMain);
+}
+
 TEST(AiAppUi, ModelButtonsToggleMaskAndCheckedState)
 {
     FakeModels models;
     uai::ai::app_ui::AppUi ui(models);
+    Tap(ui, uai::ai::app_ui::WidgetId::kOpenMenu);
 
     Tap(ui, uai::ai::app_ui::WidgetId::kFace);
     EXPECT_EQ(models.mask, uai::ai::task::kAllModelsMask &
@@ -185,6 +224,7 @@ TEST(AiAppUi, BoxesToggleMaskAndConfidenceFilterVisibleBoxes)
     EXPECT_EQ(visible.face.count, 1U);
     EXPECT_TRUE(visible.segmentation_valid);
 
+    Tap(ui, uai::ai::app_ui::WidgetId::kOpenMenu);
     Tap(ui, uai::ai::app_ui::WidgetId::kPerson);
     visible = ui.VisibleBoxes(latest);
     EXPECT_EQ(visible.person.count, 0U);
@@ -198,7 +238,7 @@ TEST(AiAppUi, BoxesToggleMaskAndConfidenceFilterVisibleBoxes)
     EXPECT_FALSE(visible.segmentation_valid);
 
     /* Tapping outside every button changes nothing. */
-    ui.HandleTouch({true, 400U, 200U});
+    ui.HandleTouch({true, 540U, 448U});
     ui.HandleTouch({false, 0U, 0U});
     EXPECT_FALSE(ui.ShowBoxes());
 }
@@ -215,12 +255,7 @@ TEST(AiAppUi, MenuNavigationAndSliders)
     EXPECT_EQ(ui.CurrentScreen(), uai::ai::app_ui::ScreenId::kMenu);
     EXPECT_FALSE(ui.ShowsCamera());
     const std::vector<std::uint16_t> menu = PaintToPixels(ui);
-    EXPECT_EQ(PixelAt(menu, 600U, 400U), uai::ai::app_ui::kScreens[1].color);
-
-    /* Main-screen buttons are not reachable while the menu is shown. */
-    const std::uint8_t mask_before = models.mask;
-    Tap(ui, uai::ai::app_ui::WidgetId::kPerson);
-    EXPECT_EQ(models.mask, mask_before);
+    EXPECT_EQ(PixelAt(menu, 540U, 400U), uai::ai::app_ui::kScreens[1].color);
 
     /* Dragging the confidence slider to its right end sets 100 %. */
     const uai::ai::ui::Rect slider = BoundsOf(uai::ai::app_ui::WidgetId::kMinConfidence);
@@ -250,7 +285,7 @@ TEST(AiAppUi, MenuNavigationAndSliders)
     EXPECT_TRUE(ui.ShowsCamera());
 }
 
-/* The MODELS wheel selects a preset mask, and the main-screen buttons keep
+/* The MODELS wheel selects a preset mask, and the menu buttons keep
  * the wheel on the matching preset. */
 TEST(AiAppUi, ModelsWheelSelectsPresetsAndFollowsButtons)
 {
@@ -271,11 +306,9 @@ TEST(AiAppUi, ModelsWheelSelectsPresetsAndFollowsButtons)
     EXPECT_EQ(models.mask, uai::ai::task::ModelMaskBit(uai::ai::task::ModelBit::kFace));
 
     /* Turning PERSON back on gives PERSON+FACE, the last wheel item. */
-    Tap(ui, uai::ai::app_ui::WidgetId::kCloseMenu);
     Tap(ui, uai::ai::app_ui::WidgetId::kPerson);
     EXPECT_EQ(models.mask, uai::ai::task::ModelMaskBit(uai::ai::task::ModelBit::kPerson) |
                                uai::ai::task::ModelMaskBit(uai::ai::task::ModelBit::kFace));
-    Tap(ui, uai::ai::app_ui::WidgetId::kOpenMenu);
     const std::vector<std::uint16_t> menu = PaintToPixels(ui);
     /* The highlight band sits in the middle row of the wheel. */
     EXPECT_EQ(PixelAt(menu, static_cast<std::uint16_t>(wheel.x + 4U),
@@ -301,6 +334,7 @@ TEST(AiAppUi, StatusLabelShowsRatesPerEnabledModel)
 
     models.stats.person_completed = 15U;
     models.stats.face_completed = 5U;
+    Tap(ui, uai::ai::app_ui::WidgetId::kOpenMenu);
     Tap(ui, uai::ai::app_ui::WidgetId::kSegmentation);
     ui.UpdateStatus(2000U);  /* 1000 ms since the last sample */
     EXPECT_STREQ(ui.StatusText(), "PERSON 15.0  FACE 5.0  SEG --  FPS");
@@ -404,13 +438,14 @@ TEST(AiAppUiLayout, DispatchRoutesEventsToBoundHandlers)
     EXPECT_FALSE(uai::ai::app_ui::Dispatch(handlers, pad));
 }
 
-/* The camera-screen pad drives confidence, model presets and boxes, and
+/* The menu pad drives confidence, model presets and boxes, and
  * the menu's triangle buttons step the preset with wrap-around. */
 TEST(AiAppUi, PadAndTriangleButtonsControlPresetsAndConfidence)
 {
     using uai::ai::app_ui::WidgetId;
     FakeModels models;
     uai::ai::app_ui::AppUi ui(models);
+    Tap(ui, WidgetId::kOpenMenu);
     const uai::ai::ui::Rect pad = BoundsOf(WidgetId::kNav);
     const std::uint16_t cx = static_cast<std::uint16_t>(pad.x + pad.width / 2U);
     const std::uint16_t cy = static_cast<std::uint16_t>(pad.y + pad.height / 2U);
@@ -427,15 +462,12 @@ TEST(AiAppUi, PadAndTriangleButtonsControlPresetsAndConfidence)
     EXPECT_EQ(ui.MinConfidencePercent(), 45);
     /* The menu slider follows the pad-driven value: its knob sits left of
      * where 50 % would put it. */
-    Tap(ui, WidgetId::kOpenMenu);
     const uai::ai::ui::Rect track = uai::ai::ui::SliderPanel::TrackOf(uai::ai::app_ui::kMenuSliders[0]);
     const std::vector<std::uint16_t> menu = PaintToPixels(ui);
     const std::uint16_t knob_x = static_cast<std::uint16_t>(track.x + (track.width - 1U) * 45U / 100U);
     EXPECT_EQ(PixelAt(menu, knob_x, track.y), uai::ai::app_ui::kMenuSliders[0].style.knob);
     EXPECT_EQ(PixelAt(menu, static_cast<std::uint16_t>(track.x + (track.width - 1U) / 2U + 10U), track.y),
               uai::ai::app_ui::kMenuSliders[0].style.track);
-    Tap(ui, WidgetId::kCloseMenu);
-
     tap_at(static_cast<std::uint16_t>(pad.x + pad.width - 9U), cy);   /* right */
     EXPECT_EQ(models.mask, uai::ai::task::ModelMaskBit(uai::ai::task::ModelBit::kPerson));
     tap_at(static_cast<std::uint16_t>(pad.x + 8U), cy);               /* left */
@@ -457,7 +489,6 @@ TEST(AiAppUi, PadAndTriangleButtonsControlPresetsAndConfidence)
     EXPECT_EQ(ui.MinConfidencePercent(), 55);
     EXPECT_FALSE(ui.ShowBoxes());  /* turning never taps */
 
-    Tap(ui, WidgetId::kOpenMenu);
     Tap(ui, WidgetId::kModelsNext);
     EXPECT_EQ(models.mask, uai::ai::task::kAllModelsMask);
     Tap(ui, WidgetId::kModelsPrev);

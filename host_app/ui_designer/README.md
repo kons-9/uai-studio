@@ -84,13 +84,13 @@ python3 host_app/ui_designer screen --layout $L --namespace demo::ui            
 | wheel | `--items A,B,C`、`--value`（選択中の添字）、`--fill`、`--highlight`、`--selected-text`、`--border`、`--on-change` |
 | number | `--label`、`--unit`、`--decimals`、`--value`（`10^decimals`倍の整数）、`--fill`（`none`で透過）、`--align` |
 | image | `--source PATH`（レイアウトファイルからの相対パス。`/`や`..`で始まるものは不可）、`--transparent #RRGGBB`（`none`で自動） |
-| pad | `--center true/false`、`--fill`、`--pressed-fill`、`--center-fill`、`--border`、`--arrow`、`--border-width`、`--on-tap`、`--on-press`（`Event::value`は象限 0上 1右 2下 3左 4中央）、`--on-change`（リングを回したときに±1） |
+| pad | `--center true/false`、`--fill`、`--pressed-fill`、`--center-fill`、`--border`、`--arrow`、`--border-width`、`--on-tap`、`--on-press`（`Event::value`は象限 0上 1右 2下 3左 4中央）、`--on-change`（45°を1段とした方向付き段数。時計回りが正） |
 
 種類に合わないオプションはエラーになります。`add`で文字を省くと`id`を大文字にして`_`を空白にしたものになります。
 
 ## コールバックと画面遷移
 
-ボタンとパッドには`on_tap`（押して離した）と`on_press`（押した瞬間）、スライダー・ダイヤル・ホイール・パッドには`on_change`（値が変わった。`Event::value`はスライダー・ダイヤルなら値、ホイールなら選択した添字、パッドなら回転方向±1）にC++のメソッド名を割り当てられます。パッドの`on_tap`/`on_press`では`Event::value`が押した象限（`ui::PadSegment`）です。数値表示と画像にイベントはありません。ボタンの`navigate`に画面idを書くと、タップで`ShowScreen(ScreenId)`が呼ばれます（`on_tap`があれば先に呼びます）。生成ヘッダには次のテンプレート関数が入ります。
+ボタンとパッドには`on_tap`（押して離した）と`on_press`（押した瞬間）、スライダー・ダイヤル・ホイール・パッドには`on_change`（値が変わった。`Event::value`はスライダー・ダイヤルなら値、ホイールなら選択した添字、パッドなら方向付きの回転段数）にC++のメソッド名を割り当てられます。パッドの`on_tap`/`on_press`では`Event::value`が押した象限（`ui::PadSegment`）です。数値表示と画像にイベントはありません。ボタンの`navigate`に画面idを書くと、タップで`ShowScreen(ScreenId)`が呼ばれます（`on_tap`があれば先に呼びます）。生成ヘッダには次のテンプレート関数が入ります。
 
 ```cpp
 template <typename Handlers>
@@ -160,7 +160,7 @@ bool Dispatch(Handlers &handlers, const ui::Event &event);   // 呼んだらtrue
 | `widgets[].decimals`/`value`（number） | `decimals`は0〜6。`value`は`10^decimals`倍した整数の初期値（`decimals: 1, value: 1234` → `123.4`） |
 | `widgets[].source`/`transparent`（image） | PNG（8ビットのグレー/RGB/RGBA/パレット）をレイアウトファイルからの相対パスで指定。矩形の大きさへ最近傍で拡縮し、RGB565で`width*height*2 <= 128 KiB`。アルファが128未満の画素は`transparent`（省略時は`#FF00FF`。アルファのないPNGで省略すると透過なし）に置き換え、同じ色の不透明画素は1段ずらします |
 | `widgets[].style` | 種類ごとの既定値を省略できます（`kernel/middleware/ui/widget.hpp`の`*Style`と同じ）。imageにstyleはありません |
-| `widgets[].center`（pad） | 中央ボタンを置くか（既定`true`）。パッドは32x32以上 |
+| `widgets[].center`（pad） | 中央ボタンを置くか（既定`true`）。パッドは32x32以上、1画面に最大2個 |
 | `widgets[].on_tap`、`on_press`（button/pad）、`on_change`（slider/dial/wheel/pad） | 省略可。`Dispatch()`が呼ぶメソッド名（C++識別子） |
 
 `schema_version: 1`（トップレベルに`widgets`）のファイルはカメラ背景の`main`画面1つとして読み込み、編集コマンドで保存すると2に更新します。

@@ -23,7 +23,7 @@ Widget kinds:
           file), resampled to the bounds; optional ``transparent`` key color
   pad     round four-way pad with optional ``center`` button; on_tap/on_press
           carry the segment (0 up, 1 right, 2 down, 3 left, 4 centre),
-          on_change carries +1/-1 per 45-degree turn around the ring
+      on_change carries signed 45-degree steps (positive clockwise)
 
 A schema_version 1 document (top-level ``widgets``) is read as a single
 ``main`` screen with the camera background.
@@ -65,6 +65,7 @@ SHAPES = ("rectangle", "rounded", "pill", "ellipse", "triangle_up", "triangle_do
           "triangle_left", "triangle_right", "diamond")
 PAD_SEGMENTS = ("up", "right", "down", "left", "center")
 PAD_MIN_SIDE = 32
+MAX_PADS = 2
 CAMERA_BACKGROUND = "camera"
 DEFAULT_TRANSPARENT_KEY = "#FF00FF"
 # Bitmaps live in the firmware image (RAM on the N6); keep them small.
@@ -749,6 +750,8 @@ def _parse_screen(raw: Any, context: str, width: int, height: int,
         raise LayoutError(f"{context}.widgets must be a list")
     widgets = [_parse_widget(w, f"{context}.widgets[{i}]", width, height, allowed)
                for i, w in enumerate(widgets_raw)]
+    if sum(widget.is_pad for widget in widgets) > MAX_PADS:
+        raise LayoutError(f"{context}: at most {MAX_PADS} pads are supported per screen")
     for i, a in enumerate(widgets):
         for b in widgets[i + 1:]:
             if (a.x < b.x + b.width and b.x < a.x + a.width and
