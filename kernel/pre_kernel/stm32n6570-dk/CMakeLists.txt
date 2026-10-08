@@ -54,9 +54,7 @@ add_library(stm32n6570_dk OBJECT
     cubemx_entry.c
 )
 
-if(APP_TARGET STREQUAL "experiment-camera-lcd" OR
-   APP_TARGET STREQUAL "experiment-camera-pipe2" OR
-   APP_TARGET STREQUAL "experiment-camera-lcd-touch")
+if(UAI_CAMERA_BOARD_APP)
     target_include_directories(stm32n6570_dk BEFORE PUBLIC
         "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Inc")
 endif()
@@ -83,9 +81,7 @@ target_include_directories(stm32n6570_dk
         "${CMAKE_SOURCE_DIR}/kernel/utkernel/mtk3_bsp2/mtkernel/include"
 )
 
-if(NOT APP_TARGET STREQUAL "experiment-camera-lcd" AND
-   NOT APP_TARGET STREQUAL "experiment-camera-pipe2" AND
-   NOT APP_TARGET STREQUAL "experiment-camera-lcd-touch")
+if(NOT UAI_CAMERA_BOARD_APP)
     set(_ai_board_config_app experiment-ai)
     if(APP_TARGET IN_LIST UAI_KERNEL_APPS)
         set(_ai_board_config_app "${APP_TARGET}")
@@ -109,9 +105,7 @@ target_compile_definitions(stm32n6570_dk PRIVATE
 
 if(APP_TARGET STREQUAL "experiment-ai" OR
    APP_TARGET IN_LIST UAI_KERNEL_APPS OR
-   APP_TARGET STREQUAL "experiment-camera-lcd" OR
-   APP_TARGET STREQUAL "experiment-camera-pipe2" OR
-   APP_TARGET STREQUAL "experiment-camera-lcd-touch")
+    UAI_CAMERA_BOARD_APP)
     target_compile_definitions(stm32n6570_dk PRIVATE
         UAI_CAMERA_LCD_CLOCKS)
 endif()

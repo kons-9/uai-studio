@@ -40,7 +40,7 @@ if(NOT CUBEMX_IOC)
             "${CMAKE_SOURCE_DIR}/userspace/${APP_TARGET}/config/stm32n6570-dk-${APP_TARGET}.ioc")
     endif()
     if(NOT EXISTS "${_uai_default_ioc}" AND
-       APP_TARGET STREQUAL "experiment-camera-pipe2")
+         UAI_CAMERA_BOARD_APP STREQUAL "experiment-camera-pipe2")
         set(_uai_default_ioc
             "${CMAKE_SOURCE_DIR}/userspace/experiment-camera-lcd/config/stm32n6570-dk-fullsecure.ioc")
     endif()

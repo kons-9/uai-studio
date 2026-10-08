@@ -1,0 +1,189 @@
+#include "isp_camera.hpp"
+#include "bsp_device.hpp"
+#include "extension.hpp"
+#include "rx_queue.hpp"
+#include "driver/display_driver.hpp"
+
+#include <tk/tkernel.h>
+
+extern "C" {
+#include <tm/tmonitor.h>
+#include "stm32n6xx_hal.h"
+void tm_com_init(void);
+extern volatile unsigned int camera_pipe2_pipe1_vsync_count;
+extern volatile unsigned int camera_pipe2_pipe2_frame_count;
+}
+
+namespace {
+
+alignas(8) INT task_stack[32 * 1024 / sizeof(INT)];
+experiment::console::RxQueue received;
+ID events = 0;
+std::uint32_t loops = 0;
+std::uint64_t busy_cycles = 0;
+
+void Write(void *, const char *text, std::size_t size)
+{
+    for (std::size_t index = 0; index < size; ++index) {
+        tm_putchar(static_cast<unsigned char>(text[index]));
+    }
+}
+
+const experiment::console::Writer output{nullptr, Write};
+
+[[noreturn]] void Halt(const char *message)
+{
+    output.Write(message);
+    for (;;) {
+        tk_dly_tsk(1000);
+    }
+}
+
+experiment::console::Status Uptime(void *, int count, const char *const *, const experiment::console::Writer &writer)
+{
+    if (count != 1) {
+        return experiment::console::Status::kInvalidArgument;
+    }
+    char text[128];
+    std::snprintf(text, sizeof(text), "uptime_ms=%lu loops=%lu busy_cycles=%llu core_hz=%lu\n", static_cast<unsigned long>(HAL_GetTick()),
+                  static_cast<unsigned long>(loops), static_cast<unsigned long long>(busy_cycles), static_cast<unsigned long>(SystemCoreClock));
+    writer.Write(text);
+    return experiment::console::Status::kOk;
+}
+
+experiment::console::Status Frames(void *, int count, const char *const *, const experiment::console::Writer &writer)
+{
+    if (count != 1) {
+        return experiment::console::Status::kInvalidArgument;
+    }
+    char text[96];
+    std::snprintf(text, sizeof(text), "frames: pipe1_vsync=%u pipe2_frame=%u\n",
+                  camera_pipe2_pipe1_vsync_count, camera_pipe2_pipe2_frame_count);
+    writer.Write(text);
+    return experiment::console::Status::kOk;
+}
+
+void CameraTask(INT, void *)
+{
+    uai::camera_pipe2::driver::DisplayDriver display;
+    experiment::camera::BspDevice device;
+    experiment::camera::IspCamera control;
+    experiment::camera::Runtime camera(device, control);
+    T_CFLG flags{};
+    flags.flgatr = TA_TFIFO;
+    events = tk_cre_flg(&flags);
+    if (events < E_OK || !uai::camera_pipe2::driver::IsOk(display.Initialize()) ||
+        camera.Start() != experiment::console::Status::kOk) {
+        Halt("camera: initialization failed\n");
+    }
+    experiment::console::Command commands[16] = {
+        {"uptime", "uptime", Uptime, nullptr},
+        {"frames", "frames", Frames, nullptr},
+        {"cam", "cam stat | ae on|off | ev <-4..4> | manual <us> <mdB> | area <x> <y> <w> <h> | wb auto|<kelvin> | wb-list",
+         experiment::camera::Runtime::ControlCommand, &camera},
+        {"capture", "capture start|stop|recover|fps <10|15|20|25|30>|flip <h 0|1> <v 0|1>|crop <x> <y> <w> <h>",
+         experiment::camera::Runtime::CaptureCommand, &camera}
+    };
+    const experiment::Services services{&camera, output, HAL_GetTick, [](std::uint32_t delay) { tk_dly_tsk(delay); }};
+    const auto extra = experiment::Register(services, commands + 4, 12);
+    if (extra > 12) { Halt("extension: command capacity exceeded\n"); }
+    experiment::console::Shell shell(commands, 4 + extra, output);
+    HAL_NVIC_SetPriority(USART1_IRQn, 14, 0);
+    HAL_NVIC_EnableIRQ(USART1_IRQn);
+    SET_BIT(USART1->CR1, USART_CR1_RXNEIE_RXFNEIE | USART_CR1_PEIE);
+    SET_BIT(USART1->CR3, USART_CR3_EIE);
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    output.Write("camera: pipe1=started pipe2=started\n> ");
+    bool discard_line = false;
+    std::uint32_t last_frame = camera_pipe2_pipe2_frame_count;
+    std::uint32_t last_progress = HAL_GetTick();
+    for (;;) {
+        const auto begin = DWT->CYCCNT;
+        const auto now = HAL_GetTick();
+        if (camera_pipe2_pipe2_frame_count != last_frame || !camera.Running()) {
+            last_frame = camera_pipe2_pipe2_frame_count; last_progress = now;
+        }
+        if (camera.Poll() != experiment::console::Status::kOk || (camera.Running() && now - last_progress >= 2000)) {
+            output.Write(camera.Recover() == experiment::console::Status::kOk ? "camera: recovered\n" : "camera: recovery failed; capture recover to retry\n");
+            last_progress = HAL_GetTick();
+        }
+        if (!uai::camera_pipe2::driver::IsOk(display.Process())) { output.Write("display: processing failed\n"); }
+        experiment::Tick(now, last_frame);
+        for (unsigned budget = 0; budget < 128; ++budget) {
+            if (received.TakeError()) { discard_line = true; }
+            char character = 0;
+            if (!received.Pop(character)) { break; }
+            if (discard_line) {
+                if (character == '\r' || character == '\n') {
+                    shell.Feed('\x03');
+                    output.Write("ERR uart-receive; line discarded\n> ");
+                    discard_line = false;
+                }
+            } else {
+                shell.Feed(character);
+            }
+            if (character == '\r' || character == '\n') {
+                break;
+            }
+        }
+        busy_cycles += static_cast<std::uint32_t>(DWT->CYCCNT - begin);
+        ++loops;
+        if (received.Empty()) {
+            UINT pattern = 0;
+            tk_wai_flg(events, 1, TWF_ORW | TWF_BITCLR, &pattern, 10);
+        }
+    }
+}
+
+}
+
+extern "C" void USART1_IRQHandler(void)
+{
+    for (unsigned budget = 0; budget < 64; ++budget) {
+        const auto flags = USART1->ISR;
+        if ((flags & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE | USART_ISR_PE)) != 0) {
+            USART1->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF | USART_ICR_PECF;
+            received.Error();
+        }
+        if ((flags & USART_ISR_RXNE_RXFNE) == 0) { break; }
+        received.Push(static_cast<char>(USART1->RDR & 0xffU));
+    }
+    if (events > 0) { tk_set_flg(events, 1); }
+}
+
+extern "C" void experiment_frame_wake(void)
+{
+    if (events > 0) { tk_set_flg(events, 1); }
+}
+
+extern "C" INT usermain(void)
+{
+    RCC_PeriphCLKInitTypeDef clock{};
+    clock.PeriphClockSelection = RCC_PERIPHCLK_USART1;
+    clock.Usart1ClockSelection = RCC_USART1CLKSOURCE_CLKP;
+    if (HAL_RCCEx_PeriphCLKConfig(&clock) != HAL_OK) {
+        for (;;) { tk_dly_tsk(1000); }
+    }
+    __HAL_RCC_USART1_CLK_ENABLE();
+    __HAL_RCC_GPIOE_CLK_ENABLE();
+    GPIO_InitTypeDef gpio{};
+    gpio.Pin = GPIO_PIN_5 | GPIO_PIN_6;
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    gpio.Alternate = GPIO_AF7_USART1;
+    HAL_GPIO_Init(GPIOE, &gpio);
+    tm_com_init();
+    T_CTSK task{};
+    task.tskatr = TA_HLNG | TA_USERBUF;
+    task.task = reinterpret_cast<FP>(CameraTask);
+    task.itskpri = 10;
+    task.stksz = sizeof(task_stack);
+    task.bufptr = task_stack;
+    const ID identifier = tk_cre_tsk(&task);
+    if (identifier < E_OK || tk_sta_tsk(identifier, 0) != E_OK) {
+        Halt("camera: task creation failed\n");
+    }
+    for (;;) { tk_slp_tsk(TMO_FEVR); }
+}
