@@ -116,25 +116,44 @@ void Canvas::DrawFrame(const Rect &rect, std::uint16_t thickness,
 
 void Canvas::FillEllipse(const Rect &rect, std::uint16_t color)
 {
+    FillShape(Shape::kEllipse, rect, color);
+}
+
+void Canvas::DrawEllipseFrame(const Rect &rect, std::uint16_t thickness,
+                              std::uint16_t color)
+{
+    DrawShapeFrame(Shape::kEllipse, rect, thickness, color);
+}
+
+void Canvas::FillShape(Shape shape, const Rect &rect, std::uint16_t color)
+{
+    if (shape == Shape::kRectangle) {
+        FillRect(rect, color);
+        return;
+    }
     if (pixels_ == nullptr) return;
     const std::uint32_t x_end = static_cast<std::uint32_t>(rect.x) + rect.width;
     const std::uint32_t y_end = static_cast<std::uint32_t>(rect.y) + rect.height;
     for (std::uint32_t y = rect.y; y < y_end && y < height_; ++y) {
         for (std::uint32_t x = rect.x; x < x_end && x < width_; ++x) {
-            if (InsideEllipse(rect, static_cast<std::int32_t>(x),
-                              static_cast<std::int32_t>(y))) {
+            if (InsideShape(shape, rect, static_cast<std::int32_t>(x),
+                            static_cast<std::int32_t>(y))) {
                 pixels_[static_cast<std::size_t>(y) * width_ + x] = color;
             }
         }
     }
 }
 
-void Canvas::DrawEllipseFrame(const Rect &rect, std::uint16_t thickness,
-                              std::uint16_t color)
+void Canvas::DrawShapeFrame(Shape shape, const Rect &rect, std::uint16_t thickness,
+                            std::uint16_t color)
 {
     if (pixels_ == nullptr || thickness == 0U) return;
+    if (shape == Shape::kRectangle) {
+        DrawFrame(rect, thickness, color);
+        return;
+    }
     if (2U * thickness >= rect.width || 2U * thickness >= rect.height) {
-        FillEllipse(rect, color);
+        FillShape(shape, rect, color);
         return;
     }
     const Rect inner{static_cast<std::uint16_t>(rect.x + thickness),
@@ -147,7 +166,7 @@ void Canvas::DrawEllipseFrame(const Rect &rect, std::uint16_t thickness,
         for (std::uint32_t x = rect.x; x < x_end && x < width_; ++x) {
             const std::int32_t px = static_cast<std::int32_t>(x);
             const std::int32_t py = static_cast<std::int32_t>(y);
-            if (InsideEllipse(rect, px, py) && !InsideEllipse(inner, px, py)) {
+            if (InsideShape(shape, rect, px, py) && !InsideShape(shape, inner, px, py)) {
                 pixels_[static_cast<std::size_t>(y) * width_ + x] = color;
             }
         }

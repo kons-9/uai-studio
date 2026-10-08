@@ -26,11 +26,6 @@ enum class Icon : std::uint8_t {
     kClose,  /* cross */
 };
 
-enum class Shape : std::uint8_t {
-    kRectangle,
-    kEllipse,  /* inscribed in the bounds; hit test follows the outline */
-};
-
 /* Static description of one button. Tables of these are the contract that
  * host_app/ui_designer generates; runtime state lives in ButtonPanel. */
 struct ButtonSpec {
@@ -43,8 +38,7 @@ struct ButtonSpec {
 
     constexpr bool Contains(std::uint16_t x, std::uint16_t y) const
     {
-        return bounds.Contains(x, y) &&
-               (shape == Shape::kRectangle || InsideEllipse(bounds, x, y));
+        return InsideShape(shape, bounds, x, y);
     }
 };
 
@@ -165,6 +159,34 @@ struct ImageSpec {
     const std::uint16_t *pixels = nullptr;
     bool has_transparent = false;
     std::uint16_t transparent = 0U;
+};
+
+struct PadStyle {
+    std::uint16_t fill = Rgb565(0x30U, 0x30U, 0x30U);
+    std::uint16_t pressed_fill = Rgb565(0x60U, 0x60U, 0x60U);
+    std::uint16_t center_fill = Rgb565(0x20U, 0x60U, 0xC0U);
+    std::uint16_t border = Rgb565(0xFFU, 0xFFU, 0xFFU);
+    std::uint16_t arrow = Rgb565(0xFFU, 0xFFU, 0xFFU);
+    std::uint8_t border_width = 2U;
+};
+
+/* Segment of a Pad, reported in Event::value for kPress and kTap. */
+enum class PadSegment : std::uint8_t {
+    kUp = 0U,
+    kRight = 1U,
+    kDown = 2U,
+    kLeft = 3U,
+    kCenter = 4U,
+};
+
+/* Round four-way pad like a camera's rear control wheel or a game pad.
+ * Tapping a quadrant (or the optional centre button) gives kTap with the
+ * PadSegment; kChange carries signed 45-degree steps (positive clockwise). */
+struct PadSpec {
+    std::uint16_t id = 0U;
+    Rect bounds{};
+    bool has_center = true;
+    PadStyle style{};
 };
 
 enum class EventType : std::uint8_t {
@@ -380,6 +402,40 @@ private:
     std::size_t count_;
 };
 
+inline constexpr std::size_t kMaxPads = 2U;
+inline constexpr std::int32_t kPadDetentDegrees = 45;
+
+class PadPanel final : public Painter {
+public:
+    PadPanel(const PadSpec *pads, std::size_t count)
+        : pads_(pads), count_(pads != nullptr && count <= kMaxPads ? count : 0U) {}
+
+    Event Update(const TouchPoint &sample);
+    void Paint(Canvas &canvas) const override;
+    /* Segment currently held, or -1. */
+    std::int32_t Pressed(std::uint16_t id) const;
+    std::size_t Count() const { return count_; }
+
+    /* Centre button disc; shared with the host preview. */
+    static Rect CenterOf(const PadSpec &pad);
+    /* PadSegment under (x, y) as an int, or -1 outside the pad. */
+    static std::int32_t SegmentAt(const PadSpec &pad, std::uint16_t x, std::uint16_t y);
+    /* Clockwise degrees from the top for (x, y) relative to the pad centre. */
+    static std::int32_t AngleAt(const PadSpec &pad, std::uint16_t x, std::uint16_t y);
+
+private:
+    const PadSpec *pads_;
+    std::size_t count_;
+    std::int32_t active_index_ = -1;
+    std::int32_t pressed_segment_ = -1;
+    std::int32_t last_angle_ = 0;
+    std::int32_t accumulated_ = 0;
+    std::uint16_t last_x_ = 0U;
+    std::uint16_t last_y_ = 0U;
+    bool rotated_ = false;
+    bool touch_active_ = false;
+};
+
 /* One page of the UI. Tables of these are generated; Screen holds state. */
 struct ScreenSpec {
     std::uint16_t id = 0U;
@@ -399,6 +455,8 @@ struct ScreenSpec {
     std::size_t number_count = 0U;
     const ImageSpec *images = nullptr;
     std::size_t image_count = 0U;
+    const PadSpec *pads = nullptr;
+    std::size_t pad_count = 0U;
 };
 
 class Screen final : public Painter {
@@ -408,7 +466,8 @@ public:
     /* Routes the sample to the touch-sensitive panels of this screen. */
     Event Update(const TouchPoint &sample);
     /* Fills a solid background when configured, then draws images,
-     * buttons, sliders, dials, wheels, numbers, and labels in that order. */
+     * buttons, sliders, dials, wheels, pads, numbers, and labels in that
+     * order. */
     void Paint(Canvas &canvas) const override;
 
     const ScreenSpec &Spec() const { return spec_; }
@@ -418,12 +477,14 @@ public:
     DialPanel &Dials() { return dials_; }
     WheelPanel &Wheels() { return wheels_; }
     NumberPanel &Numbers() { return numbers_; }
+    PadPanel &Pads() { return pads_; }
     const ButtonPanel &Buttons() const { return buttons_; }
     const LabelPanel &Labels() const { return labels_; }
     const SliderPanel &Sliders() const { return sliders_; }
     const DialPanel &Dials() const { return dials_; }
     const WheelPanel &Wheels() const { return wheels_; }
     const NumberPanel &Numbers() const { return numbers_; }
+    const PadPanel &Pads() const { return pads_; }
 
 private:
     const ScreenSpec &spec_;
@@ -434,6 +495,7 @@ private:
     WheelPanel wheels_;
     NumberPanel numbers_;
     ImagePanel images_;
+    PadPanel pads_;
 };
 
 } // namespace uai::ai::ui

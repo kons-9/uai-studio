@@ -100,15 +100,9 @@ void ButtonPanel::Paint(Canvas &canvas) const
         const std::uint16_t fill = pressed ? button.style.pressed_fill
                                    : checked_[index] ? button.style.checked_fill
                                                      : button.style.fill;
-        if (button.shape == Shape::kEllipse) {
-            canvas.FillEllipse(button.bounds, fill);
-            canvas.DrawEllipseFrame(button.bounds, button.style.border_width,
-                                    button.style.border);
-        } else {
-            canvas.FillRect(button.bounds, fill);
-            canvas.DrawFrame(button.bounds, button.style.border_width,
-                             button.style.border);
-        }
+        canvas.FillShape(button.shape, button.bounds, fill);
+        canvas.DrawShapeFrame(button.shape, button.bounds, button.style.border_width,
+                              button.style.border);
         if (button.icon != Icon::kNone) {
             DrawIcon(canvas, button.bounds, button.icon, button.style.text);
         } else {
@@ -386,6 +380,16 @@ std::int32_t DegreesOf(std::int32_t dx2, std::int32_t dy2)
         radians * (180.0F / 3.14159265F) + (radians >= 0.0F ? 0.5F : -0.5F));
     if (degrees < 0) degrees += 360;
     return degrees % 360;
+}
+
+/* Doubled-coordinate offset of (x, y) from the centre of `rect`. */
+std::int32_t OffsetX2(const Rect &rect, std::int32_t x)
+{
+    return 2 * (x - rect.x) + 1 - rect.width;
+}
+std::int32_t OffsetY2(const Rect &rect, std::int32_t y)
+{
+    return 2 * (y - rect.y) + 1 - rect.height;
 }
 
 /* Sweep from the arc start, or -1 inside the bottom gap. */
@@ -773,6 +777,170 @@ void ImagePanel::Paint(Canvas &canvas) const
     }
 }
 
+/* --- Pad ----------------------------------------------------------------- */
+
+Rect PadPanel::CenterOf(const PadSpec &pad)
+{
+    /* Centre button diameter is 40 % of the smaller side. */
+    const std::uint16_t side = (pad.bounds.width < pad.bounds.height ? pad.bounds.width
+                                                                     : pad.bounds.height) * 2U / 5U;
+    return {static_cast<std::uint16_t>(pad.bounds.x + (pad.bounds.width - side) / 2U),
+            static_cast<std::uint16_t>(pad.bounds.y + (pad.bounds.height - side) / 2U),
+            side, side};
+}
+
+std::int32_t PadPanel::AngleAt(const PadSpec &pad, std::uint16_t x, std::uint16_t y)
+{
+    /* Clockwise from the top: rotate the +x based angle by 90 degrees. */
+    return (DegreesOf(OffsetX2(pad.bounds, x), OffsetY2(pad.bounds, y)) + 90) % 360;
+}
+
+std::int32_t PadPanel::SegmentAt(const PadSpec &pad, std::uint16_t x, std::uint16_t y)
+{
+    if (!InsideEllipse(pad.bounds, x, y)) return -1;
+    if (pad.has_center && InsideEllipse(CenterOf(pad), x, y)) {
+        return static_cast<std::int32_t>(PadSegment::kCenter);
+    }
+    const std::int32_t offset_x = OffsetX2(pad.bounds, x);
+    const std::int32_t offset_y = OffsetY2(pad.bounds, y);
+    if (offset_x >= 0) {
+        if (offset_y < -offset_x) return static_cast<std::int32_t>(PadSegment::kUp);
+        if (offset_y >= offset_x) return static_cast<std::int32_t>(PadSegment::kDown);
+        return static_cast<std::int32_t>(PadSegment::kRight);
+    }
+    if (offset_y > -offset_x) return static_cast<std::int32_t>(PadSegment::kDown);
+    if (offset_y <= offset_x) return static_cast<std::int32_t>(PadSegment::kUp);
+    return static_cast<std::int32_t>(PadSegment::kLeft);
+}
+
+Event PadPanel::Update(const TouchPoint &sample)
+{
+    Event event{};
+    const bool was_active = touch_active_;
+    touch_active_ = sample.active;
+    if (sample.active && !was_active) {
+        active_index_ = -1;
+        for (std::size_t index = 0U; index < count_; ++index) {
+            const std::int32_t segment = SegmentAt(pads_[index], sample.x, sample.y);
+            if (segment < 0) continue;
+            active_index_ = static_cast<std::int32_t>(index);
+            pressed_segment_ = segment;
+            last_angle_ = AngleAt(pads_[index], sample.x, sample.y);
+            last_x_ = sample.x;
+            last_y_ = sample.y;
+            accumulated_ = 0;
+            rotated_ = false;
+            event.type = EventType::kPress;
+            event.widget_id = pads_[index].id;
+            event.x = sample.x;
+            event.y = sample.y;
+            event.value = segment;
+            return event;
+        }
+        return event;
+    }
+    if (active_index_ < 0) return event;
+    const PadSpec &pad = pads_[static_cast<std::size_t>(active_index_)];
+    if (!sample.active) {
+        /* A tap needs the finger to lift on the segment it pressed without
+         * having turned the ring. Release samples carry no position. */
+        if (!rotated_ && pressed_segment_ >= 0 &&
+            SegmentAt(pad, last_x_, last_y_) == pressed_segment_) {
+            event.type = EventType::kTap;
+            event.widget_id = pad.id;
+            event.x = last_x_;
+            event.y = last_y_;
+            event.value = pressed_segment_;
+        }
+        active_index_ = -1;
+        pressed_segment_ = -1;
+        return event;
+    }
+    last_x_ = sample.x;
+    last_y_ = sample.y;
+    if (pressed_segment_ == static_cast<std::int32_t>(PadSegment::kCenter)) return event;
+    if (!InsideEllipse(pad.bounds, sample.x, sample.y) ||
+        InsideEllipse(CenterOf(pad), sample.x, sample.y)) {
+        last_angle_ = -1;
+        accumulated_ = 0;
+        rotated_ = true;
+        return event;
+    }
+    const std::int32_t angle = AngleAt(pad, sample.x, sample.y);
+    if (last_angle_ < 0) {
+        last_angle_ = angle;
+        return event;
+    }
+    std::int32_t delta = angle - last_angle_;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    last_angle_ = angle;
+    accumulated_ += delta;
+    const std::int32_t steps = accumulated_ / kPadDetentDegrees;
+    if (steps != 0) {
+        accumulated_ %= kPadDetentDegrees;
+        rotated_ = true;
+        event.type = EventType::kChange;
+        event.widget_id = pad.id;
+        event.x = sample.x;
+        event.y = sample.y;
+        event.value = steps;
+    }
+    return event;
+}
+
+std::int32_t PadPanel::Pressed(std::uint16_t id) const
+{
+    if (active_index_ < 0 || pads_[static_cast<std::size_t>(active_index_)].id != id) {
+        return -1;
+    }
+    return pressed_segment_;
+}
+
+void PadPanel::Paint(Canvas &canvas) const
+{
+    for (std::size_t index = 0U; index < count_; ++index) {
+        const PadSpec &pad = pads_[index];
+        const PadStyle &style = pad.style;
+        const std::int32_t pressed =
+            static_cast<std::int32_t>(index) == active_index_ ? pressed_segment_ : -1;
+        const Rect &bounds = pad.bounds;
+        const Rect center = CenterOf(pad);
+        for (std::uint32_t y = bounds.y; y < static_cast<std::uint32_t>(bounds.y) + bounds.height; ++y) {
+            for (std::uint32_t x = bounds.x; x < static_cast<std::uint32_t>(bounds.x) + bounds.width; ++x) {
+                const std::int32_t segment =
+                    SegmentAt(pad, static_cast<std::uint16_t>(x), static_cast<std::uint16_t>(y));
+                if (segment < 0) continue;
+                const bool is_center = segment == static_cast<std::int32_t>(PadSegment::kCenter);
+                const std::uint16_t color = segment == pressed ? style.pressed_fill
+                                            : is_center         ? style.center_fill
+                                                                : style.fill;
+                canvas.PutPixel(static_cast<std::uint16_t>(x), static_cast<std::uint16_t>(y), color);
+            }
+        }
+        canvas.DrawEllipseFrame(bounds, style.border_width, style.border);
+        if (pad.has_center) {
+            canvas.DrawEllipseFrame(center, style.border_width, style.border);
+        }
+        /* Arrow glyphs sit on the ring centre line of each quadrant. */
+        const std::uint16_t side = bounds.width < bounds.height ? bounds.width : bounds.height;
+        const std::uint16_t arrow = static_cast<std::uint16_t>(side / 8U > 4U ? side / 8U : 4U);
+        const std::int32_t cx = bounds.x + bounds.width / 2;
+        const std::int32_t cy = bounds.y + bounds.height / 2;
+        const std::int32_t rx = (bounds.width / 2 + center.width / 2) / 2;
+        const std::int32_t ry = (bounds.height / 2 + center.height / 2) / 2;
+        const auto place = [&](std::int32_t px, std::int32_t py, Shape shape) {
+            canvas.FillShape(shape, {static_cast<std::uint16_t>(px - arrow / 2),
+                                     static_cast<std::uint16_t>(py - arrow / 2), arrow, arrow},
+                             style.arrow);
+        };
+        place(cx, cy - ry, Shape::kTriangleUp);
+        place(cx + rx, cy, Shape::kTriangleRight);
+        place(cx, cy + ry, Shape::kTriangleDown);
+        place(cx - rx, cy, Shape::kTriangleLeft);
+    }
+}
+
 /* --- Screen -------------------------------------------------------------- */
 
 Screen::Screen(const ScreenSpec &spec)
@@ -783,7 +951,8 @@ Screen::Screen(const ScreenSpec &spec)
       dials_(spec.dials, spec.dial_count),
       wheels_(spec.wheels, spec.wheel_count),
       numbers_(spec.numbers, spec.number_count),
-      images_(spec.images, spec.image_count)
+      images_(spec.images, spec.image_count),
+      pads_(spec.pads, spec.pad_count)
 {
 }
 
@@ -795,10 +964,12 @@ Event Screen::Update(const TouchPoint &sample)
     const Event slider_event = sliders_.Update(sample);
     const Event dial_event = dials_.Update(sample);
     const Event wheel_event = wheels_.Update(sample);
+    const Event pad_event = pads_.Update(sample);
     if (button_event.type != EventType::kNone) return button_event;
     if (slider_event.type != EventType::kNone) return slider_event;
     if (dial_event.type != EventType::kNone) return dial_event;
-    return wheel_event;
+    if (wheel_event.type != EventType::kNone) return wheel_event;
+    return pad_event;
 }
 
 void Screen::Paint(Canvas &canvas) const
@@ -811,6 +982,7 @@ void Screen::Paint(Canvas &canvas) const
     sliders_.Paint(canvas);
     dials_.Paint(canvas);
     wheels_.Paint(canvas);
+    pads_.Paint(canvas);
     numbers_.Paint(canvas);
     labels_.Paint(canvas);
 }

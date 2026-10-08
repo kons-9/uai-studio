@@ -31,6 +31,66 @@ constexpr bool InsideEllipse(const Rect &rect, std::int32_t px, std::int32_t py)
     return dx * dx * b * b + dy * dy * a * a <= a * a * b * b;
 }
 
+/* Outline of a button-like widget, inscribed in its bounds. Hit testing and
+ * painting use the same InsideShape() predicate. */
+enum class Shape : std::uint8_t {
+    kRectangle,
+    kRounded,        /* corner radius = min(width, height) / 4 */
+    kPill,           /* corner radius = min(width, height) / 2 */
+    kEllipse,
+    kTriangleUp,     /* apex at the top edge centre */
+    kTriangleDown,
+    kTriangleLeft,
+    kTriangleRight,
+    kDiamond,
+};
+
+constexpr std::uint16_t CornerRadiusOf(Shape shape, const Rect &rect)
+{
+    const std::uint16_t side = rect.width < rect.height ? rect.width : rect.height;
+    if (shape == Shape::kRounded) return side / 4U;
+    if (shape == Shape::kPill) return side / 2U;
+    return 0U;
+}
+
+constexpr bool InsideShape(Shape shape, const Rect &rect, std::int32_t px, std::int32_t py)
+{
+    if (px < rect.x || py < rect.y || px >= rect.x + rect.width || py >= rect.y + rect.height) {
+        return false;
+    }
+    if (shape == Shape::kRectangle) return true;
+    if (shape == Shape::kEllipse) return InsideEllipse(rect, px, py);
+    const std::int64_t w = rect.width;   /* doubled extents */
+    const std::int64_t h = rect.height;
+    const std::int64_t dx = 2 * (px - rect.x) + 1 - w;
+    const std::int64_t dy = 2 * (py - rect.y) + 1 - h;
+    const std::int64_t ax = dx < 0 ? -dx : dx;
+    const std::int64_t ay = dy < 0 ? -dy : dy;
+    switch (shape) {
+    case Shape::kRounded:
+    case Shape::kPill: {
+        const std::int64_t r2 = 2 * CornerRadiusOf(shape, rect);  /* doubled radius */
+        const std::int64_t cx = w - r2, cy = h - r2;             /* corner centres */
+        if (ax <= cx || ay <= cy) return true;
+        return (ax - cx) * (ax - cx) + (ay - cy) * (ay - cy) <= r2 * r2;
+    }
+    case Shape::kDiamond:
+        return ax * h + ay * w <= w * h;
+    /* The apex row keeps the two centre pixels: edges are offset by half a
+     * pixel (+1 in doubled units) so pixel-centre sampling never loses it. */
+    case Shape::kTriangleUp:
+        return ax * 2 * h <= w * (dy + h + 1);
+    case Shape::kTriangleDown:
+        return ax * 2 * h <= w * (h - dy + 1);
+    case Shape::kTriangleLeft:
+        return ay * 2 * w <= h * (dx + w + 1);
+    case Shape::kTriangleRight:
+        return ay * 2 * w <= h * (w - dx + 1);
+    default:
+        return true;
+    }
+}
+
 constexpr std::uint16_t Rgb565(std::uint8_t red, std::uint8_t green,
                                std::uint8_t blue)
 {
@@ -77,6 +137,11 @@ public:
     /* Ring between the ellipse of `rect` and the one inset by `thickness`. */
     void DrawEllipseFrame(const Rect &rect, std::uint16_t thickness,
                           std::uint16_t color);
+    void FillShape(Shape shape, const Rect &rect, std::uint16_t color);
+    /* Band between the shape of `rect` and the same shape inset by
+     * `thickness` on every side. */
+    void DrawShapeFrame(Shape shape, const Rect &rect, std::uint16_t thickness,
+                        std::uint16_t color);
     /* Copies an RGB565 bitmap; pixels equal to `transparent` are skipped
      * when `has_transparent` is set. */
     void Blit(std::uint16_t x, std::uint16_t y, const std::uint16_t *pixels,

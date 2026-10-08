@@ -450,8 +450,8 @@ TEST(AiAppUi, PadAndTriangleButtonsControlPresetsAndConfidence)
 
     /* A quarter turn clockwise around the ring is two detents: +10 %. */
     ui.HandleTouch({true, cx, static_cast<std::uint16_t>(pad.y + 8U)});
-    ui.HandleTouch({true, static_cast<std::uint16_t>(pad.x + pad.width - 20U),
-                    static_cast<std::uint16_t>(pad.y + 20U)});
+    ui.HandleTouch({true, static_cast<std::uint16_t>(pad.x + pad.width - 28U),
+                    static_cast<std::uint16_t>(pad.y + 28U)});
     ui.HandleTouch({true, static_cast<std::uint16_t>(pad.x + pad.width - 9U), cy});
     ui.HandleTouch({false, 0U, 0U});
     EXPECT_EQ(ui.MinConfidencePercent(), 55);

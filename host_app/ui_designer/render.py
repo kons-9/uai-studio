@@ -357,7 +357,19 @@ def pad_segment(pad: Widget, px: int, py: int) -> int:
     cx, cy, side = pad_center(pad)
     if pad.center and inside_ellipse(cx, cy, side, side, px, py):
         return PAD_CENTER
-    return ((pad_angle(pad, px, py) + 45) % 360) // 90
+    offset_x = 2 * (px - pad.x) + 1 - pad.width
+    offset_y = 2 * (py - pad.y) + 1 - pad.height
+    if offset_x >= 0:
+        if offset_y < -offset_x:
+            return 0
+        if offset_y >= offset_x:
+            return 2
+        return 1
+    if offset_y > -offset_x:
+        return 2
+    if offset_y <= offset_x:
+        return 0
+    return 3
 
 
 def paint_pad(canvas: Canvas, pad: Widget, pressed: int = -1) -> None:

@@ -636,4 +636,198 @@ TEST(UiImage, BlitSkipsTransparentKey)
     EXPECT_TRUE(frame.GuardsIntact());
 }
 
+/* Shape predicates on a 16x16 square: corners, apexes and centres. */
+TEST(UiCanvas, InsideShapeFollowsEachOutline)
+{
+    using uai::ai::ui::InsideShape;
+    using uai::ai::ui::Shape;
+    constexpr uai::ai::ui::Rect kBox{0U, 0U, 16U, 16U};
+
+    static_assert(InsideShape(Shape::kRectangle, kBox, 0, 0));
+    static_assert(!InsideShape(Shape::kRectangle, kBox, 16, 8));
+
+    /* Rounded (radius 4): the very corner is cut, one radius in is kept. */
+    static_assert(!InsideShape(Shape::kRounded, kBox, 0, 0));
+    static_assert(InsideShape(Shape::kRounded, kBox, 1, 1));
+    static_assert(InsideShape(Shape::kRounded, kBox, 0, 4));
+    /* Pill (radius 8) on a square is the ellipse. */
+    static_assert(!InsideShape(Shape::kPill, kBox, 1, 1));
+    static_assert(InsideShape(Shape::kPill, kBox, 8, 0));
+
+    /* Triangle up: apex row keeps only the centre columns. */
+    static_assert(InsideShape(Shape::kTriangleUp, kBox, 7, 0));
+    static_assert(InsideShape(Shape::kTriangleUp, kBox, 8, 0));
+    static_assert(!InsideShape(Shape::kTriangleUp, kBox, 5, 0));
+    static_assert(InsideShape(Shape::kTriangleUp, kBox, 0, 15));
+    static_assert(InsideShape(Shape::kTriangleUp, kBox, 15, 15));
+    static_assert(!InsideShape(Shape::kTriangleDown, kBox, 0, 15));
+    static_assert(InsideShape(Shape::kTriangleDown, kBox, 0, 0));
+    static_assert(InsideShape(Shape::kTriangleLeft, kBox, 0, 8));
+    static_assert(!InsideShape(Shape::kTriangleLeft, kBox, 0, 0));
+    static_assert(InsideShape(Shape::kTriangleLeft, kBox, 15, 0));
+    static_assert(InsideShape(Shape::kTriangleRight, kBox, 15, 8));
+    static_assert(!InsideShape(Shape::kTriangleRight, kBox, 15, 0));
+
+    /* Diamond: edge midpoints in, corners out. */
+    static_assert(InsideShape(Shape::kDiamond, kBox, 8, 0));
+    static_assert(InsideShape(Shape::kDiamond, kBox, 0, 8));
+    static_assert(!InsideShape(Shape::kDiamond, kBox, 0, 0));
+    static_assert(!InsideShape(Shape::kDiamond, kBox, 15, 15));
+
+    Frame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
+    canvas.FillShape(Shape::kTriangleRight, {0U, 0U, 16U, 16U}, 0x1111U);
+    canvas.DrawShapeFrame(Shape::kDiamond, {16U, 0U, 16U, 16U}, 2U, 0x2222U);
+    EXPECT_EQ(frame.At(15U, 8U), 0x1111U);
+    EXPECT_EQ(frame.At(15U, 0U), kBackground);
+    EXPECT_EQ(frame.At(0U, 0U), 0x1111U);
+    EXPECT_EQ(frame.At(24U, 0U), 0x2222U);     /* diamond top apex */
+    EXPECT_EQ(frame.At(24U, 8U), kBackground); /* interior left open */
+    EXPECT_EQ(frame.At(16U, 0U), kBackground);
+    EXPECT_TRUE(frame.GuardsIntact());
+}
+
+TEST(UiButtonPanel, TriangleButtonHitTestFollowsOutline)
+{
+    uai::ai::ui::ButtonSpec button{};
+    button.id = 3U;
+    button.bounds = {0U, 0U, 16U, 16U};
+    button.shape = uai::ai::ui::Shape::kTriangleLeft;
+    uai::ai::ui::ButtonPanel panel(&button, 1U);
+
+    EXPECT_EQ(panel.Update({true, 15U, 0U}).type, uai::ai::ui::EventType::kPress);
+    EXPECT_EQ(panel.Update({false, 0U, 0U}).type, uai::ai::ui::EventType::kTap);
+    /* Top-left corner lies outside the left-pointing triangle. */
+    EXPECT_EQ(panel.Update({true, 0U, 0U}).type, uai::ai::ui::EventType::kNone);
+    EXPECT_EQ(panel.Update({false, 0U, 0U}).type, uai::ai::ui::EventType::kNone);
+}
+
+TEST(UiPad, SegmentsTapAndRingRotationDetents)
+{
+    using uai::ai::ui::EventType;
+    using uai::ai::ui::PadSegment;
+    uai::ai::ui::PadSpec pad{};
+    pad.id = 7U;
+    pad.bounds = {0U, 0U, 32U, 32U};
+    uai::ai::ui::PadPanel panel(&pad, 1U);
+
+    const uai::ai::ui::Rect center = uai::ai::ui::PadPanel::CenterOf(pad);
+    EXPECT_EQ(center.width, 12U);
+    EXPECT_EQ(uai::ai::ui::PadPanel::SegmentAt(pad, 16U, 2U), static_cast<std::int32_t>(PadSegment::kUp));
+    EXPECT_EQ(uai::ai::ui::PadPanel::SegmentAt(pad, 29U, 16U), static_cast<std::int32_t>(PadSegment::kRight));
+    EXPECT_EQ(uai::ai::ui::PadPanel::SegmentAt(pad, 16U, 29U), static_cast<std::int32_t>(PadSegment::kDown));
+    EXPECT_EQ(uai::ai::ui::PadPanel::SegmentAt(pad, 2U, 16U), static_cast<std::int32_t>(PadSegment::kLeft));
+    EXPECT_EQ(uai::ai::ui::PadPanel::SegmentAt(pad, 16U, 16U), static_cast<std::int32_t>(PadSegment::kCenter));
+    EXPECT_EQ(uai::ai::ui::PadPanel::SegmentAt(pad, 0U, 0U), -1);
+    EXPECT_EQ(uai::ai::ui::PadPanel::SegmentAt(pad, 22U, 9U), static_cast<std::int32_t>(PadSegment::kRight));
+    EXPECT_EQ(uai::ai::ui::PadPanel::SegmentAt(pad, 22U, 22U), static_cast<std::int32_t>(PadSegment::kDown));
+    EXPECT_EQ(uai::ai::ui::PadPanel::SegmentAt(pad, 9U, 22U), static_cast<std::int32_t>(PadSegment::kLeft));
+    EXPECT_EQ(uai::ai::ui::PadPanel::SegmentAt(pad, 9U, 9U), static_cast<std::int32_t>(PadSegment::kUp));
+
+    /* Press and release on the same quadrant: kPress then kTap carrying it. */
+    uai::ai::ui::Event event = panel.Update({true, 16U, 2U});
+    EXPECT_EQ(event.type, EventType::kPress);
+    EXPECT_EQ(event.value, static_cast<std::int32_t>(PadSegment::kUp));
+    EXPECT_EQ(panel.Pressed(7U), static_cast<std::int32_t>(PadSegment::kUp));
+    event = panel.Update({false, 0U, 0U});
+    EXPECT_EQ(event.type, EventType::kTap);
+    EXPECT_EQ(event.value, static_cast<std::int32_t>(PadSegment::kUp));
+    EXPECT_EQ(panel.Pressed(7U), -1);
+
+    /* Sliding clockwise from the top (0 deg) to the right (90 deg) passes
+     * two 45-degree detents; the release is then not a tap. */
+    EXPECT_EQ(panel.Update({true, 16U, 2U}).type, EventType::kPress);
+    event = panel.Update({true, 26U, 6U});   /* ~45 deg */
+    EXPECT_EQ(event.type, EventType::kChange);
+    EXPECT_EQ(event.value, 1);
+    event = panel.Update({true, 29U, 16U});  /* 90 deg */
+    EXPECT_EQ(event.type, EventType::kChange);
+    EXPECT_EQ(event.value, 1);
+    EXPECT_EQ(panel.Update({false, 0U, 0U}).type, EventType::kNone);
+
+    /* Counter-clockwise gives negative steps; a centre press never rotates, and
+     * sliding off the centre cancels the tap. */
+    EXPECT_EQ(panel.Update({true, 16U, 2U}).type, EventType::kPress);
+    EXPECT_EQ(panel.Update({true, 2U, 16U}).value, -2);
+    panel.Update({false, 0U, 0U});
+    EXPECT_EQ(panel.Update({true, 16U, 16U}).value, static_cast<std::int32_t>(PadSegment::kCenter));
+    EXPECT_EQ(panel.Update({true, 29U, 16U}).type, EventType::kNone);
+    EXPECT_EQ(panel.Update({false, 0U, 0U}).type, EventType::kNone);
+    EXPECT_EQ(panel.Update({true, 16U, 16U}).type, EventType::kPress);
+    event = panel.Update({false, 0U, 0U});
+    EXPECT_EQ(event.type, EventType::kTap);
+    EXPECT_EQ(event.value, static_cast<std::int32_t>(PadSegment::kCenter));
+}
+
+TEST(UiPad, FastRotationReportsAllDetentsWithoutStationaryChanges)
+{
+    uai::ai::ui::PadSpec pad{};
+    pad.id = 7U;
+    pad.bounds = {0U, 0U, 32U, 32U};
+    uai::ai::ui::PadPanel panel(&pad, 1U);
+
+    panel.Update({true, 15U, 2U});
+    const uai::ai::ui::Event clockwise = panel.Update({true, 29U, 15U});
+    EXPECT_EQ(clockwise.type, uai::ai::ui::EventType::kChange);
+    EXPECT_EQ(clockwise.value, 2);
+    EXPECT_EQ(panel.Update({true, 29U, 15U}).type, uai::ai::ui::EventType::kNone);
+    const uai::ai::ui::Event counterclockwise = panel.Update({true, 15U, 2U});
+    EXPECT_EQ(counterclockwise.type, uai::ai::ui::EventType::kChange);
+    EXPECT_EQ(counterclockwise.value, -2);
+    EXPECT_EQ(panel.Update({false, 0U, 0U}).type, uai::ai::ui::EventType::kNone);
+
+    panel.Update({true, 6U, 6U});
+    EXPECT_EQ(panel.Update({true, 25U, 6U}).value, 2);
+    EXPECT_EQ(panel.Update({true, 6U, 6U}).value, -2);
+    EXPECT_EQ(panel.Update({false, 0U, 0U}).type, uai::ai::ui::EventType::kNone);
+}
+
+TEST(UiPad, LeavingRingReanchorsWithoutChangingValue)
+{
+    uai::ai::ui::PadSpec pad{};
+    pad.id = 7U;
+    pad.bounds = {0U, 0U, 32U, 32U};
+    const uai::ai::ui::TouchPoint interruptions[] = {
+        {true, 16U, 16U},
+        {true, 31U, 31U},
+    };
+    for (const uai::ai::ui::TouchPoint &interruption : interruptions) {
+        uai::ai::ui::PadPanel panel(&pad, 1U);
+        panel.Update({true, 15U, 2U});
+        EXPECT_EQ(panel.Update(interruption).type, uai::ai::ui::EventType::kNone);
+        EXPECT_EQ(panel.Update({true, 29U, 15U}).type, uai::ai::ui::EventType::kNone);
+        const uai::ai::ui::Event resumed = panel.Update({true, 16U, 29U});
+        EXPECT_EQ(resumed.type, uai::ai::ui::EventType::kChange);
+        EXPECT_EQ(resumed.value, 2);
+        EXPECT_EQ(panel.Update({false, 0U, 0U}).type, uai::ai::ui::EventType::kNone);
+    }
+}
+
+TEST(UiPad, PaintColoursSegmentsAndCentre)
+{
+    uai::ai::ui::PadSpec pad{};
+    pad.id = 7U;
+    pad.bounds = {0U, 0U, 32U, 32U};
+    pad.style.fill = 0x1111U;
+    pad.style.pressed_fill = 0x2222U;
+    pad.style.center_fill = 0x3333U;
+    pad.style.border = 0x4444U;
+    pad.style.arrow = 0x5555U;
+    pad.style.border_width = 1U;
+    uai::ai::ui::PadPanel panel(&pad, 1U);
+    panel.Update({true, 29U, 16U});  /* hold RIGHT */
+
+    TallFrame frame;
+    uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, 32U);
+    panel.Paint(canvas);
+    EXPECT_EQ(frame.At(16U, 16U), 0x3333U);  /* centre button */
+    EXPECT_EQ(frame.At(29U, 16U), 0x2222U);  /* pressed quadrant */
+    EXPECT_EQ(frame.At(2U, 16U), 0x1111U);   /* idle quadrant */
+    EXPECT_EQ(frame.At(27U, 16U), 0x5555U);  /* right arrow */
+    EXPECT_EQ(frame.At(16U, 0U), 0x4444U);   /* outer border */
+    EXPECT_EQ(frame.At(16U, 5U), 0x5555U);   /* up arrow apex row */
+    EXPECT_EQ(frame.At(0U, 0U), kBackground);
+    EXPECT_TRUE(frame.GuardsIntact());
+}
+
 } // namespace
