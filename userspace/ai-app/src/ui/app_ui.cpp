@@ -45,23 +45,6 @@ void DropBelow(inference::DetectionSet &set, float min_confidence)
     set.count = kept;
 }
 
-/* Model masks of the MODELS wheel items, in kModelsItems order. */
-constexpr std::uint8_t kModelsWheelMasks[] = {
-    task::kAllModelsMask,
-    task::ModelMaskBit(task::ModelBit::kPerson),
-    task::ModelMaskBit(task::ModelBit::kFace),
-    task::ModelMaskBit(task::ModelBit::kSegmentation),
-    static_cast<std::uint8_t>(task::ModelMaskBit(task::ModelBit::kPerson) |
-                              task::ModelMaskBit(task::ModelBit::kFace)),
-};
-constexpr std::size_t kModelsWheelCount =
-    sizeof(kModelsWheelMasks) / sizeof(kModelsWheelMasks[0]);
-static_assert(kModelsWheelCount == sizeof(kModelsItems) / sizeof(kModelsItems[0]),
-              "kModelsWheelMasks must match the wheel items in ui_layout.json");
-
-/* Minimum-confidence change per pad tap or ring detent. */
-constexpr std::int32_t kNavConfidenceStep = 5;
-
 } // namespace
 
 void AppUi::Initialize()
@@ -107,14 +90,6 @@ void AppUi::SyncModelWidgets()
                        (mask & task::ModelMaskBit(task::ModelBit::kFace)) != 0U);
     buttons.SetChecked(Id(WidgetId::kSegmentation),
                        (mask & task::ModelMaskBit(task::ModelBit::kSegmentation)) != 0U);
-    /* The wheel only moves when the mask matches one of its presets; other
-     * combinations keep the last selection. */
-    for (std::size_t i = 0U; i < kModelsWheelCount; ++i) {
-        if (kModelsWheelMasks[i] == mask) {
-            Menu().Wheels().SetValue(Id(WidgetId::kModels), static_cast<std::int32_t>(i));
-            break;
-        }
-    }
 }
 
 void AppUi::ToggleModel(task::ModelBit bit, std::uint16_t widget_id)
@@ -128,42 +103,6 @@ void AppUi::ToggleModel(task::ModelBit bit, std::uint16_t widget_id)
                  static_cast<unsigned int>(mask));
 }
 
-void AppUi::OnModelsChange(const ui::Event &event)
-{
-    ApplyModelPreset(event.value);
-}
-
-void AppUi::ApplyModelPreset(std::int32_t index)
-{
-    if (index < 0 || static_cast<std::size_t>(index) >= kModelsWheelCount) {
-        return;
-    }
-    const std::uint8_t mask = kModelsWheelMasks[static_cast<std::size_t>(index)];
-    models_.SetModelMask(mask);
-    Menu().Wheels().SetValue(Id(WidgetId::kModels), index);
-    SyncModelWidgets();
-    UAI_LOG_INFO("ui: wheel=%s models=%x\n",
-                 Menu().Wheels().ItemText(Id(WidgetId::kModels)),
-                 static_cast<unsigned int>(mask));
-}
-
-void AppUi::StepModelPreset(std::int32_t delta)
-{
-    const std::int32_t count = static_cast<std::int32_t>(kModelsWheelCount);
-    const std::int32_t current = Menu().Wheels().Value(Id(WidgetId::kModels));
-    ApplyModelPreset(((current + delta) % count + count) % count);
-}
-
-void AppUi::OnModelsPrevTap(const ui::Event &)
-{
-    StepModelPreset(-1);
-}
-
-void AppUi::OnModelsNextTap(const ui::Event &)
-{
-    StepModelPreset(1);
-}
-
 void AppUi::SetMinConfidence(std::int32_t percent)
 {
     if (percent < 0) percent = 0;
@@ -171,32 +110,6 @@ void AppUi::SetMinConfidence(std::int32_t percent)
     min_confidence_percent_ = percent;
     Menu().Sliders().SetValue(Id(WidgetId::kMinConfidence), percent);
     UAI_LOG_INFO("ui: min confidence=%d%%\n", static_cast<int>(percent));
-}
-
-void AppUi::OnNavTap(const ui::Event &event)
-{
-    switch (static_cast<ui::PadSegment>(event.value)) {
-    case ui::PadSegment::kUp:
-        SetMinConfidence(min_confidence_percent_ + kNavConfidenceStep);
-        break;
-    case ui::PadSegment::kDown:
-        SetMinConfidence(min_confidence_percent_ - kNavConfidenceStep);
-        break;
-    case ui::PadSegment::kRight:
-        StepModelPreset(1);
-        break;
-    case ui::PadSegment::kLeft:
-        StepModelPreset(-1);
-        break;
-    case ui::PadSegment::kCenter:
-        ToggleBoxes();
-        break;
-    }
-}
-
-void AppUi::OnNavRotate(const ui::Event &event)
-{
-    SetMinConfidence(min_confidence_percent_ + event.value * kNavConfidenceStep);
 }
 
 void AppUi::OnPersonTap(const ui::Event &event)
@@ -272,12 +185,6 @@ void AppUi::UpdateStatus(std::uint32_t now_ms)
         }
     }
     Main().Labels().SetText(Id(WidgetId::kStatus), status);
-    Menu().Numbers().SetValue(Id(WidgetId::kDetections),
-                              stats.enabled
-                                  ? static_cast<std::int32_t>(stats.last_detection_count)
-                                  : 0);
-    Menu().Numbers().SetValue(Id(WidgetId::kPersonRate),
-                              person_tenths > 0 && stats.enabled ? person_tenths : 0);
 
     last_stats_ = stats;
     last_stats_tick_ = now_ms;
@@ -313,18 +220,6 @@ inference::BoxSet AppUi::VisibleBoxes(const inference::BoxSet &latest) const
 const char *AppUi::StatusText() const
 {
     return Main().Labels().Text(Id(WidgetId::kStatus));
-}
-
-std::int32_t AppUi::DetectionsValue() const
-{
-    return screens_[static_cast<std::size_t>(ScreenId::kMenu)].Numbers().Value(
-        Id(WidgetId::kDetections));
-}
-
-std::int32_t AppUi::PersonRateTenths() const
-{
-    return screens_[static_cast<std::size_t>(ScreenId::kMenu)].Numbers().Value(
-        Id(WidgetId::kPersonRate));
 }
 
 } // namespace uai::ai::app_ui

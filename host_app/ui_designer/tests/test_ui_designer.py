@@ -973,6 +973,7 @@ class ServerTest(unittest.TestCase):
 
     def test_image_endpoint_and_cpp_with_bitmaps(self):
         from ui_designer.server import EditorState, _make_handler
+        from ui_designer.png import read_png
 
         with tempfile.TemporaryDirectory() as tmp:
             layout = Path(tmp, "ui.json")
@@ -987,6 +988,13 @@ class ServerTest(unittest.TestCase):
                     self.assertEqual(response.headers["Content-Type"], "image/png")
                     data = response.read()
                 self.assertTrue(data.startswith(b"\x89PNG"))
+                served = Path(tmp, "served.png")
+                served.write_bytes(data)
+                width, height, rgba = read_png(served)
+                self.assertEqual((width, height), (4, 2))
+                self.assertEqual(rgba[0], (255, 0, 0, 255))
+                self.assertEqual(rgba[4][3], 0)
+                self.assertEqual(rgba[7], (0, 0, 255, 255))
                 with self.assertRaises(urllib.error.HTTPError) as caught:
                     urllib.request.urlopen(url + "/api/image.png?id=nope")
                 self.assertEqual(caught.exception.code, 404)

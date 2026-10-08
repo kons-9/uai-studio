@@ -117,8 +117,8 @@ def read_png(path: Path) -> tuple[int, int, list[tuple[int, int, int, int]]]:
     return width, height, pixels
 
 
-def write_png(path: Path, width: int, height: int,
-              rgba: list[tuple[int, int, int, int]]) -> None:
+def encode_png(width: int, height: int,
+               rgba: list[tuple[int, int, int, int]]) -> bytes:
     raw = bytearray()
     for row in range(height):
         raw.append(0)
@@ -130,5 +130,10 @@ def write_png(path: Path, width: int, height: int,
                 struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF))
 
     header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
-    path.write_bytes(_SIGNATURE + chunk(b"IHDR", header) +
-                     chunk(b"IDAT", zlib.compress(bytes(raw), 9)) + chunk(b"IEND", b""))
+    return (_SIGNATURE + chunk(b"IHDR", header) +
+            chunk(b"IDAT", zlib.compress(bytes(raw), 9)) + chunk(b"IEND", b""))
+
+
+def write_png(path: Path, width: int, height: int,
+              rgba: list[tuple[int, int, int, int]]) -> None:
+    path.write_bytes(encode_png(width, height, rgba))

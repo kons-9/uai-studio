@@ -14,8 +14,8 @@ namespace uai::ai::app_ui {
 
 /*
  * On-screen UI for ai-app: a camera screen with a status bar and menu
- * button, and a settings screen with model toggles, sliders, dials and
- * diagnostic read-outs. Widget geometry
+ * button, and a settings screen with model and visualization controls.
+ * Widget geometry
  * comes from the generated ui_layout.hpp; this class owns the run-time
  * state of every screen and the handlers that the generated Dispatch() calls.
  */
@@ -45,8 +45,6 @@ public:
     bool ShowBoxes() const { return show_boxes_; }
     std::int32_t MinConfidencePercent() const { return min_confidence_percent_; }
     const char *StatusText() const;
-    std::int32_t DetectionsValue() const;
-    std::int32_t PersonRateTenths() const;
 
     /* Handlers bound in config/ui_layout.json. */
     void ShowScreen(ScreenId screen);
@@ -56,14 +54,6 @@ public:
     void OnToggleBoxesTap(const ui::Event &event);
     void OnMinConfidenceChange(const ui::Event &event);
     void OnStatusPeriodChange(const ui::Event &event);
-    void OnModelsChange(const ui::Event &event);
-    /* Control pad on the settings screen: up/down and the ring change the
-     * minimum confidence, left/right step the model preset, centre
-     * toggles the boxes. */
-    void OnNavTap(const ui::Event &event);
-    void OnNavRotate(const ui::Event &event);
-    void OnModelsPrevTap(const ui::Event &event);
-    void OnModelsNextTap(const ui::Event &event);
 
 private:
     template <std::size_t... Index>
@@ -76,11 +66,7 @@ private:
     void ToggleModel(task::ModelBit bit, std::uint16_t widget_id);
     void ToggleBoxes();
     void SetMinConfidence(std::int32_t percent);
-    /* Applies the MODELS wheel item `index`; `delta` steps from the current
-     * item with wrap-around. */
-    void ApplyModelPreset(std::int32_t index);
-    void StepModelPreset(std::int32_t delta);
-    /* Reflects the model mask on the menu buttons and wheel. */
+    /* Reflects the model mask on the menu buttons. */
     void SyncModelWidgets();
     ui::Screen &Main() { return screens_[static_cast<std::size_t>(ScreenId::kMain)]; }
     const ui::Screen &Main() const { return screens_[static_cast<std::size_t>(ScreenId::kMain)]; }

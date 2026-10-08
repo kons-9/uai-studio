@@ -15,10 +15,11 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from . import png
 from .emit_cpp import generate_header, images_header_name, load_bitmaps
 from .font import GLYPHS, GLYPH_ADVANCE, GLYPH_HEIGHT, GLYPH_WIDTH
 from .images import load_bitmap
-from .render import Canvas, encode_png, render_layout
+from .render import encode_png, render_layout
 from .schema import LayoutError, dump_layout, load_layout, parse_layout, save_layout
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -136,9 +137,12 @@ def _make_handler(state: EditorState):
                     except LayoutError as error:
                         self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
                         return
-                canvas = Canvas(bitmap.width, bitmap.height, 0x0000)
-                canvas.blit(0, 0, bitmap)
-                self._send(HTTPStatus.OK, encode_png(canvas), "image/png")
+                rgba = [(((pixel >> 11) & 31) * 255 // 31,
+                     ((pixel >> 5) & 63) * 255 // 63,
+                     (pixel & 31) * 255 // 31,
+                     0 if pixel == bitmap.transparent else 255)
+                    for pixel in bitmap.pixels]
+                self._send(HTTPStatus.OK, png.encode_png(bitmap.width, bitmap.height, rgba), "image/png")
             else:
                 self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
 
