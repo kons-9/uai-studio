@@ -25,6 +25,10 @@ def _bounds(widget: Widget) -> str:
     return f"{{{widget.x}U, {widget.y}U, {widget.width}U, {widget.height}U}}"
 
 
+def _shape(name: str) -> str:
+    return "ui::Shape::k" + pascal_case(name)
+
+
 def _button_entry(widget: Widget) -> list[str]:
     style = widget.style
     return [
@@ -42,7 +46,7 @@ def _button_entry(widget: Widget) -> list[str]:
         f"            {style.border_width}U,",
         "        },",
         f"        ui::Icon::k{widget.icon.capitalize()},",
-        f"        ui::Shape::k{widget.shape.capitalize()},",
+        f"        {_shape(widget.shape)},",
         "    },",
     ]
 
@@ -191,6 +195,25 @@ def _image_entry(bitmaps: dict[str, Bitmap]):
     return entry
 
 
+def _pad_entry(widget: Widget) -> list[str]:
+    style = widget.style
+    return [
+        "    {",
+        f"        {_widget_id(widget)},",
+        f"        {_bounds(widget)},",
+        f"        {'true' if widget.center else 'false'},",
+        "        {",
+        f"            {_rgb(style.fill)},",
+        f"            {_rgb(style.pressed_fill)},",
+        f"            {_rgb(style.center_fill)},",
+        f"            {_rgb(style.border)},",
+        f"            {_rgb(style.arrow)},",
+        f"            {style.border_width}U,",
+        "        },",
+        "    },",
+    ]
+
+
 def _screen_tables(screen: Screen, bitmaps: dict[str, Bitmap]) -> list[str]:
     prefix = f"k{pascal_case(screen.id)}"
     lines: list[str] = []
@@ -205,7 +228,8 @@ def _screen_tables(screen: Screen, bitmaps: dict[str, Bitmap]) -> list[str]:
             _table(f"{prefix}Dials", "DialSpec", screen.dials(), _dial_entry) +
             _table(f"{prefix}Wheels", "WheelSpec", screen.wheels(), _wheel_entry) +
             _table(f"{prefix}Numbers", "NumberSpec", screen.numbers(), _number_entry) +
-            _table(f"{prefix}Images", "ImageSpec", screen.images(), _image_entry(bitmaps)))
+            _table(f"{prefix}Images", "ImageSpec", screen.images(), _image_entry(bitmaps)) +
+            _table(f"{prefix}Pads", "PadSpec", screen.pads(), _pad_entry))
 
 
 def _screen_entry(screen: Screen) -> list[str]:
@@ -229,6 +253,7 @@ def _screen_entry(screen: Screen) -> list[str]:
             + table("Wheels", screen.wheels())
             + table("Numbers", screen.numbers())
             + table("Images", screen.images())
+            + table("Pads", screen.pads())
             + ["    },"])
 
 
@@ -330,9 +355,9 @@ def generate_header(layout: Layout, source_name: str,
 
 # (event key, ui::EventType member, widget filter)
 _EVENT_TYPES = (
-    ("on_tap", "kTap", lambda w: w.is_button),
-    ("on_press", "kPress", lambda w: w.is_button),
-    ("on_change", "kChange", lambda w: w.is_slider or w.is_dial or w.is_wheel),
+    ("on_tap", "kTap", lambda w: w.is_button or w.is_pad),
+    ("on_press", "kPress", lambda w: w.is_button or w.is_pad),
+    ("on_change", "kChange", lambda w: w.is_slider or w.is_dial or w.is_wheel or w.is_pad),
 )
 
 

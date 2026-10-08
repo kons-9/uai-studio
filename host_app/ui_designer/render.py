@@ -33,6 +33,45 @@ def inside_ellipse(x: int, y: int, w: int, h: int, px: int, py: int) -> bool:
     return dx * dx * h * h + dy * dy * w * w <= w * w * h * h
 
 
+def corner_radius(shape: str, w: int, h: int) -> int:
+    side = min(w, h)
+    if shape == "rounded":
+        return side // 4
+    if shape == "pill":
+        return side // 2
+    return 0
+
+
+def inside_shape(shape: str, x: int, y: int, w: int, h: int, px: int, py: int) -> bool:
+    """Mirror ui::InsideShape in canvas.hpp."""
+    if px < x or py < y or px >= x + w or py >= y + h:
+        return False
+    if shape == "rectangle":
+        return True
+    if shape == "ellipse":
+        return inside_ellipse(x, y, w, h, px, py)
+    dx = 2 * (px - x) + 1 - w
+    dy = 2 * (py - y) + 1 - h
+    ax, ay = abs(dx), abs(dy)
+    if shape in ("rounded", "pill"):
+        r2 = 2 * corner_radius(shape, w, h)
+        cx, cy = w - r2, h - r2
+        if ax <= cx or ay <= cy:
+            return True
+        return (ax - cx) ** 2 + (ay - cy) ** 2 <= r2 * r2
+    if shape == "diamond":
+        return ax * h + ay * w <= w * h
+    if shape == "triangle_up":
+        return ax * 2 * h <= w * (dy + h + 1)
+    if shape == "triangle_down":
+        return ax * 2 * h <= w * (h - dy + 1)
+    if shape == "triangle_left":
+        return ay * 2 * w <= h * (dx + w + 1)
+    if shape == "triangle_right":
+        return ay * 2 * w <= h * (w - dx + 1)
+    return True
+
+
 class Canvas:
     def __init__(self, width: int, height: int, background: int = 0x0000):
         self.width = width
@@ -64,21 +103,35 @@ class Canvas:
             self.pixels[y * self.width + x] = color
 
     def fill_ellipse(self, x: int, y: int, w: int, h: int, color: int) -> None:
-        for py in range(y, min(y + h, self.height)):
-            for px in range(x, min(x + w, self.width)):
-                if inside_ellipse(x, y, w, h, px, py):
-                    self.pixels[py * self.width + px] = color
+        self.fill_shape("ellipse", x, y, w, h, color)
 
     def draw_ellipse_frame(self, x: int, y: int, w: int, h: int, thickness: int, color: int) -> None:
+        self.draw_shape_frame("ellipse", x, y, w, h, thickness, color)
+
+    def fill_shape(self, shape: str, x: int, y: int, w: int, h: int, color: int) -> None:
+        if shape == "rectangle":
+            self.fill_rect(x, y, w, h, color)
+            return
+        for py in range(y, min(y + h, self.height)):
+            for px in range(x, min(x + w, self.width)):
+                if inside_shape(shape, x, y, w, h, px, py):
+                    self.pixels[py * self.width + px] = color
+
+    def draw_shape_frame(self, shape: str, x: int, y: int, w: int, h: int,
+                         thickness: int, color: int) -> None:
         if thickness == 0:
             return
+        if shape == "rectangle":
+            self.draw_frame(x, y, w, h, thickness, color)
+            return
         if 2 * thickness >= w or 2 * thickness >= h:
-            self.fill_ellipse(x, y, w, h, color)
+            self.fill_shape(shape, x, y, w, h, color)
             return
         ix, iy, iw, ih = x + thickness, y + thickness, w - 2 * thickness, h - 2 * thickness
         for py in range(y, min(y + h, self.height)):
             for px in range(x, min(x + w, self.width)):
-                if inside_ellipse(x, y, w, h, px, py) and not inside_ellipse(ix, iy, iw, ih, px, py):
+                if (inside_shape(shape, x, y, w, h, px, py) and
+                        not inside_shape(shape, ix, iy, iw, ih, px, py)):
                     self.pixels[py * self.width + px] = color
 
     def blit(self, x: int, y: int, bitmap: Bitmap) -> None:
@@ -151,14 +204,9 @@ def paint_button(canvas: Canvas, button: Widget, pressed: bool = False,
                  checked: bool = False) -> None:
     style = button.style
     fill = style.pressed_fill if pressed else style.checked_fill if checked else style.fill
-    if button.shape == "ellipse":
-        canvas.fill_ellipse(button.x, button.y, button.width, button.height, rgb565(fill))
-        canvas.draw_ellipse_frame(button.x, button.y, button.width, button.height,
-                                  style.border_width, rgb565(style.border))
-    else:
-        canvas.fill_rect(button.x, button.y, button.width, button.height, rgb565(fill))
-        canvas.draw_frame(button.x, button.y, button.width, button.height,
-                          style.border_width, rgb565(style.border))
+    canvas.fill_shape(button.shape, button.x, button.y, button.width, button.height, rgb565(fill))
+    canvas.draw_shape_frame(button.shape, button.x, button.y, button.width, button.height,
+                            style.border_width, rgb565(style.border))
     if button.icon != "none":
         paint_icon(canvas, button.x, button.y, button.width, button.height,
                    button.icon, rgb565(style.text))
@@ -227,7 +275,8 @@ def render_screen(layout: Layout, screen: Screen,
 
     A camera screen uses a flat stand-in color for the live frame; a solid
     screen uses its own background. Order: images, buttons, sliders, dials,
-    wheels, numbers, labels. Images without a bitmap are drawn as a frame.
+    wheels, pads, numbers, labels. Images without a bitmap are drawn as a
+    frame.
     """
     background = camera_stand_in if screen.is_camera else rgb565(screen.background)
     canvas = Canvas(layout.width, layout.height, background)
@@ -245,6 +294,8 @@ def render_screen(layout: Layout, screen: Screen,
         paint_dial(canvas, dial)
     for wheel in screen.wheels():
         paint_wheel(canvas, wheel)
+    for pad in screen.pads():
+        paint_pad(canvas, pad)
     for number in screen.numbers():
         paint_number(canvas, number)
     for label in screen.labels():
@@ -279,6 +330,60 @@ def _degrees(dx2: int, dy2: int) -> int:
 def _sweep(dx2: int, dy2: int) -> int:
     sweep = (_degrees(dx2, dy2) - DIAL_START + 360) % 360
     return sweep if sweep <= DIAL_SWEEP else -1
+
+
+# --- pad --------------------------------------------------------------------
+
+PAD_CENTER = 4
+
+
+def pad_center(pad: Widget) -> tuple[int, int, int]:
+    """Mirror ui::PadPanel::CenterOf: (x, y, side)."""
+    side = min(pad.width, pad.height) * 2 // 5
+    return pad.x + (pad.width - side) // 2, pad.y + (pad.height - side) // 2, side
+
+
+def pad_angle(pad: Widget, px: int, py: int) -> int:
+    """Mirror ui::PadPanel::AngleAt: clockwise degrees from the top."""
+    dx2 = 2 * (px - pad.x) + 1 - pad.width
+    dy2 = 2 * (py - pad.y) + 1 - pad.height
+    return (_degrees(dx2, dy2) + 90) % 360
+
+
+def pad_segment(pad: Widget, px: int, py: int) -> int:
+    """Mirror ui::PadPanel::SegmentAt: 0 up, 1 right, 2 down, 3 left, 4 centre, -1 outside."""
+    if not inside_ellipse(pad.x, pad.y, pad.width, pad.height, px, py):
+        return -1
+    cx, cy, side = pad_center(pad)
+    if pad.center and inside_ellipse(cx, cy, side, side, px, py):
+        return PAD_CENTER
+    return ((pad_angle(pad, px, py) + 45) % 360) // 90
+
+
+def paint_pad(canvas: Canvas, pad: Widget, pressed: int = -1) -> None:
+    """Mirror ui::PadPanel::Paint; `pressed` is the held segment or -1."""
+    style = pad.style
+    cx, cy, side = pad_center(pad)
+    for py in range(pad.y, min(pad.y + pad.height, canvas.height)):
+        for px in range(pad.x, min(pad.x + pad.width, canvas.width)):
+            segment = pad_segment(pad, px, py)
+            if segment < 0:
+                continue
+            color = (style.pressed_fill if segment == pressed
+                     else style.center_fill if segment == PAD_CENTER else style.fill)
+            canvas.pixels[py * canvas.width + px] = rgb565(color)
+    canvas.draw_ellipse_frame(pad.x, pad.y, pad.width, pad.height, style.border_width,
+                              rgb565(style.border))
+    if pad.center:
+        canvas.draw_ellipse_frame(cx, cy, side, side, style.border_width, rgb565(style.border))
+    short = min(pad.width, pad.height)
+    arrow = max(short // 8, 4)
+    mx, my = pad.x + pad.width // 2, pad.y + pad.height // 2
+    rx = (pad.width // 2 + side // 2) // 2
+    ry = (pad.height // 2 + side // 2) // 2
+    for ax, ay, shape in ((mx, my - ry, "triangle_up"), (mx + rx, my, "triangle_right"),
+                          (mx, my + ry, "triangle_down"), (mx - rx, my, "triangle_left")):
+        canvas.fill_shape(shape, ax - arrow // 2, ay - arrow // 2, arrow, arrow, rgb565(style.arrow))
 
 
 def dial_disc(dial: Widget) -> tuple[int, int, int]:

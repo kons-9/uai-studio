@@ -36,6 +36,7 @@
   <button id="add_wheel">+ Wheel</button>
   <button id="add_number">+ Number</button>
   <button id="add_image">+ Image</button>
+  <button id="add_pad">+ Pad</button>
   <button id="delete">Delete</button>
   <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="snap" checked> snap 8px</label>
   <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="pressed"> pressed</label>
@@ -64,7 +65,7 @@
     <label>y <input type="number" id="p_y" min="0"></label>
     <label>width <input type="number" id="p_width" min="1"></label>
     <label>height <input type="number" id="p_height" min="1"></label>
-    <label class="k-button">shape <select id="p_shape"><option>rectangle</option><option>ellipse</option></select></label>
+    <label class="k-button">shape <select id="p_shape"><option>rectangle</option><option>rounded</option><option>pill</option><option>ellipse</option><option>triangle_up</option><option>triangle_down</option><option>triangle_left</option><option>triangle_right</option><option>diamond</option></select></label>
     <label class="k-button">icon <select id="p_icon"><option>none</option><option>menu</option><option>back</option><option>close</option></select></label>
     <label class="k-button">navigate <select id="p_navigate"></select></label>
     <label class="k-slider k-dial">min <input type="number" id="p_min"></label>
@@ -76,10 +77,13 @@
     <label class="k-number">decimals <input type="number" id="p_decimals" min="0" max="6"></label>
     <label class="k-image">source <input type="text" id="p_source" placeholder="ui/logo.png"></label>
     <label class="k-image">transparent <span style="display:flex;gap:4px;align-items:center"><input type="color" id="p_transparent"><span style="display:inline-flex;gap:2px;align-items:center;font-size:12px"><input type="checkbox" id="p_transparent_auto">auto</span></span></label>
-    <label class="k-button k-label k-slider k-dial k-wheel k-number">fill <span style="display:flex;gap:4px;align-items:center"><input type="color" id="p_fill"><span id="p_fill_none_wrap" style="display:inline-flex;gap:2px;align-items:center;font-size:12px"><input type="checkbox" id="p_fill_none">none</span></span></label>
-    <label class="k-button">pressed_fill <input type="color" id="p_pressed_fill"></label>
+    <label class="k-pad">center <input type="checkbox" id="p_center"></label>
+    <label class="k-button k-label k-slider k-dial k-wheel k-number k-pad">fill <span style="display:flex;gap:4px;align-items:center"><input type="color" id="p_fill"><span id="p_fill_none_wrap" style="display:inline-flex;gap:2px;align-items:center;font-size:12px"><input type="checkbox" id="p_fill_none">none</span></span></label>
+    <label class="k-button k-pad">pressed_fill <input type="color" id="p_pressed_fill"></label>
     <label class="k-button">checked_fill <input type="color" id="p_checked_fill"></label>
-    <label class="k-button k-wheel">border <input type="color" id="p_border"></label>
+    <label class="k-pad">center_fill <input type="color" id="p_center_fill"></label>
+    <label class="k-pad">arrow <input type="color" id="p_arrow"></label>
+    <label class="k-button k-wheel k-pad">border <input type="color" id="p_border"></label>
     <label class="k-slider k-dial">track <input type="color" id="p_track"></label>
     <label class="k-slider">knob <input type="color" id="p_knob"></label>
     <label class="k-dial">face <input type="color" id="p_face"></label>
@@ -88,13 +92,13 @@
     <label class="k-wheel">selected_text <input type="color" id="p_selected_text"></label>
     <label class="k-button k-label k-slider k-dial k-wheel k-number">text color <input type="color" id="p_text"></label>
     <label class="k-button k-label k-slider k-dial k-wheel k-number">text_scale <input type="number" id="p_text_scale" min="1" max="16"></label>
-    <label class="k-button">border_width <input type="number" id="p_border_width" min="0" max="32"></label>
+    <label class="k-button k-pad">border_width <input type="number" id="p_border_width" min="0" max="32"></label>
     <label class="k-label k-number">align <select id="p_align"><option>left</option><option>center</option><option>right</option></select></label>
     <label class="k-label">padding <input type="number" id="p_padding" min="0" max="64"></label>
     <label class="k-slider k-dial">show_value <input type="checkbox" id="p_show_value"></label>
-    <label class="k-button">on_tap <input type="text" id="p_on_tap" placeholder="OnXxxTap"></label>
-    <label class="k-button">on_press <input type="text" id="p_on_press" placeholder="OnXxxPress"></label>
-    <label class="k-slider k-dial k-wheel">on_change <input type="text" id="p_on_change" placeholder="OnXxxChange"></label>
+    <label class="k-button k-pad">on_tap <input type="text" id="p_on_tap" placeholder="OnXxxTap"></label>
+    <label class="k-button k-pad">on_press <input type="text" id="p_on_press" placeholder="OnXxxPress"></label>
+    <label class="k-slider k-dial k-wheel k-pad">on_change <input type="text" id="p_on_change" placeholder="OnXxxChange"></label>
   </fieldset>
   <fieldset><legend>Display</legend>
     <label>namespace <input type="text" id="s_namespace"></label>
@@ -125,6 +129,7 @@
     wheel: ['fill', 'highlight', 'text', 'selected_text', 'border', 'text_scale'],
     number: ['text', 'fill', 'text_scale', 'align'],
     image: [],
+    pad: ['fill', 'pressed_fill', 'center_fill', 'border', 'arrow', 'border_width'],
   };
   const allStyleIds = [...new Set(Object.values(styleIds).flat())];
   const numericStyle = ['text_scale', 'border_width', 'padding'];
@@ -135,6 +140,7 @@
     dial: { face: '#202830', track: '#404040', fill: '#2060C0', pointer: '#FFFFFF', text: '#FFFFFF', text_scale: 2, show_value: true },
     wheel: { fill: '#182028', highlight: '#2060C0', text: '#8090A0', selected_text: '#FFFFFF', border: '#FFFFFF', text_scale: 2 },
     number: { text: '#FFFFFF', fill: '#000000', text_scale: 4, align: 'right' },
+    pad: { fill: '#303030', pressed_fill: '#606060', center_fill: '#2060C0', border: '#FFFFFF', arrow: '#FFFFFF', border_width: 2 },
   };
   const TRACK_H = 8, KNOB_W = 16, KNOB_M = 6, DIAL_START = 135, DIAL_SWEEP = 270, NUM_PAD = 4;
   const rangeKinds = { slider: ['min', 'max', 'step', 'value'], dial: ['min', 'max', 'step', 'value'], wheel: ['value'], number: ['value'] };
@@ -170,6 +176,50 @@
     const dx = 2 * (px - b.x) + 1 - b.width, dy = 2 * (py - b.y) + 1 - b.height;
     return dx * dx * b.height * b.height + dy * dy * b.width * b.width <= b.width * b.width * b.height * b.height;
   };
+  // Mirrors ui::InsideShape (doubled integer coordinates) for hit testing.
+  function insideShape(shape, b, px, py) {
+    if (px < b.x || py < b.y || px >= b.x + b.width || py >= b.y + b.height) return false;
+    if (!shape || shape === 'rectangle') return true;
+    if (shape === 'ellipse') return insideEllipse(b, px, py);
+    const w = b.width, h = b.height, dx = 2 * (px - b.x) + 1 - w, dy = 2 * (py - b.y) + 1 - h, ax = Math.abs(dx), ay = Math.abs(dy);
+    if (shape === 'rounded' || shape === 'pill') {
+      const r2 = 2 * Math.floor(Math.min(w, h) / (shape === 'pill' ? 2 : 4)), cx = w - r2, cy = h - r2;
+      return ax <= cx || ay <= cy || (ax - cx) ** 2 + (ay - cy) ** 2 <= r2 * r2;
+    }
+    if (shape === 'diamond') return ax * h + ay * w <= w * h;
+    if (shape === 'triangle_up') return ax * 2 * h <= w * (dy + h + 1);
+    if (shape === 'triangle_down') return ax * 2 * h <= w * (h - dy + 1);
+    if (shape === 'triangle_left') return ay * 2 * w <= h * (dx + w + 1);
+    if (shape === 'triangle_right') return ay * 2 * w <= h * (w - dx + 1);
+    return true;
+  }
+  // Vector outline of a shape for fill/stroke; `inset` shrinks it for the border.
+  function shapePath(shape, x, y, w, h) {
+    ctx.beginPath();
+    if (shape === 'ellipse') { ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, 2 * Math.PI); return; }
+    if (shape === 'rounded' || shape === 'pill') { ctx.roundRect(x, y, w, h, Math.floor(Math.min(w, h) / (shape === 'pill' ? 2 : 4))); return; }
+    const pts = {
+      diamond: [[x + w / 2, y], [x + w, y + h / 2], [x + w / 2, y + h], [x, y + h / 2]],
+      triangle_up: [[x + w / 2, y], [x + w, y + h], [x, y + h]],
+      triangle_down: [[x, y], [x + w, y], [x + w / 2, y + h]],
+      triangle_left: [[x + w, y], [x + w, y + h], [x, y + h / 2]],
+      triangle_right: [[x, y], [x + w, y + h / 2], [x, y + h]],
+    }[shape];
+    if (!pts) { ctx.rect(x, y, w, h); return; }
+    pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+    ctx.closePath();
+  }
+  function fillShape(shape, x, y, w, h, color) { if (!shape || shape === 'rectangle') { fillRect(x, y, w, h, color); return; } shapePath(shape, x, y, w, h); ctx.fillStyle = color; ctx.fill(); }
+  function drawShapeFrame(shape, x, y, w, h, t, color) {
+    if (!t) return;
+    if (!shape || shape === 'rectangle') { drawFrame(x, y, w, h, t, color); return; }
+    if (w <= 2 * t || h <= 2 * t) { fillShape(shape, x, y, w, h, color); return; }
+    ctx.save(); shapePath(shape, x, y, w, h); ctx.clip();
+    shapePath(shape, x + t / 2, y + t / 2, w - t, h - t); ctx.strokeStyle = color; ctx.lineWidth = t; ctx.stroke();
+    // Triangles/diamonds have acute corners: stroke the outer outline too so the band stays continuous.
+    shapePath(shape, x, y, w, h); ctx.lineWidth = t; ctx.stroke();
+    ctx.restore();
+  }
   function textWidth(text, scale) { return text.length ? (text.length * font.advance - (font.advance - font.width)) * scale : 0; }
   function drawText(x, y, text, scale, color) {
     let pen = x;
@@ -196,8 +246,8 @@
   }
   function drawButton(b, pressed, checked) {
     const s = b.style, color = rgb565(pressed ? s.pressed_fill : checked ? s.checked_fill : s.fill);
-    if (b.shape === 'ellipse') { fillEllipse(b.x, b.y, b.width, b.height, color); drawEllipseFrame(b.x, b.y, b.width, b.height, s.border_width, rgb565(s.border)); }
-    else { fillRect(b.x, b.y, b.width, b.height, color); drawFrame(b.x, b.y, b.width, b.height, s.border_width, rgb565(s.border)); }
+    fillShape(b.shape, b.x, b.y, b.width, b.height, color);
+    drawShapeFrame(b.shape, b.x, b.y, b.width, b.height, s.border_width, rgb565(s.border));
     if (b.icon && b.icon !== 'none') { drawIcon(b.x, b.y, b.width, b.height, b.icon, rgb565(s.text)); return; }
     const tw = textWidth(b.label, s.text_scale), th = font.height * s.text_scale;
     drawText(tw < b.width ? b.x + Math.floor((b.width - tw) / 2) : b.x, th < b.height ? b.y + Math.floor((b.height - th) / 2) : b.y, b.label, s.text_scale, rgb565(s.text));
@@ -294,6 +344,27 @@
     drawFrame(w.x, w.y, w.width, w.height, 2, '#FF00FF');
     drawText(w.x + 4, w.y + 4, 'IMG', 1, '#FF00FF');
   }
+  function drawPad(w, pressed) {
+    const s = w.style, side = Math.floor(Math.min(w.width, w.height) * 2 / 5);
+    const cx = w.x + w.width / 2, cy = w.y + w.height / 2, cr = side / 2;
+    const hasCenter = w.center !== false;
+    fillEllipse(w.x, w.y, w.width, w.height, rgb565(s.fill));
+    if (pressed >= 0 && pressed < 4) {
+      // Quadrant wedge centred on a compass point (0 up, clockwise).
+      const from = (pressed * 90 - 135) * Math.PI / 180, to = from + Math.PI / 2;
+      ctx.save(); ellipsePath(w.x, w.y, w.width, w.height); ctx.clip();
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, Math.max(w.width, w.height), from, to); ctx.closePath();
+      ctx.fillStyle = rgb565(s.pressed_fill); ctx.fill(); ctx.restore();
+    }
+    if (hasCenter) fillEllipse(cx - cr, cy - cr, side, side, rgb565(pressed === 4 ? s.pressed_fill : s.center_fill));
+    drawEllipseFrame(w.x, w.y, w.width, w.height, s.border_width, rgb565(s.border));
+    if (hasCenter) drawEllipseFrame(cx - cr, cy - cr, side, side, s.border_width, rgb565(s.border));
+    const arrow = Math.max(Math.floor(Math.min(w.width, w.height) / 8), 4);
+    const rx = Math.floor((Math.floor(w.width / 2) + Math.floor(side / 2)) / 2), ry = Math.floor((Math.floor(w.height / 2) + Math.floor(side / 2)) / 2);
+    const mx = w.x + Math.floor(w.width / 2), my = w.y + Math.floor(w.height / 2);
+    [[mx, my - ry, 'triangle_up'], [mx + rx, my, 'triangle_right'], [mx, my + ry, 'triangle_down'], [mx - rx, my, 'triangle_left']]
+      .forEach(([ax, ay, shape]) => fillShape(shape, ax - Math.floor(arrow / 2), ay - Math.floor(arrow / 2), arrow, arrow, rgb565(s.arrow)));
+  }
 
   function render() {
     if (!layout || !font) return;
@@ -312,6 +383,7 @@
     byKind('slider', drawSlider);
     byKind('dial', drawDial);
     byKind('wheel', drawWheel);
+    byKind('pad', (w, i) => drawPad(w, pressedPreview && i === selected ? 1 : -1));
     byKind('number', drawNumber);
     byKind('label', drawLabel);
     if (selected >= 0) {
@@ -379,6 +451,7 @@
     $('p_transparent_auto').checked = has && k === 'image' && (w.transparent === undefined || w.transparent === null);
     $('p_transparent').value = has && k === 'image' && w.transparent ? w.transparent : '#FF00FF';
     $('p_transparent').disabled = $('p_transparent_auto').checked;
+    $('p_center').checked = has && k === 'pad' && w.center !== false;
     ['on_tap', 'on_press', 'on_change'].forEach((e) => { $('p_' + e).value = has ? (w[e] || '') : ''; });
     allStyleIds.forEach((s) => {
       const el = $('p_' + s);
@@ -413,6 +486,7 @@
     };
     $('p_transparent').addEventListener('change', setTransparent);
     $('p_transparent_auto').addEventListener('change', setTransparent);
+    $('p_center').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].center = e.target.checked; changed(); } });
     $('p_navigate').addEventListener('change', (e) => { if (selected >= 0) { const w = widgets()[selected]; if (e.target.value) w.navigate = e.target.value; else delete w.navigate; changed(); } });
     ['min', 'max', 'step', 'value'].forEach((r) => $('p_' + r).addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected][r] = Number(e.target.value); changed(); } }));
     ['on_tap', 'on_press', 'on_change'].forEach((ev) => $('p_' + ev).addEventListener('change', (e) => {
@@ -467,10 +541,11 @@
     for (let i = list.length - 1; i >= 0; i--) {
       const b = list[i];
       if (p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height) {
-        // Round buttons miss their corners, like the device hit test; the
-        // resize handle in the corner still works.
+        // Shaped buttons and round pads miss their corners, like the device
+        // hit test; the resize handle in the corner still works.
         const handle = p.x >= b.x + b.width - 10 && p.y >= b.y + b.height - 10;
-        if (kind(b) === 'button' && b.shape === 'ellipse' && !handle && !insideEllipse(b, p.x, p.y)) continue;
+        if (!handle && kind(b) === 'button' && !insideShape(b.shape, b, p.x, p.y)) continue;
+        if (!handle && kind(b) === 'pad' && !insideEllipse(b, p.x, p.y)) continue;
         return i;
       }
     }
@@ -521,6 +596,7 @@
   $('add_wheel').onclick = () => { const n = nextId('wheel_'); addWidget({ type: 'wheel', id: 'wheel_' + n, items: ['ONE', 'TWO', 'THREE'], value: 0, x: 40, y: 100, width: 240, height: 150, style: { ...defaults.wheel } }); };
   $('add_number').onclick = () => { const n = nextId('number_'); addWidget({ type: 'number', id: 'number_' + n, label: 'VALUE', unit: '', decimals: 0, value: 0, x: 40, y: 100, width: 200, height: 72, style: { ...defaults.number } }); };
   $('add_image').onclick = () => { const n = nextId('image_'); addWidget({ type: 'image', id: 'image_' + n, source: 'image.png', x: 40, y: 100, width: 64, height: 64 }); };
+  $('add_pad').onclick = () => { const n = nextId('pad_'); addWidget({ type: 'pad', id: 'pad_' + n, center: true, x: 40, y: 100, width: 160, height: 160, style: { ...defaults.pad } }); };
   $('delete').onclick = () => { if (selected >= 0) { widgets().splice(selected, 1); selected = -1; changed(); } };
 
   function post(url) {

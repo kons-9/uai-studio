@@ -42,9 +42,10 @@ BOOL_STYLE_KEYS = frozenset(
     if isinstance(v, bool))
 # Per widget kind: the key holding its caption text (None: no caption).
 TEXT_KEY = {"button": "label", "label": "text", "slider": "label", "dial": "label",
-            "wheel": None, "number": "label", "image": None}
+            "wheel": None, "number": "label", "image": None, "pad": None}
 EVENTS_FOR = {"button": BUTTON_EVENTS, "label": (), "slider": SLIDER_EVENTS,
-              "dial": SLIDER_EVENTS, "wheel": SLIDER_EVENTS, "number": (), "image": ()}
+              "dial": SLIDER_EVENTS, "wheel": SLIDER_EVENTS, "number": (), "image": (),
+              "pad": CALLBACK_EVENTS}
 RANGE_FOR = {"slider": SLIDER_RANGE_KEYS, "dial": SLIDER_RANGE_KEYS, "wheel": ("value",),
              "number": ("value",)}
 
@@ -236,6 +237,10 @@ def _apply_widget_options(widget: dict, args: argparse.Namespace) -> None:
             widget.pop(key, None)
         else:
             widget[key] = value
+    if args.center is not None:
+        if widget_type != "pad":
+            raise LayoutError("--center applies to pads only")
+        widget["center"] = args.center
 
     style = widget.setdefault("style", {}) if widget_type != "image" else {}
     for key, kinds in STYLE_OPTIONS.items():
@@ -301,6 +306,8 @@ def _command_list(args: argparse.Namespace) -> int:
                 extra.append(f"unit={widget.unit!r} decimals={widget.decimals} value={widget.value}")
             if widget.is_image:
                 extra.append(f"source={widget.source}")
+            if widget.is_pad:
+                extra.append(f"center={'yes' if widget.center else 'no'}")
             print(f"  {widget.id:<20} {widget.type:<6} {widget.text[:16]:<16} {widget.x:>5} "
                   f"{widget.y:>5} {widget.width:>5} {widget.height:>5}  {', '.join(extra) or '-'}")
     return 0
@@ -418,6 +425,9 @@ def _add_widget_options(parser: argparse.ArgumentParser) -> None:
     image = parser.add_argument_group("image")
     image.add_argument("--source", metavar="PNG", help="path relative to the layout file")
     image.add_argument("--transparent", metavar="COLOR", help="#RRGGBB key or 'none'")
+    pad = parser.add_argument_group("pad")
+    pad.add_argument("--center", type=lambda v: v.lower() in ("1", "true", "yes"),
+                     metavar="BOOL", help="draw a centre button")
     style = parser.add_argument_group(
         "style", "colors are #RRGGBB; label --fill accepts 'none' for transparent")
     for key, kinds in STYLE_OPTIONS.items():

@@ -24,25 +24,32 @@
           "style": {"text": "#FFE000", "fill": null, "text_scale": 4, "align": "right"}
         },
         {
-          "type": "button", "id": "person", "label": "PERSON", "on_tap": "OnPersonTap",
+          "type": "pad", "id": "nav", "center": true,
+          "on_tap": "OnNavTap", "on_change": "OnNavRotate",
+          "x": 620, "y": 144, "width": 160, "height": 160,
+          "style": {"fill": "#303030", "pressed_fill": "#606060", "center_fill": "#2060C0",
+                    "border": "#FFFFFF", "arrow": "#FFFFFF", "border_width": 2}
+        },
+        {
+          "type": "button", "id": "person", "label": "PERSON", "shape": "rounded", "on_tap": "OnPersonTap",
           "x": 16, "y": 400, "width": 140, "height": 64,
           "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#C02020",
                     "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
         },
         {
-          "type": "button", "id": "face", "label": "FACE", "on_tap": "OnFaceTap",
+          "type": "button", "id": "face", "label": "FACE", "shape": "rounded", "on_tap": "OnFaceTap",
           "x": 172, "y": 400, "width": 140, "height": 64,
           "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2040C0",
                     "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
         },
         {
-          "type": "button", "id": "segmentation", "label": "SEG", "on_tap": "OnSegmentationTap",
+          "type": "button", "id": "segmentation", "label": "SEG", "shape": "rounded", "on_tap": "OnSegmentationTap",
           "x": 328, "y": 400, "width": 140, "height": 64,
           "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#20A040",
                     "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
         },
         {
-          "type": "button", "id": "toggle_boxes", "label": "BOXES", "on_tap": "OnToggleBoxesTap",
+          "type": "button", "id": "toggle_boxes", "label": "BOXES", "shape": "pill", "on_tap": "OnToggleBoxesTap",
           "x": 640, "y": 400, "width": 144, "height": 64,
           "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2060C0",
                     "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 3, "border_width": 2}
@@ -101,6 +108,18 @@
           "type": "number", "id": "person_rate", "label": "PERSON FPS", "unit": "", "decimals": 1, "value": 0,
           "x": 320, "y": 224, "width": 200, "height": 72,
           "style": {"text": "#FFFFFF", "fill": "#182028", "text_scale": 4, "align": "right"}
+        },
+        {
+          "type": "button", "id": "models_prev", "label": "", "shape": "triangle_left", "on_tap": "OnModelsPrevTap",
+          "x": 320, "y": 308, "width": 56, "height": 56,
+          "style": {"fill": "#2060C0", "pressed_fill": "#103060", "checked_fill": "#2060C0",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}
+        },
+        {
+          "type": "button", "id": "models_next", "label": "", "shape": "triangle_right", "on_tap": "OnModelsNextTap",
+          "x": 392, "y": 308, "width": 56, "height": 56,
+          "style": {"fill": "#2060C0", "pressed_fill": "#103060", "checked_fill": "#2060C0",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}
         },
         {
           "type": "label", "id": "menu_hint", "text": "TAP BACK TO RETURN TO THE CAMERA",

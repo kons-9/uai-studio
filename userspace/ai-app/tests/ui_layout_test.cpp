@@ -44,6 +44,9 @@ uai::ai::ui::Rect BoundsOf(uai::ai::app_ui::WidgetId id)
         for (std::size_t i = 0U; i < screen.image_count; ++i) {
             if (screen.images[i].id == wanted) return screen.images[i].bounds;
         }
+        for (std::size_t i = 0U; i < screen.pad_count; ++i) {
+            if (screen.pads[i].id == wanted) return screen.pads[i].bounds;
+        }
     }
     return {};
 }
@@ -123,6 +126,7 @@ TEST(AiAppUiLayout, GeneratedScreensFitDisplay)
             check(screen.images[i].bounds);
             EXPECT_NE(screen.images[i].pixels, nullptr);
         }
+        for (std::size_t i = 0U; i < screen.pad_count; ++i) check(screen.pads[i].bounds);
         for (std::size_t i = 0U; i < screen.label_count; ++i) {
             check(screen.labels[i].bounds);
             EXPECT_LT(std::strlen(screen.labels[i].text), uai::ai::ui::kLabelTextCapacity);
@@ -211,7 +215,7 @@ TEST(AiAppUi, MenuNavigationAndSliders)
     EXPECT_EQ(ui.CurrentScreen(), uai::ai::app_ui::ScreenId::kMenu);
     EXPECT_FALSE(ui.ShowsCamera());
     const std::vector<std::uint16_t> menu = PaintToPixels(ui);
-    EXPECT_EQ(PixelAt(menu, 400U, 350U), uai::ai::app_ui::kScreens[1].color);
+    EXPECT_EQ(PixelAt(menu, 600U, 400U), uai::ai::app_ui::kScreens[1].color);
 
     /* Main-screen buttons are not reachable while the menu is shown. */
     const std::uint8_t mask_before = models.mask;
@@ -342,6 +346,10 @@ TEST(AiAppUiLayout, DispatchRoutesEventsToBoundHandlers)
         void OnPersonTap(const uai::ai::ui::Event &) { ++taps; }
         void OnFaceTap(const uai::ai::ui::Event &) { ++taps; }
         void OnSegmentationTap(const uai::ai::ui::Event &) { ++taps; }
+        void OnModelsPrevTap(const uai::ai::ui::Event &) { ++taps; }
+        void OnModelsNextTap(const uai::ai::ui::Event &) { ++taps; }
+        void OnNavTap(const uai::ai::ui::Event &e) { ++taps; last_value = e.value; }
+        void OnNavRotate(const uai::ai::ui::Event &e) { ++changes; last_value = e.value; }
         void OnMinConfidenceChange(const uai::ai::ui::Event &e) { ++changes; last_value = e.value; }
         void OnStatusPeriodChange(const uai::ai::ui::Event &e) { ++changes; last_value = e.value; }
         void OnModelsChange(const uai::ai::ui::Event &e) { ++changes; last_value = e.value; }
@@ -380,6 +388,81 @@ TEST(AiAppUiLayout, DispatchRoutesEventsToBoundHandlers)
     uai::ai::ui::Event label_tap = tap;
     label_tap.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kStatus);
     EXPECT_FALSE(uai::ai::app_ui::Dispatch(handlers, label_tap));
+
+    /* The pad is bound for taps and ring turns but not presses. */
+    uai::ai::ui::Event pad = tap;
+    pad.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kNav);
+    pad.value = static_cast<std::int32_t>(uai::ai::ui::PadSegment::kLeft);
+    EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, pad));
+    EXPECT_EQ(handlers.taps, 1);
+    EXPECT_EQ(handlers.last_value, 3);
+    pad.type = uai::ai::ui::EventType::kChange;
+    pad.value = -1;
+    EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, pad));
+    EXPECT_EQ(handlers.changes, 3);
+    pad.type = uai::ai::ui::EventType::kPress;
+    EXPECT_FALSE(uai::ai::app_ui::Dispatch(handlers, pad));
+}
+
+/* The camera-screen pad drives confidence, model presets and boxes, and
+ * the menu's triangle buttons step the preset with wrap-around. */
+TEST(AiAppUi, PadAndTriangleButtonsControlPresetsAndConfidence)
+{
+    using uai::ai::app_ui::WidgetId;
+    FakeModels models;
+    uai::ai::app_ui::AppUi ui(models);
+    const uai::ai::ui::Rect pad = BoundsOf(WidgetId::kNav);
+    const std::uint16_t cx = static_cast<std::uint16_t>(pad.x + pad.width / 2U);
+    const std::uint16_t cy = static_cast<std::uint16_t>(pad.y + pad.height / 2U);
+    const auto tap_at = [&](std::uint16_t x, std::uint16_t y) {
+        ui.HandleTouch({true, x, y});
+        ui.HandleTouch({false, 0U, 0U});
+    };
+
+    EXPECT_EQ(ui.MinConfidencePercent(), 50);
+    tap_at(cx, static_cast<std::uint16_t>(pad.y + 8U));              /* up */
+    EXPECT_EQ(ui.MinConfidencePercent(), 55);
+    tap_at(cx, static_cast<std::uint16_t>(pad.y + pad.height - 9U));  /* down */
+    tap_at(cx, static_cast<std::uint16_t>(pad.y + pad.height - 9U));
+    EXPECT_EQ(ui.MinConfidencePercent(), 45);
+    /* The menu slider follows the pad-driven value: its knob sits left of
+     * where 50 % would put it. */
+    Tap(ui, WidgetId::kOpenMenu);
+    const uai::ai::ui::Rect track = uai::ai::ui::SliderPanel::TrackOf(uai::ai::app_ui::kMenuSliders[0]);
+    const std::vector<std::uint16_t> menu = PaintToPixels(ui);
+    const std::uint16_t knob_x = static_cast<std::uint16_t>(track.x + (track.width - 1U) * 45U / 100U);
+    EXPECT_EQ(PixelAt(menu, knob_x, track.y), uai::ai::app_ui::kMenuSliders[0].style.knob);
+    EXPECT_EQ(PixelAt(menu, static_cast<std::uint16_t>(track.x + (track.width - 1U) / 2U + 10U), track.y),
+              uai::ai::app_ui::kMenuSliders[0].style.track);
+    Tap(ui, WidgetId::kCloseMenu);
+
+    tap_at(static_cast<std::uint16_t>(pad.x + pad.width - 9U), cy);   /* right */
+    EXPECT_EQ(models.mask, uai::ai::task::ModelMaskBit(uai::ai::task::ModelBit::kPerson));
+    tap_at(static_cast<std::uint16_t>(pad.x + 8U), cy);               /* left */
+    EXPECT_EQ(models.mask, uai::ai::task::kAllModelsMask);
+    tap_at(static_cast<std::uint16_t>(pad.x + 8U), cy);               /* wraps to last */
+    EXPECT_EQ(models.mask, uai::ai::task::ModelMaskBit(uai::ai::task::ModelBit::kPerson) |
+                               uai::ai::task::ModelMaskBit(uai::ai::task::ModelBit::kFace));
+
+    EXPECT_TRUE(ui.ShowBoxes());
+    tap_at(cx, cy);                                                    /* centre */
+    EXPECT_FALSE(ui.ShowBoxes());
+
+    /* A quarter turn clockwise around the ring is two detents: +10 %. */
+    ui.HandleTouch({true, cx, static_cast<std::uint16_t>(pad.y + 8U)});
+    ui.HandleTouch({true, static_cast<std::uint16_t>(pad.x + pad.width - 20U),
+                    static_cast<std::uint16_t>(pad.y + 20U)});
+    ui.HandleTouch({true, static_cast<std::uint16_t>(pad.x + pad.width - 9U), cy});
+    ui.HandleTouch({false, 0U, 0U});
+    EXPECT_EQ(ui.MinConfidencePercent(), 55);
+    EXPECT_FALSE(ui.ShowBoxes());  /* turning never taps */
+
+    Tap(ui, WidgetId::kOpenMenu);
+    Tap(ui, WidgetId::kModelsNext);
+    EXPECT_EQ(models.mask, uai::ai::task::kAllModelsMask);
+    Tap(ui, WidgetId::kModelsPrev);
+    Tap(ui, WidgetId::kModelsPrev);
+    EXPECT_EQ(models.mask, uai::ai::task::ModelMaskBit(uai::ai::task::ModelBit::kSegmentation));
 }
 
 } // namespace

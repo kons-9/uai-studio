@@ -57,6 +57,13 @@ public:
     void OnMinConfidenceChange(const ui::Event &event);
     void OnStatusPeriodChange(const ui::Event &event);
     void OnModelsChange(const ui::Event &event);
+    /* Control pad on the camera screen: up/down and the ring change the
+     * minimum confidence, left/right step the model preset, centre
+     * toggles the boxes. */
+    void OnNavTap(const ui::Event &event);
+    void OnNavRotate(const ui::Event &event);
+    void OnModelsPrevTap(const ui::Event &event);
+    void OnModelsNextTap(const ui::Event &event);
 
 private:
     template <std::size_t... Index>
@@ -67,6 +74,12 @@ private:
     }
     void Initialize();
     void ToggleModel(task::ModelBit bit, std::uint16_t widget_id);
+    void ToggleBoxes();
+    void SetMinConfidence(std::int32_t percent);
+    /* Applies the MODELS wheel item `index`; `delta` steps from the current
+     * item with wrap-around. */
+    void ApplyModelPreset(std::int32_t index);
+    void StepModelPreset(std::int32_t delta);
     /* Reflects the model mask on the main buttons and the menu wheel. */
     void SyncModelWidgets();
     ui::Screen &Main() { return screens_[static_cast<std::size_t>(ScreenId::kMain)]; }

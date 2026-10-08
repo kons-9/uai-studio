@@ -1,12 +1,12 @@
 # ui_designer
 
-ai-appの画面（複数ページ）に出すボタン、ラベル、スライダー、ダイヤル、ホイール、数値表示、画像のレイアウトを編集し、実機用のC++ヘッダを生成するツールです。標準ライブラリだけで動き、追加パッケージは不要です（Python 3.10以上。PNGの読み書きも自前です）。
+ai-appの画面（複数ページ）に出すボタン、ラベル、スライダー、ダイヤル、ホイール、数値表示、画像、十字パッドのレイアウトを編集し、実機用のC++ヘッダを生成するツールです。標準ライブラリだけで動き、追加パッケージは不要です（Python 3.10以上。PNGの読み書きも自前です）。
 
 ```text
   ui_layout.json ──serve──> ブラウザで編集 ──Save──> ui_layout.json
         │
         ├──render───> preview.png（画面ごと。実機と同じ5x7フォント、RGB565の色）
-        └──generate─> ui_layout.hpp（kernel/middleware/ui の ScreenSpec / ButtonSpec / LabelSpec / SliderSpec / DialSpec / WheelSpec / NumberSpec / ImageSpec 表と Dispatch）
+        └──generate─> ui_layout.hpp（kernel/middleware/ui の ScreenSpec / ButtonSpec / LabelSpec / SliderSpec / DialSpec / WheelSpec / NumberSpec / ImageSpec / PadSpec 表と Dispatch）
                       ui_layout_images.hpp（imageウィジェットがあるとき。PNGを変換したRGB565の配列）
 ```
 
@@ -62,6 +62,10 @@ python3 host_app/ui_designer add --layout $L --screen menu --type image --id log
     --x 670 --y 16 --width 114 --height 54 --source ui/logo.png --header $H     # PNGはレイアウトからの相対パス
 python3 host_app/ui_designer add --layout $L --id round --x 732 --y 8 --width 56 --height 56 \
     --shape ellipse --icon menu --navigate menu                                  # 丸ボタン
+python3 host_app/ui_designer add --layout $L --id next --x 392 --y 308 --width 56 --height 56 \
+    --shape triangle_right --label '' --on-tap OnNextTap                        # 矢印キー
+python3 host_app/ui_designer add --layout $L --type pad --id nav \
+    --x 620 --y 144 --width 160 --height 160 --on-tap OnNavTap --on-change OnNavRotate  # 十字パッド
 python3 host_app/ui_designer set --layout $L --id level --screen main --value 30            # 別画面へ移動、値変更
 python3 host_app/ui_designer set --layout $L --id open_menu --navigate ''                   # 遷移を解除
 python3 host_app/ui_designer remove --layout $L --id level --header $H
@@ -73,19 +77,20 @@ python3 host_app/ui_designer screen --layout $L --namespace demo::ui            
 | 対象 | オプション |
 | --- | --- |
 | 共通 | `--x`、`--y`、`--width`、`--height`、`--text-color`、`--text-scale`、`--screen`（addは配置先、setは移動先） |
-| button | `--label`、`--icon`（none/menu/back/close）、`--shape`（rectangle/ellipse）、`--navigate SCREEN_ID`、`--fill`、`--pressed-fill`、`--checked-fill`、`--border`、`--border-width`、`--on-tap`、`--on-press` |
+| button | `--label`、`--icon`（none/menu/back/close）、`--shape`（rectangle/rounded/pill/ellipse/triangle_up/triangle_down/triangle_left/triangle_right/diamond）、`--navigate SCREEN_ID`、`--fill`、`--pressed-fill`、`--checked-fill`、`--border`、`--border-width`、`--on-tap`、`--on-press` |
 | label | `--text`、`--fill`（`none`で透過）、`--align`、`--padding` |
 | slider | `--label`、`--min`、`--max`、`--step`、`--value`、`--track`、`--fill`、`--knob`、`--show-value`、`--on-change` |
 | dial | `--label`、`--min`、`--max`、`--step`、`--value`、`--face`、`--track`、`--fill`、`--pointer`、`--show-value`、`--on-change` |
 | wheel | `--items A,B,C`、`--value`（選択中の添字）、`--fill`、`--highlight`、`--selected-text`、`--border`、`--on-change` |
 | number | `--label`、`--unit`、`--decimals`、`--value`（`10^decimals`倍の整数）、`--fill`（`none`で透過）、`--align` |
 | image | `--source PATH`（レイアウトファイルからの相対パス。`/`や`..`で始まるものは不可）、`--transparent #RRGGBB`（`none`で自動） |
+| pad | `--center true/false`、`--fill`、`--pressed-fill`、`--center-fill`、`--border`、`--arrow`、`--border-width`、`--on-tap`、`--on-press`（`Event::value`は象限 0上 1右 2下 3左 4中央）、`--on-change`（リングを回したときに±1） |
 
 種類に合わないオプションはエラーになります。`add`で文字を省くと`id`を大文字にして`_`を空白にしたものになります。
 
 ## コールバックと画面遷移
 
-ボタンには`on_tap`（押して離した）と`on_press`（押した瞬間）、スライダー・ダイヤル・ホイールには`on_change`（値が変わった。`Event::value`はスライダー・ダイヤルなら値、ホイールなら選択した添字）にC++のメソッド名を割り当てられます。数値表示と画像にイベントはありません。ボタンの`navigate`に画面idを書くと、タップで`ShowScreen(ScreenId)`が呼ばれます（`on_tap`があれば先に呼びます）。生成ヘッダには次のテンプレート関数が入ります。
+ボタンとパッドには`on_tap`（押して離した）と`on_press`（押した瞬間）、スライダー・ダイヤル・ホイール・パッドには`on_change`（値が変わった。`Event::value`はスライダー・ダイヤルなら値、ホイールなら選択した添字、パッドなら回転方向±1）にC++のメソッド名を割り当てられます。パッドの`on_tap`/`on_press`では`Event::value`が押した象限（`ui::PadSegment`）です。数値表示と画像にイベントはありません。ボタンの`navigate`に画面idを書くと、タップで`ShowScreen(ScreenId)`が呼ばれます（`on_tap`があれば先に呼びます）。生成ヘッダには次のテンプレート関数が入ります。
 
 ```cpp
 template <typename Handlers>
@@ -97,9 +102,9 @@ bool Dispatch(Handlers &handlers, const ui::Event &event);   // 呼んだらtrue
 ## エディタ
 
 - 上部のタブで画面を切り替えます。「Screen page」でid、背景（camera / 単色）を変え、`+ Screen` / `Remove screen`で画面を増減します。
-- `+ Button` / `+ Label` / `+ Slider` / `+ Dial` / `+ Wheel` / `+ Number` / `+ Image`で現在の画面に部品を置き、ドラッグで移動、右下の角で大きさを変えます。方向キーで1 px、Shift付きで8 px動かせます。
-- 右の欄で種類に応じた項目を編集します。ボタンは`label`または`icon`、`shape`、`navigate`、色、コールバック。ラベルは`text`、文字色、背景色（`none`で透過）、`align`、`padding`。スライダー・ダイヤルは`min`/`max`/`step`/`value`と色、`show_value`、`on_change`。ホイールは`items`（カンマ区切り）と`value`。数値は`label`、`unit`、`decimals`、`value`。画像は`source`と`transparent`（`auto`ならPNGのアルファから透過色を決めます）。
-- 文字は実機と同じグリフ表（`/api/font`）、アイコン・スライダー・ダイヤル・ホイール・数値も実機と同じ幾何で描くので、見た目は実機と一致します（丸ボタンとダイヤルの弧はブラウザの描画なので縁が少し違います。厳密な確認は`preview.png`で）。画像は保存済みレイアウトから変換したビットマップ（`/api/image.png?id=`）を表示し、未保存の`source`は紫の枠で示します。`pressed`と`checked`で選択中のボタンの押下時・選択時の色を確認できます。
+- `+ Button` / `+ Label` / `+ Slider` / `+ Dial` / `+ Wheel` / `+ Number` / `+ Image` / `+ Pad`で現在の画面に部品を置き、ドラッグで移動、右下の角で大きさを変えます。方向キーで1 px、Shift付きで8 px動かせます。
+- 右の欄で種類に応じた項目を編集します。ボタンは`label`または`icon`、`shape`、`navigate`、色、コールバック。ラベルは`text`、文字色、背景色（`none`で透過）、`align`、`padding`。スライダー・ダイヤルは`min`/`max`/`step`/`value`と色、`show_value`、`on_change`。ホイールは`items`（カンマ区切り）と`value`。数値は`label`、`unit`、`decimals`、`value`。画像は`source`と`transparent`（`auto`ならPNGのアルファから透過色を決めます）。パッドは`center`と色、コールバック。
+- 文字は実機と同じグリフ表（`/api/font`）、アイコン・スライダー・ダイヤル・ホイール・数値も実機と同じ幾何で描くので、見た目は実機と一致します（丸ボタンや角丸・三角の輪郭とダイヤルの弧はブラウザの描画なので縁が少し違います。厳密な確認は`preview.png`で）。画像は保存済みレイアウトから変換したビットマップ（`/api/image.png?id=`）を表示し、未保存の`source`は紫の枠で示します。`pressed`と`checked`で選択中のボタンの押下時・選択時の色を確認できます。
 - 変更するたびにサーバ側で検証し、生成されるC++をその場で表示します。画面外、同じ画面内の重なり、`id`の重複、存在しない`navigate`先、フォントにない文字はエラーになります。
 - `Save`で`ui_layout.json`に書き戻します。書き込む先はコマンドラインで渡したファイルだけです。
 
@@ -144,24 +149,25 @@ bool Dispatch(Handlers &handlers, const ui::Event &event);   // 呼んだらtrue
 | `namespace` | 生成するヘッダのC++名前空間 |
 | `screens[].id` | `[a-z][a-z0-9_]*`。`ScreenId::kMenu`のようにPascalCaseの列挙子になります。並び順で0から振り、先頭が起動時の画面です |
 | `screens[].background` | `camera`（Pipe1の映像の上に描く）または`#RRGGBB`（塗りつぶし） |
-| `widgets[].type` | `button`、`label`、`slider`、`dial`、`wheel`、`number`、`image` |
+| `widgets[].type` | `button`、`label`、`slider`、`dial`、`wheel`、`number`、`image`、`pad` |
 | `widgets[].id` | 全画面で一意。`WidgetId::kOpenMenu`のようにPascalCaseの列挙子になります。数値は全画面の並び順で1から振ります |
 | `widgets[].label`（button/slider/dial/number）、`widgets[].text`（label）、`widgets[].items`（wheel）、`widgets[].unit`（number） | フォントにある文字（英大文字、数字、空白、`- + . : / %`）。小文字は大文字として描かれます。ラベルの`text`は初期値で63文字まで、ホイールの`items`は1〜32件 |
 | `widgets[].icon`（button） | `none`/`menu`/`back`/`close`。`none`以外ではラベルの代わりにアイコンを描きます |
-| `widgets[].shape`（button） | `rectangle`（既定）または`ellipse`。楕円の外側はタッチに反応しません |
+| `widgets[].shape`（button） | `rectangle`（既定）、`rounded`（角の半径は短辺の1/4）、`pill`（短辺の1/2）、`ellipse`、`triangle_up`/`triangle_down`/`triangle_left`/`triangle_right`（矢印キー）、`diamond`。形の外側はタッチに反応しません |
 | `widgets[].navigate`（button） | タップで表示する画面id |
 | `widgets[].min`/`max`/`step`/`value`（slider/dial） | `min < max`、`1 <= step <= max - min`、`min <= value <= max` |
 | `widgets[].value`（wheel） | 初期選択の添字（`0 <= value < len(items)`） |
 | `widgets[].decimals`/`value`（number） | `decimals`は0〜6。`value`は`10^decimals`倍した整数の初期値（`decimals: 1, value: 1234` → `123.4`） |
 | `widgets[].source`/`transparent`（image） | PNG（8ビットのグレー/RGB/RGBA/パレット）をレイアウトファイルからの相対パスで指定。矩形の大きさへ最近傍で拡縮し、RGB565で`width*height*2 <= 128 KiB`。アルファが128未満の画素は`transparent`（省略時は`#FF00FF`。アルファのないPNGで省略すると透過なし）に置き換え、同じ色の不透明画素は1段ずらします |
 | `widgets[].style` | 種類ごとの既定値を省略できます（`kernel/middleware/ui/widget.hpp`の`*Style`と同じ）。imageにstyleはありません |
-| `widgets[].on_tap`、`on_press`（button）、`on_change`（slider/dial/wheel） | 省略可。`Dispatch()`が呼ぶメソッド名（C++識別子） |
+| `widgets[].center`（pad） | 中央ボタンを置くか（既定`true`）。パッドは32x32以上 |
+| `widgets[].on_tap`、`on_press`（button/pad）、`on_change`（slider/dial/wheel/pad） | 省略可。`Dispatch()`が呼ぶメソッド名（C++識別子） |
 
 `schema_version: 1`（トップレベルに`widgets`）のファイルはカメラ背景の`main`画面1つとして読み込み、編集コマンドで保存すると2に更新します。
 
 ## 生成されるヘッダ
 
-`namespace`の中に`kScreenWidth`、`kScreenHeight`、`enum class ScreenId`、`enum class WidgetId`（全画面）、ホイールの選択肢`k<Id>Items[]`、画面ごとの`k<Screen>Buttons[]`/`k<Screen>Labels[]`/`k<Screen>Sliders[]`/`k<Screen>Dials[]`/`k<Screen>Wheels[]`/`k<Screen>Numbers[]`/`k<Screen>Images[]`（空なら省略）、`ScreenId`で引く`constexpr ui::ScreenSpec kScreens[]`と`kScreenCount`、`Dispatch()`を出します。画像があるときは同じディレクトリに`<stem>_images.hpp`（`k<Id>Pixels[]`）も書き、ヘッダから`#include`します。ビットマップは`[[gnu::section(".ui_assets")]]`を付けて出すので、`.rodata`を太らせません。ai-appのリンカスクリプトは`.ui_assets`を固定アドレスの`uai_ram_entry`より後ろに置いています（独自のリンカスクリプトでも同様に出力セクションを足してください。無ければorphanセクションとして配置されます）。実機では`ui::Screen screen(kScreens[i])`として使い、カメラ背景の画面は`LcdManagement::ComposeAndPresent()`、単色の画面は`PresentOverlay()`に渡します（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。ヘッダは生成物ですがリポジトリに入れており、`generate --check`で両方が最新かどうかを確認できます。
+`namespace`の中に`kScreenWidth`、`kScreenHeight`、`enum class ScreenId`、`enum class WidgetId`（全画面）、ホイールの選択肢`k<Id>Items[]`、画面ごとの`k<Screen>Buttons[]`/`k<Screen>Labels[]`/`k<Screen>Sliders[]`/`k<Screen>Dials[]`/`k<Screen>Wheels[]`/`k<Screen>Numbers[]`/`k<Screen>Images[]`/`k<Screen>Pads[]`（空なら省略）、`ScreenId`で引く`constexpr ui::ScreenSpec kScreens[]`と`kScreenCount`、`Dispatch()`を出します。画像があるときは同じディレクトリに`<stem>_images.hpp`（`k<Id>Pixels[]`）も書き、ヘッダから`#include`します。ビットマップは`[[gnu::section(".ui_assets")]]`を付けて出すので、`.rodata`を太らせません。ai-appのリンカスクリプトは`.ui_assets`を固定アドレスの`uai_ram_entry`より後ろに置いています（独自のリンカスクリプトでも同様に出力セクションを足してください。無ければorphanセクションとして配置されます）。実機では`ui::Screen screen(kScreens[i])`として使い、カメラ背景の画面は`LcdManagement::ComposeAndPresent()`、単色の画面は`PresentOverlay()`に渡します（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。ヘッダは生成物ですがリポジトリに入れており、`generate --check`で両方が最新かどうかを確認できます。
 
 ## 今後の拡張の方針
 
@@ -182,6 +188,6 @@ bool Dispatch(Handlers &handlers, const ui::Event &event);   // 呼んだらtrue
 python3 -m unittest discover -s host_app/ui_designer/tests -t host_app
 ```
 
-検証（画面外、同一画面内の重なり、全画面での`id`一意性、`navigate`先、コールバック名、各種類の制約、画像パス、旧形式の読み込み）、`canvas.cpp`とのフォント表の一致、PNGの読み書きとRGB565変換（透過キー）、ボタン・丸ボタン・アイコン・ラベル・スライダー・ダイヤル・ホイール・数値・画像の描画が実機側のテストと同じ幾何になること、生成ヘッダ（画像ヘッダを含む）の内容と`Dispatch()`の分岐（遷移を含む）、リポジトリ内のヘッダが最新であること、CLIの編集コマンド（画面の追加・改名・削除、部品の移動、各種類の追加）と`--check`、サーバのHost検査とトークン、`/api/image.png`を確認します。
+検証（画面外、同一画面内の重なり、全画面での`id`一意性、`navigate`先、コールバック名、各種類の制約、画像パス、旧形式の読み込み）、`canvas.cpp`とのフォント表の一致、PNGの読み書きとRGB565変換（透過キー）、ボタン（各形）・アイコン・ラベル・スライダー・ダイヤル・ホイール・数値・画像・パッドの描画が実機側のテストと同じ幾何になること、生成ヘッダ（画像ヘッダを含む）の内容と`Dispatch()`の分岐（遷移を含む）、リポジトリ内のヘッダが最新であること、CLIの編集コマンド（画面の追加・改名・削除、部品の移動、各種類の追加）と`--check`、サーバのHost検査とトークン、`/api/image.png`を確認します。
 
 `tools/make_logo.py`はai-appのロゴPNG（`userspace/ai-app/config/ui/logo.png`）をフォント表から描き直すスクリプトです。

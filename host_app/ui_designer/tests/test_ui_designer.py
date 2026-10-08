@@ -69,6 +69,12 @@ def _image(**overrides):
     return image
 
 
+def _pad(**overrides):
+    pad = {"type": "pad", "id": "nav", "x": 500, "y": 100, "width": 160, "height": 160}
+    pad.update(overrides)
+    return pad
+
+
 def _write_test_png(path: Path) -> None:
     """4x2 RGBA: top row opaque red, bottom row transparent except (3, 1) blue."""
     pixels = [(255, 0, 0, 255)] * 4 + [(0, 0, 0, 0)] * 3 + [(0, 0, 255, 255)]
@@ -240,10 +246,35 @@ class SchemaTest(unittest.TestCase):
         self.assertEqual(layout.buttons()[0].shape, "ellipse")
         self.assertEqual(layout.to_document()["screens"][0]["widgets"][0]["shape"], "ellipse")
         self.assertEqual(schema.parse_layout(_document(_button())).buttons()[0].shape, "rectangle")
+        for shape in schema.SHAPES:
+            schema.parse_layout(_document(_button(shape=shape)))
         with self.assertRaises(schema.LayoutError):
             schema.parse_layout(_document(_button(shape="circle")))
         with self.assertRaises(schema.LayoutError):
             schema.parse_layout(_document(_label(shape="ellipse")))
+
+    def test_pad_defaults_and_constraints(self):
+        layout = schema.parse_layout(_document(_pad(on_tap="OnNav", on_change="OnTurn")))
+        pad = layout.pads()[0]
+        self.assertTrue(pad.center)
+        self.assertEqual((pad.on_tap, pad.on_press, pad.on_change), ("OnNav", "", "OnTurn"))
+        self.assertEqual(pad.style.arrow, schema.PAD_STYLE_DEFAULTS["arrow"])
+        document = layout.to_document()["screens"][0]["widgets"][0]
+        self.assertIs(document["center"], True)
+        self.assertNotIn("label", document)
+        again = schema.parse_layout(json.loads(schema.dump_layout(layout)))
+        self.assertEqual(again, layout)
+        self.assertFalse(schema.parse_layout(_document(_pad(center=False))).pads()[0].center)
+        for bad in (
+            _pad(width=16, height=160),
+            _pad(center="yes"),
+            _pad(label="X"),
+            _pad(shape="ellipse"),
+            _pad(min=0),
+            _button(center=True),
+        ):
+            with self.assertRaises(schema.LayoutError, msg=str(bad)):
+                schema.parse_layout(_document(bad))
 
     def test_dial_wheel_number_defaults_and_constraints(self):
         layout = schema.parse_layout(_document(
@@ -450,6 +481,57 @@ class RenderTest(unittest.TestCase):
         self.assertTrue(render.inside_ellipse(0, 0, 16, 16, 8, 8))
         self.assertFalse(render.inside_ellipse(0, 0, 16, 16, 0, 0))
 
+    def test_inside_shape_matches_device_predicate(self):
+        """Same points as UiCanvas.InsideShapeFollowsEachOutline in ui_test.cpp."""
+        inside = lambda shape, px, py: render.inside_shape(shape, 0, 0, 16, 16, px, py)
+        self.assertFalse(inside("rounded", 0, 0))
+        self.assertTrue(inside("rounded", 1, 1))
+        self.assertTrue(inside("rounded", 0, 4))
+        self.assertFalse(inside("pill", 1, 1))
+        self.assertTrue(inside("pill", 8, 0))
+        self.assertTrue(inside("triangle_up", 7, 0))
+        self.assertTrue(inside("triangle_up", 8, 0))
+        self.assertFalse(inside("triangle_up", 5, 0))
+        self.assertTrue(inside("triangle_up", 0, 15))
+        self.assertFalse(inside("triangle_down", 0, 15))
+        self.assertTrue(inside("triangle_left", 0, 8))
+        self.assertFalse(inside("triangle_left", 0, 0))
+        self.assertTrue(inside("triangle_right", 15, 8))
+        self.assertFalse(inside("triangle_right", 15, 0))
+        self.assertTrue(inside("diamond", 8, 0))
+        self.assertFalse(inside("diamond", 0, 0))
+        canvas = render.Canvas(32, 16)
+        canvas.fill_shape("triangle_right", 0, 0, 16, 16, 0x1111)
+        canvas.draw_shape_frame("diamond", 16, 0, 16, 16, 2, 0x2222)
+        self.assertEqual(canvas.pixels[8 * 32 + 15], 0x1111)
+        self.assertEqual(canvas.pixels[15], 0)
+        self.assertEqual(canvas.pixels[24], 0x2222)
+        self.assertEqual(canvas.pixels[8 * 32 + 24], 0)
+
+    def test_pad_geometry_and_paint_match_device(self):
+        """Same case as UiPad in ui_test.cpp: 32x32 pad, RIGHT held."""
+        layout = schema.parse_layout(_document(
+            _pad(id="p", x=0, y=0, width=32, height=32,
+                 style={"fill": "#101010", "pressed_fill": "#202020", "center_fill": "#303030",
+                        "border": "#404040", "arrow": "#505050", "border_width": 1})))
+        pad = layout.pads()[0]
+        self.assertEqual(render.pad_center(pad), (10, 10, 12))
+        self.assertEqual(render.pad_segment(pad, 16, 2), 0)
+        self.assertEqual(render.pad_segment(pad, 29, 16), 1)
+        self.assertEqual(render.pad_segment(pad, 16, 29), 2)
+        self.assertEqual(render.pad_segment(pad, 2, 16), 3)
+        self.assertEqual(render.pad_segment(pad, 16, 16), render.PAD_CENTER)
+        self.assertEqual(render.pad_segment(pad, 0, 0), -1)
+        canvas = render.Canvas(32, 32)
+        render.paint_pad(canvas, pad, pressed=1)
+        self.assertEqual(canvas.pixels[16 * 32 + 16], schema.rgb565("#303030"))
+        self.assertEqual(canvas.pixels[16 * 32 + 29], schema.rgb565("#202020"))
+        self.assertEqual(canvas.pixels[16 * 32 + 2], schema.rgb565("#101010"))
+        self.assertEqual(canvas.pixels[16 * 32 + 27], schema.rgb565("#505050"))
+        self.assertEqual(canvas.pixels[16], schema.rgb565("#404040"))
+        self.assertEqual(canvas.pixels[5 * 32 + 16], schema.rgb565("#505050"))
+        self.assertEqual(canvas.pixels[0], 0)
+
     def test_dial_geometry_matches_device(self):
         """Same constants as DialPanel: caption 7*scale+4, 270 degree sweep."""
         layout = schema.parse_layout(_document(
@@ -603,6 +685,21 @@ class EmitTest(unittest.TestCase):
         layout = schema.parse_layout(_document())
         text = emit_cpp.generate_header(layout, "ui.json", {}, "ui_layout_images.hpp")
         self.assertNotIn("ui_layout_images.hpp", text)
+
+    def test_shape_and_pad_emission(self):
+        layout = schema.parse_layout(_document(
+            _button(shape="triangle_left"),
+            _pad(center=False, on_tap="OnNavTap", on_press="OnNavPress", on_change="OnNavTurn")))
+        text = emit_cpp.generate_header(layout, "ui.json")
+        self.assertIn("ui::Shape::kTriangleLeft,", text)
+        self.assertIn("inline constexpr ui::PadSpec kMainPads[] = {", text)
+        self.assertIn("        {500U, 100U, 160U, 160U},\n        false,\n", text)
+        self.assertIn("kMainPads, sizeof(kMainPads) / sizeof(kMainPads[0]),", text)
+        for event_type, handler in (("kTap", "OnNavTap"), ("kPress", "OnNavPress"),
+                                    ("kChange", "OnNavTurn")):
+            block = text[text.index(f"ui::EventType::{event_type}"):]
+            block = block[:block.index("    }\n")]
+            self.assertIn(f"case WidgetId::kNav:\n            handlers.{handler}(event);", block)
 
 
 class CliTest(unittest.TestCase):
@@ -795,6 +892,23 @@ class CliTest(unittest.TestCase):
             self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png_path)]), 0)
             self.assertEqual(main(["list", "--layout", str(layout)]), 0)
             self.assertEqual(main(["set", "--layout", str(layout), "--id", "logo", "--source", "art/none.png"]), 2)
+
+            # Pads and shaped buttons.
+            self.assertEqual(main([
+                "add", "--layout", str(layout), "--type", "pad", "--id", "nav",
+                "--x", "560", "--y", "320", "--width", "160", "--height", "160",
+                "--center", "false", "--arrow", "#FFE000", "--on-tap", "OnNavTap",
+                "--on-change", "OnNavTurn", "--header", str(header)]), 0)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "round", "--shape", "triangle_up"]), 0)
+            doc = json.loads(layout.read_text())
+            widgets = {w["id"]: w for w in doc["screens"][0]["widgets"]}
+            self.assertIs(widgets["nav"]["center"], False)
+            self.assertEqual(widgets["nav"]["style"]["arrow"], "#FFE000")
+            self.assertEqual(widgets["round"]["shape"], "triangle_up")
+            self.assertIn("handlers.OnNavTurn(event);", header.read_text())
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "round", "--center", "true"]), 2)
+            self.assertEqual(main(["set", "--layout", str(layout), "--id", "nav", "--label", "X"]), 2)
+            self.assertEqual(main(["render", "--layout", str(layout), "--output", str(png_path)]), 0)
 
     def test_legacy_file_is_upgraded_on_edit(self):
         from ui_designer.cli import main

@@ -59,6 +59,9 @@ constexpr std::size_t kModelsWheelCount =
 static_assert(kModelsWheelCount == sizeof(kModelsItems) / sizeof(kModelsItems[0]),
               "kModelsWheelMasks must match the wheel items in ui_layout.json");
 
+/* Minimum-confidence change per pad tap or ring detent. */
+constexpr std::int32_t kNavConfidenceStep = 5;
+
 } // namespace
 
 void AppUi::Initialize()
@@ -127,15 +130,73 @@ void AppUi::ToggleModel(task::ModelBit bit, std::uint16_t widget_id)
 
 void AppUi::OnModelsChange(const ui::Event &event)
 {
-    if (event.value < 0 || static_cast<std::size_t>(event.value) >= kModelsWheelCount) {
+    ApplyModelPreset(event.value);
+}
+
+void AppUi::ApplyModelPreset(std::int32_t index)
+{
+    if (index < 0 || static_cast<std::size_t>(index) >= kModelsWheelCount) {
         return;
     }
-    const std::uint8_t mask = kModelsWheelMasks[static_cast<std::size_t>(event.value)];
+    const std::uint8_t mask = kModelsWheelMasks[static_cast<std::size_t>(index)];
     models_.SetModelMask(mask);
+    Menu().Wheels().SetValue(Id(WidgetId::kModels), index);
     SyncModelWidgets();
     UAI_LOG_INFO("ui: wheel=%s models=%x\n",
                  Menu().Wheels().ItemText(Id(WidgetId::kModels)),
                  static_cast<unsigned int>(mask));
+}
+
+void AppUi::StepModelPreset(std::int32_t delta)
+{
+    const std::int32_t count = static_cast<std::int32_t>(kModelsWheelCount);
+    const std::int32_t current = Menu().Wheels().Value(Id(WidgetId::kModels));
+    ApplyModelPreset(((current + delta) % count + count) % count);
+}
+
+void AppUi::OnModelsPrevTap(const ui::Event &)
+{
+    StepModelPreset(-1);
+}
+
+void AppUi::OnModelsNextTap(const ui::Event &)
+{
+    StepModelPreset(1);
+}
+
+void AppUi::SetMinConfidence(std::int32_t percent)
+{
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    min_confidence_percent_ = percent;
+    Menu().Sliders().SetValue(Id(WidgetId::kMinConfidence), percent);
+    UAI_LOG_INFO("ui: min confidence=%d%%\n", static_cast<int>(percent));
+}
+
+void AppUi::OnNavTap(const ui::Event &event)
+{
+    switch (static_cast<ui::PadSegment>(event.value)) {
+    case ui::PadSegment::kUp:
+        SetMinConfidence(min_confidence_percent_ + kNavConfidenceStep);
+        break;
+    case ui::PadSegment::kDown:
+        SetMinConfidence(min_confidence_percent_ - kNavConfidenceStep);
+        break;
+    case ui::PadSegment::kRight:
+        StepModelPreset(1);
+        break;
+    case ui::PadSegment::kLeft:
+        StepModelPreset(-1);
+        break;
+    case ui::PadSegment::kCenter:
+        ToggleBoxes();
+        break;
+    }
+}
+
+void AppUi::OnNavRotate(const ui::Event &event)
+{
+    SetMinConfidence(min_confidence_percent_ + event.value * kNavConfidenceStep);
 }
 
 void AppUi::OnPersonTap(const ui::Event &event)
@@ -153,19 +214,21 @@ void AppUi::OnSegmentationTap(const ui::Event &event)
     ToggleModel(task::ModelBit::kSegmentation, event.widget_id);
 }
 
-void AppUi::OnToggleBoxesTap(const ui::Event &event)
+void AppUi::OnToggleBoxesTap(const ui::Event &)
+{
+    ToggleBoxes();
+}
+
+void AppUi::ToggleBoxes()
 {
     show_boxes_ = !show_boxes_;
     Main().Buttons().SetChecked(Id(WidgetId::kToggleBoxes), show_boxes_);
-    UAI_LOG_INFO("ui: tap id=%u boxes=%s\n",
-                 static_cast<unsigned int>(event.widget_id),
-                 show_boxes_ ? "on" : "off");
+    UAI_LOG_INFO("ui: boxes=%s\n", show_boxes_ ? "on" : "off");
 }
 
 void AppUi::OnMinConfidenceChange(const ui::Event &event)
 {
-    min_confidence_percent_ = event.value;
-    UAI_LOG_INFO("ui: min confidence=%d%%\n", static_cast<int>(event.value));
+    SetMinConfidence(event.value);
 }
 
 void AppUi::OnStatusPeriodChange(const ui::Event &event)

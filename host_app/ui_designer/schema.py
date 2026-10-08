@@ -11,8 +11,9 @@ Document shape (schema_version 2)::
                   "widgets": [...]}, ...]}
 
 Widget kinds:
-  button  tappable; ``label`` or ``icon``, rectangle or ellipse ``shape``,
-          ButtonStyle, on_tap/on_press, optional ``navigate`` to a screen id
+  button  tappable; ``label`` or ``icon``, ``shape`` (rectangle, rounded, pill,
+          ellipse, triangle_*, diamond), ButtonStyle, on_tap/on_press,
+          optional ``navigate`` to a screen id
   label   text the firmware replaces at run time; ``text`` is the initial value
   slider  horizontal value control; min/max/step/value, on_change
   dial    rotary value control (270-degree arc); min/max/step/value, on_change
@@ -20,6 +21,9 @@ Widget kinds:
   number  numeric read-out set by the firmware; ``unit``, ``decimals``, ``value``
   image   RGB565 bitmap generated from ``source`` (PNG, relative to the layout
           file), resampled to the bounds; optional ``transparent`` key color
+  pad     round four-way pad with optional ``center`` button; on_tap/on_press
+          carry the segment (0 up, 1 right, 2 down, 3 left, 4 centre),
+          on_change carries +1/-1 per 45-degree turn around the ring
 
 A schema_version 1 document (top-level ``widgets``) is read as a single
 ``main`` screen with the camera background.
@@ -41,7 +45,7 @@ CPP_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 NAMESPACE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*$")
 COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
-WIDGET_TYPES = ("button", "label", "slider", "dial", "wheel", "number", "image")
+WIDGET_TYPES = ("button", "label", "slider", "dial", "wheel", "number", "image", "pad")
 # Event names map to ui::EventType members and to the per-widget callback keys.
 CALLBACK_EVENTS: tuple[str, ...] = ("on_tap", "on_press", "on_change")
 BUTTON_EVENTS: tuple[str, ...] = ("on_tap", "on_press")
@@ -51,12 +55,16 @@ GEOMETRY_KEYS = ("x", "y", "width", "height")
 SLIDER_RANGE_KEYS = ("min", "max", "step", "value")
 WIDGET_KEYS = frozenset(
     ("type", "id", "label", "text", "style", "icon", "shape", "navigate",
-     "items", "unit", "decimals", "source", "transparent")
+     "items", "unit", "decimals", "source", "transparent", "center")
     + GEOMETRY_KEYS + CALLBACK_EVENTS + SLIDER_RANGE_KEYS)
 SCREEN_KEYS = frozenset(("id", "background", "widgets"))
 ALIGNMENTS = ("left", "center", "right")
 ICONS = ("none", "menu", "back", "close")
-SHAPES = ("rectangle", "ellipse")
+# Mirrors ui::Shape in canvas.hpp.
+SHAPES = ("rectangle", "rounded", "pill", "ellipse", "triangle_up", "triangle_down",
+          "triangle_left", "triangle_right", "diamond")
+PAD_SEGMENTS = ("up", "right", "down", "left", "center")
+PAD_MIN_SIDE = 32
 CAMERA_BACKGROUND = "camera"
 DEFAULT_TRANSPARENT_KEY = "#FF00FF"
 # Bitmaps live in the firmware image (RAM on the N6); keep them small.
@@ -111,6 +119,14 @@ NUMBER_STYLE_DEFAULTS: dict[str, Any] = {
     "text_scale": 4,
     "align": "right",
 }
+PAD_STYLE_DEFAULTS: dict[str, Any] = {
+    "fill": "#303030",
+    "pressed_fill": "#606060",
+    "center_fill": "#2060C0",
+    "border": "#FFFFFF",
+    "arrow": "#FFFFFF",
+    "border_width": 2,
+}
 STYLE_DEFAULTS: dict[str, dict[str, Any]] = {
     "button": BUTTON_STYLE_DEFAULTS,
     "label": LABEL_STYLE_DEFAULTS,
@@ -119,6 +135,7 @@ STYLE_DEFAULTS: dict[str, dict[str, Any]] = {
     "wheel": WHEEL_STYLE_DEFAULTS,
     "number": NUMBER_STYLE_DEFAULTS,
     "image": {},
+    "pad": PAD_STYLE_DEFAULTS,
 }
 # Mirrors ui::kLabelTextCapacity; longer initial text would be truncated.
 LABEL_TEXT_CAPACITY = 64
@@ -215,7 +232,21 @@ class ImageStyle:
         return {}
 
 
-Style = ButtonStyle | LabelStyle | SliderStyle | DialStyle | WheelStyle | NumberStyle | ImageStyle
+@dataclass
+class PadStyle:
+    fill: str = PAD_STYLE_DEFAULTS["fill"]
+    pressed_fill: str = PAD_STYLE_DEFAULTS["pressed_fill"]
+    center_fill: str = PAD_STYLE_DEFAULTS["center_fill"]
+    border: str = PAD_STYLE_DEFAULTS["border"]
+    arrow: str = PAD_STYLE_DEFAULTS["arrow"]
+    border_width: int = PAD_STYLE_DEFAULTS["border_width"]
+
+    def to_document(self) -> dict[str, Any]:
+        return dict(self.__dict__)
+
+
+Style = (ButtonStyle | LabelStyle | SliderStyle | DialStyle | WheelStyle | NumberStyle
+         | ImageStyle | PadStyle)
 
 
 @dataclass
@@ -244,6 +275,7 @@ class Widget:
     decimals: int = 0
     source: str = ""
     transparent: str | None = None
+    center: bool = True
 
     @property
     def is_button(self) -> bool:
@@ -273,11 +305,15 @@ class Widget:
     def is_image(self) -> bool:
         return self.type == "image"
 
+    @property
+    def is_pad(self) -> bool:
+        return self.type == "pad"
+
     def to_document(self) -> dict[str, Any]:
         entry: dict[str, Any] = {"type": self.type, "id": self.id}
         if self.is_label:
             entry["text"] = self.text
-        elif not self.is_wheel and not self.is_image:
+        elif not (self.is_wheel or self.is_image or self.is_pad):
             entry["label"] = self.text
         entry.update({"x": self.x, "y": self.y, "width": self.width, "height": self.height})
         if self.is_button:
@@ -298,6 +334,8 @@ class Widget:
             entry["source"] = self.source
             if self.transparent is not None:
                 entry["transparent"] = self.transparent
+        if self.is_pad:
+            entry["center"] = self.center
         for event in CALLBACK_EVENTS:
             name = getattr(self, event)
             if name:
@@ -342,6 +380,9 @@ class Screen:
     def images(self) -> list[Widget]:
         return [w for w in self.widgets if w.is_image]
 
+    def pads(self) -> list[Widget]:
+        return [w for w in self.widgets if w.is_pad]
+
     def to_document(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -382,6 +423,9 @@ class Layout:
 
     def images(self) -> list[Widget]:
         return [w for w in self.widgets if w.is_image]
+
+    def pads(self) -> list[Widget]:
+        return [w for w in self.widgets if w.is_pad]
 
     def screen(self, screen_id: str) -> Screen:
         for screen in self.screens:
@@ -516,6 +560,18 @@ def _number_style(value: Any, context: str) -> NumberStyle:
     )
 
 
+def _pad_style(value: Any, context: str) -> PadStyle:
+    merged = _style_mapping(value, PAD_STYLE_DEFAULTS, context)
+    return PadStyle(
+        fill=_color(merged["fill"], f"{context}.fill"),
+        pressed_fill=_color(merged["pressed_fill"], f"{context}.pressed_fill"),
+        center_fill=_color(merged["center_fill"], f"{context}.center_fill"),
+        border=_color(merged["border"], f"{context}.border"),
+        arrow=_color(merged["arrow"], f"{context}.arrow"),
+        border_width=_int(merged["border_width"], f"{context}.border_width", 0, 32),
+    )
+
+
 def _callback(value: Any, context: str) -> str:
     if value is None or value == "":
         return ""
@@ -564,7 +620,7 @@ def _parse_widget(raw: Any, context: str, width: int, height: int,
     base = dict(type=widget_type, id=widget_id, x=x, y=y, width=w, height=h)
 
     if widget_type == "button":
-        _reject_keys(raw, ("text", "items", "unit", "decimals", "source", "transparent")
+        _reject_keys(raw, ("text", "items", "unit", "decimals", "source", "transparent", "center")
                      + SLIDER_EVENTS + SLIDER_RANGE_KEYS, context, "button")
         icon = raw.get("icon", "none")
         if icon not in ICONS:
@@ -584,7 +640,7 @@ def _parse_widget(raw: Any, context: str, width: int, height: int,
 
     if widget_type == "label":
         _reject_keys(raw, ("label", "icon", "shape", "navigate", "items", "unit", "decimals",
-                           "source", "transparent") + CALLBACK_EVENTS + SLIDER_RANGE_KEYS,
+                           "source", "transparent", "center") + CALLBACK_EVENTS + SLIDER_RANGE_KEYS,
                      context, "label")
         text = _text(raw, "text", context, allowed)
         if len(text) >= LABEL_TEXT_CAPACITY:
@@ -595,7 +651,7 @@ def _parse_widget(raw: Any, context: str, width: int, height: int,
 
     if widget_type in VALUE_WIDGETS:
         _reject_keys(raw, ("text", "icon", "shape", "navigate", "items", "unit", "decimals",
-                           "source", "transparent") + BUTTON_EVENTS, context, widget_type)
+                           "source", "transparent", "center") + BUTTON_EVENTS, context, widget_type)
         minimum = _int(raw.get("min", 0), f"{context}.min", None, None)
         maximum = _int(raw.get("max", 100), f"{context}.max", None, None)
         if maximum <= minimum:
@@ -617,7 +673,7 @@ def _parse_widget(raw: Any, context: str, width: int, height: int,
 
     if widget_type == "wheel":
         _reject_keys(raw, ("text", "label", "icon", "shape", "navigate", "unit", "decimals",
-                           "source", "transparent", "min", "max", "step") + BUTTON_EVENTS,
+                           "source", "transparent", "center", "min", "max", "step") + BUTTON_EVENTS,
                      context, "wheel")
         items = raw.get("items")
         if (not isinstance(items, list) or not items or len(items) > MAX_WHEEL_ITEMS or
@@ -633,7 +689,7 @@ def _parse_widget(raw: Any, context: str, width: int, height: int,
 
     if widget_type == "number":
         _reject_keys(raw, ("text", "icon", "shape", "navigate", "items", "source",
-                           "transparent", "min", "max", "step") + CALLBACK_EVENTS,
+                           "transparent", "center", "min", "max", "step") + CALLBACK_EVENTS,
                      context, "number")
         unit = _text(raw, "unit", context, allowed)
         if len(unit) > 8:
@@ -645,8 +701,24 @@ def _parse_widget(raw: Any, context: str, width: int, height: int,
             decimals=_int(raw.get("decimals", 0), f"{context}.decimals", 0, 6),
             value=_int(raw.get("value", 0), f"{context}.value", -2**31, 2**31 - 1), **base)
 
+    if widget_type == "pad":
+        _reject_keys(raw, ("text", "label", "icon", "shape", "navigate", "items", "unit",
+                           "decimals", "source", "transparent") + SLIDER_RANGE_KEYS,
+                     context, "pad")
+        if w < PAD_MIN_SIDE or h < PAD_MIN_SIDE:
+            raise LayoutError(f"{context}: pads must be at least {PAD_MIN_SIDE}x{PAD_MIN_SIDE}")
+        center = raw.get("center", True)
+        if not isinstance(center, bool):
+            raise LayoutError(f"{context}.center must be true or false")
+        return Widget(
+            text="", style=_pad_style(raw.get("style"), f"{context}.style"),
+            on_tap=_callback(raw.get("on_tap"), f"{context}.on_tap"),
+            on_press=_callback(raw.get("on_press"), f"{context}.on_press"),
+            on_change=_callback(raw.get("on_change"), f"{context}.on_change"),
+            center=center, **base)
+
     _reject_keys(raw, ("text", "label", "icon", "shape", "navigate", "items", "unit",
-                       "decimals", "style") + CALLBACK_EVENTS + SLIDER_RANGE_KEYS,
+                       "decimals", "style", "center") + CALLBACK_EVENTS + SLIDER_RANGE_KEYS,
                  context, "image")
     source = raw.get("source")
     if not isinstance(source, str) or not source or source.startswith(("/", "..")):
