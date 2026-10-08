@@ -696,6 +696,33 @@ class EmitTest(unittest.TestCase):
         text = emit_cpp.generate_header(layout, "ui.json", {}, "ui_layout_images.hpp")
         self.assertNotIn("ui_layout_images.hpp", text)
 
+    def test_transparent_image_borders_are_trimmed_without_changing_pixels(self):
+        key = 0xF81F
+        padded = images.Bitmap(6, 4, [key] * 24, key)
+        padded.pixels[8:11] = [0xF800, key, 0x0000]
+        padded.pixels[14:17] = [0x001F, 0x07E0, 0xFFFF]
+        layout = schema.parse_layout(_document(_image(x=20, y=30, width=6, height=4)))
+        opaque = images.Bitmap(6, 4, padded.pixels, None)
+        for bitmap, left, top, compact in (
+            (padded, 2, 1, images.Bitmap(3, 2, [0xF800, key, 0x0000, 0x001F, 0x07E0, 0xFFFF], key)),
+            (opaque, 0, 0, opaque),
+            (images.Bitmap(6, 4, [key] * 24, key), 0, 0, images.Bitmap(1, 1, [key], key)),
+        ):
+            with self.subTest(offset=(left, top), size=(compact.width, compact.height)):
+                original = render.Canvas(64, 64, 0x1234)
+                trimmed = render.Canvas(64, 64, 0x1234)
+                original.blit(20, 30, bitmap)
+                trimmed.blit(20 + left, 30 + top, compact)
+                self.assertEqual(trimmed.pixels, original.pixels)
+                text = emit_cpp.generate_header(layout, "ui.json", {"logo": bitmap}, "images.hpp")
+                self.assertIn(f"{{{20 + left}U, {30 + top}U, {compact.width}U, {compact.height}U}}", text)
+                pixels = emit_cpp.generate_images_header(layout, {"logo": bitmap}, "ui.json")
+                self.assertIn(f"{compact.width}x{compact.height} RGB565", pixels)
+                rows = ["    " + ", ".join(f"0x{value:04X}U" for value in
+                    compact.pixels[row * compact.width:(row + 1) * compact.width]) + ","
+                    for row in range(compact.height)]
+                self.assertIn("kLogoPixels[] = {\n" + "\n".join(rows) + "\n};", pixels)
+
     def test_shape_and_pad_emission(self):
         layout = schema.parse_layout(_document(
             _button(shape="triangle_left"),

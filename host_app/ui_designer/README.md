@@ -169,6 +169,8 @@ bool Dispatch(Handlers &handlers, const ui::Event &event);   // 呼んだらtrue
 
 `namespace`の中に`kScreenWidth`、`kScreenHeight`、`enum class ScreenId`、`enum class WidgetId`（全画面）、ホイールの選択肢`k<Id>Items[]`、画面ごとの`k<Screen>Buttons[]`/`k<Screen>Labels[]`/`k<Screen>Sliders[]`/`k<Screen>Dials[]`/`k<Screen>Wheels[]`/`k<Screen>Numbers[]`/`k<Screen>Images[]`/`k<Screen>Pads[]`（空なら省略）、`ScreenId`で引く`constexpr ui::ScreenSpec kScreens[]`と`kScreenCount`、`Dispatch()`を出します。画像があるときは同じディレクトリに`<stem>_images.hpp`（`k<Id>Pixels[]`）も書き、ヘッダから`#include`します。ビットマップは`[[gnu::section(".ui_assets")]]`を付けて出すので、`.rodata`を太らせません。ai-appのリンカスクリプトは`.ui_assets`を固定アドレスの`uai_ram_entry`より後ろに置いています（独自のリンカスクリプトでも同様に出力セクションを足してください。無ければorphanセクションとして配置されます）。実機では`ui::Screen screen(kScreens[i])`として使い、カメラ背景の画面は`LcdManagement::ComposeAndPresent()`、単色の画面は`PresentOverlay()`に渡します（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。ヘッダは生成物ですがリポジトリに入れており、`generate --check`で両方が最新かどうかを確認できます。
 
+画像配列の生成時には、透過キーと一致する外周の余白を除去し、`ImageSpec`の座標をその分補正します。JSONの編集領域やPNG、画面上の位置は変わりません。非透過画像は元のサイズ、全画素が透過する画像は1x1の透過画素として出力します。表示を変えずに`.ui_assets`とRAM使用量を削減します。
+
 ## 今後の拡張の方針
 
 ウィジェットの種類を増やすときは、(1) `kernel/middleware/ui`に型と`Paint`/`Update`を足し、(2) `schema.py`で検証、(3) `render.py`と`static/index.html`の描画、(4) `emit_cpp.py`の出力を揃えます。候補は次のとおりです。

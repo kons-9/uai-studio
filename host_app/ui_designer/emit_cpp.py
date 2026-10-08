@@ -179,15 +179,39 @@ def _image_pixels_name(widget: Widget) -> str:
     return f"k{pascal_case(widget.id)}Pixels"
 
 
+def _image_content(bitmap: Bitmap) -> tuple[int, int, Bitmap]:
+    key = bitmap.transparent
+    if key is None:
+        return 0, 0, bitmap
+    left, top = bitmap.width, bitmap.height
+    right = bottom = -1
+    for row in range(bitmap.height):
+        for column in range(bitmap.width):
+            if bitmap.pixels[row * bitmap.width + column] == key:
+                continue
+            left = min(left, column)
+            right = max(right, column)
+            top = min(top, row)
+            bottom = max(bottom, row)
+    if right < left:
+        return 0, 0, Bitmap(1, 1, [key], key)
+    width, height = right - left + 1, bottom - top + 1
+    pixels = []
+    for row in range(top, bottom + 1):
+        start = row * bitmap.width + left
+        pixels.extend(bitmap.pixels[start:start + width])
+    return left, top, Bitmap(width, height, pixels, key)
+
+
 def _image_entry(bitmaps: dict[str, Bitmap]):
     def entry(widget: Widget) -> list[str]:
-        bitmap = bitmaps[widget.id]
+        left, top, bitmap = _image_content(bitmaps[widget.id])
         transparent = (f"true, 0x{bitmap.transparent:04X}U" if bitmap.transparent is not None
                        else "false, 0U")
         return [
             "    {",
             f"        {_widget_id(widget)},",
-            f"        {_bounds(widget)},",
+            f"        {{{widget.x + left}U, {widget.y + top}U, {bitmap.width}U, {bitmap.height}U}},",
             f"        {_image_pixels_name(widget)},",
             f"        {transparent},",
             "    },",
@@ -280,7 +304,7 @@ def generate_images_header(layout: Layout, bitmaps: dict[str, Bitmap],
         f"namespace {layout.namespace} {{",
     ]
     for widget in layout.images():
-        bitmap = bitmaps[widget.id]
+        _, _, bitmap = _image_content(bitmaps[widget.id])
         lines += [
             "",
             f"/* {widget.source}: {bitmap.width}x{bitmap.height} RGB565 */",

@@ -235,31 +235,31 @@ inline constexpr ui::DialSpec kMenuDials[] = {
 inline constexpr ui::ImageSpec kMenuImages[] = {
     {
         static_cast<std::uint16_t>(WidgetId::kLogo),
-        {624U, 12U, 152U, 56U},
+        {687U, 15U, 77U, 50U},
         kLogoPixels,
         true, 0xF81FU,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kModelsHint),
-        {24U, 136U, 352U, 24U},
+        {25U, 139U, 268U, 17U},
         kModelsHintPixels,
         true, 0xF81FU,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kVisualizationHint),
-        {424U, 136U, 352U, 24U},
+        {425U, 139U, 268U, 17U},
         kVisualizationHintPixels,
         true, 0xF81FU,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kConfidenceHint),
-        {24U, 376U, 352U, 24U},
+        {28U, 379U, 282U, 17U},
         kConfidenceHintPixels,
         true, 0xF81FU,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kStatusHint),
-        {424U, 448U, 352U, 24U},
+        {426U, 451U, 267U, 17U},
         kStatusHintPixels,
         true, 0xF81FU,
     },
