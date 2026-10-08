@@ -12,7 +12,8 @@ typedef struct {
     ISP_StatusTypeDef (*SetSensorGain)(uint32_t, int32_t);
 } ISP_AppliHelpersTypeDef;
 typedef struct {
-    bool isInitialized;
+    void *hDcmipp;
+    void *algorithm;
     uint32_t cameraInstance;
     ISP_SensorInfoTypeDef sensorInfo;
     ISP_AppliHelpersTypeDef appliHelpers;

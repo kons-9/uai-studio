@@ -54,13 +54,19 @@ set_source_files_properties("${BASE}/src/driver/board/dcmipp_callbacks.c" PROPER
     "HAL_DCMIPP_PIPE_VsyncEventCallback=experiment_original_vsync;HAL_DCMIPP_PIPE_FrameEventCallback=experiment_original_frame")
 
 get_target_property(BOARD_SOURCES stm32n6570_dk SOURCES)
-foreach(module dcmipp dma2d i2c i2c_ex ltdc)
+foreach(module dcmipp dma2d ltdc)
     set(existing "${BOARD_SOURCES}")
     list(FILTER existing INCLUDE REGEX "/stm32n6xx_hal_${module}\\.c$")
     if(NOT existing)
         target_sources(${TARGET_NAME} PRIVATE "${HAL}/Src/stm32n6xx_hal_${module}.c")
     endif()
 endforeach()
+# The pre-kernel object target compiles CubeMX's full HAL source list with the
+# FSBL configuration, where I2C is disabled. Compile I2C for this camera app
+# with the board HAL configuration instead; the BSP bus driver requires it.
+target_sources(${TARGET_NAME} PRIVATE
+    "${HAL}/Src/stm32n6xx_hal_i2c.c"
+    "${HAL}/Src/stm32n6xx_hal_i2c_ex.c")
 
 target_include_directories(${TARGET_NAME} PRIVATE
     src "${EXPERIMENT_RUNTIME}/src" "${BASE}/src" "${BASE}/src/driver/board/include"

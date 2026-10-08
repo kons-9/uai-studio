@@ -57,7 +57,8 @@ int main()
     experiment::camera::IspCamera camera;
     experiment::camera::State state;
     Require(camera.Read(state) == experiment::console::Status::kInvalidState);
-    hcamera_isp.isInitialized = true;
+    hcamera_isp.hDcmipp = &hcamera_isp;
+    hcamera_isp.algorithm = &hcamera_isp;
     hcamera_isp.sensorInfo = {2592, 1944, 100, 30000, 0, 24000};
     hcamera_isp.appliHelpers = {GetExposure, GetGain, SetExposure, SetGain};
     Require(camera.Manual(12000, 3000) == experiment::console::Status::kInvalidState && writes == 0);

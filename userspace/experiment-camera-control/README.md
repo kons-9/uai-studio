@@ -47,6 +47,8 @@ cam ev -2
 cam area 0 0 800 480
 cam wb-list
 cam wb auto
+demo start
+demo stop
 capture stop
 capture start
 capture fps 20
@@ -57,6 +59,8 @@ subject 3 900 120 90 80 80 5000
 ```
 
 evは0.5EV単位の-4..4。手動設定の初版コマンド範囲は100..30000 us / 0..24000 mdB。wbはautoまたはwb-listで得た色温度を指定する。statのreported_us / reported_mdBはBSP保持値であり、センサレジスタの実測値ではない。手動設定失敗時は元の保持値への復元を試みるが、通信障害時の復元成功は保証せずhardwareエラーを返す。
+
+起動時にデモを自動開始し、1秒ごとにWB変更と手動露出変更を交互に行う。順番はWB auto → 露出1000us → WB 2810K → 露出4000us → WB 4015K → 露出12000us → WB 6650K → 露出28000us。デモ中はAEを止めて露出時間を直接設定する。`demo stop`で開始前のAE・露出・ゲイン・測光領域・WBへ戻す。停止後は`demo start`で再開できる。
 
 既存tm_getcharはwaitを無視し、割り込み禁止で受信待ちするため使用しない。UART受信エラー時は行末まで破棄する。送信はT-Monitorの同期出力なので、応答中のCPU時間・フレームへの影響は実機で測る。
 

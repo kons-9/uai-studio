@@ -27,11 +27,12 @@ console::Status BspDevice::Open()
 {
     if (opened_) { return console::Status::kInvalidState; }
     camera_ = {};
+    camera_started_ = false;
     opened_ = true;
     if (!uai::camera_pipe2::driver::IsOk(camera_.Initialize())) { return console::Status::kHardware; }
     original_exposure = hcamera_isp.appliHelpers.SetSensorExposure;
     hcamera_isp.appliHelpers.SetSensorExposure = LimitedExposure;
-    return uai::camera_pipe2::driver::IsOk(camera_.Start()) ? console::Status::kOk : console::Status::kHardware;
+    return console::Status::kOk;
 }
 
 console::Status BspDevice::Close()
@@ -39,7 +40,7 @@ console::Status BspDevice::Close()
     if (!opened_) { return console::Status::kOk; }
     HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0);
     const auto status = BSP_CAMERA_DeInit(0);
-    if (status == BSP_ERROR_NONE) { opened_ = false; }
+    if (status == BSP_ERROR_NONE) { opened_ = false; camera_started_ = false; }
     return status == BSP_ERROR_NONE ? console::Status::kOk : console::Status::kHardware;
 }
 
@@ -50,6 +51,7 @@ console::Status BspDevice::Poll()
 
 console::Status BspDevice::Configure(const Geometry &geometry)
 {
+    const bool was_started = camera_started_;
     auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
     if (!opened_ || !sensor || !sensor->IO.ReadReg || !sensor->IO.WriteReg) { return console::Status::kInvalidState; }
     if (geometry.fps < 10 || geometry.fps > 30 || geometry.fps % 5 != 0 ||
@@ -85,19 +87,23 @@ console::Status BspDevice::Configure(const Geometry &geometry)
     downsize.VDivFactor = (1024U * 8192U - 1U) / downsize.VRatio;
     downsize.HSize = 400; downsize.VSize = 480;
     if (success) {
-        success = HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0) == HAL_OK &&
+        success = (!was_started || HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0) == HAL_OK) &&
                   HAL_DCMIPP_PIPE_DisableCrop(&hcamera_dcmipp, DCMIPP_PIPE2) == HAL_OK &&
                   HAL_DCMIPP_PIPE_SetCropConfig(&hcamera_dcmipp, DCMIPP_PIPE2, &crop) == HAL_OK &&
                   HAL_DCMIPP_PIPE_EnableCrop(&hcamera_dcmipp, DCMIPP_PIPE2) == HAL_OK &&
                   HAL_DCMIPP_PIPE_DisableDownsize(&hcamera_dcmipp, DCMIPP_PIPE2) == HAL_OK &&
                   HAL_DCMIPP_PIPE_SetDownsizeConfig(&hcamera_dcmipp, DCMIPP_PIPE2, &downsize) == HAL_OK &&
                   HAL_DCMIPP_PIPE_EnableDownsize(&hcamera_dcmipp, DCMIPP_PIPE2) == HAL_OK &&
-                  HAL_DCMIPP_CSI_PIPE_Start(&hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0,
-                      static_cast<std::uint32_t>(uai::camera_pipe2::driver::AncillaryPipeFrameBufferAddress()), DCMIPP_MODE_CONTINUOUS) == HAL_OK;
+                  (!was_started || HAL_DCMIPP_CSI_PIPE_Start(&hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0,
+                      static_cast<std::uint32_t>(uai::camera_pipe2::driver::AncillaryPipeFrameBufferAddress()), DCMIPP_MODE_CONTINUOUS) == HAL_OK);
     }
     standby = 0;
     success = sensor->IO.WriteReg(sensor->IO.Address, 0x3000, &standby, 1) == 0 && success;
     success = ISP_SetAECState(&hcamera_isp, automatic) == ISP_OK && success;
+    if (success && !was_started) {
+        success = uai::camera_pipe2::driver::IsOk(camera_.Start());
+        if (success) { camera_started_ = true; }
+    }
     return success ? console::Status::kOk : console::Status::kHardware;
 }
 

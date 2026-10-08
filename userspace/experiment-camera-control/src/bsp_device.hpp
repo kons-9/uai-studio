@@ -14,6 +14,7 @@ public:
 private:
     uai::camera_pipe2::driver::CameraDriver camera_;
     bool opened_ = false;
+    bool camera_started_ = false;
 };
 
 }

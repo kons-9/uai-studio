@@ -20,11 +20,19 @@ console::Status Convert(ISP_StatusTypeDef status)
     return console::Status::kHardware;
 }
 
+bool IsInitialized()
+{
+    /* STM32Cube N6's ISP handle has no isInitialized member. ISP_Init sets
+     * these fields on success, while ISP_DeInit clears the handle. */
+    return hcamera_isp.hDcmipp != nullptr && hcamera_isp.algorithm != nullptr &&
+           hcamera_isp.sensorInfo.width != 0U && hcamera_isp.sensorInfo.height != 0U;
+}
+
 }
 
 console::Status IspCamera::Read(State &state)
 {
-    if (!hcamera_isp.isInitialized) {
+    if (!IsInitialized()) {
         return console::Status::kInvalidState;
     }
     auto &helpers = hcamera_isp.appliHelpers;
@@ -56,8 +64,8 @@ console::Status IspCamera::Read(State &state)
 
 console::Status IspCamera::AutoExposure(bool enabled)
 {
-    return hcamera_isp.isInitialized ? Convert(ISP_SetAECState(&hcamera_isp, enabled ? 1 : 0))
-                                     : console::Status::kInvalidState;
+    return IsInitialized() ? Convert(ISP_SetAECState(&hcamera_isp, enabled ? 1 : 0))
+                           : console::Status::kInvalidState;
 }
 
 console::Status IspCamera::Compensation(int half_stops)
@@ -65,7 +73,7 @@ console::Status IspCamera::Compensation(int half_stops)
     if (half_stops < -4 || half_stops > 4) {
         return console::Status::kInvalidArgument;
     }
-    return hcamera_isp.isInitialized
+    return IsInitialized()
                ? Convert(ISP_SetExposureTarget(&hcamera_isp, static_cast<ISP_ExposureCompTypeDef>(half_stops)))
                : console::Status::kInvalidState;
 }
@@ -101,7 +109,7 @@ console::Status IspCamera::Manual(std::int32_t exposure_us, std::int32_t gain_md
 
 console::Status IspCamera::Statistics(Rect rectangle)
 {
-    if (!hcamera_isp.isInitialized) {
+    if (!IsInitialized()) {
         return console::Status::kInvalidState;
     }
     if (!Inside(rectangle, hcamera_isp.sensorInfo.width, hcamera_isp.sensorInfo.height)) {
@@ -113,13 +121,13 @@ console::Status IspCamera::Statistics(Rect rectangle)
 
 console::Status IspCamera::WhiteBalance(std::uint32_t temperature)
 {
-    return hcamera_isp.isInitialized ? Convert(ISP_SetWBRefMode(&hcamera_isp, temperature == 0 ? 1 : 0, temperature))
-                                     : console::Status::kInvalidState;
+    return IsInitialized() ? Convert(ISP_SetWBRefMode(&hcamera_isp, temperature == 0 ? 1 : 0, temperature))
+                           : console::Status::kInvalidState;
 }
 
 console::Status IspCamera::ListWhiteBalance(const console::Writer &writer)
 {
-    if (!hcamera_isp.isInitialized) {
+    if (!IsInitialized()) {
         return console::Status::kInvalidState;
     }
     std::uint32_t temperatures[ISP_AWB_COLORTEMP_REF]{};

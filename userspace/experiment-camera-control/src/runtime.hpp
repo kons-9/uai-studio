@@ -64,6 +64,18 @@ public:
     std::uint32_t Recoveries() const { return recoveries_; }
     const Geometry &Configuration() const { return geometry_; }
 
+    console::Status ReadState(State &state)
+    {
+        return running_ ? control_.Read(state) : console::Status::kInvalidState;
+    }
+
+    console::Status RestoreState(const State &state)
+    {
+        if (!running_) { return console::Status::kInvalidState; }
+        const auto status = ApplyState(state);
+        return status == console::Status::kOk ? Save() : status;
+    }
+
     console::Status Change(Geometry requested)
     {
         State current;
@@ -128,14 +140,19 @@ public:
 private:
     console::Status Restore()
     {
+        return ApplyState(settings_);
+    }
+
+    console::Status ApplyState(const State &state)
+    {
         auto status = control_.AutoExposure(false);
-        if (status == console::Status::kOk) { status = control_.Compensation(settings_.compensation); }
-        if (status == console::Status::kOk) { status = control_.Statistics(settings_.statistics); }
-        if (status == console::Status::kOk) { status = control_.WhiteBalance(settings_.auto_white_balance ? 0 : settings_.color_temperature); }
-        if (status == console::Status::kOk && settings_.reported_exposure_us > 0) {
-            status = control_.Manual(settings_.reported_exposure_us, settings_.reported_gain_mdB);
+        if (status == console::Status::kOk) { status = control_.Compensation(state.compensation); }
+        if (status == console::Status::kOk) { status = control_.Statistics(state.statistics); }
+        if (status == console::Status::kOk) { status = control_.WhiteBalance(state.auto_white_balance ? 0 : state.color_temperature); }
+        if (status == console::Status::kOk && state.reported_exposure_us > 0) {
+            status = control_.Manual(state.reported_exposure_us, state.reported_gain_mdB);
         }
-        if (status == console::Status::kOk) { status = control_.AutoExposure(settings_.auto_exposure); }
+        if (status == console::Status::kOk) { status = control_.AutoExposure(state.auto_exposure); }
         return status;
     }
 
