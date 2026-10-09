@@ -76,9 +76,6 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     PIPE2_PIPE_DUAL=1 PIPE2_IMX335_MIPI891=0 PIPE2_BUFFER_PSRAM=0
     PIPE2_CROP_NATIVE=0 PIPE2_CROP_INTEGER4=0 PIPE2_IMX335_TEST_PATTERN_MODE=-1
     STM32N6570_DK STM32N6570_DK_DEVELOPMENT_MODE USE_HAL_DRIVER STM32N657xx USE_FULL_LL_DRIVER CPU_IN_SECURE_STATE)
-if(APP_TARGET STREQUAL "experiment-gpu")
-    target_compile_definitions(${TARGET_NAME} PRIVATE EXPERIMENT_GPU_VISUAL=1)
-endif()
 target_link_libraries(${TARGET_NAME} PRIVATE uai::utkernel uai::stm32n6570_dk
     "${ISP}/evision/Lib/libn6-evision-awb_gcc.a" "${ISP}/evision/Lib/libn6-evision-st-ae_gcc.a" m)
 set(LINKER_SCRIPT "${EXPERIMENT_RUNTIME}/camera-runtime-ram.ld")

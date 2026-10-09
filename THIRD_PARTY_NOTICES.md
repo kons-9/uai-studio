@@ -15,7 +15,7 @@
 | STM32N6570-DK BSP（XSPI、カメラ） | STMicroelectronics | STM32CubeN6から`kernel/driver/c_bsp/`、`kernel/driver/camera_driver/board_driver/`に取り込み | 外部メモリとカメラの制御 | 配布元のLICENSEに従う |
 | IMX335センサードライバ | STMicroelectronics | STM32CubeN6から`kernel/driver/camera_driver/sensor_driver/`に取り込み | カメラセンサーの制御 | 配布元のLICENSEに従う |
 | vision_models_pp | STMicroelectronics | STM32N6 GettingStartedの後処理ライブラリから`userspace/ai-app/third_party/`に取り込み。`od_pp_st_yolox.c`に出力数の上限チェックを追加 | 物体検出と顔検出の後処理 | 配布元のLICENSEに従う |
-| STM32 ISPライブラリの一部（`isp_core.c`） | STMicroelectronics | STM32N6向けISPライブラリから`userspace/experiment-camera-pipe2/`に取り込み | 実験用アプリのカメラ画質調整 | 配布元のLICENSEに従う |
+| STM32 ISPライブラリの一部（`isp_core.c`） | STMicroelectronics | STM32N6向けISPライブラリから取り込み。[hw-test内のコピー](userspace/experiment-hw-test/src/camera_runtime/driver/board/isp_core.c)を含む | 実験用アプリのカメラ画質調整 | 配布元のLICENSEに従う |
 | STM32N6570-DK用FSBL（`stm32n6570-dk-ai_fsbl.hex`） | STMicroelectronics | STのSTM32N6570-DK向けサンプル（STM32N6_Survivor_Detection）のバイナリを`userspace/ai-app/fsbl/`に取り込み。[TODO: 公開URL] | 外部Flash起動の第1段ブートローダ | 配布元のLICENSEに従う |
 | Neural-ARTのメモリプール定義と変換プロファイル | STMicroelectronics | [STM32N6-GettingStarted-ObjectDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-ObjectDetection)の設定をもとに`userspace/ai-app/models/`に配置 | STEdgeAIによるモデル変換の設定 | 配布元のLICENSEに従う |
 | Lucide 0.468.0（3アイコン） | Lucide Contributors | [lucide-static](https://www.npmjs.com/package/lucide-static/v/0.468.0)から`host_app/auto_static_memory_layout/static/icons/`に配置 | メモリ配置GUIの操作アイコン | [ISC](host_app/auto_static_memory_layout/static/icons/LICENSE) |

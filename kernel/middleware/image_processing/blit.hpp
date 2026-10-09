@@ -4,24 +4,25 @@
 #include <cstdint>
 #include <limits>
 
-namespace experiment::graphics {
+namespace uai::ai::image_processing {
 
 enum class Format {
     kRgb565,
     kRgb888
 };
+
 enum class Mode {
     kCopy,
     kConvert
 };
 
 struct Image {
-    std::uint8_t *data;
-    std::size_t bytes;
-    std::uint32_t width;
-    std::uint32_t height;
-    std::uint32_t stride;
-    Format format;
+    std::uint8_t *data = nullptr;
+    std::size_t bytes = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t stride = 0;
+    Format format = Format::kRgb565;
 };
 
 struct Transfer {
@@ -50,29 +51,30 @@ inline std::uint32_t PixelBytes(Format format)
 inline bool Valid(const Image &image)
 {
     const auto pixel_bytes = PixelBytes(image.format);
-    if (!image.data || pixel_bytes == 0 || image.width == 0 || image.height == 0 || image.stride % pixel_bytes != 0
-        || std::uint64_t(image.width) * pixel_bytes > image.stride) {
+    if (!image.data || pixel_bytes == 0 || image.width == 0 || image.height == 0
+        || image.stride % pixel_bytes != 0 || std::uint64_t(image.width) * pixel_bytes > image.stride) {
         return false;
     }
-    const auto required = std::uint64_t(image.height - 1) * image.stride + std::uint64_t(image.width) * pixel_bytes;
+    const auto required = std::uint64_t(image.height - 1) * image.stride
+        + std::uint64_t(image.width) * pixel_bytes;
     const auto address = reinterpret_cast<std::uintptr_t>(image.data);
     return required <= image.bytes && image.bytes <= std::numeric_limits<std::uintptr_t>::max() - address;
 }
 
-inline bool BuildTransfer(
-    const Image &source,
-    const Image &destination,
-    Transfer &transfer
-)
+inline bool Disjoint(const Image &first, const Image &second)
 {
-    if (!Valid(source) || !Valid(destination) || source.width != destination.width
-        || source.height != destination.height || source.width > 0x3fff || source.height > 0xffff) {
+    if (!Valid(first) || !Valid(second)) {
         return false;
     }
-    const auto source_address = reinterpret_cast<std::uintptr_t>(source.data);
-    const auto destination_address = reinterpret_cast<std::uintptr_t>(destination.data);
-    if (source_address < destination_address + destination.bytes
-        && destination_address < source_address + source.bytes) {
+    const auto left = reinterpret_cast<std::uintptr_t>(first.data);
+    const auto right = reinterpret_cast<std::uintptr_t>(second.data);
+    return left + first.bytes <= right || right + second.bytes <= left;
+}
+
+inline bool BuildTransfer(const Image &source, const Image &destination, Transfer &transfer)
+{
+    if (!Disjoint(source, destination) || source.width != destination.width
+        || source.height != destination.height || source.width > 0x3fff || source.height > 0xffff) {
         return false;
     }
     const auto input_offset = source.stride / PixelBytes(source.format) - source.width;
@@ -81,8 +83,8 @@ inline bool BuildTransfer(
         return false;
     }
     transfer = {
-        source_address,
-        destination_address,
+        reinterpret_cast<std::uintptr_t>(source.data),
+        reinterpret_cast<std::uintptr_t>(destination.data),
         source.width,
         source.height,
         input_offset,
@@ -94,10 +96,7 @@ inline bool BuildTransfer(
     return true;
 }
 
-inline bool ReferenceBlit(
-    const Image &source,
-    const Image &destination
-)
+inline bool ReferenceBlit(const Image &source, const Image &destination)
 {
     Transfer transfer{};
     if (!BuildTransfer(source, destination, transfer)) {
@@ -106,8 +105,8 @@ inline bool ReferenceBlit(
     for (std::uint32_t row = 0; row < source.height; ++row) {
         for (std::uint32_t column = 0; column < source.width; ++column) {
             const auto *input = source.data + std::size_t(row) * source.stride + column * PixelBytes(source.format);
-            auto *output =
-                destination.data + std::size_t(row) * destination.stride + column * PixelBytes(destination.format);
+            auto *output = destination.data + std::size_t(row) * destination.stride
+                + column * PixelBytes(destination.format);
             if (source.format == destination.format) {
                 for (std::uint32_t channel = 0; channel < PixelBytes(source.format); ++channel) {
                     output[channel] = input[channel];

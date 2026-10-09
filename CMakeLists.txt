@@ -5,9 +5,8 @@ cmake_minimum_required(VERSION 3.16)
 # changing the kernel project.
 set(APP_TARGET "experiment-hello-world" CACHE STRING "Userspace application to build")
 set_property(CACHE APP_TARGET PROPERTY STRINGS
-    experiment-hello-world experiment-camera-lcd experiment-ai ai-app
-    mini-ai-app experiment-camera-pipe2 experiment-camera-lcd-touch
-    experiment-camera-control experiment-gpu experiment-model-load
+    experiment-hello-world experiment-ai ai-app
+    mini-ai-app experiment-model-load
     experiment-ui-control experiment-hw-test)
 
 # Applications built on the kernel middleware and drivers. They generate the

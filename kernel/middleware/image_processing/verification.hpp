@@ -1,29 +1,82 @@
 #pragma once
-#include "scenario.hpp"
+
+#include "operations.hpp"
+
 #include <cstring>
 
-namespace experiment::graphics {
+namespace uai::ai::image_processing {
+
+enum class Rejection {
+    kNone,
+    kOverlap,
+    kBackgroundOverlap,
+    kShortBuffer,
+    kStride,
+    kUnaligned,
+    kResize
+};
+
+struct VerificationCase {
+    const char *name;
+    Operation operation;
+    Format source;
+    Format destination;
+    std::uint8_t alpha = 255;
+    std::uint32_t color = 0xc02070;
+    bool padded = false;
+    Rejection rejection = Rejection::kNone;
+};
+
+inline constexpr VerificationCase kVerificationCases[] = {
+    {"copy-rgb888", Operation::kBlit, Format::kRgb888, Format::kRgb888},
+    {"copy-rgb565", Operation::kBlit, Format::kRgb565, Format::kRgb565},
+    {"copy-padded", Operation::kBlit, Format::kRgb888, Format::kRgb888, 255, 0, true},
+    {"convert-888-to-565", Operation::kBlit, Format::kRgb888, Format::kRgb565},
+    {"convert-565-to-888", Operation::kBlit, Format::kRgb565, Format::kRgb888},
+    {"convert-padded", Operation::kBlit, Format::kRgb888, Format::kRgb565, 255, 0, true},
+    {"fill-565-red", Operation::kFill, Format::kRgb888, Format::kRgb565, 255, 0xff0000},
+    {"fill-565-green", Operation::kFill, Format::kRgb888, Format::kRgb565, 255, 0x00ff00},
+    {"fill-565-blue", Operation::kFill, Format::kRgb888, Format::kRgb565, 255, 0x0000ff},
+    {"fill-888-red", Operation::kFill, Format::kRgb888, Format::kRgb888, 255, 0xff0000},
+    {"fill-888-green", Operation::kFill, Format::kRgb888, Format::kRgb888, 255, 0x00ff00},
+    {"fill-888-blue", Operation::kFill, Format::kRgb888, Format::kRgb888, 255, 0x0000ff},
+    {"fill-padded", Operation::kFill, Format::kRgb888, Format::kRgb565, 255, 0xc02070, true},
+    {"blend-565-alpha0", Operation::kBlend, Format::kRgb888, Format::kRgb565, 0},
+    {"blend-565-alpha128", Operation::kBlend, Format::kRgb888, Format::kRgb565, 128},
+    {"blend-565-alpha255", Operation::kBlend, Format::kRgb888, Format::kRgb565, 255},
+    {"blend-888-alpha128", Operation::kBlend, Format::kRgb888, Format::kRgb888, 128},
+    {"blend-padded", Operation::kBlend, Format::kRgb565, Format::kRgb888, 128, 0, true},
+    {"reject-overlap", Operation::kBlit, Format::kRgb888, Format::kRgb888,
+        255, 0, false, Rejection::kOverlap},
+    {"reject-background-overlap", Operation::kBlend, Format::kRgb888, Format::kRgb888,
+        128, 0, false, Rejection::kBackgroundOverlap},
+    {"reject-short-buffer", Operation::kBlit, Format::kRgb888, Format::kRgb888,
+        255, 0, false, Rejection::kShortBuffer},
+    {"reject-stride", Operation::kBlit, Format::kRgb888, Format::kRgb888,
+        255, 0, false, Rejection::kStride},
+    {"reject-unaligned", Operation::kBlit, Format::kRgb888, Format::kRgb888,
+        255, 0, false, Rejection::kUnaligned},
+    {"reject-resize", Operation::kResize, Format::kRgb888, Format::kRgb565,
+        255, 0, false, Rejection::kResize},
+    {"reuse-after-rejection", Operation::kBlit, Format::kRgb888, Format::kRgb565}
+};
+
+struct VerificationResult {
+    bool passed = false;
+    std::uint32_t cycles = 0;
+    unsigned maximum_error = 0;
+    unsigned corrupted_bytes = 0;
+};
 
 struct VerificationCache {
-    void (*prepare)(
-        void *,
-        std::int32_t
-    ) = nullptr;
-    void (*inspect)(
-        void *,
-        std::int32_t
-    ) = nullptr;
+    void (*prepare)(void *, std::int32_t) = nullptr;
+    void (*inspect)(void *, std::int32_t) = nullptr;
 };
 
 class Verification {
 public:
-    template <
-        typename Device,
-        typename Clock>
-    Result
-    Run(const Case &test,
-        Device &device,
-        Clock clock,
+    template <typename Device, typename Clock>
+    VerificationResult Run(const VerificationCase &test, Device &device, Clock clock,
         VerificationCache cache = {})
     {
         ++generation_;
@@ -77,14 +130,14 @@ public:
         }
         const auto begin = clock();
         const bool success = device.Run(request, 100);
-        Result result{success != rejected, static_cast<std::uint32_t>(clock() - begin), 0};
+        VerificationResult result{success != rejected, static_cast<std::uint32_t>(clock() - begin), 0, 0};
         if (cache.inspect) {
             for (auto *buffer : buffers) {
                 cache.inspect(buffer->storage, sizeof(buffer->storage));
             }
         }
-        const bool approximate =
-            !rejected && test.operation == Operation::kBlend && test.alpha != 0 && test.alpha != 255;
+        const bool approximate = !rejected && test.operation == Operation::kBlend
+            && test.alpha != 0 && test.alpha != 255;
         for (std::size_t index = 0; index < sizeof(actual_.storage); ++index) {
             const bool pixel = index >= 32 && index < 32 + height * request.destination.stride
                 && (index - 32) % request.destination.stride < width * PixelBytes(test.destination);
@@ -120,26 +173,25 @@ public:
 
 private:
     static constexpr std::size_t kBytes = 64 * 32 * 3;
+
     struct alignas(32) Buffer {
         std::uint8_t storage[kBytes + 64];
         std::uint8_t *Data() { return storage + 32; }
     };
-    static std::uint8_t Pattern(
-        std::size_t index,
-        std::uint32_t seed
-    )
+
+    static std::uint8_t Pattern(std::size_t index, std::uint32_t seed)
     {
-        return index < 32 || index >= kBytes + 32 ? 0x5a : static_cast<std::uint8_t>((index - 32) * 37 + seed);
+        return index < 32 || index >= kBytes + 32 ? 0x5a
+            : static_cast<std::uint8_t>((index - 32) * 37 + seed);
     }
-    static void Initialize(
-        Buffer &buffer,
-        std::uint32_t seed
-    )
+
+    static void Initialize(Buffer &buffer, std::uint32_t seed)
     {
         for (std::size_t index = 0; index < sizeof(buffer.storage); ++index) {
             buffer.storage[index] = Pattern(index, seed);
         }
     }
+
     Buffer source_{}, background_{}, actual_{}, expected_{};
     std::uint32_t generation_ = 0;
 };
