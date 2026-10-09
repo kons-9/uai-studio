@@ -22,6 +22,7 @@ make -C userspace/experiment-camera-control test
 - [exposure.hpp](src/exposure.hpp): 顔→人物→前景の選択、微小変化抑制、消失猶予、sequence重複/逆行拒否。マスクの外接矩形生成と、適用成功時だけAppliedを呼ぶ方式。NPUの生成モデルは未接続。
 - [runtime.hpp](src/runtime.hpp) / [bsp_device.cpp](src/bsp_device.cpp): 停止・開始・復旧、設定の再適用、IMX335のFPS/反転とPipe2 cropを実験内で制御する。実機での画質と安全性は未検証。
 - [main.cpp](src/main.cpp): 同じカメラ所有タスクでProcessとコマンドを適用。USART1受信IRQとフレーム通知で起床し、フレーム停滞時に復旧を試みる。
+- [scenario.hpp](src/scenario.hpp): 起動時に一巡する32段階の自動試験。両Pipeの進行、読戻し、実測FPS、停止再開・復旧・不正入力を検証し、最後に開始前の設定へ戻す。
 - [check_link.py](check_link.py): 最終ELFとmapのHAL/IRQ採用元を検査し、ファームウェアのリンク後に自動実行する。
 - [console.py](console.py): 全実験で共通のUARTシェル操作入口。HW試験のUART transportを再利用し、1ポートから順にコマンドを送る。
 
@@ -47,8 +48,9 @@ cam ev -2
 cam area 0 0 800 480
 cam wb-list
 cam wb auto
-demo start
-demo stop
+scenario stat
+scenario stop
+scenario start
 capture stop
 capture start
 capture fps 20
@@ -60,7 +62,52 @@ subject 3 900 120 90 80 80 5000
 
 evは0.5EV単位の-4..4。手動設定の初版コマンド範囲は100..30000 us / 0..24000 mdB。wbはautoまたはwb-listで得た色温度を指定する。statのreported_us / reported_mdBはBSP保持値であり、センサレジスタの実測値ではない。手動設定失敗時は元の保持値への復元を試みるが、通信障害時の復元成功は保証せずhardwareエラーを返す。
 
-起動時にデモを自動開始し、1秒ごとにWB変更と手動露出変更を交互に行う。順番はWB auto → 露出1000us → WB 2810K → 露出4000us → WB 4015K → 露出12000us → WB 6650K → 露出28000us。デモ中はAEを止めて露出時間を直接設定する。`demo stop`で開始前のAE・露出・ゲイン・測光領域・WBへ戻す。停止後は`demo start`で再開できる。
+従来の無限デモは、起動時に一回だけ実行する自動シナリオへ置き換えた。通常の確認でshell操作は不要。実行中のcam設定変更、capture操作、subject投入は拒否し、試験条件を固定する。help、uptime、frames、cam stat、cam wb-listとscenario診断は利用できるが、停止区間のcam読取りはinvalid-stateになる。
+
+## 一回の起動で確認するシナリオ
+
+ビルド後、端末AでUARTを先に開いて結果を収集する:
+
+```sh
+make -C userspace/experiment-camera-control monitor
+```
+
+端末Bで起動する:
+
+```sh
+make -C userspace/experiment-camera-control ram-run
+```
+
+カメラ開始後、約3分で次の32段階を一巡する。各段階のBEGINをUARTに表示し、露出・WB・反転・cropなどの見た目を数秒ずつ観察できるようにしている。
+
+| 段階 | 内容 | 自動で確認すること |
+| --- | --- | --- |
+| baseline | 通常の映像 | 両Pipeの継続進行と初期状態 |
+| manual、exposure-*、wb-* | AE停止、露出1000/4000/12000/28000us、WB auto/2810/4015/6650K | 設定成功、読戻し、両Pipe進行 |
+| ae-on、ev-minus/plus、statistics-center | AE再開、EV -2/+2、センサ中央の測光領域 | AE中の手動変更拒否、各設定の読戻し |
+| manual-fixed、fps-* | 露出12000usへ戻し、10/15/20/25/30fpsを順に適用 | 両Pipeの実測FPSが要求値の±30%以内 |
+| flip-*、crop | 左右・上下・両方・無反転、crop 100,0,1600,1920 | 設定成功、保持値と両Pipe進行。向き・画角は目視 |
+| invalid-input | FPS 12、反転値2、幅0のcrop、露出99us | 拒否され、直前の設定が変わらない |
+| stop、restart | 停止後に再開 | 停止中の両カウンタ停止、設定保持、両Pipe再開 |
+| recovery-1/2 | 復旧を2回 | 設定保持、両Pipe再開 |
+| stability | 60秒連続動作 | 途中の片側停止、処理失敗、意図しない復旧がない |
+| restore | 開始前の設定へ復元 | AE・EV・露出/ゲイン・測光領域・WBとFPS/反転/cropの復元、両Pipe進行 |
+
+PASSはAPI成功だけではない。要求値を保持した状態と読戻しを照合し、手動露出は100us、ゲインは300mdBの量子化許容差を使う。AE中の露出/ゲインとAWB中の色温度は変動するため固定値では比較しない。各Pipeが1.5秒進まない場合、カメラ/表示処理のエラー、予期しない復旧、監視間隔の1.5秒超過はFAILになる。設定APIの操作に5秒を超えた場合は、返却後にFAILとする。HAL内部の無期限待ちやCPUフォルトを強制中断する仕組みではない。
+
+失敗した段階で中止し、開始前の設定への復元を試みる。残りの段階はSKIPとして集計し、復元にも失敗した場合はcleanup FAILを追加する。成功時は通常表示に戻り、再起動するまで自動では繰り返さない。
+
+```text
+CAMTEST baseline BEGIN
+CAMTEST STATE ae=1 ...
+CAMTEST baseline PASS pipe1=60 pipe2=60 elapsed_ms=2000
+...
+CAMTEST SUMMARY pass=32 fail=0 skip=0 visual=required
+```
+
+pass=32、fail=0、skip=0が自動検証の合格条件。SUMMARYが出ない起動や中断は合格ではない。visual=requiredは、明るさ・色・反転・画角の正しさを自動判定したという意味ではなく、別途目視確認が必要という表示。読戻しはドライバの保持値であり、独立したセンサレジスタ検査でもない。UART受信・行編集や実際のNPU検出結果との接続は、この自動シナリオの対象外。
+
+必要な場合だけ、scenario statで進捗、scenario stopで中止と復元、scenario startで開始前の状態を新たに保存して再実行できる。自動結果の収集にはmonitorを使い、consoleと同じUARTを同時に開かない。対話consoleは標準入力待ちの間に自動ログを読み続けないため、今回の連続ログ収集には使わない。
 
 既存tm_getcharはwaitを無視し、割り込み禁止で受信待ちするため使用しない。UART受信エラー時は行末まで破棄する。送信はT-Monitorの同期出力なので、応答中のCPU時間・フレームへの影響は実機で測る。
 

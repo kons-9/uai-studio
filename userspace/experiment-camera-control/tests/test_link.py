@@ -60,7 +60,7 @@ class LinkTests(unittest.TestCase):
             "experiment-camera-control": "experiment-camera-pipe2",
             "ai-app": "",
             "experiment-hw-test": "",
-            "experiment-gpu": "",
+            "experiment-gpu": "experiment-camera-pipe2",
         }
         with tempfile.TemporaryDirectory() as temporary:
             script = pathlib.Path(temporary) / "profile.cmake"

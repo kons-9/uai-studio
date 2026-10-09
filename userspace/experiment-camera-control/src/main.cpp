@@ -12,6 +12,7 @@ extern "C" {
 void tm_com_init(void);
 extern volatile unsigned int camera_pipe2_pipe1_vsync_count;
 extern volatile unsigned int camera_pipe2_pipe2_frame_count;
+volatile unsigned int experiment_camera_failures = 0;
 }
 
 namespace {
@@ -30,6 +31,28 @@ void Write(void *, const char *text, std::size_t size)
 }
 
 const experiment::console::Writer output{nullptr, Write};
+
+struct ConsoleCamera {
+    experiment::camera::Runtime *runtime;
+    bool locked = false;
+};
+
+experiment::console::Status CameraControl(void *context, int count, const char *const *arguments,
+                                          const experiment::console::Writer &writer)
+{
+    auto &camera = *static_cast<ConsoleCamera *>(context);
+    const bool read_only = count == 2 && (!std::strcmp(arguments[1], "stat") || !std::strcmp(arguments[1], "wb-list"));
+    if (camera.locked && !read_only) { return experiment::console::Status::kInvalidState; }
+    return experiment::camera::Runtime::ControlCommand(camera.runtime, count, arguments, writer);
+}
+
+experiment::console::Status CameraCapture(void *context, int count, const char *const *arguments,
+                                          const experiment::console::Writer &writer)
+{
+    auto &camera = *static_cast<ConsoleCamera *>(context);
+    if (camera.locked) { return experiment::console::Status::kInvalidState; }
+    return experiment::camera::Runtime::CaptureCommand(camera.runtime, count, arguments, writer);
+}
 
 [[noreturn]] void Halt(const char *message)
 {
@@ -69,6 +92,7 @@ void CameraTask(INT, void *)
     experiment::camera::BspDevice device;
     experiment::camera::IspCamera control;
     experiment::camera::Runtime camera(device, control);
+    ConsoleCamera console_camera{&camera};
     T_CFLG flags{};
     flags.flgatr = TA_TFIFO;
     events = tk_cre_flg(&flags);
@@ -80,11 +104,11 @@ void CameraTask(INT, void *)
         {"uptime", "uptime", Uptime, nullptr},
         {"frames", "frames", Frames, nullptr},
         {"cam", "cam stat | ae on|off | ev <-4..4> | manual <us> <mdB> | area <x> <y> <w> <h> | wb auto|<kelvin> | wb-list",
-         experiment::camera::Runtime::ControlCommand, &camera},
+         CameraControl, &console_camera},
         {"capture", "capture start|stop|recover|fps <10|15|20|25|30>|flip <h 0|1> <v 0|1>|crop <x> <y> <w> <h>",
-         experiment::camera::Runtime::CaptureCommand, &camera}
+            CameraCapture, &console_camera}
     };
-    const experiment::Services services{&camera, output, HAL_GetTick, [](std::uint32_t delay) { tk_dly_tsk(delay); }};
+        const experiment::Services services{&camera, output, HAL_GetTick, [](std::uint32_t delay) { tk_dly_tsk(delay); }, &console_camera.locked};
     const auto extra = experiment::Register(services, commands + 4, 12);
     if (extra > 12) { Halt("extension: command capacity exceeded\n"); }
     experiment::console::Shell shell(commands, 4 + extra, output);
@@ -95,34 +119,32 @@ void CameraTask(INT, void *)
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
     output.Write("camera: pipe1=started pipe2=started\n> ");
-    bool discard_line = false;
     std::uint32_t last_frame = camera_pipe2_pipe2_frame_count;
     std::uint32_t last_progress = HAL_GetTick();
+    bool last_running = camera.Running();
     for (;;) {
         const auto begin = DWT->CYCCNT;
         const auto now = HAL_GetTick();
-        if (camera_pipe2_pipe2_frame_count != last_frame || !camera.Running()) {
+        const bool running = camera.Running();
+        if (camera_pipe2_pipe2_frame_count != last_frame || !running || running != last_running) {
             last_frame = camera_pipe2_pipe2_frame_count; last_progress = now;
         }
+        last_running = running;
         if (camera.Poll() != experiment::console::Status::kOk || (camera.Running() && now - last_progress >= 2000)) {
+            ++experiment_camera_failures;
             output.Write(camera.Recover() == experiment::console::Status::kOk ? "camera: recovered\n" : "camera: recovery failed; capture recover to retry\n");
             last_progress = HAL_GetTick();
         }
-        if (!uai::camera_pipe2::driver::IsOk(display.Process())) { output.Write("display: processing failed\n"); }
+        if (!uai::camera_pipe2::driver::IsOk(display.Process())) {
+            ++experiment_camera_failures;
+            output.Write("display: processing failed\n");
+        }
         experiment::Tick(now, last_frame);
         for (unsigned budget = 0; budget < 128; ++budget) {
-            if (received.TakeError()) { discard_line = true; }
             char character = 0;
-            if (!received.Pop(character)) { break; }
-            if (discard_line) {
-                if (character == '\r' || character == '\n') {
-                    shell.Feed('\x03');
-                    output.Write("ERR uart-receive; line discarded\n> ");
-                    discard_line = false;
-                }
-            } else {
-                shell.Feed(character);
-            }
+            bool receive_error = false;
+            if (!received.Pop(character, receive_error)) { break; }
+            shell.Feed(character, receive_error);
             if (character == '\r' || character == '\n') {
                 break;
             }
@@ -145,6 +167,8 @@ extern "C" void USART1_IRQHandler(void)
         if ((flags & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE | USART_ISR_PE)) != 0) {
             USART1->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF | USART_ICR_PECF;
             received.Error();
+            if ((flags & USART_ISR_RXNE_RXFNE) != 0) { static_cast<void>(USART1->RDR); }
+            continue;
         }
         if ((flags & USART_ISR_RXNE_RXFNE) == 0) { break; }
         received.Push(static_cast<char>(USART1->RDR & 0xffU));

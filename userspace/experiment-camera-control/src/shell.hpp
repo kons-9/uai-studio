@@ -43,8 +43,19 @@ public:
     Shell(const Command *commands, std::size_t count, Writer writer)
         : commands_(commands), count_(count), writer_(writer) {}
 
-    Status Feed(char character)
+    Status Feed(char character, bool receive_error = false)
     {
+        if (receive_error) { discard_line_ = true; }
+        if (discard_line_) {
+            if (character == '\r' || character == '\n') {
+                length_ = 0;
+                pending_ = Status::kOk;
+                discard_line_ = false;
+                after_cr_ = character == '\r';
+                writer_.Write("\nERR uart-receive; line discarded\n> ");
+            }
+            return Status::kHardware;
+        }
         if (character == '\n' && after_cr_) {
             after_cr_ = false;
             return Status::kOk;
@@ -146,7 +157,7 @@ private:
     char line_[kLineCapacity]{};
     std::size_t length_ = 0;
     Status pending_ = Status::kOk;
-    bool after_cr_ = false;
+    bool after_cr_ = false, discard_line_ = false;
 };
 
 }

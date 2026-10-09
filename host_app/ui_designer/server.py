@@ -41,7 +41,7 @@ class EditorState:
         self.token = secrets.token_urlsafe(32)
 
 
-def _make_handler(state: EditorState):
+def _make_handler(state: EditorState, *, embedded: bool = False):
     class Handler(BaseHTTPRequestHandler):
         server_version = "uai-ui-designer/0.1"
 
@@ -54,11 +54,12 @@ def _make_handler(state: EditorState):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            ancestors = "'self'" if embedded else "'none'"
             self.send_header(
                 "Content-Security-Policy",
                 "default-src 'self'; script-src 'self' 'unsafe-inline'; "
                 "style-src 'self' 'unsafe-inline'; img-src 'self'; "
-                "frame-ancestors 'none'; base-uri 'none'")
+                f"frame-ancestors {ancestors}; base-uri 'none'")
             self.end_headers()
             self.wfile.write(body)
 

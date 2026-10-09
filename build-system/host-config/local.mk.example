@@ -30,7 +30,7 @@ else ifeq ($(APP_TARGET),ai-app)
 CUBEMX_IOC ?= userspace/ai-app/config/stm32n6570-dk-ai-app.ioc
 else ifeq ($(APP_TARGET),mini-ai-app)
 CUBEMX_IOC ?= userspace/mini-ai-app/config/stm32n6570-dk-mini-ai-app.ioc
-else ifneq ($(filter experiment-camera-pipe2 experiment-camera-control,$(APP_TARGET)),)
+else ifneq ($(filter experiment-camera-pipe2 experiment-camera-control experiment-gpu,$(APP_TARGET)),)
 CUBEMX_IOC ?= userspace/experiment-camera-lcd/config/stm32n6570-dk-fullsecure.ioc
 else
 CUBEMX_IOC ?= userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc

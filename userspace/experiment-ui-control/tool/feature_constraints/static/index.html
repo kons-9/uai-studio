@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Constraint Studio</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="lucide.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><i data-lucide="workflow" aria-hidden="true"></i><h1>Constraint Studio</h1></div>
+    <div class="file-status"><span id="filename">features.json</span><span id="dirty" hidden>Unsaved</span></div>
+    <div class="toolbar-actions">
+      <button id="new" class="icon-button" title="New declaration" aria-label="New declaration"><i data-lucide="file-plus-2"></i></button>
+      <button id="open" class="icon-button" title="Open declaration" aria-label="Open declaration"><i data-lucide="folder-open"></i></button>
+      <button id="save" class="icon-button" title="Save declaration" aria-label="Save declaration"><i data-lucide="save"></i></button>
+      <input id="file-input" type="file" accept=".json,application/json" hidden>
+    </div>
+  </header>
+  <div class="metrics" aria-label="Declaration summary">
+    <div><span>Features</span><strong id="feature-count">-</strong></div>
+    <div><span>Excluded pairs</span><strong id="exclusion-count">-</strong></div>
+    <div><span>Requirements</span><strong id="requirement-count">-</strong></div>
+    <div><span>Reachable</span><strong id="state-count">-</strong></div>
+    <span id="validation-badge" class="badge neutral">Connecting</span>
+  </div>
+  <main class="workspace">
+    <section class="feature-pane" aria-labelledby="features-title">
+      <div class="pane-toolbar"><h2 id="features-title">Features</h2><button id="add-feature" class="icon-button" title="Add feature" aria-label="Add feature"><i data-lucide="plus"></i></button></div>
+      <fieldset id="feature-fields"><div id="features"></div></fieldset>
+    </section>
+    <section class="rules-pane" aria-label="Rules and settings">
+      <div class="pane-toolbar">
+        <div class="tabs" role="tablist" aria-label="Relationship matrices">
+          <button id="tab-exclusions" class="tab active" role="tab" aria-selected="true" aria-controls="matrix-panel" data-matrix="exclusions">Cannot use together</button>
+          <button id="tab-requirements" class="tab" role="tab" aria-selected="false" aria-controls="matrix-panel" data-matrix="requirements">Needs</button>
+        </div>
+        <button id="validate" class="primary-button"><i data-lucide="check-check"></i>Validate</button>
+      </div>
+      <div class="rules-content">
+        <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+        <fieldset id="matrix-fields"><div id="matrix-panel" role="tabpanel" aria-labelledby="tab-exclusions" class="table-scroll"><table id="matrix" class="matrix"></table></div></fieldset>
+        <div class="section-heading"><h2>Try Settings</h2><div class="toolbar-actions"><span id="trial-badge" class="badge neutral">Initial</span><button id="reset" class="icon-button" title="Reset settings" aria-label="Reset settings"><i data-lucide="rotate-ccw"></i></button></div></div>
+        <fieldset id="trial-fields"><div id="trial" class="trial-grid"></div></fieldset>
+        <div id="trial-result" class="trial-result" role="status" aria-live="polite" hidden></div>
+        <details id="state-details"><summary>Reachable Configurations <span id="state-window"></span></summary><div class="table-scroll"><table id="states" class="state-table"></table></div></details>
+        <div class="section-heading"><h2>C++ Output</h2><div class="toolbar-actions">
+          <button id="generate" class="text-button"><i data-lucide="file-code-2"></i>Generate</button>
+          <button id="download-cpp" class="icon-button" title="Download C++" aria-label="Download C++" disabled><i data-lucide="download"></i></button>
+        </div></div>
+        <details id="cpp-details"><summary>features_generated.hpp</summary><pre id="cpp"><code></code></pre></details>
+        <div class="status-line"><span id="editor-status">Loading</span><span id="elapsed"></span></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

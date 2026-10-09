@@ -19,6 +19,7 @@
 | STM32N6570-DK用FSBL（`stm32n6570-dk-ai_fsbl.hex`） | STMicroelectronics | STのSTM32N6570-DK向けサンプル（STM32N6_Survivor_Detection）のバイナリを`userspace/ai-app/fsbl/`に取り込み。[TODO: 公開URL] | 外部Flash起動の第1段ブートローダ | 配布元のLICENSEに従う |
 | Neural-ARTのメモリプール定義と変換プロファイル | STMicroelectronics | [STM32N6-GettingStarted-ObjectDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-ObjectDetection)の設定をもとに`userspace/ai-app/models/`に配置 | STEdgeAIによるモデル変換の設定 | 配布元のLICENSEに従う |
 | Lucide 0.468.0（3アイコン） | Lucide Contributors | [lucide-static](https://www.npmjs.com/package/lucide-static/v/0.468.0)から`host_app/auto_static_memory_layout/static/icons/`に配置 | メモリ配置GUIの操作アイコン | [ISC](host_app/auto_static_memory_layout/static/icons/LICENSE) |
+| Lucide 0.468.0（JavaScript版） | Lucide Contributors | [lucide](https://www.npmjs.com/package/lucide/v/0.468.0)から`userspace/experiment-ui-control/tool/feature_constraints/static/`に配置 | 制約GUIの操作アイコン | [ISC](userspace/experiment-ui-control/tool/feature_constraints/static/lucide.LICENSE) |
 
 実験用の`userspace/experiment-*`にも、上記のST製ファイル（BSP、IMX335ドライバ、vision_models_pp、FSBL、メモリプール定義）のコピーを含む。各ファイルの冒頭にある著作権表示はそのまま残している。
 
@@ -35,6 +36,7 @@
 | 顔検出モデル（BlazeFace） | STMicroelectronics（元の手法：Google、学習データ：WIDER FACE） | `setup`時に[STM32N6-GettingStarted-FaceDetection](https://github.com/STMicroelectronics/STM32N6-GettingStarted-FaceDetection)から取得 | 評価用サンプルの推論 | 配布元のLICENSEに従う |
 | GNU Arm Embedded Toolchain、CMake、Python、uv、minicom | 各開発元 | OSのパッケージ管理などから取得 | ビルド、ホストツールの実行、UART監視 | 各ライセンス |
 | matplotlib | Matplotlib Development Team | `uv`で`host_app/pyproject.toml`から取得 | モニターの可視化 | Matplotlib License（PSFベース） |
+| IBM Plex Sans / Mono | IBM | Google Fontsから表示時に取得。取得できない場合は代替フォントを使用 | 制約GUIの表示フォント | SIL Open Font License 1.1 |
 
 ## μT-Kernel 3.0 / BSP2への変更
 

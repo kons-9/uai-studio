@@ -172,7 +172,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv or sys.argv[1:])
+    args = _build_parser().parse_args(argv)
     try:
         return args.handler(args)
     except (OSError, LayoutError, ValueError) as error:

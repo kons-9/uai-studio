@@ -229,16 +229,17 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         parser.error("--dpi must be positive")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     validate_args(args, parser)
     try:
         handler: Callable[[argparse.Namespace], None] = args.handler
         handler(args)
     except (ImportError, OSError, ValueError) as error:
         parser.error(str(error))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

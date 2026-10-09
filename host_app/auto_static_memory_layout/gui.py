@@ -94,7 +94,7 @@ class Editor:
         return output.getvalue()
 
 
-def make_handler(editor: Editor):
+def make_handler(editor: Editor, *, embedded: bool = False):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args) -> None:
             pass
@@ -105,7 +105,8 @@ def make_handler(editor: Editor):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'")
+            ancestors = "'self'" if embedded else "'none'"
+            self.send_header("Content-Security-Policy", f"default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors {ancestors}; base-uri 'none'")
             self.end_headers()
             self.wfile.write(body)
 

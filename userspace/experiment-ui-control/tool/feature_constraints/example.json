@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "features": [
+    {"id": "camera", "states": ["off", "on"], "initial": "off"},
+    {"id": "ai", "states": ["off", "on"], "initial": "off"},
+    {"id": "recording", "states": ["off", "on"], "initial": "off"}
+  ],
+  "exclusions": [
+    [{"feature": "ai", "state": "on"}, {"feature": "recording", "state": "on"}]
+  ],
+  "requirements": [
+    [{"feature": "ai", "state": "on"}, {"feature": "camera", "state": "on"}],
+    [{"feature": "recording", "state": "on"}, {"feature": "camera", "state": "on"}]
+  ]
+}

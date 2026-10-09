@@ -100,7 +100,7 @@ async function validate() {
   status("Validating...", "pending");
   try {
     checkDrafts();
-    const response = await request("/api/resolve", inputs);
+    const response = await request("api/resolve", inputs);
     const resolved = await response.json();
     if (current !== version) return;
     result = resolved;
@@ -200,7 +200,7 @@ function renderJson(container) {
   });
   const exportButton = element("button", "", "Export JSON");
   const icon = element("img");
-  icon.src = "/icons/download.svg";
+  icon.src = "icons/download.svg";
   icon.alt = "";
   exportButton.prepend(icon);
   exportButton.addEventListener("click", () => {
@@ -307,7 +307,7 @@ async function load(reset = false) {
   byId("export").disabled = true;
   status("Loading inputs...", "pending");
   try {
-    const response = await fetch("/api/inputs");
+    const response = await fetch("api/inputs");
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
     inputs = data.inputs;
@@ -350,7 +350,7 @@ byId("export").addEventListener("click", async () => {
   byId("export").disabled = true;
   try {
     checkDrafts();
-    const response = await request("/api/export", inputs);
+    const response = await request("api/export", inputs);
     const blob = await response.blob();
     if (version !== current) return;
     download(blob, "memory-layout.zip");

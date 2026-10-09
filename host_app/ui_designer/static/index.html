@@ -51,7 +51,7 @@
   <label style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="checked"> checked</label>
   <button id="save">Save</button>
   <button id="reload">Reload</button>
-  <a id="png" href="/api/preview.png" target="_blank">preview.png</a>
+  <a id="png" href="api/preview.png" target="_blank">preview.png</a>
   <span class="path" id="path"></span>
 </header>
 <nav id="tabs"></nav>
@@ -347,7 +347,7 @@
       const img = new Image(), entry = { img, ok: false, source: w.source };
       imageCache.set(w.id, entry);
       img.onload = () => { entry.ok = true; render(); };
-      img.src = '/api/image.png?id=' + encodeURIComponent(w.id) + '&t=' + Date.now();
+      img.src = 'api/image.png?id=' + encodeURIComponent(w.id) + '&t=' + Date.now();
     }
     drawFrame(w.x, w.y, w.width, w.height, 2, '#FF00FF');
     drawText(w.x + 4, w.y + 4, 'IMG', 1, '#FF00FF');
@@ -402,7 +402,7 @@
       fillRect(b.x + b.width - 6, b.y + b.height - 6, 6, 6, '#ffeb3b');
     }
     renderTabs(); renderList(); renderProps();
-    $('png').href = '/api/preview.png?screen=' + encodeURIComponent(sc.id);
+    $('png').href = 'api/preview.png?screen=' + encodeURIComponent(sc.id);
   }
 
   function renderTabs() {
@@ -611,12 +611,12 @@
     return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Editor-Token': token }, body: JSON.stringify(layout) });
   }
   async function refreshCpp() {
-    const r = await post('/api/cpp');
+    const r = await post('api/cpp');
     if (r.ok) { $('cpp').textContent = await r.text(); setStatus('ok', true); }
     else { const j = await r.json(); $('cpp').textContent = ''; setStatus('invalid: ' + j.error, false); }
   }
   $('save').onclick = async () => {
-    const r = await post('/api/layout');
+    const r = await post('api/layout');
     const j = await r.json();
     setStatus(r.ok ? 'saved' : 'save failed: ' + j.error, r.ok);
     if (r.ok) { imageCache.clear(); render(); }
@@ -624,7 +624,7 @@
   $('reload').onclick = load;
 
   async function load() {
-    const [f, l] = await Promise.all([fetch('/api/font').then((r) => r.json()), fetch('/api/layout').then((r) => r.json())]);
+    const [f, l] = await Promise.all([fetch('api/font').then((r) => r.json()), fetch('api/layout').then((r) => r.json())]);
     font = f;
     if (l.error) { setStatus('layout invalid: ' + l.error, false); return; }
     layout = l.layout; token = l.token; $('path').textContent = l.path; screenIndex = 0; selected = -1;

@@ -6,6 +6,6 @@ set(_uai_camera_board_apps
 
 if(APP_TARGET IN_LIST _uai_camera_board_apps)
     set(UAI_CAMERA_BOARD_APP "${APP_TARGET}")
-elseif(APP_TARGET STREQUAL "experiment-camera-control")
+elseif(APP_TARGET STREQUAL "experiment-camera-control" OR APP_TARGET STREQUAL "experiment-gpu")
     set(UAI_CAMERA_BOARD_APP "experiment-camera-pipe2")
 endif()

@@ -1,5 +1,5 @@
 set(_experiment_pre_kernel_default OFF)
-if(APP_TARGET STREQUAL "experiment-camera-control" AND
+if((APP_TARGET STREQUAL "experiment-camera-control" OR APP_TARGET STREQUAL "experiment-gpu") AND
    UAI_CAMERA_BOARD_APP STREQUAL "experiment-camera-pipe2")
     set(_experiment_pre_kernel_default ON)
 endif()

@@ -12,6 +12,58 @@ UV_CACHE_DIR=/tmp/uai-uv-cache uv sync --project host_app --locked
 | [cpu_task_monitor/](cpu_task_monitor/README.md) | タスク別CPU使用率とループ時間の集計、図 |
 | `auto_static_memory_layout/` | ai-appのメモリ配置を解決し、リンカスクリプトとC++ヘッダを生成 |
 | [ui_designer/](ui_designer/README.md) | 画面のボタン配置をブラウザで編集し、プレビューPNGと実機用C++ヘッダを生成。追加パッケージ不要 |
+| [feature_constraints](../userspace/experiment-ui-control/tool/README.md) | UI実験の機能制約、遷移検証、シミュレーション、C++生成（統合GUIからも呼び出せます） |
+
+## 統合GUI
+
+リポジトリルートから一つのアプリを起動します。引数なしではGUIが開きます。
+
+```sh
+uv run --project host_app python -m host_app
+# 自動ブラウザ起動を止める場合
+uv run --project host_app python -m host_app gui --no-browser
+```
+
+既定URLは `http://127.0.0.1:8768/` です。使用中の場合は`gui --port 8769`、空きポートを選ぶ場合は`gui --port 0`を指定します。VS Codeのリモート環境では表示されたポートを転送します。標準ライブラリのみの`python3 -m host_app`でもエディタとCLIは起動できますが、モニタの図生成には上記の依存が必要です。
+
+- UI Designer / Memory Layout / Constraints: 既存の編集画面を同じアプリ内で操作できます。タブを切り替えても編集中の状態を保持します。
+- AI Monitor: raw dump / JSONからdecode、analyze、visualize、allを実行し、タイムラインと出力を表示します。
+- CPU Monitor: raw dump / UARTログからPNG/SVG、JSON、CSVを生成します。
+- モニタの入力はサーバー上のパスまたはブラウザからのファイル選択（10 MiB以下）。サンプル入力も利用できます。
+- 全タブのCLI欄から個別ツールの任意の非対話コマンドを実行できます。実行コマンド、標準出力、標準エラー、終了コードを表示します。引数はシェルを介さず渡します。
+
+GUIの`--layout`、`--features`、`--board`、`--application`、`--models-dir`、`--model-config`、`--linker-base`で編集対象を指定できます。Constraintsの既定入力は`userspace/experiment-ui-control/config/features.json`です。UIのSaveは指定したレイアウトへ書き戻します。メモリ配置と制約エディタはブラウザから成果物をダウンロードし、入力ファイルを上書きしません。
+
+モニタフォームの成果物はセッション専用の一時領域へ生成し、ダウンロードできます。GUI終了時に削除されるため、必要な成果物は終了前にダウンロードします。CLI欄から明示的な出力先を指定した場合は、そのパスへ書き込みます。CLI欄の`{output}`はセッションの出力領域、`{input}`は選択済み入力ファイルに置換されます。CLI実行は最大120秒、同時に2件までです。常駐サーバーの起動は個別CLIで行います。
+
+### CLIを必須とする構造
+
+各ホストツールは必ずGUIから独立したCLIを提供します。GUIは編集・実行・結果表示のラッパーであり、ドメイン処理を別実装しません。既存エディタはCLIと同じ解析・生成APIを利用し、モニタとCLI欄は`sys.executable -m host_app <ツール名> ...`を独立プロセスで呼び出します。GUIの起動や追加依存なしで各CLIのヘルプを利用できることを回帰テストで確認します。
+
+サーバーはlocalhostにのみ公開し、Hostを検証します。API操作にはセッショントークンが必要で、エディタの埋め込みは同一オリジンに限ります。ネットワークへ公開しないでください。
+
+```sh
+python3 -m unittest host_app.test_gui -v
+```
+
+## 個別CLI
+
+ツール固有の引数はそのまま渡せます。従来の個別起動方法も残しています。
+
+```sh
+uv run --project host_app python -m host_app --help
+uv run --project host_app python -m host_app ui-designer serve \
+  --layout userspace/ai-app/config/ui_layout.json
+uv run --project host_app python -m host_app memory-layout gui
+uv run --project host_app python -m host_app ai-model-monitor all \
+  host_app/ai_model_monitor/sample/ai_model_monitor.bin
+uv run --project host_app python -m host_app cpu-task-monitor \
+  host_app/cpu_task_monitor/sample/uart.log -o /tmp/cpu-task-monitor.png
+python3 -m host_app feature-constraints check \
+  userspace/experiment-ui-control/tool/feature_constraints/example.json
+```
+
+利用できるツールは`ui-designer`、`memory-layout`、`ai-model-monitor`、`cpu-task-monitor`、`feature-constraints`です。詳細なオプションは`python3 -m host_app <ツール名> --help`で確認できます。
 
 実機から取得して図を作るまでは、Makeターゲットでまとめて実行できます。
 

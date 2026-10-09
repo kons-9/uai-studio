@@ -1,0 +1,14 @@
+{
+  "features": [
+    {"id": "display", "states": ["camera", "pipe2"], "initial": "camera"},
+    {"id": "boxes", "states": ["off", "on"], "initial": "on"}
+  ],
+  "actions": [
+    {"id": "ToggleBoxes", "when": {"display": "camera", "boxes": "on"}, "set": {"boxes": "off"}},
+    {"id": "ToggleBoxes", "when": {"display": "camera", "boxes": "off"}, "set": {"boxes": "on"}},
+    {"id": "ShowPipe2", "when": {"boxes": "off"}, "set": {"display": "pipe2"}},
+    {"id": "ShowCamera", "set": {"display": "camera"}}
+  ],
+  "invariants": [{"forbid": {"display": "pipe2", "boxes": "on"}}],
+  "liveness": [{"reachable": {"display": "pipe2"}}]
+}

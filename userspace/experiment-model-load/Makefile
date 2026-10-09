@@ -1,0 +1,1 @@
+include ../experiment-camera-control/experiment.mk

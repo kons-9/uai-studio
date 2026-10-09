@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UAI Studio | Host</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="lucide.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="studio-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">U</span><div><h1>UAI Studio</h1><span class="edition">HOST WORKSPACE</span></div></div>
+    <div class="session"><span class="session-dot"></span><span>Local</span><span id="session-status" role="status">Connecting...</span></div>
+  </header>
+  <nav class="tool-tabs" aria-label="Host tools" role="tablist">
+    <button id="tab-ui-designer" role="tab" aria-controls="ui-designer" aria-selected="true" data-tool="ui-designer"><i data-lucide="panels-top-left"></i><span>UI Designer</span></button>
+    <button id="tab-memory-layout" role="tab" aria-controls="memory-layout" aria-selected="false" tabindex="-1" data-tool="memory-layout"><i data-lucide="memory-stick"></i><span>Memory Layout</span></button>
+    <button id="tab-feature-constraints" role="tab" aria-controls="feature-constraints" aria-selected="false" tabindex="-1" data-tool="feature-constraints"><i data-lucide="workflow"></i><span>Constraints</span></button>
+    <button id="tab-ai-model-monitor" role="tab" aria-controls="ai-model-monitor" aria-selected="false" tabindex="-1" data-tool="ai-model-monitor"><i data-lucide="activity"></i><span>AI Monitor</span></button>
+    <button id="tab-cpu-task-monitor" role="tab" aria-controls="cpu-task-monitor" aria-selected="false" tabindex="-1" data-tool="cpu-task-monitor"><i data-lucide="cpu"></i><span>CPU Monitor</span></button>
+  </nav>
+  <main>
+    <section id="ui-designer" class="editor-view" role="tabpanel" aria-labelledby="tab-ui-designer"><iframe data-src="ui/" title="UI Designer"></iframe></section>
+    <section id="memory-layout" class="editor-view" role="tabpanel" aria-labelledby="tab-memory-layout" hidden><iframe data-src="memory/" title="Memory Layout"></iframe></section>
+    <section id="feature-constraints" class="editor-view" role="tabpanel" aria-labelledby="tab-feature-constraints" hidden><iframe data-src="constraints/" title="Feature Constraints"></iframe></section>
+    <section id="ai-model-monitor" class="monitor-view" role="tabpanel" aria-labelledby="tab-ai-model-monitor" hidden></section>
+    <section id="cpu-task-monitor" class="monitor-view" role="tabpanel" aria-labelledby="tab-cpu-task-monitor" hidden></section>
+  </main>
+  <details class="cli-panel" id="cli-panel">
+    <summary><i data-lucide="terminal"></i><span>CLI</span><span id="cli-tool-name">UI Designer</span><span id="exit-status">Ready</span></summary>
+    <div class="cli-content">
+      <form id="cli-form">
+        <label for="cli-arguments">Arguments</label>
+        <textarea id="cli-arguments" rows="2" spellcheck="false">--help</textarea>
+        <button class="primary" id="cli-run" type="submit" disabled><i data-lucide="play"></i>Run</button>
+      </form>
+      <div class="command-line"><code id="command">python3 -m host_app ui-designer --help</code><button type="button" id="copy-command" class="icon-button" title="Copy command" aria-label="Copy command"><i data-lucide="copy"></i></button></div>
+      <pre id="cli-output" aria-live="polite"></pre>
+    </div>
+  </details>
+  <footer><span id="root-path"></span><span>UAI / HOST</span></footer>
+</body>
+</html>
