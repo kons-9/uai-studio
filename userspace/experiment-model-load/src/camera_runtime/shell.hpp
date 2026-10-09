@@ -61,7 +61,7 @@ inline const char *StatusName(Status status)
 
 class Shell {
 public:
-    static constexpr std::size_t kLineCapacity = 128;
+    static constexpr std::size_t kLineCapacity = 1200;
     static constexpr std::size_t kMaxArguments = 8;
 
     Shell(
@@ -87,6 +87,7 @@ public:
                 length_ = 0;
                 pending_ = Status::kOk;
                 discard_line_ = false;
+                suppress_echo_ = false;
                 after_cr_ = character == '\r';
                 writer_.Write("\nERR uart-receive; line discarded\n> ");
             }
@@ -103,6 +104,7 @@ public:
             const Status result = pending_ == Status::kOk ? Execute() : pending_;
             length_ = 0;
             pending_ = Status::kOk;
+            suppress_echo_ = false;
             if (result != Status::kOk) {
                 writer_.Write("ERR ");
                 writer_.Write(StatusName(result));
@@ -114,6 +116,7 @@ public:
         if (character == '\x03') {
             length_ = 0;
             pending_ = Status::kOk;
+            suppress_echo_ = false;
             writer_.Write("^C\n> ");
             return Status::kOk;
         }
@@ -136,7 +139,14 @@ public:
             return pending_;
         }
         line_[length_++] = character;
-        writer_.write(writer_.context, &character, 1);
+        if (!suppress_echo_) {
+            writer_.write(writer_.context, &character, 1);
+            static constexpr char kBulkCommand[] = "model chunk ";
+            if (length_ == sizeof(kBulkCommand) - 1
+                && std::memcmp(line_, kBulkCommand, sizeof(kBulkCommand) - 1) == 0) {
+                suppress_echo_ = true;
+            }
+        }
         return Status::kOk;
     }
 
@@ -193,6 +203,7 @@ private:
     std::size_t length_ = 0;
     Status pending_ = Status::kOk;
     bool after_cr_ = false, discard_line_ = false;
+    bool suppress_echo_ = false;
 };
 
 }

@@ -3,6 +3,8 @@ import pathlib
 import re
 import subprocess
 
+from layout import BLOB_ADDRESS, BLOB_CAPACITY, WEIGHTS_ADDRESS, WEIGHTS_CAPACITY
+
 EXPECTED = {
     "HAL_GetTick": "hal_time.c",
     "HAL_Delay": "hal_time.c",
@@ -19,7 +21,7 @@ EXPECTED = {
 def audit(symbols, map_text, npu=False):
     expected = dict(EXPECTED)
     if npu:
-        expected.update(NPU0_IRQHandler="npu_model.c", experiment_npu_start="npu_model.c")
+        expected.update(NPU0_IRQHandler="ll_aton_runtime.c", experiment_npu_start="npu_model.c")
     definitions = {}
     for line in symbols.splitlines():
         fields = line.split()
@@ -42,7 +44,9 @@ def audit_slots(symbols):
         fields = line.split()
         if len(fields) == 3:
             addresses[fields[2]] = int(fields[0], 16)
-    for name, base, capacity in (("weights", 0x91010000, 0x10000), ("blob", 0x91020000, 0x10000),
+    for name, base, capacity in (("activations", 0x90400000, 0x800000),
+                                 ("weights", WEIGHTS_ADDRESS, WEIGHTS_CAPACITY),
+                                 ("blob", BLOB_ADDRESS, BLOB_CAPACITY),
                                  ("scratch", 0x342e0000, 0xe0000)):
         start = addresses.get(f"__experiment_{name}_start__")
         end = addresses.get(f"__experiment_{name}_end__")

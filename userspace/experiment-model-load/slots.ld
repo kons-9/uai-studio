@@ -1,11 +1,18 @@
 MEMORY
 {
-  MODEL_WEIGHTS (rw) : ORIGIN = 0x91010000, LENGTH = 0x10000
-  MODEL_BLOB (rw) : ORIGIN = 0x91020000, LENGTH = 0x10000
+  MODEL_ACTIVATIONS (rw) : ORIGIN = 0x90400000, LENGTH = 0x800000
+  MODEL_WEIGHTS (rw) : ORIGIN = 0x91200000, LENGTH = 0x140000
+  MODEL_BLOB (rw) : ORIGIN = 0x91340000, LENGTH = 0x40000
   MODEL_SCRATCH (rw) : ORIGIN = 0x342e0000, LENGTH = 0xe0000
 }
 SECTIONS
 {
+  .experiment_activations 0x90400000 (NOLOAD) : ALIGN(64)
+  {
+    __experiment_activations_start__ = .;
+    . += 0x800000;
+    __experiment_activations_end__ = .;
+  } > MODEL_ACTIVATIONS
   .experiment_weights (NOLOAD) : ALIGN(32)
   {
     __experiment_weights_start__ = .;
@@ -27,5 +34,5 @@ SECTIONS
   } > MODEL_SCRATCH
 }
 INSERT AFTER .bss;
-ASSERT(SIZEOF(.experiment_weights) <= 0x10000, "experiment weights overflow")
-ASSERT(SIZEOF(.experiment_blob) <= 0x10000, "experiment blob overflow")
+ASSERT(SIZEOF(.experiment_weights) <= 0x140000, "experiment weights overflow")
+ASSERT(SIZEOF(.experiment_blob) <= 0x40000, "experiment blob overflow")

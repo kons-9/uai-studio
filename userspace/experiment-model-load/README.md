@@ -4,7 +4,7 @@
 
 マニフェスト生成/C++読取り、期待値/CRC検証、隔離PSRAMスロットへの順序付き転送、非同期NPU実行、UARTアップローダを実装している。既定は従来の転送fixtureで、NPUは無効。`EXPERIMENT_MODEL_NPU=ON`では、このexperiment内で生成した単一入力・単一出力の固定モデルをロード後に実行できる。kernel/driver・middlewareや別userspaceの実装には依存しない。
 
-ホストテストは確認済み。STEdgeAI、ARMツールチェーン、実機がない環境での実装のため、NPU有効ビルド、STランタイムの停止処理、実機推論、NORとの結果一致、Pipe1/2継続は未検証。relocatableモデルはAPI対応を確認できていないため未実装。任意モデルを再ビルドなしで交換できる段階ではない。
+STM32N6570-DKでRAM起動、Pipe1/2開始、PSRAMへの直接書き込み、manifest/CRC検証を確認済み。実AIモデル向けにPSRAMをweights 1.25 MiB / command blob 256 KiB / activation scratch 8 MiBへ拡張した。NPU有効時の`model-upload`は起動後にST-Link HOTPLUG接続でweights/blobのバイナリをPSRAMへ直接書く。既定ではその後に推論し、ゼロ入力の実機出力CRC `956690df`を確認した。`MODEL_RUN=OFF`ならロードとCRC確認だけで終わる。UART hex転送はfixtureや診断用に残している。relocatableモデルはAPI対応を確認できていないため未実装。
 
 ## 実装済みと実行方法
 
@@ -17,7 +17,7 @@ python3 userspace/experiment-model-load/tool/manifest.py pack --help
 python3 userspace/experiment-model-load/tool/manifest.py verify --help
 ```
 
-モデルマニフェストを指定しない実機ビルドでは、[tool/fixture.py](tool/fixture.py)が小さなweightsとblobをbuildディレクトリへ作り、そこから期待マニフェストを生成する。実際の生成モデルを使う場合は`EXPERIMENT_MODEL_MANIFEST`を指定し、weights/blobとも各64KiB以内であること。
+モデルマニフェストを指定しない実機ビルドでは、[tool/fixture.py](tool/fixture.py)が小さなweightsとblobをbuildディレクトリへ作り、そこから期待マニフェストを生成する。生成モデルはweights 1.25 MiB、blob 256 KiB以内であること。NPU入力と出力はそれぞれ512 KiB以内。
 
 [tool/manifest.py](tool/manifest.py)のpackには重み/blobのファイル、配置アドレス、予約領域、ランタイム版、モデル種別、入出力バイト数を明示する。予約領域外・セグメント重複・アドレスオーバーフロー・入力ファイルへの上書きを拒否する。packはローカルファイル生成だけで、デバイスへ書き込まない。verifyもローカルファイルとのサイズ/CRC照合のみ。
 
@@ -37,7 +37,7 @@ python3 userspace/experiment-model-load/tool/manifest.py verify --help
 | tests/ | 形式のencode/decode、境界・オーバーフロー、サイズ・バージョン・CRC・テンソル整合 |
 | 実験記録 | 書き込み計画、モデル識別子、ELF/map、UART、入力/出力CRC、所要時間 |
 
-pack / verifyと[tool/upload.py](tool/upload.py)は実験内の`tool/`に置き、host_app統一入口へは接続しない。weightsは0x91010000、blobは0x91020000の別々の64KiB専用スロットへ転送する。`model stat`の`verified`はCRC検証済みを意味し、推論成功を意味しない。fixtureでは`npu=unavailable`、NPU有効ビルドでは`npu=ready`となり、実際の初期化・登録は`model run`時に行う。
+pack / verifyと[tool/upload.py](tool/upload.py)は実験内の`tool/`に置き、host_app統一入口へは接続しない。weightsはPSRAM `0x91200000`から1.25 MiB、command blobは`0x91340000`から256 KiBの専用スロットへ配置する。NPU有効時はfirmwareがPSRAM初期化とPipe開始を終えたあと、ST-Link HOTPLUG経由でraw binaryを直接書く。`model adopt <manifest-hex>`はD-cacheをinvalidateしてから両スロットをCRC検証し、モデルを公開する。UART hex転送はfixtureや診断用に残す。`model stat`の`verified`はCRC検証済みを意味し、推論成功を意味しない。fixtureでは`npu=unavailable`、NPU有効ビルドでは`npu=ready`となり、実際の初期化・登録は`model run`時に行う。
 
 既定のfixtureを実機で確認するには、UARTを先に開く端末Aで次を起動する。アップローダがUARTを排他的に保持し、起動ログ、Pipe1/2開始行、アップロード後の`model stat`を表示する:
 
@@ -55,7 +55,7 @@ make -C userspace/experiment-model-load ram-run
 
 ## 固定モデルのPSRAM実行
 
-STEdgeAIのST AI C APIで生成できる、小さな単一入力・単一出力モデルを用意する。weights、blob、入力、出力はそれぞれ64KiB以内。[tool/model.py](tool/model.py)はローカルの[model.mpool](config/model.mpool)を使用し、重みをPSRAMの0x91010000、作業領域をSRAM5/6の0x342e0000–0x343bffffへ固定する。カメラのSRAM3/4やアプリのSRAM1/2を生成ツールに割り当てない。
+STEdgeAIのST AI C APIで生成できる単一入力・単一出力モデルを用意する。weightsは1.25 MiB、command blobは256 KiB、入力と出力は各512 KiB以内。[tool/model.py](tool/model.py)はローカルの[model.mpool](config/model.mpool)を使用し、重みをPSRAM `0x91200000`、activation領域をPSRAM `0x90400000`へ配置する。SRAM5/6の各448 KiBも小さなNPU作業領域に使う。カメラのSRAM3/4やアプリのSRAM1/2を生成ツールに割り当てない。
 
 以下のモデルパスと入出力バイト数は例で、使用するモデルに合わせる。入力・出力の個数とバイト数は生成ヘッダーに対するコンパイル時検査でも照合する。runtime-versionは使用する`NetworkRuntime<version>_CM55_GCC.a`の版と合わせる。
 
@@ -70,22 +70,24 @@ make -C userspace/experiment-model-load model-package \
 	STEDGEAI_LIB_DIR=/opt/ST/STEdgeAI/4.0/Middlewares/ST/AI
 ```
 
-生成コード・重み・契約は`models/generated/`へ置く。NPUビルドはコマンドblobを生成モデルのOBJECTから抽出し、そのblobと重みから期待マニフェストを生成する。blobにリンク時再配置が残る場合は拒否する。最終ELFでblobのアドレスを0x91020000に固定し、両PSRAMスロットをNOLOADにするため、ram-runによる転送やBSS初期化にモデルデータを混ぜない。[tool/check_link.py](tool/check_link.py)が最終ELF/mapのIRQのstrong定義・配置元と予約領域を監査する。
+生成コード・重み・契約は`models/generated/`へ置く。NPUビルドはコマンドblobを生成モデルのOBJECTから抽出し、そのblobと重みから期待マニフェストを生成する。blobにリンク時再配置が残る場合は拒否する。最終ELFでblobのアドレスを`0x91340000`に固定し、モデルデータとactivation領域をNOLOADにするため、ram-runによる転送やBSS初期化にモデルデータを混ぜない。[tool/check_link.py](tool/check_link.py)が最終ELF/mapのIRQのstrong定義・配置元と予約領域を監査する。
 
-UARTを開く端末A:
+UARTを開く端末A。NPU有効時は起動を確認後、同じプロセスがST-Link HOTPLUGでバイナリをPSRAMへ直接書いてCRC検証と推論を行う:
 
 ```sh
 UART_DEVICE=/dev/ttyACM0 make -C userspace/experiment-model-load model-upload \
-	EXPERIMENT_MODEL_NPU=ON
+	EXPERIMENT_MODEL_NPU=ON \
+	STM32_PROGRAMMER_CLI=/opt/st/stm32cubeide_2.2.0/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.linux64_2.2.500.202603051304/tools/bin/STM32_Programmer_CLI \
+	STM32_PROGRAM_SERIAL=004300223234511233353533
 ```
 
-UART待機後に端末B:
+`MODEL_RUN=OFF`を指定するとPSRAMへのロードとmanifest/CRC検証までで終了し、`model stat`を表示する。推論まで行う場合は既定の`MODEL_RUN=ON`を使う。UART待機後に端末B:
 
 ```sh
 make -C userspace/experiment-model-load ram-run EXPERIMENT_MODEL_NPU=ON
 ```
 
-STランタイムのパスは両端末で同じ設定を使う。NPU有効時の`model-upload`はパッケージ生成、転送、CRC確認、ゼロ埋め固定入力での推論を順に行い、`MODEL RESULT npu=done output_crc=xxxxxxxx elapsed_ms=... input=zeros`を待つ。既知の同条件の出力CRCがある場合は`MODEL_EXPECTED_OUTPUT_CRC=0x12345678`を指定して照合できる。実際のNOR版との比較結果は未取得。
+STランタイムのパスは両端末で同じ設定を使う。NPU有効時の`model-upload`はパッケージ生成後、UARTで起動確認と実行停止を行い、ST-LinkのSWD HOTPLUGでweights/blobをマップ済みPSRAMへ直接書き込み、manifest/CRCを確認してからゼロ埋め入力で推論する。UART経由でモデル本体をhex転送しない。`MODEL RESULT npu=done output_crc=xxxxxxxx elapsed_ms=... input=zeros`を待つ。既知の同条件の出力CRCがある場合は`MODEL_EXPECTED_OUTPUT_CRC=0x12345678`を指定して照合できる。実際のNOR版との比較結果は未取得。
 
 モデルを変えたら`model-generate`とアプリ再ビルドが必要。既存モデルのNOR領域には書き込まない。NPUビルドのマニフェストはビルドから自動生成するため、`EXPERIMENT_MODEL_MANIFEST`との併用は拒否する。
 
@@ -96,8 +98,9 @@ NPU無効ビルドで任意の転送データを試す場合は、`EXPERIMENT_MO
 | コマンド | 動作 |
 | --- | --- |
 | `model stat` | 転送状態、受信バイト数、NPU状態、最後の出力CRCと所要時間 |
+| `model adopt <manifest-hex>` | 直接配置されたPSRAMスロットをmanifestとCRCで検証して公開 |
 | `model begin <manifest-hex>` | リンク済みモデルの期待値と照合し、転送開始。NPU使用中は拒否 |
-| `model chunk weights\|blob <offset> <hex>` | 各セグメントを順序付きで受信。UARTでは最大32バイト/要求 |
+| `model chunk weights\|blob <offset> <hex>` | 各セグメントを順序付きで受信。UARTでは最大512バイト/要求 |
 | `model commit` | サイズ・全CRC・キャッシュcleanを確認して公開 |
 | `model verify` | 公開済みモデルの全CRCを再検証。不一致なら無効化 |
 | `model run` | 再CRC検証後、ゼロ埋め入力による非同期推論を開始 |

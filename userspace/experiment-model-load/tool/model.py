@@ -8,6 +8,7 @@ import tempfile
 import zlib
 
 from expected import generate as expected_header
+from layout import BLOB_ADDRESS, BLOB_CAPACITY, IO_CAPACITY, WEIGHTS_ADDRESS, WEIGHTS_CAPACITY
 from manifest import Manifest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -20,21 +21,23 @@ def read_contract(path):
         raise ValueError("contract requires runtime_version, kind, input_bytes and output_bytes")
     if any(type(value[field]) is not int or not 0 < value[field] <= 0xffffffff for field in FIELDS):
         raise ValueError("contract fields must be positive uint32 values")
-    if value["input_bytes"] > 0x10000 or value["output_bytes"] > 0x10000:
-        raise ValueError("experiment input/output buffers are limited to 64 KiB")
+    if value["input_bytes"] > IO_CAPACITY or value["output_bytes"] > IO_CAPACITY:
+        raise ValueError("experiment input/output buffers exceed the reserved SRAM capacity")
     return value
 
 
 def package(model_dir, blob, output_dir):
     contract = read_contract(model_dir / "contract.json")
     weights = (model_dir / "weights.bin").read_bytes()
-    value = Manifest(**contract, weights_address=0x91010000, weights_bytes=len(weights),
-                     weights_crc=zlib.crc32(weights), blob_address=0x91020000,
+    value = Manifest(**contract, weights_address=WEIGHTS_ADDRESS, weights_bytes=len(weights),
+                     weights_crc=zlib.crc32(weights), blob_address=BLOB_ADDRESS,
                      blob_bytes=len(blob), blob_crc=zlib.crc32(blob))
     header = value.encode()
     source = expected_header(header)
     if output_dir.resolve() == model_dir.resolve():
         raise ValueError("package output must not overwrite generated model sources")
+    if len(weights) > WEIGHTS_CAPACITY or len(blob) > BLOB_CAPACITY:
+        raise ValueError("model weights/blob exceed the reserved PSRAM slots")
     output_dir.mkdir(parents=True, exist_ok=True)
     for name, data in (("weights.bin", weights), ("blob.bin", blob), ("manifest.bin", header)):
         (output_dir / name).write_bytes(data)
@@ -69,8 +72,8 @@ def generate(arguments):
         for name in names + ("network_atonbuf.weights.raw",):
             if not (generated / name).is_file():
                 raise ValueError("STEdgeAI did not generate " + name)
-        if not 0 < (generated / "network_atonbuf.weights.raw").stat().st_size <= 0x10000:
-            raise ValueError("generated weights must fit the 64 KiB PSRAM slot")
+        if not 0 < (generated / "network_atonbuf.weights.raw").stat().st_size <= WEIGHTS_CAPACITY:
+            raise ValueError("generated weights exceed the reserved PSRAM slot")
         output.mkdir(parents=True, exist_ok=True)
         for name in names:
             shutil.copyfile(generated / name, output / name)

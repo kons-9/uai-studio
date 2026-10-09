@@ -113,9 +113,15 @@ inline console::Status Command(
         writer.Write("MODEL OK running\n");
         return console::Status::kOk;
     }
-    std::uint8_t bytes[52]{};
+    std::uint8_t bytes[512]{};
     std::size_t length = 0;
-    if (count == 3 && std::strcmp(arguments[1], "begin") == 0) {
+    if (count == 3 && std::strcmp(arguments[1], "adopt") == 0) {
+        if ((session.execution && !session.execution->Reset())
+            || !Hex(arguments[2], bytes, sizeof(bytes), length) || length != kManifestBytes
+            || !stage.Adopt(bytes, length)) {
+            return console::Status::kHardware;
+        }
+    } else if (count == 3 && std::strcmp(arguments[1], "begin") == 0) {
         if (stage.InUse()) {
             return console::Status::kInvalidState;
         }
@@ -132,7 +138,8 @@ inline console::Status Command(
             return console::Status::kInvalidArgument;
         }
         std::int32_t offset = 0;
-        if (!camera::ParseInteger(arguments[3], offset) || offset < 0 || !Hex(arguments[4], bytes, 32, length)
+        if (!camera::ParseInteger(arguments[3], offset) || offset < 0
+            || !Hex(arguments[4], bytes, sizeof(bytes), length)
             || !stage.Chunk(blob, static_cast<std::uint32_t>(offset), bytes, length)) {
             return console::Status::kInvalidArgument;
         }

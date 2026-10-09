@@ -13,6 +13,7 @@
 #define HAL_PWR_MODULE_ENABLED
 #define HAL_CORTEX_MODULE_ENABLED
 #define HAL_RAMCFG_MODULE_ENABLED
+#define HAL_CACHEAXI_MODULE_ENABLED
 #define HAL_RIF_MODULE_ENABLED
 #define HAL_XSPI_MODULE_ENABLED
 
@@ -42,6 +43,7 @@
 #include "stm32n6xx_hal_xspi.h"
 #include "stm32n6xx_hal_pwr.h"
 #include "stm32n6xx_hal_ramcfg.h"
+#include "stm32n6xx_hal_cacheaxi.h"
 #include "stm32n6xx_hal_rcc.h"
 #include "stm32n6xx_hal_rcc_ex.h"
 #include "stm32n6xx_hal_rif.h"

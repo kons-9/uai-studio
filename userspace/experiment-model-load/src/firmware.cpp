@@ -11,19 +11,19 @@ extern "C" {
 
 namespace experiment {
 namespace {
-alignas(32) __attribute__((section(".experiment_weights"))) std::uint8_t weights[0x10000];
+alignas(32) __attribute__((section(".experiment_weights"))) std::uint8_t weights[0x140000];
 #ifdef EXPERIMENT_MODEL_NPU
-auto *const blob = reinterpret_cast<std::uint8_t *>(0x91020000);
+auto *const blob = reinterpret_cast<std::uint8_t *>(0x91340000);
 #else
-alignas(32) __attribute__((section(".experiment_blob"))) std::uint8_t blob[0x10000];
+alignas(32) __attribute__((section(".experiment_blob"))) std::uint8_t blob[0x40000];
 #endif
-constexpr std::size_t blob_capacity = 0x10000;
+constexpr std::size_t blob_capacity = 0x40000;
 model::Manifest expected{};
 model::Staging stage(
-    {0x91010000,
+    {0x91200000,
      sizeof(weights),
      weights},
-    {0x91020000,
+    {0x91340000,
         blob_capacity,
      blob},
     expected
@@ -59,7 +59,7 @@ std::size_t Register(
     if (!model::Decode(expected_header, sizeof(expected_header), expected)) {
         return 0;
     }
-    stage = model::Staging({0x91010000, sizeof(weights), weights}, {0x91020000, blob_capacity, blob}, expected);
+    stage = model::Staging({0x91200000, sizeof(weights), weights}, {0x91340000, blob_capacity, blob}, expected);
 #ifdef EXPERIMENT_MODEL_NPU
     session.execution = &execution;
 #endif
@@ -79,12 +79,24 @@ std::size_t Register(
             return true;
         }
     );
+    stage.BeforeAdopt(
+        nullptr,
+        [](void *, const std::uint8_t *weight_data, std::size_t weight_bytes,
+           const std::uint8_t *blob_data, std::size_t blob_bytes) {
+            const auto aligned_weights = (weight_bytes + 31U) & ~std::size_t(31U);
+            const auto aligned_blob = (blob_bytes + 31U) & ~std::size_t(31U);
+            SCB_InvalidateDCache_by_Addr(const_cast<std::uint8_t *>(weight_data), aligned_weights);
+            SCB_InvalidateDCache_by_Addr(const_cast<std::uint8_t *>(blob_data), aligned_blob);
+            __DSB();
+            return true;
+        }
+    );
     ready = BSP_XSPI_RAM_Init(0) == BSP_ERROR_NONE && BSP_XSPI_RAM_EnableMemoryMappedMode(0) == BSP_ERROR_NONE;
     if (!capacity) {
         return 0;
     }
     commands[0] = {
-        "model", "model stat|verify|run|begin <manifest-hex>|chunk weights|blob <offset> <hex>|commit|abort", Execute, &session
+        "model", "model stat|verify|run|adopt <manifest-hex>|begin <manifest-hex>|chunk weights|blob <offset> <hex>|commit|abort", Execute, &session
     };
     provided.output.Write(ready ? "MODEL READY\n" : "MODEL ERROR psram-initialization\n");
     return 1;

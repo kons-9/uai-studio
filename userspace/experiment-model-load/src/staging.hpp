@@ -78,6 +78,42 @@ public:
         return true;
     }
 
+    bool Adopt(
+        const std::uint8_t *header,
+        std::size_t size
+    )
+    {
+        if (in_use_) {
+            return false;
+        }
+        Cancel();
+        Manifest candidate{};
+        if (!Decode(header, size, candidate) || !Matches(candidate, expected_) || !Accept(weights_, candidate.weights)
+            || !Accept(blob_, candidate.blob) || Overlap(weights_, blob_)) {
+            return false;
+        }
+        pending_ = candidate;
+        if (prepare_adopt_ && !prepare_adopt_(context_, weights_.data, candidate.weights.bytes,
+                                             blob_.data, candidate.blob.bytes)) {
+            Cancel();
+            return false;
+        }
+        if (!Verify(weights_.data, candidate.weights.bytes, candidate.weights)
+            || !Verify(blob_.data, candidate.blob.bytes, candidate.blob)) {
+            Cancel();
+            return false;
+        }
+        if (publish_ && !publish_(context_, weights_.data, candidate.weights.bytes,
+                                 blob_.data, candidate.blob.bytes)) {
+            Cancel();
+            return false;
+        }
+        weights_offset_ = candidate.weights.bytes;
+        blob_offset_ = candidate.blob.bytes;
+        ready_ = true;
+        return true;
+    }
+
     bool Cancel()
     {
         if (in_use_) {
@@ -130,6 +166,20 @@ public:
         context_ = context;
         publish_ = publish;
     }
+    void BeforeAdopt(
+        void *context,
+        bool (*prepare)(
+            void *,
+            const std::uint8_t *,
+            std::size_t,
+            const std::uint8_t *,
+            std::size_t
+        )
+    )
+    {
+        context_ = context;
+        prepare_adopt_ = prepare;
+    }
 
 private:
     static bool Accept(
@@ -155,6 +205,13 @@ private:
     bool receiving_ = false, ready_ = false, in_use_ = false;
     void *context_ = nullptr;
     bool (*publish_)(
+        void *,
+        const std::uint8_t *,
+        std::size_t,
+        const std::uint8_t *,
+        std::size_t
+    ) = nullptr;
+    bool (*prepare_adopt_)(
         void *,
         const std::uint8_t *,
         std::size_t,

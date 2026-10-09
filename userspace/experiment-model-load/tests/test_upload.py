@@ -8,6 +8,7 @@ import zlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tool"))
 import manifest
 import upload
+from layout import BLOB_ADDRESS, WEIGHTS_ADDRESS
 
 
 class FakePort:
@@ -22,19 +23,19 @@ class FakePort:
         if self.reject and self.reject in self.commands[-1]:
             return "> ERR invalid-argument"
         if self.commands[-1] == "model stat":
-            return "MODEL state=verified weights=65 blob=11 npu=unavailable"
+            return "MODEL state=verified weights=1030 blob=11 npu=unavailable"
         return "> MODEL OK abort" if self.commands[-1] == "model abort" else "> MODEL OK"
 
 
 class UploadTests(unittest.TestCase):
     def test_chunks_and_abort(self):
-        weights, blob = bytes(range(65)), bytes(range(11))
-        value = manifest.Manifest(1, 1, 4, 4, 0x91010000, len(weights), zlib.crc32(weights),
-                                  0x91020000, len(blob), zlib.crc32(blob))
+        weights, blob = bytes(index & 0xff for index in range(1030)), bytes(range(11))
+        value = manifest.Manifest(1, 1, 4, 4, WEIGHTS_ADDRESS, len(weights), zlib.crc32(weights),
+                                  BLOB_ADDRESS, len(blob), zlib.crc32(blob))
         port = FakePort()
         upload.upload(port, value.encode(), weights, blob, 1)
         self.assertEqual(port.commands[-2:], ["model commit", "model stat"])
-        self.assertEqual([command.split()[3] for command in port.commands if command.startswith("model chunk weights")], ["0", "32", "64"])
+        self.assertEqual([command.split()[3] for command in port.commands if command.startswith("model chunk weights")], ["0", "512", "1024"])
         failed = FakePort("model chunk blob")
         with self.assertRaises(ValueError):
             upload.upload(failed, value.encode(), weights, blob, 1)
@@ -67,8 +68,8 @@ class UploadTests(unittest.TestCase):
     def test_invalid_payload_does_not_open_uart(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
-            value = manifest.Manifest(1, 1, 4, 4, 0x91010000, 2, zlib.crc32(b"AB"),
-                                      0x91020000, 2, zlib.crc32(b"CD"))
+            value = manifest.Manifest(1, 1, 4, 4, WEIGHTS_ADDRESS, 2, zlib.crc32(b"AB"),
+                                      BLOB_ADDRESS, 2, zlib.crc32(b"CD"))
             (root / "manifest.bin").write_bytes(value.encode())
             (root / "weights.bin").write_bytes(b"XX")
             (root / "blob.bin").write_bytes(b"CD")

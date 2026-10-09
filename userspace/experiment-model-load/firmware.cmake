@@ -85,10 +85,14 @@ set(LINKER_SCRIPT "${EXPERIMENT_RUNTIME}/camera-runtime-ram.ld")
 target_link_options(${TARGET_NAME} PRIVATE "-T${LINKER_SCRIPT}" -Wl,-u,uai_ram_entry
     "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.map" -Wl,--print-memory-usage)
 set_target_properties(${TARGET_NAME} PROPERTIES LINK_DEPENDS "${LINKER_SCRIPT}")
+set(_model_link_args)
+if(EXPERIMENT_MODEL_NPU)
+    list(APPEND _model_link_args --npu)
+endif()
 add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
     COMMAND ${Python3_EXECUTABLE} "${EXPERIMENT_RUNTIME}/tool/check_link.py"
         --elf "$<TARGET_FILE:${TARGET_NAME}>" --map "${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.map" --nm "${CMAKE_NM}"
-        $<$<BOOL:${EXPERIMENT_MODEL_NPU}>:--npu>
+        ${_model_link_args}
     COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:${TARGET_NAME}>" "${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.bin"
     COMMAND ${CMAKE_SIZE} "$<TARGET_FILE:${TARGET_NAME}>" VERBATIM)
 add_custom_target(${APP_TARGET} DEPENDS ${TARGET_NAME})

@@ -6,6 +6,7 @@ import pathlib
 import zlib
 
 from manifest import Manifest
+from layout import BLOB_ADDRESS, WEIGHTS_ADDRESS
 
 
 def write_if_changed(path, data):
@@ -29,10 +30,10 @@ def create(output_dir):
             kind=1,
             input_bytes=1,
             output_bytes=1,
-            weights_address=0x91010000,
+            weights_address=WEIGHTS_ADDRESS,
             weights_bytes=len(weights),
             weights_crc=zlib.crc32(weights),
-            blob_address=0x91020000,
+            blob_address=BLOB_ADDRESS,
             blob_bytes=len(blob),
             blob_crc=zlib.crc32(blob),
         ).encode(),

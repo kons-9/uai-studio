@@ -83,6 +83,10 @@ class Uart:
                 raise ConnectionError("UART disconnected")
             self.buffer.extend(data)
 
+    def flush_input(self):
+        self.buffer.clear()
+        termios.tcflush(self.fd, termios.TCIFLUSH)
+
     def read_until(self, marker, timeout):
         if not marker:
             raise ValueError("empty UART marker")

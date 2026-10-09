@@ -10,6 +10,9 @@ MODEL_LOAD_PAYLOAD_DIR = $(if $(filter ON on 1,$(EXPERIMENT_MODEL_NPU)),$(BUILD_
 MODEL_MANIFEST = $(if $(EXPERIMENT_MODEL_MANIFEST),$(EXPERIMENT_MODEL_MANIFEST),$(MODEL_LOAD_PAYLOAD_DIR)/manifest.bin)
 MODEL_WEIGHTS ?= $(MODEL_LOAD_PAYLOAD_DIR)/weights.bin
 MODEL_BLOB ?= $(MODEL_LOAD_PAYLOAD_DIR)/blob.bin
+MODEL_UPLOAD_TIMEOUT ?= 1200
+MODEL_STARTUP_TIMEOUT ?= 60
+MODEL_RUN ?= ON
 SAMPLE_DEFAULT_IOC := $(SAMPLE_DIR)/config/stm32n6570-dk-fullsecure.ioc
 ENABLE_AI := 0
 ENABLE_THREAD_MONITOR := 0
@@ -43,9 +46,12 @@ model-package:
 model-upload: $(if $(EXPERIMENT_MODEL_MANIFEST),,$(if $(filter ON on 1,$(EXPERIMENT_MODEL_NPU)),model-package,model-fixture))
 	@test -z "$(EXPERIMENT_MODEL_MANIFEST)" || { test "$(origin MODEL_WEIGHTS)" != file && test "$(origin MODEL_BLOB)" != file; } || { echo "Custom manifests require MODEL_WEIGHTS and MODEL_BLOB" >&2; exit 2; }
 	@test "$(UART_DEVICE)" != auto || { echo "Set UART_DEVICE to the board's serial device" >&2; exit 2; }
+	$(if $(filter ON on 1,$(EXPERIMENT_MODEL_NPU)),@test -x "$(STM32_PROGRAMMER_CLI)" || { echo "STM32_PROGRAMMER_CLI must be executable for direct PSRAM loading" >&2; exit 2; })
 	python3 "$(SAMPLE_DIR)/tool/upload.py" --uart "$(UART_DEVICE)" \
 		--manifest "$(MODEL_MANIFEST)" \
 		--weights "$(MODEL_WEIGHTS)" \
-		--blob "$(MODEL_BLOB)" --baud "$(UART_BAUD)" --wait-ready --monitor-after-upload \
-		$(if $(filter ON on 1,$(EXPERIMENT_MODEL_NPU)),--run) \
-		$(if $(MODEL_EXPECTED_OUTPUT_CRC),--expected-output-crc "$(MODEL_EXPECTED_OUTPUT_CRC)")
+		--blob "$(MODEL_BLOB)" --baud "$(UART_BAUD)" --timeout "$(MODEL_UPLOAD_TIMEOUT)" \
+		--startup-timeout "$(MODEL_STARTUP_TIMEOUT)" --wait-ready --monitor-after-upload \
+		$(if $(filter ON on 1,$(EXPERIMENT_MODEL_NPU)),--direct-programmer "$(STM32_PROGRAMMER_CLI)" $(if $(STM32_PROGRAM_SERIAL),--stlink-serial "$(STM32_PROGRAM_SERIAL)")) \
+		$(if $(and $(filter ON on 1,$(EXPERIMENT_MODEL_NPU)),$(filter ON on 1,$(MODEL_RUN))),--run) \
+		$(if $(and $(filter ON on 1,$(EXPERIMENT_MODEL_NPU)),$(filter ON on 1,$(MODEL_RUN)),$(MODEL_EXPECTED_OUTPUT_CRC)),--expected-output-crc "$(MODEL_EXPECTED_OUTPUT_CRC)")

@@ -28,8 +28,14 @@
       {
         "fname": "weights", "name": "psramWeights", "fformat": "FORMAT_RAW",
         "prop": { "rights": "ACC_READ", "throughput": "MID", "latency": "HIGH", "byteWidth": 2, "freqRatio": 5.00, "cacheable": "CACHEABLE_ON", "constants_preferred": "true" },
-        "offset": { "value": "0x91010000", "magnitude": "BYTES" },
-        "size": { "value": "64", "magnitude": "KBYTES" }
+        "offset": { "value": "0x91200000", "magnitude": "BYTES" },
+        "size": { "value": "1280", "magnitude": "KBYTES" }
+      },
+      {
+        "fname": "activations", "name": "psramActivations", "fformat": "FORMAT_RAW",
+        "prop": { "rights": "ACC_WRITE", "throughput": "MID", "latency": "HIGH", "byteWidth": 2, "freqRatio": 5.00, "cacheable": "CACHEABLE_ON" },
+        "offset": { "value": "0x90400000", "magnitude": "BYTES" },
+        "size": { "value": "8", "magnitude": "MBYTES" }
       }
     ]
   }

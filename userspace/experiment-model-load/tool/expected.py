@@ -2,13 +2,14 @@ import pathlib
 import sys
 
 from manifest import decode
+from layout import BLOB_ADDRESS, BLOB_CAPACITY, WEIGHTS_ADDRESS, WEIGHTS_CAPACITY
 
 
 def generate(header):
     model = decode(header)
-    if not (model.weights_address == 0x91010000 and model.blob_address == 0x91020000 and
-            model.weights_bytes <= 0x10000 and model.blob_bytes <= 0x10000):
-        raise ValueError("manifest must use separate 64 KiB weights/blob slots at 0x91010000/0x91020000")
+    if not (model.weights_address == WEIGHTS_ADDRESS and model.blob_address == BLOB_ADDRESS and
+            model.weights_bytes <= WEIGHTS_CAPACITY and model.blob_bytes <= BLOB_CAPACITY):
+        raise ValueError("manifest exceeds the reserved weights/blob slots")
     return "#pragma once\ninline constexpr unsigned char expected_header[] = {" + ",".join(map(str, header)) + "};\n"
 
 

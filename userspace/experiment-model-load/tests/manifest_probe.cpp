@@ -24,8 +24,8 @@ int main(
     if (!experiment::model::Decode(data.data(), data.size(), manifest)) {
         return 1;
     }
-    if (!experiment::model::Within(manifest.weights, 0x91000000, 0x10000)
-        || !experiment::model::Within(manifest.blob, 0x91000000, 0x10000)) {
+    if (!experiment::model::Within(manifest.weights, 0x91200000, 0x140000)
+        || !experiment::model::Within(manifest.blob, 0x91340000, 0x40000)) {
         return 1;
     }
     if (!experiment::model::Verify(weights.data(), weights.size(), manifest.weights)
@@ -37,8 +37,8 @@ int main(
         1,
         192,
         16,
-        {0x91000000, 16, experiment::model::Crc32(weights.data(), weights.size())},
-        {0x91000100, 8, experiment::model::Crc32(blob.data(), blob.size())}
+        {0x91200000, 16, experiment::model::Crc32(weights.data(), weights.size())},
+        {0x91340000, 8, experiment::model::Crc32(blob.data(), blob.size())}
     };
     return experiment::model::Matches(manifest, expected) ? 0 : 1;
 }

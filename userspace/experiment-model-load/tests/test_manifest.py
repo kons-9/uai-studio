@@ -13,13 +13,15 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tool"))
 import manifest
 import model
 import check_link
+from layout import BLOB_ADDRESS, WEIGHTS_ADDRESS
 
 
 class ManifestTests(unittest.TestCase):
     def setUp(self):
         self.weights = bytes(range(16))
         self.blob = bytes(range(8))
-        self.value = manifest.Manifest(1201, 1, 192, 16, 0x91000000, 16, zlib.crc32(self.weights), 0x91000100, 8, zlib.crc32(self.blob))
+        self.value = manifest.Manifest(1201, 1, 192, 16, WEIGHTS_ADDRESS, 16, zlib.crc32(self.weights),
+                                       BLOB_ADDRESS, 8, zlib.crc32(self.blob))
 
     def test_roundtrip_and_payload(self):
         self.assertEqual(manifest.decode(self.value.encode()), self.value)
@@ -31,7 +33,8 @@ class ManifestTests(unittest.TestCase):
             manifest.decode(damaged)
 
     def test_ranges(self):
-        for changes in ({"weights_address": 0xfffffff8}, {"blob_address": 0x91000008}, {"runtime_version": 0}, {"weights_bytes": 0}):
+        for changes in ({"weights_address": 0xfffffff8}, {"blob_address": WEIGHTS_ADDRESS + 8},
+                        {"runtime_version": 0}, {"weights_bytes": 0}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 dataclasses.replace(self.value, **changes).encode()
 
@@ -46,30 +49,32 @@ class ManifestTests(unittest.TestCase):
             value = model.package(generated, self.blob, output)
             self.assertEqual(manifest.decode((output / "manifest.bin").read_bytes()), value)
             self.assertTrue(manifest.verify(value, (output / "weights.bin").read_bytes(), (output / "blob.bin").read_bytes()))
-            self.assertEqual(value.weights_address, 0x91010000)
-            self.assertEqual(value.blob_address, 0x91020000)
+            self.assertEqual(value.weights_address, WEIGHTS_ADDRESS)
+            self.assertEqual(value.blob_address, BLOB_ADDRESS)
             self.assertIn("expected_header[]", (output / "model_expected.hpp").read_text())
             with self.assertRaises(ValueError):
                 model.package(generated, self.blob, generated)
             with self.assertRaises(ValueError):
-                model.package(generated, bytes(0x10001), output)
-            for changes in ({"input_bytes": 0x10001}, {"output_bytes": True}, {"kind": 0}, {"extra": 1}):
+                model.package(generated, bytes(0x40001), output)
+            for changes in ({"input_bytes": 0x80001}, {"output_bytes": True}, {"kind": 0}, {"extra": 1}):
                 (generated / "contract.json").write_text(json.dumps({**contract, **changes}))
                 with self.subTest(changes=changes), self.assertRaises(ValueError):
                     model.package(generated, self.blob, output)
 
     def test_npu_memory_pools(self):
         pools = json.loads((model.ROOT / "config" / "model.mpool").read_text())["memory"]["mempools"]
-        self.assertEqual([int(pool["offset"]["value"], 0) for pool in pools], [0x342e0000, 0x34350000, 0x91010000])
-        self.assertEqual([int(pool["size"]["value"]) * 1024 for pool in pools], [0x70000, 0x70000, 0x10000])
+        self.assertEqual([int(pool["offset"]["value"], 0) for pool in pools],
+                         [0x342e0000, 0x34350000, WEIGHTS_ADDRESS, 0x90400000])
+        self.assertEqual([int(pool["size"]["value"]) * 1024 for pool in pools],
+                         [0x70000, 0x70000, 0x140000, 0x800000])
 
     def test_slot_linker_script(self):
         if not all(shutil.which(tool) for tool in ("cc", "ld", "nm")):
             self.skipTest("native linker tools are unavailable")
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
-            for blob_bytes, succeeds in ((0x10000, True), (0x10001, False)):
-                source = f'''unsigned char weights[65536] __attribute__((section(".experiment_weights")));
+            for blob_bytes, succeeds in ((0x40000, True), (0x40001, False)):
+                source = f'''unsigned char weights[0x140000] __attribute__((section(".experiment_weights")));
 unsigned char blob[{blob_bytes}] __attribute__((section(".experiment_blob")));
 void Reset_Handler(void) {{}}
 '''
