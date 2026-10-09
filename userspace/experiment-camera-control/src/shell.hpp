@@ -5,11 +5,23 @@
 
 namespace experiment::console {
 
-enum class Status { kOk, kUnknownCommand, kInvalidArgument, kLineTooLong, kTooManyArguments, kHardware, kInvalidState };
+enum class Status {
+    kOk,
+    kUnknownCommand,
+    kInvalidArgument,
+    kLineTooLong,
+    kTooManyArguments,
+    kHardware,
+    kInvalidState
+};
 
 struct Writer {
     void *context;
-    void (*write)(void *, const char *, std::size_t);
+    void (*write)(
+        void *,
+        const char *,
+        std::size_t
+    );
 
     void Write(const char *text) const { write(context, text, std::strlen(text)); }
 };
@@ -17,20 +29,32 @@ struct Writer {
 struct Command {
     const char *name;
     const char *help;
-    Status (*execute)(void *, int, const char *const *, const Writer &);
+    Status (*execute)(
+        void *,
+        int,
+        const char *const *,
+        const Writer &
+    );
     void *context;
 };
 
 inline const char *StatusName(Status status)
 {
     switch (status) {
-    case Status::kOk: return "ok";
-    case Status::kUnknownCommand: return "unknown-command";
-    case Status::kInvalidArgument: return "invalid-argument";
-    case Status::kLineTooLong: return "line-too-long";
-    case Status::kTooManyArguments: return "too-many-arguments";
-    case Status::kHardware: return "hardware";
-    case Status::kInvalidState: return "invalid-state";
+    case Status::kOk:
+        return "ok";
+    case Status::kUnknownCommand:
+        return "unknown-command";
+    case Status::kInvalidArgument:
+        return "invalid-argument";
+    case Status::kLineTooLong:
+        return "line-too-long";
+    case Status::kTooManyArguments:
+        return "too-many-arguments";
+    case Status::kHardware:
+        return "hardware";
+    case Status::kInvalidState:
+        return "invalid-state";
     }
     return "invalid-status";
 }
@@ -40,12 +64,24 @@ public:
     static constexpr std::size_t kLineCapacity = 128;
     static constexpr std::size_t kMaxArguments = 8;
 
-    Shell(const Command *commands, std::size_t count, Writer writer)
-        : commands_(commands), count_(count), writer_(writer) {}
+    Shell(
+        const Command *commands,
+        std::size_t count,
+        Writer writer
+    )
+        : commands_(commands),
+          count_(count),
+          writer_(writer)
+    {}
 
-    Status Feed(char character, bool receive_error = false)
+    Status Feed(
+        char character,
+        bool receive_error = false
+    )
     {
-        if (receive_error) { discard_line_ = true; }
+        if (receive_error) {
+            discard_line_ = true;
+        }
         if (discard_line_) {
             if (character == '\r' || character == '\n') {
                 length_ = 0;
@@ -144,8 +180,7 @@ private:
         }
         for (std::size_t index = 0; index < count_; ++index) {
             if (std::strcmp(arguments[0], commands_[index].name) == 0) {
-                return commands_[index].execute(commands_[index].context,
-                                               static_cast<int>(count), arguments, writer_);
+                return commands_[index].execute(commands_[index].context, static_cast<int>(count), arguments, writer_);
             }
         }
         return Status::kUnknownCommand;

@@ -22,7 +22,10 @@ class NpuNetwork;
 
 namespace uai::ai::models::person {
 
-using PublishCallback = void (*)(void *, const inference::BoxSet &);
+using PublishCallback = void (*)(
+    void *,
+    const inference::BoxSet &
+);
 
 /* Runtime resources supplied by the application when a frame is submitted.
  * The Future owns the inference state; the application owns these services. */
@@ -50,15 +53,14 @@ public:
         kPostprocess,
     };
 
-    static constexpr std::size_t InputBytes()
-    {
-        return static_cast<std::size_t>(kInputWidth) * kInputHeight * 3U;
-    }
+    static constexpr std::size_t InputBytes() { return static_cast<std::size_t>(kInputWidth) * kInputHeight * 3U; }
 
     static common::Error ConfigureDecoder(const stai_network_info &info);
 
-    void Reset(const FutureContext &context,
-               const pipeline::InferenceFrame &frame);
+    void Reset(
+        const FutureContext &context,
+        const pipeline::InferenceFrame &frame
+    );
     bool TryClaim();
     void ReleaseClaim();
     const pipeline::InferenceFrame &frame() const { return frame_; }

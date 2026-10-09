@@ -21,9 +21,9 @@ struct ButtonStyle {
 /* Built-in glyph-free icons drawn instead of the label when set. */
 enum class Icon : std::uint8_t {
     kNone,
-    kMenu,   /* three bars (hamburger) */
-    kBack,   /* left arrow */
-    kClose,  /* cross */
+    kMenu,  /* three bars (hamburger) */
+    kBack,  /* left arrow */
+    kClose, /* cross */
 };
 
 /* Static description of one button. Tables of these are the contract that
@@ -36,7 +36,10 @@ struct ButtonSpec {
     Icon icon = Icon::kNone;
     Shape shape = Shape::kRectangle;
 
-    constexpr bool Contains(std::uint16_t x, std::uint16_t y) const
+    constexpr bool Contains(
+        std::uint16_t x,
+        std::uint16_t y
+    ) const
     {
         return InsideShape(shape, bounds, x, y);
     }
@@ -193,7 +196,7 @@ enum class EventType : std::uint8_t {
     kNone,
     kPress,
     kTap,
-    kChange,  /* slider value changed; Event::value holds the new value */
+    kChange, /* slider value changed; Event::value holds the new value */
 };
 
 struct Event {
@@ -217,9 +220,13 @@ inline constexpr std::size_t kMaxButtons = 16U;
 
 class ButtonPanel final : public Painter {
 public:
-    ButtonPanel(const ButtonSpec *buttons, std::size_t count)
+    ButtonPanel(
+        const ButtonSpec *buttons,
+        std::size_t count
+    )
         : buttons_(buttons),
-          count_(buttons != nullptr && count <= kMaxButtons ? count : 0U) {}
+          count_(buttons != nullptr && count <= kMaxButtons ? count : 0U)
+    {}
 
     /* Feed one touch sample per poll. kPress is returned on the touch-down
      * that lands on a button, kTap on the following release. */
@@ -228,7 +235,10 @@ public:
     bool IsPressed(std::uint16_t id) const;
     /* Checked buttons draw with checked_fill; the application decides what
      * checked means (toggle, radio group, ...). */
-    void SetChecked(std::uint16_t id, bool checked);
+    void SetChecked(
+        std::uint16_t id,
+        bool checked
+    );
     bool IsChecked(std::uint16_t id) const;
     std::size_t Count() const { return count_; }
 
@@ -246,11 +256,17 @@ inline constexpr std::size_t kLabelTextCapacity = 64U;
 
 class LabelPanel final : public Painter {
 public:
-    LabelPanel(const LabelSpec *labels, std::size_t count);
+    LabelPanel(
+        const LabelSpec *labels,
+        std::size_t count
+    );
 
     /* Text longer than kLabelTextCapacity - 1 is truncated. Returns false for
      * an unknown id. */
-    bool SetText(std::uint16_t id, const char *text);
+    bool SetText(
+        std::uint16_t id,
+        const char *text
+    );
     const char *Text(std::uint16_t id) const;
     void Paint(Canvas &canvas) const override;
     std::size_t Count() const { return count_; }
@@ -265,8 +281,13 @@ private:
 /* Paints several painters in order so the LCD driver takes one overlay. */
 class PainterGroup final : public Painter {
 public:
-    PainterGroup(const Painter *const *painters, std::size_t count)
-        : painters_(painters), count_(painters != nullptr ? count : 0U) {}
+    PainterGroup(
+        const Painter *const *painters,
+        std::size_t count
+    )
+        : painters_(painters),
+          count_(painters != nullptr ? count : 0U)
+    {}
     void Paint(Canvas &canvas) const override;
 
 private:
@@ -278,24 +299,36 @@ inline constexpr std::size_t kMaxSliders = 8U;
 
 class SliderPanel final : public Painter {
 public:
-    SliderPanel(const SliderSpec *sliders, std::size_t count);
+    SliderPanel(
+        const SliderSpec *sliders,
+        std::size_t count
+    );
 
     /* kChange is returned whenever the finger moves the value, including on
      * the initial press. */
     Event Update(const TouchPoint &sample);
     void Paint(Canvas &canvas) const override;
     std::int32_t Value(std::uint16_t id) const;
-    bool SetValue(std::uint16_t id, std::int32_t value);
+    bool SetValue(
+        std::uint16_t id,
+        std::int32_t value
+    );
     bool IsDragging() const { return active_index_ >= 0; }
     std::size_t Count() const { return count_; }
 
     /* Track geometry inside the bounds; shared with the host preview. */
     static Rect TrackOf(const SliderSpec &slider);
-    static std::int32_t ValueAt(const SliderSpec &slider, std::uint16_t x);
+    static std::int32_t ValueAt(
+        const SliderSpec &slider,
+        std::uint16_t x
+    );
 
 private:
     std::int32_t IndexOf(std::uint16_t id) const;
-    static std::int32_t Clamp(const SliderSpec &slider, std::int32_t value);
+    static std::int32_t Clamp(
+        const SliderSpec &slider,
+        std::int32_t value
+    );
     const SliderSpec *sliders_;
     std::size_t count_;
     std::int32_t values_[kMaxSliders] = {};
@@ -304,20 +337,26 @@ private:
 };
 
 enum class Background : std::uint8_t {
-    kCamera,  /* widgets are drawn over the live Pipe1 frame */
-    kSolid,   /* the frame is filled with `color` first */
+    kCamera, /* widgets are drawn over the live Pipe1 frame */
+    kSolid,  /* the frame is filled with `color` first */
 };
 
 inline constexpr std::size_t kMaxDials = 4U;
 
 class DialPanel final : public Painter {
 public:
-    DialPanel(const DialSpec *dials, std::size_t count);
+    DialPanel(
+        const DialSpec *dials,
+        std::size_t count
+    );
 
     Event Update(const TouchPoint &sample);
     void Paint(Canvas &canvas) const override;
     std::int32_t Value(std::uint16_t id) const;
-    bool SetValue(std::uint16_t id, std::int32_t value);
+    bool SetValue(
+        std::uint16_t id,
+        std::int32_t value
+    );
     bool IsDragging() const { return active_index_ >= 0; }
     std::size_t Count() const { return count_; }
 
@@ -325,14 +364,23 @@ public:
     static Rect DiscOf(const DialSpec &dial);
     /* Value for a finger at (x, y); points in the bottom gap clamp to the
      * nearer end. */
-    static std::int32_t ValueAt(const DialSpec &dial, std::uint16_t x,
-                                std::uint16_t y);
+    static std::int32_t ValueAt(
+        const DialSpec &dial,
+        std::uint16_t x,
+        std::uint16_t y
+    );
     /* Clockwise degrees from the arc start (bottom-left) for a value. */
-    static std::uint16_t SweepOf(const DialSpec &dial, std::int32_t value);
+    static std::uint16_t SweepOf(
+        const DialSpec &dial,
+        std::int32_t value
+    );
 
 private:
     std::int32_t IndexOf(std::uint16_t id) const;
-    static std::int32_t Clamp(const DialSpec &dial, std::int32_t value);
+    static std::int32_t Clamp(
+        const DialSpec &dial,
+        std::int32_t value
+    );
     const DialSpec *dials_;
     std::size_t count_;
     std::int32_t values_[kMaxDials] = {};
@@ -344,12 +392,18 @@ inline constexpr std::size_t kMaxWheels = 4U;
 
 class WheelPanel final : public Painter {
 public:
-    WheelPanel(const WheelSpec *wheels, std::size_t count);
+    WheelPanel(
+        const WheelSpec *wheels,
+        std::size_t count
+    );
 
     Event Update(const TouchPoint &sample);
     void Paint(Canvas &canvas) const override;
     std::int32_t Value(std::uint16_t id) const;
-    bool SetValue(std::uint16_t id, std::int32_t index);
+    bool SetValue(
+        std::uint16_t id,
+        std::int32_t index
+    );
     const char *ItemText(std::uint16_t id) const;
     std::size_t Count() const { return count_; }
 
@@ -372,16 +426,25 @@ inline constexpr std::size_t kNumberTextCapacity = 24U;
 
 class NumberPanel final : public Painter {
 public:
-    NumberPanel(const NumberSpec *numbers, std::size_t count);
+    NumberPanel(
+        const NumberSpec *numbers,
+        std::size_t count
+    );
 
-    bool SetValue(std::uint16_t id, std::int32_t value);
+    bool SetValue(
+        std::uint16_t id,
+        std::int32_t value
+    );
     std::int32_t Value(std::uint16_t id) const;
     void Paint(Canvas &canvas) const override;
     std::size_t Count() const { return count_; }
 
     /* Formats `value` with the spec's decimals and unit into `out`. */
-    static void Format(const NumberSpec &number, std::int32_t value,
-                       char (&out)[kNumberTextCapacity]);
+    static void Format(
+        const NumberSpec &number,
+        std::int32_t value,
+        char (&out)[kNumberTextCapacity]
+    );
 
 private:
     std::int32_t IndexOf(std::uint16_t id) const;
@@ -392,8 +455,13 @@ private:
 
 class ImagePanel final : public Painter {
 public:
-    ImagePanel(const ImageSpec *images, std::size_t count)
-        : images_(images), count_(images != nullptr ? count : 0U) {}
+    ImagePanel(
+        const ImageSpec *images,
+        std::size_t count
+    )
+        : images_(images),
+          count_(images != nullptr ? count : 0U)
+    {}
     void Paint(Canvas &canvas) const override;
     std::size_t Count() const { return count_; }
 
@@ -407,8 +475,13 @@ inline constexpr std::int32_t kPadDetentDegrees = 45;
 
 class PadPanel final : public Painter {
 public:
-    PadPanel(const PadSpec *pads, std::size_t count)
-        : pads_(pads), count_(pads != nullptr && count <= kMaxPads ? count : 0U) {}
+    PadPanel(
+        const PadSpec *pads,
+        std::size_t count
+    )
+        : pads_(pads),
+          count_(pads != nullptr && count <= kMaxPads ? count : 0U)
+    {}
 
     Event Update(const TouchPoint &sample);
     void Paint(Canvas &canvas) const override;
@@ -419,9 +492,17 @@ public:
     /* Centre button disc; shared with the host preview. */
     static Rect CenterOf(const PadSpec &pad);
     /* PadSegment under (x, y) as an int, or -1 outside the pad. */
-    static std::int32_t SegmentAt(const PadSpec &pad, std::uint16_t x, std::uint16_t y);
+    static std::int32_t SegmentAt(
+        const PadSpec &pad,
+        std::uint16_t x,
+        std::uint16_t y
+    );
     /* Clockwise degrees from the top for (x, y) relative to the pad centre. */
-    static std::int32_t AngleAt(const PadSpec &pad, std::uint16_t x, std::uint16_t y);
+    static std::int32_t AngleAt(
+        const PadSpec &pad,
+        std::uint16_t x,
+        std::uint16_t y
+    );
 
 private:
     const PadSpec *pads_;

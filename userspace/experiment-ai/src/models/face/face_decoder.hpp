@@ -13,8 +13,10 @@ namespace uai::ai::models::face {
 class Decoder final {
 public:
     common::Error Initialize(const ModelOutputSpec &spec);
-    common::Error Decode(const InferenceCompletionContext &context,
-                         ModelResult *result) const;
+    common::Error Decode(
+        const InferenceCompletionContext &context,
+        ModelResult *result
+    ) const;
 
 private:
     std::size_t output_order_[4]{};

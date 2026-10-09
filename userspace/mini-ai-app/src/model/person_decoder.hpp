@@ -56,18 +56,18 @@ public:
     static constexpr std::uint16_t kOutputCount = 3U;
     static constexpr std::size_t kMaxRawDetections = 100U;
 
-    static constexpr std::size_t InputBytes()
-    {
-        return static_cast<std::size_t>(kInputWidth) * kInputHeight * 3U;
-    }
+    static constexpr std::size_t InputBytes() { return static_cast<std::size_t>(kInputWidth) * kInputHeight * 3U; }
 
     /* Reads the output quantization from the network info. Call once. */
     common::Error Configure(const stai_network_info &info);
 
     /* outputs[i] points at output tensor i as reported by the network info
      * (after the CPU cache has been invalidated for that range). */
-    common::Error Decode(const void *const *outputs, std::uint16_t count,
-                         inference::BoxSet *boxes);
+    common::Error Decode(
+        const void *const *outputs,
+        std::uint16_t count,
+        inference::BoxSet *boxes
+    );
 
 private:
     YoloxParams params_{};

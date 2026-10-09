@@ -9,8 +9,10 @@ extern void AiCameraPipe2FrameEventCallback(void);
 /* Camera driver callbacks preserve the pipe identity; the stock BSP forwards
  * callbacks from every pipe to the Pipe1 callback. This board integration uses
  * Pipe1 for display and Pipe2 for the RGB888 NPU input. */
-void HAL_DCMIPP_PIPE_VsyncEventCallback(DCMIPP_HandleTypeDef *hdcmipp,
-                                        uint32_t pipe)
+void HAL_DCMIPP_PIPE_VsyncEventCallback(
+    DCMIPP_HandleTypeDef *hdcmipp,
+    uint32_t pipe
+)
 {
     UNUSED(hdcmipp);
     if (pipe == DCMIPP_PIPE1) {
@@ -21,8 +23,10 @@ void HAL_DCMIPP_PIPE_VsyncEventCallback(DCMIPP_HandleTypeDef *hdcmipp,
     }
 }
 
-void HAL_DCMIPP_PIPE_FrameEventCallback(DCMIPP_HandleTypeDef *hdcmipp,
-                                        uint32_t pipe)
+void HAL_DCMIPP_PIPE_FrameEventCallback(
+    DCMIPP_HandleTypeDef *hdcmipp,
+    uint32_t pipe
+)
 {
     UNUSED(hdcmipp);
     if (pipe == DCMIPP_PIPE1) {

@@ -2,8 +2,11 @@
 
 #include "stm32n6xx.h"
 
-__attribute__((section(".text.uai_ram_entry"), noinline))
-void uai_prepare_ram_launch(void)
+__attribute__((
+    section(".text.uai_ram_entry"),
+    noinline
+)) void
+uai_prepare_ram_launch(void)
 {
     __disable_irq();
 
@@ -24,5 +27,4 @@ void uai_prepare_ram_launch(void)
         SCB_DisableICache();
     }
     SCB_InvalidateICache();
-
 }

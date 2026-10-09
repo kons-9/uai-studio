@@ -38,16 +38,13 @@ enum class DisplayDiagnosticMode : std::uint8_t {
 };
 
 inline constexpr InferenceMode kInferenceMode = InferenceMode::kNpu;
-inline constexpr DisplayDiagnosticMode kDisplayDiagnosticMode =
-    DisplayDiagnosticMode::kCameraPreview;
+inline constexpr DisplayDiagnosticMode kDisplayDiagnosticMode = DisplayDiagnosticMode::kCameraPreview;
 inline constexpr bool kDisplayCoordinatePatternDiagnostic =
     kDisplayDiagnosticMode == DisplayDiagnosticMode::kStaticPattern;
-inline constexpr bool kSyntheticComposeDiagnostic =
-    kDisplayDiagnosticMode == DisplayDiagnosticMode::kSyntheticCompose;
+inline constexpr bool kSyntheticComposeDiagnostic = kDisplayDiagnosticMode == DisplayDiagnosticMode::kSyntheticCompose;
 inline constexpr bool kLiveCaptureFreezeDiagnostic =
     kDisplayDiagnosticMode == DisplayDiagnosticMode::kLiveCaptureFreeze;
-inline constexpr bool kCopyInferenceFrames =
-    kInferenceMode != InferenceMode::kDisabled;
+inline constexpr bool kCopyInferenceFrames = kInferenceMode != InferenceMode::kDisabled;
 
 /* Runtime diagnostics. Per-frame diagnostics remain disabled in normal
  * operation; the low-rate inference_fps aggregate is enabled to expose
@@ -130,8 +127,7 @@ public:
     bool DrainLatestBoxes(memory_allocator::BoxSet *active);
     void SendLatestBoxes(const memory_allocator::BoxSet &boxes);
     void SendInferenceFrame(const memory_allocator::InferenceFrame &frame);
-    void SendInferencePostprocessDone(
-        const memory_allocator::InferenceFrame &frame);
+    void SendInferencePostprocessDone(const memory_allocator::InferenceFrame &frame);
 
     memory_allocator::MemoryAllocator memory;
     uai::ai::cache::CacheDriver cache;
@@ -152,24 +148,25 @@ public:
     InferenceRuntimeMetrics inference_metrics{};
 
 private:
-    void StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
-                   const char *name);
+    void StartTask(
+        FP entry,
+        INT *stack,
+        SZ stack_size,
+        PRI priority,
+        const char *name
+    );
 
-    alignas(8) UB frame_queue_storage[
-        sizeof(InferenceMessage) * kFrameQueueDepth];
+    alignas(8) UB frame_queue_storage[sizeof(InferenceMessage) * kFrameQueueDepth];
     alignas(8) UB box_queue_storage[sizeof(BoxMessage) * kBoxQueueDepth];
-    alignas(8) UB inference_completion_queue_storage[
-        sizeof(npu_runtime::InferenceCompletion) *
-        kInferenceCompletionQueueDepth];
-    alignas(8) UB inference_postprocess_done_queue_storage[
-        sizeof(InferencePostprocessDoneMessage) *
-        kInferencePostprocessDoneQueueDepth];
-    INT initialization_task_stack[
-        kInitializationTaskStackSize / sizeof(INT)];
+    alignas(
+        8
+    ) UB inference_completion_queue_storage[sizeof(npu_runtime::InferenceCompletion) * kInferenceCompletionQueueDepth];
+    alignas(8) UB inference_postprocess_done_queue_storage
+        [sizeof(InferencePostprocessDoneMessage) * kInferencePostprocessDoneQueueDepth];
+    INT initialization_task_stack[kInitializationTaskStackSize / sizeof(INT)];
     INT camera_task_stack[kCameraTaskStackSize / sizeof(INT)];
     INT inference_task_stack[kInferenceTaskStackSize / sizeof(INT)];
-    INT inference_postprocess_task_stack[
-        kInferencePostprocessTaskStackSize / sizeof(INT)];
+    INT inference_postprocess_task_stack[kInferencePostprocessTaskStackSize / sizeof(INT)];
 };
 
 /* The storage is private to task_context.cpp; this function is the only

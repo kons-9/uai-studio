@@ -12,7 +12,11 @@ namespace {
 
 alignas(8) INT task_stack[16 * 1024 / sizeof(INT)];
 
-void Write(void *, const char *text, std::size_t size)
+void Write(
+    void *,
+    const char *text,
+    std::size_t size
+)
 {
     for (std::size_t index = 0; index < size; ++index) {
         tm_putchar(static_cast<unsigned char>(text[index]));
@@ -21,11 +25,16 @@ void Write(void *, const char *text, std::size_t size)
 
 const experiment::console::Writer output{nullptr, Write};
 
-void TestTask(INT, void *)
+void TestTask(
+    INT,
+    void *
+)
 {
-    experiment::hwtest::Registry registry{experiment::hwtest::tests::cases,
-                                         experiment::hwtest::tests::case_count,
-                                         {HAL_GetTick, [](std::uint32_t delay) { tk_dly_tsk(delay); }}};
+    experiment::hwtest::Registry registry{
+        experiment::hwtest::tests::cases, experiment::hwtest::tests::case_count, {HAL_GetTick, [](std::uint32_t delay) {
+                                                                                      tk_dly_tsk(delay);
+                                                                                  }}
+    };
     const experiment::console::Command commands[] = {
         {"hwtest", "hwtest list|all|run <name> [allow-destructive]", experiment::hwtest::Execute, &registry}
     };
@@ -61,7 +70,9 @@ extern "C" INT usermain(void)
     RCC_PeriphCLKInitTypeDef clock{};
     clock.PeriphClockSelection = RCC_PERIPHCLK_USART1;
     clock.Usart1ClockSelection = RCC_USART1CLKSOURCE_CLKP;
-    if (HAL_RCCEx_PeriphCLKConfig(&clock) != HAL_OK) { return E_SYS; }
+    if (HAL_RCCEx_PeriphCLKConfig(&clock) != HAL_OK) {
+        return E_SYS;
+    }
     __HAL_RCC_USART1_CLK_ENABLE();
     __HAL_RCC_GPIOE_CLK_ENABLE();
     GPIO_InitTypeDef gpio{};
@@ -84,5 +95,7 @@ extern "C" INT usermain(void)
         output.Write("hwtest: task creation failed\n");
         return E_SYS;
     }
-    for (;;) { tk_slp_tsk(TMO_FEVR); }
+    for (;;) {
+        tk_slp_tsk(TMO_FEVR);
+    }
 }

@@ -7,12 +7,24 @@
 #include "middleware/buffer/stable_aligned_bytes.hpp"
 #include "task/task_config.hpp"
 
-namespace uai::ai::middleware::cpu_task_monitor { class CpuTaskMonitor; }
-namespace uai::ai::memory_manager { class MemoryManager; }
-namespace uai::ai::cache { class CacheManagement; }
-namespace uai::ai::camera { class CameraManagement; }
-namespace uai::ai::lcd { class LcdManagement; }
-namespace uai::ai::touch { class TouchManagement; }
+namespace uai::ai::middleware::cpu_task_monitor {
+class CpuTaskMonitor;
+}
+namespace uai::ai::memory_manager {
+class MemoryManager;
+}
+namespace uai::ai::cache {
+class CacheManagement;
+}
+namespace uai::ai::camera {
+class CameraManagement;
+}
+namespace uai::ai::lcd {
+class LcdManagement;
+}
+namespace uai::ai::touch {
+class TouchManagement;
+}
 
 namespace uai::ai::task {
 

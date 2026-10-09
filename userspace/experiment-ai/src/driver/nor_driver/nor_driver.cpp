@@ -20,9 +20,7 @@ int NorDriver::Initialize()
 
     /* Probe the model weights before switching the NOR to memory-mapped mode. */
     uint8_t model_probe[16] = {};
-    const int read_status =
-        registers_.Read(model_probe, config::kModelNorProbeOffset,
-                        sizeof(model_probe));
+    const int read_status = registers_.Read(model_probe, config::kModelNorProbeOffset, sizeof(model_probe));
     if (read_status != 0) {
         return -1;
     }

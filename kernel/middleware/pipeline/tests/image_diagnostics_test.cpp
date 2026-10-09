@@ -5,7 +5,10 @@
 
 namespace uai::ai::pipeline {
 
-TEST(ImageDiagnostics, CrcAndLuminance)
+TEST(
+    ImageDiagnostics,
+    CrcAndLuminance
+)
 {
     constexpr std::uint8_t text[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
     EXPECT_EQ(Crc32Bytes(text, sizeof(text)), 0xCBF43926U);
@@ -23,10 +26,12 @@ TEST(ImageDiagnostics, CrcAndLuminance)
     EXPECT_EQ(input.mean_luminance, 127U);
 }
 
-TEST(ImageDiagnostics, CaptureRowDistribution)
+TEST(
+    ImageDiagnostics,
+    CaptureRowDistribution
+)
 {
-    std::vector<std::uint16_t> pixels(
-        kCaptureFormat.width * kCaptureFormat.height);
+    std::vector<std::uint16_t> pixels(kCaptureFormat.width * kCaptureFormat.height);
     pixels[kCaptureFormat.width] = 0xFFFFU;
     const auto rows = InspectCaptureRows(pixels.data());
     EXPECT_EQ(rows.nonzero_rows, 1U);

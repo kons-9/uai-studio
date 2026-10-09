@@ -114,7 +114,10 @@ void EnableNpuMemory()
 }
 
 template <typename Fn>
-Status WithWriter(NpuDriver &driver, Fn &&function)
+Status WithWriter(
+    NpuDriver &driver,
+    Fn &&function
+)
 {
     NpuDriver::Writer writer;
     const common::Error ownership = driver.AcquireWriter(&writer);
@@ -125,7 +128,10 @@ Status WithWriter(NpuDriver &driver, Fn &&function)
 }
 
 template <typename Fn>
-Status WithWriter(const NpuDriver &driver, Fn &&function)
+Status WithWriter(
+    const NpuDriver &driver,
+    Fn &&function
+)
 {
     NpuDriver::Writer writer;
     const common::Error ownership = driver.AcquireWriter(&writer);
@@ -144,9 +150,11 @@ common::Error NpuDriver::InitializeMemory()
         return {common::ErrorCode::kAlreadyInitialized};
     }
     EnableNpuMemory();
-    UAI_LOG_INFO("ai: npu clocks npu=%uHz npu_ram=%uHz\n",
-                 static_cast<unsigned int>(HAL_RCC_GetNPUClockFreq()),
-                 static_cast<unsigned int>(HAL_RCC_GetNPURAMSClockFreq()));
+    UAI_LOG_INFO(
+        "ai: npu clocks npu=%uHz npu_ram=%uHz\n",
+        static_cast<unsigned int>(HAL_RCC_GetNPUClockFreq()),
+        static_cast<unsigned int>(HAL_RCC_GetNPURAMSClockFreq())
+    );
     initialized = true;
     return {common::ErrorCode::kOk};
 }
@@ -169,31 +177,31 @@ bool NpuDriver::IsError(stai_return_code code)
     return code >= STAI_ERROR_GENERIC;
 }
 
-void NpuDriver::EpochTraceThunk(void *context, std::uint32_t callback_type,
-                                std::uint32_t epoch_index,
-                                std::uint32_t epoch_flags,
-                                std::uintptr_t epoch_address)
+void NpuDriver::EpochTraceThunk(
+    void *context,
+    std::uint32_t callback_type,
+    std::uint32_t epoch_index,
+    std::uint32_t epoch_flags,
+    std::uintptr_t epoch_address
+)
 {
     auto *driver = static_cast<NpuDriver *>(context);
     if (driver != nullptr) {
-        driver->ObserveEpochTrace(callback_type, epoch_index, epoch_flags,
-                                  epoch_address);
+        driver->ObserveEpochTrace(callback_type, epoch_index, epoch_flags, epoch_address);
     }
 }
 
-void NpuDriver::ObserveEpochTrace(std::uint32_t callback_type,
-                                  std::uint32_t epoch_index,
-                                  std::uint32_t epoch_flags,
-                                  std::uintptr_t epoch_address)
+void NpuDriver::ObserveEpochTrace(
+    std::uint32_t callback_type,
+    std::uint32_t epoch_index,
+    std::uint32_t epoch_flags,
+    std::uintptr_t epoch_address
+)
 {
-    const std::uint32_t pre_start =
-        static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_PRE_START);
-    const std::uint32_t post_start =
-        static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_POST_START);
-    const std::uint32_t pre_end =
-        static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_PRE_END);
-    const std::uint32_t post_end =
-        static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_POST_END);
+    const std::uint32_t pre_start = static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_PRE_START);
+    const std::uint32_t post_start = static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_POST_START);
+    const std::uint32_t pre_end = static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_PRE_END);
+    const std::uint32_t post_end = static_cast<std::uint32_t>(LL_ATON_RT_Callbacktype_POST_END);
 
     if (callback_type == pre_start) {
         epoch_trace_active_ = true;
@@ -204,18 +212,23 @@ void NpuDriver::ObserveEpochTrace(std::uint32_t callback_type,
         epoch_trace_start_epoch_address_ = epoch_address;
         return;
     }
-    if (!epoch_trace_active_ || callback_type < post_start ||
-        callback_type > post_end) {
+    if (!epoch_trace_active_ || callback_type < post_start || callback_type > post_end) {
         return;
     }
 
     const std::uint32_t end_cycles = NowCycles();
     if (epoch_trace_observer_ != nullptr) {
         epoch_trace_observer_(
-            epoch_trace_context_, epoch_trace_model_kind_id_, NowMs(),
-            end_cycles, end_cycles - epoch_trace_last_cycles_,
-            epoch_trace_start_epoch_index_, epoch_trace_start_epoch_flags_,
-            epoch_trace_start_epoch_address_, callback_type);
+            epoch_trace_context_,
+            epoch_trace_model_kind_id_,
+            NowMs(),
+            end_cycles,
+            end_cycles - epoch_trace_last_cycles_,
+            epoch_trace_start_epoch_index_,
+            epoch_trace_start_epoch_flags_,
+            epoch_trace_start_epoch_address_,
+            callback_type
+        );
     }
     epoch_trace_last_cycles_ = end_cycles;
     if (callback_type == pre_end) {
@@ -231,15 +244,13 @@ void NpuDriver::ObserveEpochTrace(std::uint32_t callback_type,
 
 Status NpuDriver::InvalidState() const
 {
-    return {common::Error{common::ErrorCode::kNotInitialized},
-            last_execution_};
+    return {common::Error{common::ErrorCode::kNotInitialized}, last_execution_};
 }
 
 Status NpuDriver::Initialize(NpuNetwork &model)
 {
     common::Error management_status = management_->Initialize();
-    if (!management_status.Ok() &&
-        management_status.Code() != common::ErrorCode::kAlreadyInitialized) {
+    if (!management_status.Ok() && management_status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return {management_status, last_execution_};
     }
     return WithWriter(*this, [&](const Writer &writer) {
@@ -247,22 +258,23 @@ Status NpuDriver::Initialize(NpuNetwork &model)
     });
 }
 
-Status NpuDriver::Initialize(NpuNetwork &model, const Writer &writer)
+Status NpuDriver::Initialize(
+    NpuNetwork &model,
+    const Writer &writer
+)
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (initialized_) {
         for (std::uint32_t i = 0U; i < loaded_model_count_; ++i) {
             if (loaded_models_[i] == &model) {
                 model_ = &model;
                 last_execution_.state = ExecutionState::kReady;
-                return {common::Error{common::ErrorCode::kOk},
-                        last_execution_};
+                return {common::Error{common::ErrorCode::kOk}, last_execution_};
             }
         }
-        return {common::Error{common::ErrorCode::kInvalidState},
-                last_execution_};
+        return {common::Error{common::ErrorCode::kInvalidState}, last_execution_};
     }
 
     model_ = &model;
@@ -274,10 +286,8 @@ Status NpuDriver::Initialize(NpuNetwork &model, const Writer &writer)
         g_npu_irq_event_flag = tk_cre_flg(&event_flag);
         if (g_npu_irq_event_flag < E_OK) {
             last_execution_.state = ExecutionState::kFaulted;
-            last_execution_.stai_status =
-                static_cast<std::uint32_t>(g_npu_irq_event_flag);
-            return {common::Error{common::ErrorCode::kNpu},
-                    last_execution_};
+            last_execution_.stai_status = static_cast<std::uint32_t>(g_npu_irq_event_flag);
+            return {common::Error{common::ErrorCode::kNpu}, last_execution_};
         }
     }
 
@@ -289,18 +299,15 @@ Status NpuDriver::Initialize(NpuNetwork &model, const Writer &writer)
     if (IsError(runtime_code)) {
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        return {common::Error{common::ErrorCode::kNpu},
-                last_execution_};
+        return {common::Error{common::ErrorCode::kNpu}, last_execution_};
     }
 
-    const stai_return_code trace_code = model.SetEpochTraceCallback(
-        &NpuDriver::EpochTraceThunk, this);
+    const stai_return_code trace_code = model.SetEpochTraceCallback(&NpuDriver::EpochTraceThunk, this);
     last_error_ = static_cast<std::uint32_t>(trace_code);
     if (IsError(trace_code)) {
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        return {common::Error{common::ErrorCode::kModel},
-                last_execution_};
+        return {common::Error{common::ErrorCode::kModel}, last_execution_};
     }
 
     const stai_return_code model_code = model_->Initialize();
@@ -308,8 +315,7 @@ Status NpuDriver::Initialize(NpuNetwork &model, const Writer &writer)
     if (IsError(model_code)) {
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        return {common::Error{common::ErrorCode::kModel},
-                last_execution_};
+        return {common::Error{common::ErrorCode::kModel}, last_execution_};
     }
 
     initialized_ = true;
@@ -318,8 +324,7 @@ Status NpuDriver::Initialize(NpuNetwork &model, const Writer &writer)
     last_error_ = 0U;
     last_execution_ = {};
     last_execution_.state = ExecutionState::kReady;
-    return {common::Error{common::ErrorCode::kOk},
-            last_execution_};
+    return {common::Error{common::ErrorCode::kOk}, last_execution_};
 }
 
 Status NpuDriver::Preload(NpuNetwork &model)
@@ -329,35 +334,32 @@ Status NpuDriver::Preload(NpuNetwork &model)
     });
 }
 
-Status NpuDriver::Preload(NpuNetwork &model, const Writer &writer)
+Status NpuDriver::Preload(
+    NpuNetwork &model,
+    const Writer &writer
+)
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState();
     }
     for (std::uint32_t i = 0U; i < loaded_model_count_; ++i) {
         if (loaded_models_[i] == &model) {
-            return {common::Error{common::ErrorCode::kOk},
-                    last_execution_};
+            return {common::Error{common::ErrorCode::kOk}, last_execution_};
         }
     }
-    if (loaded_model_count_ >=
-        static_cast<std::uint32_t>(sizeof(loaded_models_) /
-                                   sizeof(loaded_models_[0]))) {
-        return {common::Error{common::ErrorCode::kInvalidState},
-                last_execution_};
+    if (loaded_model_count_ >= static_cast<std::uint32_t>(sizeof(loaded_models_) / sizeof(loaded_models_[0]))) {
+        return {common::Error{common::ErrorCode::kInvalidState}, last_execution_};
     }
 
-    const stai_return_code trace_code = model.SetEpochTraceCallback(
-        &NpuDriver::EpochTraceThunk, this);
+    const stai_return_code trace_code = model.SetEpochTraceCallback(&NpuDriver::EpochTraceThunk, this);
     last_error_ = static_cast<std::uint32_t>(trace_code);
     if (IsError(trace_code)) {
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        return {common::Error{common::ErrorCode::kModel},
-                last_execution_};
+        return {common::Error{common::ErrorCode::kModel}, last_execution_};
     }
 
     const stai_return_code code = model.Initialize();
@@ -365,12 +367,10 @@ Status NpuDriver::Preload(NpuNetwork &model, const Writer &writer)
     if (IsError(code)) {
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        return {common::Error{common::ErrorCode::kModel},
-                last_execution_};
+        return {common::Error{common::ErrorCode::kModel}, last_execution_};
     }
     loaded_models_[loaded_model_count_++] = &model;
-    return {common::Error{common::ErrorCode::kOk},
-            last_execution_};
+    return {common::Error{common::ErrorCode::kOk}, last_execution_};
 }
 
 Status NpuDriver::SelectModel(NpuNetwork &model)
@@ -380,11 +380,14 @@ Status NpuDriver::SelectModel(NpuNetwork &model)
     });
 }
 
-Status NpuDriver::SelectModel(NpuNetwork &model, const Writer &writer)
+Status NpuDriver::SelectModel(
+    NpuNetwork &model,
+    const Writer &writer
+)
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_) {
         return InvalidState();
     }
@@ -393,12 +396,10 @@ Status NpuDriver::SelectModel(NpuNetwork &model, const Writer &writer)
             model_ = &model;
             last_execution_.state = ExecutionState::kReady;
             last_execution_.stai_status = 0U;
-            return {common::Error{common::ErrorCode::kOk},
-                    last_execution_};
+            return {common::Error{common::ErrorCode::kOk}, last_execution_};
         }
     }
-    return {common::Error{common::ErrorCode::kInvalidState},
-            last_execution_};
+    return {common::Error{common::ErrorCode::kInvalidState}, last_execution_};
 }
 
 bool NpuDriver::IsLoaded(const NpuNetwork &model) const
@@ -418,93 +419,101 @@ Status NpuDriver::GetInfo(stai_network_info *info) const
     });
 }
 
-Status NpuDriver::GetInfo(stai_network_info *info, const Writer &writer) const
+Status NpuDriver::GetInfo(
+    stai_network_info *info,
+    const Writer &writer
+) const
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr || info == nullptr) {
         return InvalidState();
     }
     const stai_return_code code = model_->GetInfo(info);
-    return IsError(code)
-               ? Status{common::Error{common::ErrorCode::kModel},
-                        last_execution_}
-               : Status{common::Error{common::ErrorCode::kOk},
-                        last_execution_};
+    return IsError(code) ? Status{common::Error{common::ErrorCode::kModel}, last_execution_}
+                         : Status{common::Error{common::ErrorCode::kOk}, last_execution_};
 }
 
-Status NpuDriver::SetInput(stai_ptr input, stai_size size) const
+Status NpuDriver::SetInput(
+    stai_ptr input,
+    stai_size size
+) const
 {
     return WithWriter(*this, [&](const Writer &writer) {
         return SetInput(input, size, writer);
     });
 }
 
-Status NpuDriver::SetInput(stai_ptr input, stai_size size,
-                           const Writer &writer) const
+Status NpuDriver::SetInput(
+    stai_ptr input,
+    stai_size size,
+    const Writer &writer
+) const
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr || input == nullptr || size == 0U) {
         return InvalidState();
     }
     const stai_return_code code = model_->SetInput(input, size);
-    return IsError(code)
-               ? Status{common::Error{common::ErrorCode::kModel},
-                        last_execution_}
-               : Status{common::Error{common::ErrorCode::kOk},
-                        last_execution_};
+    return IsError(code) ? Status{common::Error{common::ErrorCode::kModel}, last_execution_}
+                         : Status{common::Error{common::ErrorCode::kOk}, last_execution_};
 }
 
-Status NpuDriver::GetOutputs(stai_ptr *outputs, stai_size *count) const
+Status NpuDriver::GetOutputs(
+    stai_ptr *outputs,
+    stai_size *count
+) const
 {
     return WithWriter(*this, [&](const Writer &writer) {
         return GetOutputs(outputs, count, writer);
     });
 }
 
-Status NpuDriver::GetOutputs(stai_ptr *outputs, stai_size *count,
-                             const Writer &writer) const
+Status NpuDriver::GetOutputs(
+    stai_ptr *outputs,
+    stai_size *count,
+    const Writer &writer
+) const
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
-    if (!initialized_ || model_ == nullptr || outputs == nullptr ||
-        count == nullptr) {
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
+    if (!initialized_ || model_ == nullptr || outputs == nullptr || count == nullptr) {
         return InvalidState();
     }
     const stai_return_code code = model_->GetOutputs(outputs, count);
-    return IsError(code)
-               ? Status{common::Error{common::ErrorCode::kModel},
-                        last_execution_}
-               : Status{common::Error{common::ErrorCode::kOk},
-                        last_execution_};
+    return IsError(code) ? Status{common::Error{common::ErrorCode::kModel}, last_execution_}
+                         : Status{common::Error{common::ErrorCode::kOk}, last_execution_};
 }
 
-Status NpuDriver::SetOutputs(const stai_ptr *outputs, stai_size count) const
+Status NpuDriver::SetOutputs(
+    const stai_ptr *outputs,
+    stai_size count
+) const
 {
     return WithWriter(*this, [&](const Writer &writer) {
         return SetOutputs(outputs, count, writer);
     });
 }
 
-Status NpuDriver::SetOutputs(const stai_ptr *outputs, stai_size count,
-                             const Writer &writer) const
+Status NpuDriver::SetOutputs(
+    const stai_ptr *outputs,
+    stai_size count,
+    const Writer &writer
+) const
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr || outputs == nullptr) {
         return InvalidState();
     }
     const stai_return_code code = model_->SetOutputs(outputs, count);
-    return IsError(code)
-               ? Status{common::Error{common::ErrorCode::kModel},
-                        last_execution_}
-               : Status{common::Error{common::ErrorCode::kOk},
-                        last_execution_};
+    return IsError(code) ? Status{common::Error{common::ErrorCode::kModel}, last_execution_}
+                         : Status{common::Error{common::ErrorCode::kOk}, last_execution_};
 }
 
 Status NpuDriver::StartRun()
@@ -516,16 +525,14 @@ Status NpuDriver::StartRun()
 
 Status NpuDriver::StartRun(const Writer &writer)
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState();
     }
-    if (last_execution_.state == ExecutionState::kSubmitted ||
-        last_execution_.state == ExecutionState::kRunning) {
-        return {common::Error{common::ErrorCode::kInvalidState},
-                last_execution_};
+    if (last_execution_.state == ExecutionState::kSubmitted || last_execution_.state == ExecutionState::kRunning) {
+        return {common::Error{common::ErrorCode::kInvalidState}, last_execution_};
     }
 
     /* Keep the ref application's asynchronous STAI protocol. The NPU IRQ
@@ -534,10 +541,8 @@ Status NpuDriver::StartRun(const Writer &writer)
     const ER clear_event_status = tk_clr_flg(g_npu_irq_event_flag, 0U);
     if (clear_event_status != E_OK) {
         last_execution_.state = ExecutionState::kFaulted;
-        last_execution_.stai_status =
-            static_cast<std::uint32_t>(clear_event_status);
-        return {common::Error{common::ErrorCode::kNpu},
-                last_execution_};
+        last_execution_.stai_status = static_cast<std::uint32_t>(clear_event_status);
+        return {common::Error{common::ErrorCode::kNpu}, last_execution_};
     }
     ++last_execution_.run_id;
     epoch_trace_active_ = false;
@@ -552,35 +557,36 @@ Status NpuDriver::StartRun(const Writer &writer)
     if (IsError(code)) {
         FinishExecutionTiming(last_execution_);
         last_execution_.state = ExecutionState::kFaulted;
-        return {common::Error{common::ErrorCode::kNpu},
-                last_execution_};
+        return {common::Error{common::ErrorCode::kNpu}, last_execution_};
     }
 
     last_execution_.state = ExecutionState::kRunning;
-    return {common::Error{common::ErrorCode::kOk},
-            last_execution_};
+    return {common::Error{common::ErrorCode::kOk}, last_execution_};
 }
 
-Status NpuDriver::PollRun(RunProgressCallback progress,
-                          void *progress_context)
+Status NpuDriver::PollRun(
+    RunProgressCallback progress,
+    void *progress_context
+)
 {
     return WithWriter(*this, [&](const Writer &writer) {
         return PollRun(writer, progress, progress_context);
     });
 }
 
-Status NpuDriver::PollRun(const Writer &writer,
-                          RunProgressCallback progress,
-                          void *progress_context)
+Status NpuDriver::PollRun(
+    const Writer &writer,
+    RunProgressCallback progress,
+    void *progress_context
+)
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState();
     }
-    if (last_execution_.state != ExecutionState::kSubmitted &&
-        last_execution_.state != ExecutionState::kRunning) {
+    if (last_execution_.state != ExecutionState::kSubmitted && last_execution_.state != ExecutionState::kRunning) {
         return InvalidState();
     }
 
@@ -591,18 +597,19 @@ Status NpuDriver::PollRun(const Writer &writer,
         FinishExecutionTiming(last_execution_);
         last_execution_.state = ExecutionState::kCompleted;
         last_execution_.stai_status = STAI_DONE;
-        return {common::Error{common::ErrorCode::kOk},
-                last_execution_, RunAction::kCompleted};
+        return {common::Error{common::ErrorCode::kOk}, last_execution_, RunAction::kCompleted};
     }
     if (IsError(code)) {
         FinishExecutionTiming(last_execution_);
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        UAI_LOG_ERROR("ai: npu status error=%x irq=%u last=%x\n",
-                      static_cast<unsigned int>(code), g_aton_irq_count,
-                      g_aton_last_irqs);
-        return {common::Error{common::ErrorCode::kNpu},
-                last_execution_};
+        UAI_LOG_ERROR(
+            "ai: npu status error=%x irq=%u last=%x\n",
+            static_cast<unsigned int>(code),
+            g_aton_irq_count,
+            g_aton_last_irqs
+        );
+        return {common::Error{common::ErrorCode::kNpu}, last_execution_};
     }
 
     /* Progress is deliberately called from task context. It may prepare a
@@ -611,19 +618,15 @@ Status NpuDriver::PollRun(const Writer &writer,
         const std::uint32_t progress_start_ms = NowMs();
         ++last_execution_.progress_count;
         progress(progress_context);
-        const std::uint32_t progress_elapsed_ms =
-            NowMs() - progress_start_ms;
+        const std::uint32_t progress_elapsed_ms = NowMs() - progress_start_ms;
         last_execution_.progress_elapsed_ms += progress_elapsed_ms;
         if (progress_elapsed_ms > last_execution_.progress_max_elapsed_ms) {
             last_execution_.progress_max_elapsed_ms = progress_elapsed_ms;
         }
     }
 
-    const RunAction action = code == STAI_RUNNING_WFE
-                                 ? RunAction::kWaitForIrq
-                                 : RunAction::kContinueEpoch;
-    return {common::Error{common::ErrorCode::kOk},
-            last_execution_, action};
+    const RunAction action = code == STAI_RUNNING_WFE ? RunAction::kWaitForIrq : RunAction::kContinueEpoch;
+    return {common::Error{common::ErrorCode::kOk}, last_execution_, action};
 }
 
 Status NpuDriver::WaitForIrq()
@@ -635,14 +638,13 @@ Status NpuDriver::WaitForIrq()
 
 Status NpuDriver::WaitForIrq(const Writer &writer)
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState();
     }
-    if (last_execution_.state != ExecutionState::kSubmitted &&
-        last_execution_.state != ExecutionState::kRunning) {
+    if (last_execution_.state != ExecutionState::kSubmitted && last_execution_.state != ExecutionState::kRunning) {
         return InvalidState();
     }
 
@@ -650,8 +652,8 @@ Status NpuDriver::WaitForIrq(const Writer &writer)
     const std::uint32_t wait_start_ms = NowMs();
     ++last_execution_.irq_wait_count;
     const ER wait_status = tk_wai_flg(
-        g_npu_irq_event_flag, kNpuIrqEvent, TWF_ANDW | TWF_BITCLR, &pattern,
-        static_cast<TMO>(kTimeoutTicks));
+        g_npu_irq_event_flag, kNpuIrqEvent, TWF_ANDW | TWF_BITCLR, &pattern, static_cast<TMO>(kTimeoutTicks)
+    );
     const std::uint32_t elapsed_ms = NowMs() - wait_start_ms;
     last_execution_.irq_wait_elapsed_ms += elapsed_ms;
     if (elapsed_ms > last_execution_.irq_wait_max_elapsed_ms) {
@@ -661,18 +663,15 @@ Status NpuDriver::WaitForIrq(const Writer &writer)
         FinishExecutionTiming(last_execution_);
         last_execution_.state = ExecutionState::kTimedOut;
         last_execution_.stai_status = static_cast<std::uint32_t>(wait_status);
-        return {common::Error{common::ErrorCode::kTimeout},
-                last_execution_};
+        return {common::Error{common::ErrorCode::kTimeout}, last_execution_};
     }
     if (wait_status != E_OK) {
         FinishExecutionTiming(last_execution_);
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = static_cast<std::uint32_t>(wait_status);
-        return {common::Error{common::ErrorCode::kNpu},
-                last_execution_};
+        return {common::Error{common::ErrorCode::kNpu}, last_execution_};
     }
-    return {common::Error{common::ErrorCode::kOk},
-            last_execution_, RunAction::kContinueEpoch};
+    return {common::Error{common::ErrorCode::kOk}, last_execution_, RunAction::kContinueEpoch};
 }
 
 Status NpuDriver::ContinueRun()
@@ -684,14 +683,13 @@ Status NpuDriver::ContinueRun()
 
 Status NpuDriver::ContinueRun(const Writer &writer)
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState();
     }
-    if (last_execution_.state != ExecutionState::kSubmitted &&
-        last_execution_.state != ExecutionState::kRunning) {
+    if (last_execution_.state != ExecutionState::kSubmitted && last_execution_.state != ExecutionState::kRunning) {
         return InvalidState();
     }
 
@@ -711,29 +709,31 @@ Status NpuDriver::ContinueRun(const Writer &writer)
         FinishExecutionTiming(last_execution_);
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        return {common::Error{common::ErrorCode::kNpu},
-                last_execution_};
+        return {common::Error{common::ErrorCode::kNpu}, last_execution_};
     }
     last_execution_.state = ExecutionState::kRunning;
-    return {common::Error{common::ErrorCode::kOk},
-            last_execution_};
+    return {common::Error{common::ErrorCode::kOk}, last_execution_};
 }
 
-Status NpuDriver::WaitRun(RunProgressCallback progress,
-                          void *progress_context)
+Status NpuDriver::WaitRun(
+    RunProgressCallback progress,
+    void *progress_context
+)
 {
     return WithWriter(*this, [&](const Writer &writer) {
         return WaitRun(writer, progress, progress_context);
     });
 }
 
-Status NpuDriver::WaitRun(const Writer &writer,
-                          RunProgressCallback progress,
-                          void *progress_context)
+Status NpuDriver::WaitRun(
+    const Writer &writer,
+    RunProgressCallback progress,
+    void *progress_context
+)
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState();
     }
@@ -764,28 +764,30 @@ Status NpuDriver::WaitRun(const Writer &writer,
     FinishExecutionTiming(last_execution_);
     last_execution_.state = ExecutionState::kTimedOut;
     last_execution_.stai_status = last_error_;
-    const registers::NpuRegisterSnapshot timeout_hardware =
-        registers_.ReadSnapshot();
-    UAI_LOG_ERROR("ai: npu done timeout status=%x irq=%u last=%x epoch=%x/%x bc=%x int=%x bus=%x/%x,%x/%x stream=%x/%x size=%x count=%x/%x/%x/%x\n",
-                  static_cast<unsigned int>(last_error_), g_aton_irq_count,
-                  g_aton_last_irqs,
-                  static_cast<unsigned int>(timeout_hardware.epoch_control),
-                  static_cast<unsigned int>(timeout_hardware.epoch_address),
-                  static_cast<unsigned int>(timeout_hardware.epoch_byte_counter),
-                  static_cast<unsigned int>(timeout_hardware.interrupt_status),
-                  static_cast<unsigned int>(timeout_hardware.busif0_control),
-                  static_cast<unsigned int>(timeout_hardware.busif0_error),
-                  static_cast<unsigned int>(timeout_hardware.busif1_control),
-                  static_cast<unsigned int>(timeout_hardware.busif1_error),
-                  static_cast<unsigned int>(timeout_hardware.stream0_control),
-                  static_cast<unsigned int>(timeout_hardware.stream0_address),
-                  static_cast<unsigned int>(timeout_hardware.stream0_frame_size),
-                  static_cast<unsigned int>(timeout_hardware.stream0_depth_count),
-                  static_cast<unsigned int>(timeout_hardware.stream0_pixel_count),
-                  static_cast<unsigned int>(timeout_hardware.stream0_line_count),
-                  static_cast<unsigned int>(timeout_hardware.stream0_frame_count));
-    return {common::Error{common::ErrorCode::kTimeout},
-            last_execution_};
+    const registers::NpuRegisterSnapshot timeout_hardware = registers_.ReadSnapshot();
+    UAI_LOG_ERROR(
+        "ai: npu done timeout status=%x irq=%u last=%x epoch=%x/%x bc=%x int=%x bus=%x/%x,%x/%x stream=%x/%x size=%x "
+        "count=%x/%x/%x/%x\n",
+        static_cast<unsigned int>(last_error_),
+        g_aton_irq_count,
+        g_aton_last_irqs,
+        static_cast<unsigned int>(timeout_hardware.epoch_control),
+        static_cast<unsigned int>(timeout_hardware.epoch_address),
+        static_cast<unsigned int>(timeout_hardware.epoch_byte_counter),
+        static_cast<unsigned int>(timeout_hardware.interrupt_status),
+        static_cast<unsigned int>(timeout_hardware.busif0_control),
+        static_cast<unsigned int>(timeout_hardware.busif0_error),
+        static_cast<unsigned int>(timeout_hardware.busif1_control),
+        static_cast<unsigned int>(timeout_hardware.busif1_error),
+        static_cast<unsigned int>(timeout_hardware.stream0_control),
+        static_cast<unsigned int>(timeout_hardware.stream0_address),
+        static_cast<unsigned int>(timeout_hardware.stream0_frame_size),
+        static_cast<unsigned int>(timeout_hardware.stream0_depth_count),
+        static_cast<unsigned int>(timeout_hardware.stream0_pixel_count),
+        static_cast<unsigned int>(timeout_hardware.stream0_line_count),
+        static_cast<unsigned int>(timeout_hardware.stream0_frame_count)
+    );
+    return {common::Error{common::ErrorCode::kTimeout}, last_execution_};
 }
 
 Status NpuDriver::Run()
@@ -797,9 +799,9 @@ Status NpuDriver::Run()
 
 Status NpuDriver::Run(const Writer &writer)
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     Status status = StartRun(writer);
     if (!status.Ok()) {
         return status;
@@ -816,9 +818,9 @@ Status NpuDriver::NewInference()
 
 Status NpuDriver::NewInference(const Writer &writer)
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState();
     }
@@ -827,13 +829,11 @@ Status NpuDriver::NewInference(const Writer &writer)
     if (IsError(code)) {
         last_execution_.state = ExecutionState::kFaulted;
         last_execution_.stai_status = last_error_;
-        return {common::Error{common::ErrorCode::kNpu},
-                last_execution_};
+        return {common::Error{common::ErrorCode::kNpu}, last_execution_};
     }
     last_execution_.state = ExecutionState::kReady;
     last_execution_.stai_status = 0U;
-    return {common::Error{common::ErrorCode::kOk},
-            last_execution_};
+    return {common::Error{common::ErrorCode::kOk}, last_execution_};
 }
 
 Status NpuDriver::Shutdown()
@@ -845,9 +845,9 @@ Status NpuDriver::Shutdown()
 
 Status NpuDriver::Shutdown(const Writer &writer)
 {
-    const common::Error ownership =
-        management_->Validate(writer);
-    if (!ownership.Ok()) return {ownership, last_execution_};
+    const common::Error ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return {ownership, last_execution_};
     if (!initialized_ || model_ == nullptr) {
         return InvalidState();
     }
@@ -883,25 +883,29 @@ Status NpuDriver::Shutdown(const Writer &writer)
     initialized_ = false;
     last_execution_.state = ExecutionState::kUninitialized;
     last_execution_.stai_status = last_error_;
-    return IsError(code)
-               ? Status{common::Error{common::ErrorCode::kModel},
-                        last_execution_}
-               : Status{common::Error{common::ErrorCode::kOk},
-                        last_execution_};
+    return IsError(code) ? Status{common::Error{common::ErrorCode::kModel}, last_execution_}
+                         : Status{common::Error{common::ErrorCode::kOk}, last_execution_};
 }
 
-void NpuDriver::SetEpochTraceObserver(EpochTraceObserver observer,
-                                      void *context)
+void NpuDriver::SetEpochTraceObserver(
+    EpochTraceObserver observer,
+    void *context
+)
 {
     Writer writer;
-    if (!management_->Acquire(&writer).Ok()) return;
+    if (!management_->Acquire(&writer).Ok())
+        return;
     SetEpochTraceObserver(observer, context, writer);
 }
 
-void NpuDriver::SetEpochTraceObserver(EpochTraceObserver observer,
-                                      void *context, const Writer &writer)
+void NpuDriver::SetEpochTraceObserver(
+    EpochTraceObserver observer,
+    void *context,
+    const Writer &writer
+)
 {
-    if (!management_->Validate(writer).Ok()) return;
+    if (!management_->Validate(writer).Ok())
+        return;
     epoch_trace_observer_ = observer;
     epoch_trace_context_ = context;
 }
@@ -909,14 +913,18 @@ void NpuDriver::SetEpochTraceObserver(EpochTraceObserver observer,
 void NpuDriver::SetEpochTraceModelKindId(std::uint32_t model_kind_id)
 {
     Writer writer;
-    if (!management_->Acquire(&writer).Ok()) return;
+    if (!management_->Acquire(&writer).Ok())
+        return;
     SetEpochTraceModelKindId(model_kind_id, writer);
 }
 
-void NpuDriver::SetEpochTraceModelKindId(std::uint32_t model_kind_id,
-                                         const Writer &writer)
+void NpuDriver::SetEpochTraceModelKindId(
+    std::uint32_t model_kind_id,
+    const Writer &writer
+)
 {
-    if (!management_->Validate(writer).Ok()) return;
+    if (!management_->Validate(writer).Ok())
+        return;
     epoch_trace_model_kind_id_ = model_kind_id;
 }
 

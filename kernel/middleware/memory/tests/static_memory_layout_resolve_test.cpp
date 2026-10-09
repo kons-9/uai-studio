@@ -12,7 +12,10 @@ std::uint8_t g_test_third_region[16U];
 namespace uai::ai::static_memory_layout {
 namespace {
 
-TEST(StaticMemoryLayoutResolve, KeyIndexesGeneratedLayout)
+TEST(
+    StaticMemoryLayoutResolve,
+    KeyIndexesGeneratedLayout
+)
 {
     const Region first = Region::GetRegionFromKey(Key::kFirst);
     const Region second = Region::GetRegionFromKey(Key::kSecond);

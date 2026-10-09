@@ -37,17 +37,21 @@ AppContext &App()
 extern "C" void IAC_IRQHandler(void)
 {
     const std::uint32_t flags4 = IAC->ISR[4];
-    UAI_LOG_WARN("mini: IAC flags=%x,%x,%x,%x,%x\n",
-                 static_cast<unsigned int>(IAC->ISR[0]),
-                 static_cast<unsigned int>(IAC->ISR[1]),
-                 static_cast<unsigned int>(IAC->ISR[2]),
-                 static_cast<unsigned int>(IAC->ISR[3]),
-                 static_cast<unsigned int>(flags4));
+    UAI_LOG_WARN(
+        "mini: IAC flags=%x,%x,%x,%x,%x\n",
+        static_cast<unsigned int>(IAC->ISR[0]),
+        static_cast<unsigned int>(IAC->ISR[1]),
+        static_cast<unsigned int>(IAC->ISR[2]),
+        static_cast<unsigned int>(IAC->ISR[3]),
+        static_cast<unsigned int>(flags4)
+    );
     if ((flags4 & 0x00400000U) != 0U) {
-        UAI_LOG_ERROR("mini: RISAF12 iasr=%x iaesr=%x iaddr=%x\n",
-                      static_cast<unsigned int>(RISAF12->IASR),
-                      static_cast<unsigned int>(RISAF12->IAR->IAESR),
-                      static_cast<unsigned int>(RISAF12->IAR->IADDR));
+        UAI_LOG_ERROR(
+            "mini: RISAF12 iasr=%x iaesr=%x iaddr=%x\n",
+            static_cast<unsigned int>(RISAF12->IASR),
+            static_cast<unsigned int>(RISAF12->IAR->IAESR),
+            static_cast<unsigned int>(RISAF12->IAR->IADDR)
+        );
     }
     HAL_RIF_IRQHandler();
 }
@@ -76,9 +80,11 @@ extern "C" INT usermain(void)
     iac_interrupt.inthdr = reinterpret_cast<FP>(IAC_IRQHandler);
     const ER iac_status = tk_def_int(static_cast<UINT>(IAC_IRQn), &iac_interrupt);
     if (npu_status != E_OK || iac_status != E_OK) {
-        UAI_LOG_ERROR("mini: interrupt registration npu=%x iac=%x\n",
-                      static_cast<unsigned int>(npu_status),
-                      static_cast<unsigned int>(iac_status));
+        UAI_LOG_ERROR(
+            "mini: interrupt registration npu=%x iac=%x\n",
+            static_cast<unsigned int>(npu_status),
+            static_cast<unsigned int>(iac_status)
+        );
         uai::ai::common::Task::Halt("mini: interrupt registration failed\n");
     }
 

@@ -32,16 +32,23 @@ public:
     const models::ModelDescriptor *GetDescriptor() const;
 
     common::Error ConfigureActiveDecoder(const models::ModelOutputSpec &spec);
-    common::Error PrepareActiveInput(memory_allocator::InferenceFrame &frame,
-                                     cache::CacheDriver &cache) const;
-    common::Error PrepareInputFor(const models::ModelBinding &binding,
-                                  memory_allocator::InferenceFrame &frame,
-                                  cache::CacheDriver &cache) const;
+    common::Error PrepareActiveInput(
+        memory_allocator::InferenceFrame &frame,
+        cache::CacheDriver &cache
+    ) const;
+    common::Error PrepareInputFor(
+        const models::ModelBinding &binding,
+        memory_allocator::InferenceFrame &frame,
+        cache::CacheDriver &cache
+    ) const;
     common::Error DecodeActiveOutputs(
         const models::InferenceCompletionContext &context,
-        models::ModelResult *result) const;
-    common::Error ConvertActiveResult(const models::ModelResult &source,
-                                      memory_allocator::BoxSet *destination) const;
+        models::ModelResult *result
+    ) const;
+    common::Error ConvertActiveResult(
+        const models::ModelResult &source,
+        memory_allocator::BoxSet *destination
+    ) const;
 
 private:
     static constexpr std::size_t kMaxRegisteredModels = 4U;

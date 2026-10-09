@@ -5,15 +5,32 @@
 namespace uai::ai::common {
 namespace {
 
-void Entry(INT, void *) {}
+void Entry(
+    INT,
+    void *
+)
+{}
 
 struct Monitor {
-    common::Error RegisterTask(ID, const char *) { return {}; }
+    common::Error RegisterTask(
+        ID,
+        const char *
+    )
+    {
+        return {};
+    }
     std::uint32_t BeginTaskLoop() const { return 0U; }
-    void RecordTaskLoop(ID, std::uint32_t) {}
+    void RecordTaskLoop(
+        ID,
+        std::uint32_t
+    )
+    {}
 };
 
-TEST(TaskTest, StartsWithCallerOwnedStack)
+TEST(
+    TaskTest,
+    StartsWithCallerOwnedStack
+)
 {
     common::StableAlignedBytes<128U> stack;
     Monitor monitor;
@@ -21,15 +38,29 @@ TEST(TaskTest, StartsWithCallerOwnedStack)
     EXPECT_EQ(Task::Now(), 0U);
 }
 
-TEST(TaskTest, WaitsBeforeProcessing)
+TEST(
+    TaskTest,
+    WaitsBeforeProcessing
+)
 {
     struct LoopExit {};
     Monitor monitor;
     unsigned int waits = 0U;
     unsigned int processed = 0U;
-    EXPECT_THROW(Task::RunForever(monitor, "worker", [&] { ++waits; },
-                                  [&] { ++processed; throw LoopExit{}; }),
-                 LoopExit);
+    EXPECT_THROW(
+        Task::RunForever(
+            monitor,
+            "worker",
+            [&] {
+                ++waits;
+            },
+            [&] {
+                ++processed;
+                throw LoopExit{};
+            }
+        ),
+        LoopExit
+    );
     EXPECT_EQ(waits, 1U);
     EXPECT_EQ(processed, 1U);
 }

@@ -27,8 +27,7 @@ struct MemoryAllocatorConfig {
     /* Output slots are shared by the registered models.  Slot zero must fit
      * the largest first output (face: 8192 bytes); segmentation now exposes
      * its native 20x20x2 logits (800 bytes) after its final resize is cut. */
-    std::array<std::size_t, 4U> model_output_bytes = {
-        8192U, 60U * 60U * 18U, 30U * 30U * 18U, 384U * 16U};
+    std::array<std::size_t, 4U> model_output_bytes = {8192U, 60U * 60U * 18U, 30U * 30U * 18U, 384U * 16U};
 
     /* Dynamic switching uses the fixed person-sized Pipe2 image as a source
      * for smaller model tensors. Scratch capacity is shared because inference
@@ -39,37 +38,27 @@ struct MemoryAllocatorConfig {
 
     constexpr std::size_t AlignUp(std::size_t value) const
     {
-        return (value + buffer_alignment - 1U) / buffer_alignment *
-               buffer_alignment;
+        return (value + buffer_alignment - 1U) / buffer_alignment * buffer_alignment;
     }
 
     constexpr std::size_t frame_bytes() const
     {
-        return static_cast<std::size_t>(frame_width) * frame_height *
-               frame_bytes_per_pixel;
+        return static_cast<std::size_t>(frame_width) * frame_height * frame_bytes_per_pixel;
     }
 
     constexpr std::size_t inference_frame_bytes() const
     {
-        return static_cast<std::size_t>(inference_width) * inference_height *
-               inference_bytes_per_pixel;
+        return static_cast<std::size_t>(inference_width) * inference_height * inference_bytes_per_pixel;
     }
 
     constexpr std::size_t inference_scratch_bytes() const
     {
-        return static_cast<std::size_t>(inference_source_width) *
-               inference_source_height * inference_bytes_per_pixel;
+        return static_cast<std::size_t>(inference_source_width) * inference_source_height * inference_bytes_per_pixel;
     }
 
-    constexpr std::size_t inference_source_bytes() const
-    {
-        return inference_frame_bytes();
-    }
+    constexpr std::size_t inference_source_bytes() const { return inference_frame_bytes(); }
 
-    constexpr std::size_t inference_outputs_offset() const
-    {
-        return AlignUp(inference_frame_bytes());
-    }
+    constexpr std::size_t inference_outputs_offset() const { return AlignUp(inference_frame_bytes()); }
 
     constexpr std::size_t inference_output_storage_bytes() const
     {
@@ -82,8 +71,7 @@ struct MemoryAllocatorConfig {
 
     constexpr std::size_t inference_buffer_bytes() const
     {
-        return AlignUp(inference_outputs_offset() +
-                       inference_output_storage_bytes());
+        return AlignUp(inference_outputs_offset() + inference_output_storage_bytes());
     }
 };
 
@@ -184,22 +172,34 @@ class MemoryAllocator final {
 public:
     common::Error Initialize();
 
-    common::Error CaptureBuffers(std::uintptr_t *first,
-                                 std::uintptr_t *second) const;
-    common::Error InferenceBuffers(std::uintptr_t *buffers,
-                                   std::size_t count) const;
-    common::Error ImportCompletedCapture(std::uintptr_t address,
-                                         CaptureFrame *frame);
-    common::Error ImportCompletedInference(std::uintptr_t address,
-                                           std::uint32_t sequence,
-                                           InferenceFrame *frame);
+    common::Error CaptureBuffers(
+        std::uintptr_t *first,
+        std::uintptr_t *second
+    ) const;
+    common::Error InferenceBuffers(
+        std::uintptr_t *buffers,
+        std::size_t count
+    ) const;
+    common::Error ImportCompletedCapture(
+        std::uintptr_t address,
+        CaptureFrame *frame
+    );
+    common::Error ImportCompletedInference(
+        std::uintptr_t address,
+        std::uint32_t sequence,
+        InferenceFrame *frame
+    );
     /* Reserve the completed Pipe2 buffer from the ISR before another DMA
      * target is selected.  This prevents a delayed camera task from reading
      * an image that has already been overwritten. */
-    common::Error ReserveCompletedInference(std::uintptr_t address,
-                                            std::uint32_t sequence);
-    common::Error DropCompletedInference(std::uintptr_t address,
-                                         std::uint32_t sequence);
+    common::Error ReserveCompletedInference(
+        std::uintptr_t address,
+        std::uint32_t sequence
+    );
+    common::Error DropCompletedInference(
+        std::uintptr_t address,
+        std::uint32_t sequence
+    );
     bool IsInferenceBufferFree(std::uintptr_t address) const;
     common::Error ValidateCaptureFrame(const CaptureFrame &frame) const;
 
@@ -208,8 +208,10 @@ public:
     common::Error CompleteDisplayHandoff();
     common::Error ReleaseDisplayBuffer(const DisplayBuffer &buffer);
 
-    common::Error AcquireInferenceBuffer(const CaptureFrame &capture,
-                                         InferenceFrame *frame);
+    common::Error AcquireInferenceBuffer(
+        const CaptureFrame &capture,
+        InferenceFrame *frame
+    );
     common::Error ClaimInferenceBuffer(const InferenceFrame &frame);
     common::Error ReleaseInferenceBuffer(const InferenceFrame &frame);
 
@@ -219,13 +221,21 @@ private:
         BufferState state = BufferState::kFree;
     };
 
-    static common::Error Make(common::ErrorCode code, std::uint32_t detail,
-                              const char *operation);
-    static bool SameBuffer(const Buffer &lhs, const Buffer &rhs);
-    void PopulateInferenceFrame(std::uint8_t index,
-                                std::uint32_t sequence,
-                                bool from_pipe2,
-                                InferenceFrame *frame) const;
+    static common::Error Make(
+        common::ErrorCode code,
+        std::uint32_t detail,
+        const char *operation
+    );
+    static bool SameBuffer(
+        const Buffer &lhs,
+        const Buffer &rhs
+    );
+    void PopulateInferenceFrame(
+        std::uint8_t index,
+        std::uint32_t sequence,
+        bool from_pipe2,
+        InferenceFrame *frame
+    ) const;
 
     Slot display_[2]{};
     Slot inference_[kInferenceBufferCount]{};

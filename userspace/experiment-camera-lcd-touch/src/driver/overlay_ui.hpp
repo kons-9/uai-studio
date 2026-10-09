@@ -22,7 +22,10 @@ class OverlayUi final {
 public:
     DriverStatus Initialize();
     void DrawOn(std::uint16_t *rgb565_frame) const;
-    TouchAction PressAt(std::uint16_t x, std::uint16_t y);
+    TouchAction PressAt(
+        std::uint16_t x,
+        std::uint16_t y
+    );
     void Release();
 
 private:

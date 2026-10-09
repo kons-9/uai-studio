@@ -10,6 +10,7 @@ class Scheduler final {
 public:
     explicit Scheduler(PipelineRuntime &runtime) : runtime_(runtime) {}
     common::Error Submit(AiFuture &future) { return runtime_.Submit(future); }
+
 private:
     PipelineRuntime &runtime_;
 };
@@ -17,9 +18,15 @@ private:
 /* Each worker/RTOS task owns one dispatcher. RunOnce never blocks. */
 class Dispatcher final {
 public:
-    Dispatcher(PipelineRuntime &runtime, ExecutionContext lane)
-        : runtime_(runtime), lane_(lane) {}
+    Dispatcher(
+        PipelineRuntime &runtime,
+        ExecutionContext lane
+    )
+        : runtime_(runtime),
+          lane_(lane)
+    {}
     DispatchResult RunOnce() { return runtime_.RunOne(lane_); }
+
 private:
     PipelineRuntime &runtime_;
     ExecutionContext lane_;

@@ -51,15 +51,19 @@ public:
         bool Valid() const { return driver_ != nullptr && writer_.Valid(); }
         void KeepClocksOnSleep() const
         {
-            if (Valid()) driver_->KeepClocksOnSleep(writer_);
+            if (Valid())
+                driver_->KeepClocksOnSleep(writer_);
         }
 
     private:
         friend class NorManagement;
-        Accessor(NorDriver &driver, NorDriver::Writer &&writer)
-            : driver_(&driver), writer_(std::move(writer))
-        {
-        }
+        Accessor(
+            NorDriver &driver,
+            NorDriver::Writer &&writer
+        )
+            : driver_(&driver),
+              writer_(std::move(writer))
+        {}
 
         NorDriver *driver_ = nullptr;
         NorDriver::Writer writer_{};
@@ -74,16 +78,19 @@ public:
     int Initialize()
     {
         const common::Error status = ownership_.Initialize();
-        if (!status.Ok() &&
-            status.Code() != common::ErrorCode::kAlreadyInitialized) {
+        if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized) {
             return -1;
         }
         NorDriver::Writer writer;
-        if (!ownership_.Acquire(&writer).Ok()) return -1;
+        if (!ownership_.Acquire(&writer).Ok())
+            return -1;
         return driver_.Initialize(writer);
     }
 
-    common::Error Acquire(Accessor *accessor, TMO timeout = TMO_FEVR)
+    common::Error Acquire(
+        Accessor *accessor,
+        TMO timeout = TMO_FEVR
+    )
     {
         if (accessor == nullptr) {
             return {common::ErrorCode::kInvalidArgument};
@@ -97,10 +104,7 @@ public:
         return status;
     }
 
-    common::Error Validate(const NorDriver::Writer &writer) const
-    {
-        return ownership_.Validate(writer);
-    }
+    common::Error Validate(const NorDriver::Writer &writer) const { return ownership_.Validate(writer); }
 
     NorManagement(const NorManagement &) = delete;
     NorManagement &operator=(const NorManagement &) = delete;

@@ -23,7 +23,11 @@ ID events = 0;
 std::uint32_t loops = 0;
 std::uint64_t busy_cycles = 0;
 
-void Write(void *, const char *text, std::size_t size)
+void Write(
+    void *,
+    const char *text,
+    std::size_t size
+)
 {
     for (std::size_t index = 0; index < size; ++index) {
         tm_putchar(static_cast<unsigned char>(text[index]));
@@ -37,20 +41,32 @@ struct ConsoleCamera {
     bool locked = false;
 };
 
-experiment::console::Status CameraControl(void *context, int count, const char *const *arguments,
-                                          const experiment::console::Writer &writer)
+experiment::console::Status CameraControl(
+    void *context,
+    int count,
+    const char *const *arguments,
+    const experiment::console::Writer &writer
+)
 {
     auto &camera = *static_cast<ConsoleCamera *>(context);
     const bool read_only = count == 2 && (!std::strcmp(arguments[1], "stat") || !std::strcmp(arguments[1], "wb-list"));
-    if (camera.locked && !read_only) { return experiment::console::Status::kInvalidState; }
+    if (camera.locked && !read_only) {
+        return experiment::console::Status::kInvalidState;
+    }
     return experiment::camera::Runtime::ControlCommand(camera.runtime, count, arguments, writer);
 }
 
-experiment::console::Status CameraCapture(void *context, int count, const char *const *arguments,
-                                          const experiment::console::Writer &writer)
+experiment::console::Status CameraCapture(
+    void *context,
+    int count,
+    const char *const *arguments,
+    const experiment::console::Writer &writer
+)
 {
     auto &camera = *static_cast<ConsoleCamera *>(context);
-    if (camera.locked) { return experiment::console::Status::kInvalidState; }
+    if (camera.locked) {
+        return experiment::console::Status::kInvalidState;
+    }
     return experiment::camera::Runtime::CaptureCommand(camera.runtime, count, arguments, writer);
 }
 
@@ -62,31 +78,56 @@ experiment::console::Status CameraCapture(void *context, int count, const char *
     }
 }
 
-experiment::console::Status Uptime(void *, int count, const char *const *, const experiment::console::Writer &writer)
+experiment::console::Status Uptime(
+    void *,
+    int count,
+    const char *const *,
+    const experiment::console::Writer &writer
+)
 {
     if (count != 1) {
         return experiment::console::Status::kInvalidArgument;
     }
     char text[128];
-    std::snprintf(text, sizeof(text), "uptime_ms=%lu loops=%lu busy_cycles=%llu core_hz=%lu\n", static_cast<unsigned long>(HAL_GetTick()),
-                  static_cast<unsigned long>(loops), static_cast<unsigned long long>(busy_cycles), static_cast<unsigned long>(SystemCoreClock));
+    std::snprintf(
+        text,
+        sizeof(text),
+        "uptime_ms=%lu loops=%lu busy_cycles=%llu core_hz=%lu\n",
+        static_cast<unsigned long>(HAL_GetTick()),
+        static_cast<unsigned long>(loops),
+        static_cast<unsigned long long>(busy_cycles),
+        static_cast<unsigned long>(SystemCoreClock)
+    );
     writer.Write(text);
     return experiment::console::Status::kOk;
 }
 
-experiment::console::Status Frames(void *, int count, const char *const *, const experiment::console::Writer &writer)
+experiment::console::Status Frames(
+    void *,
+    int count,
+    const char *const *,
+    const experiment::console::Writer &writer
+)
 {
     if (count != 1) {
         return experiment::console::Status::kInvalidArgument;
     }
     char text[96];
-    std::snprintf(text, sizeof(text), "frames: pipe1_vsync=%u pipe2_frame=%u\n",
-                  camera_pipe2_pipe1_vsync_count, camera_pipe2_pipe2_frame_count);
+    std::snprintf(
+        text,
+        sizeof(text),
+        "frames: pipe1_vsync=%u pipe2_frame=%u\n",
+        camera_pipe2_pipe1_vsync_count,
+        camera_pipe2_pipe2_frame_count
+    );
     writer.Write(text);
     return experiment::console::Status::kOk;
 }
 
-void CameraTask(INT, void *)
+void CameraTask(
+    INT,
+    void *
+)
 {
     uai::camera_pipe2::driver::DisplayDriver display;
     experiment::camera::BspDevice device;
@@ -96,21 +137,35 @@ void CameraTask(INT, void *)
     T_CFLG flags{};
     flags.flgatr = TA_TFIFO;
     events = tk_cre_flg(&flags);
-    if (events < E_OK || !uai::camera_pipe2::driver::IsOk(display.Initialize()) ||
-        camera.Start() != experiment::console::Status::kOk) {
+    if (events < E_OK || !uai::camera_pipe2::driver::IsOk(display.Initialize())
+        || camera.Start() != experiment::console::Status::kOk) {
         Halt("camera: initialization failed\n");
     }
     experiment::console::Command commands[16] = {
         {"uptime", "uptime", Uptime, nullptr},
         {"frames", "frames", Frames, nullptr},
-        {"cam", "cam stat | ae on|off | ev <-4..4> | manual <us> <mdB> | area <x> <y> <w> <h> | wb auto|<kelvin> | wb-list",
-         CameraControl, &console_camera},
-        {"capture", "capture start|stop|recover|fps <10|15|20|25|30>|flip <h 0|1> <v 0|1>|crop <x> <y> <w> <h>",
-            CameraCapture, &console_camera}
+        {"cam",
+         "cam stat | ae on|off | ev <-4..4> | manual <us> <mdB> | area <x> <y> <w> <h> | wb auto|<kelvin> | wb-list",
+         CameraControl,
+         &console_camera},
+        {"capture",
+         "capture start|stop|recover|fps <10|15|20|25|30>|flip <h 0|1> <v 0|1>|crop <x> <y> <w> <h>",
+         CameraCapture,
+         &console_camera}
     };
-        const experiment::Services services{&camera, output, HAL_GetTick, [](std::uint32_t delay) { tk_dly_tsk(delay); }, &console_camera.locked};
+    const experiment::Services services{
+        &camera,
+        output,
+        HAL_GetTick,
+        [](std::uint32_t delay) {
+            tk_dly_tsk(delay);
+        },
+        &console_camera.locked
+    };
     const auto extra = experiment::Register(services, commands + 4, 12);
-    if (extra > 12) { Halt("extension: command capacity exceeded\n"); }
+    if (extra > 12) {
+        Halt("extension: command capacity exceeded\n");
+    }
     experiment::console::Shell shell(commands, 4 + extra, output);
     HAL_NVIC_SetPriority(USART1_IRQn, 14, 0);
     HAL_NVIC_EnableIRQ(USART1_IRQn);
@@ -127,12 +182,17 @@ void CameraTask(INT, void *)
         const auto now = HAL_GetTick();
         const bool running = camera.Running();
         if (camera_pipe2_pipe2_frame_count != last_frame || !running || running != last_running) {
-            last_frame = camera_pipe2_pipe2_frame_count; last_progress = now;
+            last_frame = camera_pipe2_pipe2_frame_count;
+            last_progress = now;
         }
         last_running = running;
         if (camera.Poll() != experiment::console::Status::kOk || (camera.Running() && now - last_progress >= 2000)) {
             ++experiment_camera_failures;
-            output.Write(camera.Recover() == experiment::console::Status::kOk ? "camera: recovered\n" : "camera: recovery failed; capture recover to retry\n");
+            output.Write(
+                camera.Recover() == experiment::console::Status::kOk
+                    ? "camera: recovered\n"
+                    : "camera: recovery failed; capture recover to retry\n"
+            );
             last_progress = HAL_GetTick();
         }
         if (!uai::camera_pipe2::driver::IsOk(display.Process())) {
@@ -143,7 +203,9 @@ void CameraTask(INT, void *)
         for (unsigned budget = 0; budget < 128; ++budget) {
             char character = 0;
             bool receive_error = false;
-            if (!received.Pop(character, receive_error)) { break; }
+            if (!received.Pop(character, receive_error)) {
+                break;
+            }
             shell.Feed(character, receive_error);
             if (character == '\r' || character == '\n') {
                 break;
@@ -167,18 +229,26 @@ extern "C" void USART1_IRQHandler(void)
         if ((flags & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE | USART_ISR_PE)) != 0) {
             USART1->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF | USART_ICR_PECF;
             received.Error();
-            if ((flags & USART_ISR_RXNE_RXFNE) != 0) { static_cast<void>(USART1->RDR); }
+            if ((flags & USART_ISR_RXNE_RXFNE) != 0) {
+                static_cast<void>(USART1->RDR);
+            }
             continue;
         }
-        if ((flags & USART_ISR_RXNE_RXFNE) == 0) { break; }
+        if ((flags & USART_ISR_RXNE_RXFNE) == 0) {
+            break;
+        }
         received.Push(static_cast<char>(USART1->RDR & 0xffU));
     }
-    if (events > 0) { tk_set_flg(events, 1); }
+    if (events > 0) {
+        tk_set_flg(events, 1);
+    }
 }
 
 extern "C" void experiment_frame_wake(void)
 {
-    if (events > 0) { tk_set_flg(events, 1); }
+    if (events > 0) {
+        tk_set_flg(events, 1);
+    }
 }
 
 extern "C" INT usermain(void)
@@ -187,7 +257,9 @@ extern "C" INT usermain(void)
     clock.PeriphClockSelection = RCC_PERIPHCLK_USART1;
     clock.Usart1ClockSelection = RCC_USART1CLKSOURCE_CLKP;
     if (HAL_RCCEx_PeriphCLKConfig(&clock) != HAL_OK) {
-        for (;;) { tk_dly_tsk(1000); }
+        for (;;) {
+            tk_dly_tsk(1000);
+        }
     }
     __HAL_RCC_USART1_CLK_ENABLE();
     __HAL_RCC_GPIOE_CLK_ENABLE();
@@ -209,5 +281,7 @@ extern "C" INT usermain(void)
     if (identifier < E_OK || tk_sta_tsk(identifier, 0) != E_OK) {
         Halt("camera: task creation failed\n");
     }
-    for (;;) { tk_slp_tsk(TMO_FEVR); }
+    for (;;) {
+        tk_slp_tsk(TMO_FEVR);
+    }
 }

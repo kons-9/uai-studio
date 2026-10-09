@@ -22,7 +22,10 @@ using cpu_task_monitor::CpuTaskMonitorTraceHeader;
 using cpu_task_monitor::CpuTaskMonitorTraceRecord;
 using cpu_task_monitor::CpuTaskMonitorTraceTaskName;
 
-TEST(TraceFormat, RingWriterWrapsAndCommitsBothTraceFormats)
+TEST(
+    TraceFormat,
+    RingWriterWrapsAndCommitsBothTraceFormats
+)
 {
     ThreadMonitorTraceHeader ai_header{};
     ai_header.capacity = 1U;
@@ -31,17 +34,30 @@ TEST(TraceFormat, RingWriterWrapsAndCommitsBothTraceFormats)
     const auto flush = [&ai_flushes](const void *, std::size_t) {
         ++ai_flushes;
     };
-    EXPECT_TRUE(trace_format::AppendTraceRecord(
-        &ai_header, ai_records, 1U, ThreadMonitorTraceRecord{},
-        ai_model_monitor::kThreadMonitorTraceCommitMagic, flush,
-        [](ThreadMonitorTraceHeader &, const ThreadMonitorTraceRecord &) {}));
-    EXPECT_TRUE(trace_format::AppendTraceRecord(
-        &ai_header, ai_records, 1U, ThreadMonitorTraceRecord{},
-        ai_model_monitor::kThreadMonitorTraceCommitMagic, flush,
-        [](ThreadMonitorTraceHeader &, const ThreadMonitorTraceRecord &) {}));
+    EXPECT_TRUE(
+        trace_format::AppendTraceRecord(
+            &ai_header,
+            ai_records,
+            1U,
+            ThreadMonitorTraceRecord{},
+            ai_model_monitor::kThreadMonitorTraceCommitMagic,
+            flush,
+            [](ThreadMonitorTraceHeader &, const ThreadMonitorTraceRecord &) {}
+        )
+    );
+    EXPECT_TRUE(
+        trace_format::AppendTraceRecord(
+            &ai_header,
+            ai_records,
+            1U,
+            ThreadMonitorTraceRecord{},
+            ai_model_monitor::kThreadMonitorTraceCommitMagic,
+            flush,
+            [](ThreadMonitorTraceHeader &, const ThreadMonitorTraceRecord &) {}
+        )
+    );
     EXPECT_EQ(ai_records[0].sequence, 1U);
-    EXPECT_EQ(ai_records[0].commit_marker,
-              ai_model_monitor::kThreadMonitorTraceCommitMagic ^ 1U);
+    EXPECT_EQ(ai_records[0].commit_marker, ai_model_monitor::kThreadMonitorTraceCommitMagic ^ 1U);
     EXPECT_EQ(ai_header.record_count, 1U);
     EXPECT_EQ(ai_header.dropped_count, 1U);
     EXPECT_EQ(ai_header.next_sequence, 2U);
@@ -51,16 +67,24 @@ TEST(TraceFormat, RingWriterWrapsAndCommitsBothTraceFormats)
     CpuTaskMonitorTraceHeader cpu_header{};
     cpu_header.capacity = 1U;
     CpuTaskMonitorTraceRecord cpu_records[1]{};
-    EXPECT_TRUE(trace_format::AppendTraceRecord(
-        &cpu_header, cpu_records, 1U, CpuTaskMonitorTraceRecord{},
-        cpu_task_monitor::kCpuTaskMonitorTraceCommitMagic,
-        [](const void *, std::size_t) {},
-        [](CpuTaskMonitorTraceHeader &, const CpuTaskMonitorTraceRecord &) {}));
-    EXPECT_EQ(cpu_records[0].commit_marker,
-              cpu_task_monitor::kCpuTaskMonitorTraceCommitMagic);
+    EXPECT_TRUE(
+        trace_format::AppendTraceRecord(
+            &cpu_header,
+            cpu_records,
+            1U,
+            CpuTaskMonitorTraceRecord{},
+            cpu_task_monitor::kCpuTaskMonitorTraceCommitMagic,
+            [](const void *, std::size_t) {},
+            [](CpuTaskMonitorTraceHeader &, const CpuTaskMonitorTraceRecord &) {}
+        )
+    );
+    EXPECT_EQ(cpu_records[0].commit_marker, cpu_task_monitor::kCpuTaskMonitorTraceCommitMagic);
 }
 
-TEST(TraceFormat, AiModelLayoutMatchesDecoder)
+TEST(
+    TraceFormat,
+    AiModelLayoutMatchesDecoder
+)
 {
     static_assert(std::is_trivially_copyable_v<ThreadMonitorTraceHeader>);
     static_assert(std::is_trivially_copyable_v<ThreadMonitorTraceRecord>);
@@ -69,8 +93,7 @@ TEST(TraceFormat, AiModelLayoutMatchesDecoder)
     static_assert(sizeof(ThreadMonitorTraceModelName) == 32U);
     static_assert(alignof(ThreadMonitorTraceRecord) == 32U);
     static_assert(ai_model_monitor::kThreadMonitorTraceVersion == 5U);
-    static_assert(ai_model_monitor::kThreadMonitorTraceDataOffset ==
-                  64U + 16U * 32U);
+    static_assert(ai_model_monitor::kThreadMonitorTraceDataOffset == 64U + 16U * 32U);
 
     EXPECT_EQ(offsetof(ThreadMonitorTraceHeader, magic), 0U);
     EXPECT_EQ(offsetof(ThreadMonitorTraceHeader, version), 4U);
@@ -94,7 +117,10 @@ TEST(TraceFormat, AiModelLayoutMatchesDecoder)
     EXPECT_EQ(header.model_name_entry_size, 32U);
 }
 
-TEST(TraceFormat, CpuTaskLayoutMatchesDecoder)
+TEST(
+    TraceFormat,
+    CpuTaskLayoutMatchesDecoder
+)
 {
     static_assert(std::is_trivially_copyable_v<CpuTaskMonitorTraceHeader>);
     static_assert(std::is_trivially_copyable_v<CpuTaskMonitorTraceRecord>);
@@ -102,8 +128,7 @@ TEST(TraceFormat, CpuTaskLayoutMatchesDecoder)
     static_assert(sizeof(CpuTaskMonitorTraceRecord) == 64U);
     static_assert(sizeof(CpuTaskMonitorTraceTaskName) == 32U);
     static_assert(cpu_task_monitor::kCpuTaskMonitorTraceVersion == 3U);
-    static_assert(cpu_task_monitor::kCpuTaskMonitorTraceDataOffset ==
-                  64U + 33U * 32U);
+    static_assert(cpu_task_monitor::kCpuTaskMonitorTraceDataOffset == 64U + 33U * 32U);
 
     EXPECT_EQ(offsetof(CpuTaskMonitorTraceHeader, version), 4U);
     EXPECT_EQ(offsetof(CpuTaskMonitorTraceHeader, task_name_count), 52U);

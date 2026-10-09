@@ -39,23 +39,17 @@ AiModelMonitor::PendingTraceQueue AiModelMonitor::pending_queue_;
 
 bool AiModelMonitor::InitializeTraceBuffer()
 {
-    const auto &region = static_memory_layout::Region::GetRegionFromKey(
-        static_memory_layout::Key::kThreadMonitor);
-    if (region.begin == nullptr ||
-        region.size() < kThreadMonitorTraceDataOffset +
-                            sizeof(ThreadMonitorTraceRecord)) {
+    const auto &region = static_memory_layout::Region::GetRegionFromKey(static_memory_layout::Key::kThreadMonitor);
+    if (region.begin == nullptr || region.size() < kThreadMonitorTraceDataOffset + sizeof(ThreadMonitorTraceRecord)) {
         return false;
     }
 
-    trace_header_ = reinterpret_cast<ThreadMonitorTraceHeader *>(
-        region.address());
-    trace_model_names_ = reinterpret_cast<ThreadMonitorTraceModelName *>(
-        region.address() + sizeof(ThreadMonitorTraceHeader));
-    trace_records_ = reinterpret_cast<ThreadMonitorTraceRecord *>(
-        region.address() + kThreadMonitorTraceDataOffset);
-    trace_capacity_ = static_cast<std::uint32_t>(
-        (region.size() - kThreadMonitorTraceDataOffset) /
-        sizeof(ThreadMonitorTraceRecord));
+    trace_header_ = reinterpret_cast<ThreadMonitorTraceHeader *>(region.address());
+    trace_model_names_ =
+        reinterpret_cast<ThreadMonitorTraceModelName *>(region.address() + sizeof(ThreadMonitorTraceHeader));
+    trace_records_ = reinterpret_cast<ThreadMonitorTraceRecord *>(region.address() + kThreadMonitorTraceDataOffset);
+    trace_capacity_ =
+        static_cast<std::uint32_t>((region.size() - kThreadMonitorTraceDataOffset) / sizeof(ThreadMonitorTraceRecord));
     if (trace_capacity_ == 0U) {
         trace_header_ = nullptr;
         trace_model_names_ = nullptr;
@@ -64,8 +58,7 @@ bool AiModelMonitor::InitializeTraceBuffer()
     }
 
     if (!TraceHeaderValid() || !TraceModelNamesMatch()) {
-        std::memset(reinterpret_cast<void *>(region.address()), 0U,
-                    region.size());
+        std::memset(reinterpret_cast<void *>(region.address()), 0U, region.size());
         *trace_header_ = ThreadMonitorTraceHeader{};
         trace_header_->record_size = sizeof(ThreadMonitorTraceRecord);
         trace_header_->capacity = trace_capacity_;
@@ -74,33 +67,30 @@ bool AiModelMonitor::InitializeTraceBuffer()
         ++trace_header_->boot_count;
     }
     UpdateTraceModelNames();
-    trace_header_->monitored_task_id =
-        static_cast<std::uint32_t>(monitored_task_id_);
+    trace_header_->monitored_task_id = static_cast<std::uint32_t>(monitored_task_id_);
     trace_header_->monitor_task_id = 0U;
     FlushTrace(trace_header_, sizeof(*trace_header_));
-    UAI_LOG_INFO("ai: runtime trace addr=%x bytes=%u records=%u version=%u\n",
-                 static_cast<unsigned int>(region.address()),
-                 static_cast<unsigned int>(region.size()),
-                 static_cast<unsigned int>(trace_capacity_),
-                 static_cast<unsigned int>(trace_header_->version));
+    UAI_LOG_INFO(
+        "ai: runtime trace addr=%x bytes=%u records=%u version=%u\n",
+        static_cast<unsigned int>(region.address()),
+        static_cast<unsigned int>(region.size()),
+        static_cast<unsigned int>(trace_capacity_),
+        static_cast<unsigned int>(trace_header_->version)
+    );
     return true;
 }
 
 bool AiModelMonitor::TraceHeaderValid() const
 {
-    return trace_header_ != nullptr &&
-           trace_header_->magic == kThreadMonitorTraceMagic &&
-           trace_header_->version == kThreadMonitorTraceVersion &&
-           trace_header_->header_size == kThreadMonitorTraceDataOffset &&
-           trace_header_->record_size == sizeof(ThreadMonitorTraceRecord) &&
-           trace_header_->model_name_entry_size ==
-               sizeof(ThreadMonitorTraceModelName) &&
-           trace_header_->model_name_count <=
-               kThreadMonitorModelNameCapacity &&
-           trace_header_->capacity == trace_capacity_ &&
-           trace_header_->capacity != 0U &&
-           trace_header_->write_index < trace_header_->capacity &&
-           trace_header_->record_count <= trace_header_->capacity;
+    return trace_header_ != nullptr && trace_header_->magic == kThreadMonitorTraceMagic
+        && trace_header_->version == kThreadMonitorTraceVersion
+        && trace_header_->header_size == kThreadMonitorTraceDataOffset
+        && trace_header_->record_size == sizeof(ThreadMonitorTraceRecord)
+        && trace_header_->model_name_entry_size == sizeof(ThreadMonitorTraceModelName)
+        && trace_header_->model_name_count <= kThreadMonitorModelNameCapacity
+        && trace_header_->capacity == trace_capacity_ && trace_header_->capacity != 0U
+        && trace_header_->write_index < trace_header_->capacity
+        && trace_header_->record_count <= trace_header_->capacity;
 }
 
 bool AiModelMonitor::TraceModelNamesMatch() const
@@ -109,17 +99,14 @@ bool AiModelMonitor::TraceModelNamesMatch() const
         return false;
     }
     std::uint32_t registered_count = 0U;
-    for (std::size_t index = 0U;
-         index < kThreadMonitorModelNameCapacity; ++index) {
-        const ThreadMonitorTraceModelName &registered =
-            registered_model_names_[index];
+    for (std::size_t index = 0U; index < kThreadMonitorModelNameCapacity; ++index) {
+        const ThreadMonitorTraceModelName &registered = registered_model_names_[index];
         const ThreadMonitorTraceModelName &traced = trace_model_names_[index];
         if (registered.model_kind_id != kUnknownModelKindId) {
             ++registered_count;
         }
-        if (registered.model_kind_id != traced.model_kind_id ||
-            std::memcmp(registered.name, traced.name,
-                        kThreadMonitorModelNameBytes) != 0) {
+        if (registered.model_kind_id != traced.model_kind_id
+            || std::memcmp(registered.name, traced.name, kThreadMonitorModelNameBytes) != 0) {
             return false;
         }
     }
@@ -128,28 +115,26 @@ bool AiModelMonitor::TraceModelNamesMatch() const
 
 void AiModelMonitor::UpdateTraceModelNames()
 {
-    if (trace_header_ == nullptr || trace_model_names_ == nullptr) return;
+    if (trace_header_ == nullptr || trace_model_names_ == nullptr)
+        return;
     std::uint32_t name_count = 0U;
-    for (std::size_t index = 0U;
-         index < kThreadMonitorModelNameCapacity; ++index) {
+    for (std::size_t index = 0U; index < kThreadMonitorModelNameCapacity; ++index) {
         trace_model_names_[index] = registered_model_names_[index];
-        if (registered_model_names_[index].model_kind_id !=
-            kUnknownModelKindId) {
+        if (registered_model_names_[index].model_kind_id != kUnknownModelKindId) {
             ++name_count;
         }
     }
     trace_header_->model_name_count = name_count;
-    trace_header_->model_name_entry_size =
-        sizeof(ThreadMonitorTraceModelName);
+    trace_header_->model_name_entry_size = sizeof(ThreadMonitorTraceModelName);
     trace_header_->header_size = kThreadMonitorTraceDataOffset;
-    FlushTrace(trace_model_names_,
-               kThreadMonitorModelNameCapacity *
-                   sizeof(ThreadMonitorTraceModelName));
+    FlushTrace(trace_model_names_, kThreadMonitorModelNameCapacity * sizeof(ThreadMonitorTraceModelName));
     FlushTrace(trace_header_, sizeof(*trace_header_));
 }
 
 common::Error AiModelMonitor::RegisterModelName(
-    ai_runtime::AiModelId model_id, const char *name)
+    ai_runtime::AiModelId model_id,
+    const char *name
+)
 {
     const std::uint32_t id = static_cast<std::uint32_t>(model_id);
     if (id == kUnknownModelKindId || name == nullptr || name[0] == '\0') {
@@ -160,15 +145,13 @@ common::Error AiModelMonitor::RegisterModelName(
     }
 
     std::size_t slot = kThreadMonitorModelNameCapacity;
-    for (std::size_t index = 0U;
-         index < kThreadMonitorModelNameCapacity; ++index) {
+    for (std::size_t index = 0U; index < kThreadMonitorModelNameCapacity; ++index) {
         if (registered_model_names_[index].model_kind_id == id) {
             slot = index;
             break;
         }
-        if (slot == kThreadMonitorModelNameCapacity &&
-            registered_model_names_[index].model_kind_id ==
-                kUnknownModelKindId) {
+        if (slot == kThreadMonitorModelNameCapacity
+            && registered_model_names_[index].model_kind_id == kUnknownModelKindId) {
             slot = index;
         }
     }
@@ -181,9 +164,7 @@ common::Error AiModelMonitor::RegisterModelName(
     entry.model_kind_id = id;
     const std::size_t name_length = std::strlen(name);
     const std::size_t copy_length =
-        name_length < kThreadMonitorModelNameBytes - 1U
-            ? name_length
-            : kThreadMonitorModelNameBytes - 1U;
+        name_length < kThreadMonitorModelNameBytes - 1U ? name_length : kThreadMonitorModelNameBytes - 1U;
     std::memcpy(entry.name, name, copy_length);
     return {common::ErrorCode::kOk};
 }
@@ -227,14 +208,12 @@ common::Error AiModelMonitor::Start()
     }
 
     const common::Error task_name_status =
-        cpu_task_monitor::CpuTaskMonitor::RegisterTaskForActiveMonitor(
-            monitor_task_id_, "ai_model_monitor");
+        cpu_task_monitor::CpuTaskMonitor::RegisterTaskForActiveMonitor(monitor_task_id_, "ai_model_monitor");
     if (!task_name_status.Ok()) {
         task_name_status.LogStatus("ai_model_monitor", common::LogLevel::kWarn);
     }
 
-    trace_header_->monitor_task_id =
-        static_cast<std::uint32_t>(monitor_task_id_);
+    trace_header_->monitor_task_id = static_cast<std::uint32_t>(monitor_task_id_);
     FlushTrace(trace_header_, sizeof(*trace_header_));
     const ER start_status = tk_sta_tsk(monitor_task_id_, 0);
     if (start_status != E_OK) {
@@ -258,7 +237,8 @@ common::Error AiModelMonitor::Stop()
     const ID task_id = monitor_task_id_;
     const ER terminate_status = tk_ter_tsk(task_id);
     const ER delete_status = tk_del_tsk(task_id);
-    if (terminate_status == E_OK) FlushPendingTraceEvents();
+    if (terminate_status == E_OK)
+        FlushPendingTraceEvents();
     if (trace_header_ != nullptr) {
         trace_header_->monitor_task_id = 0U;
         FlushTrace(trace_header_, sizeof(*trace_header_));
@@ -278,7 +258,8 @@ common::Error AiModelMonitor::Stop()
 
 void AiModelMonitor::ObserveAiRuntimeStep(const ai_runtime::StepTrace &trace)
 {
-    if (monitor_task_id_ == 0 || trace_header_ == nullptr) return;
+    if (monitor_task_id_ == 0 || trace_header_ == nullptr)
+        return;
 
     if (trace.begin) {
         if (trace.step_id == 0U) {
@@ -287,16 +268,20 @@ void AiModelMonitor::ObserveAiRuntimeStep(const ai_runtime::StepTrace &trace)
         }
     }
 
-    if (operation_active_ && !faulted_) last_progress_tick_ = trace.timestamp;
-    QueueTraceEvent({trace.timestamp,
-                     0U,
-                     trace.inference_id,
-                     static_cast<std::uint32_t>(trace.model_id),
-                     trace.step_id,
-                     static_cast<std::uint32_t>(trace.context),
-                     trace.begin});
+    if (operation_active_ && !faulted_)
+        last_progress_tick_ = trace.timestamp;
+    QueueTraceEvent(
+        {trace.timestamp,
+         0U,
+         trace.inference_id,
+         static_cast<std::uint32_t>(trace.model_id),
+         trace.step_id,
+         static_cast<std::uint32_t>(trace.context),
+         trace.begin}
+    );
 
-    if (!trace.begin && trace.step_id == 2U) operation_active_ = false;
+    if (!trace.begin && trace.step_id == 2U)
+        operation_active_ = false;
 }
 
 void AiModelMonitor::QueueTraceEvent(const PendingTraceEvent &event)
@@ -305,21 +290,24 @@ void AiModelMonitor::QueueTraceEvent(const PendingTraceEvent &event)
     (void)pending_queue_.Push(event);
 }
 
-void AiModelMonitor::RecordSample(std::uint32_t now,
-                                  const T_RTSK &task_status)
+void AiModelMonitor::RecordSample(
+    std::uint32_t now,
+    const T_RTSK &task_status
+)
 {
-    WriteRecord(now, TraceRecordType::kSample, &task_status, E_OK,
-                TraceFaultCode::kNone);
+    WriteRecord(now, TraceRecordType::kSample, &task_status, E_OK, TraceFaultCode::kNone);
 }
 
-void AiModelMonitor::WriteRecord(std::uint32_t now, TraceRecordType type,
-                                 const T_RTSK *task_status,
-                                 ER reference_status,
-                                 TraceFaultCode fault_code,
-                                 const PendingTraceEvent *event)
+void AiModelMonitor::WriteRecord(
+    std::uint32_t now,
+    TraceRecordType type,
+    const T_RTSK *task_status,
+    ER reference_status,
+    TraceFaultCode fault_code,
+    const PendingTraceEvent *event
+)
 {
-    if (trace_header_ == nullptr || trace_records_ == nullptr ||
-        trace_capacity_ == 0U) {
+    if (trace_header_ == nullptr || trace_records_ == nullptr || trace_capacity_ == 0U) {
         return;
     }
 
@@ -331,16 +319,13 @@ void AiModelMonitor::WriteRecord(std::uint32_t now, TraceRecordType type,
     record.reference_status = static_cast<std::int32_t>(reference_status);
     record.fault_code = static_cast<std::uint32_t>(fault_code);
     record.type = static_cast<std::uint8_t>(type);
-    record.flags = (operation_active_ ? kTraceFlagOperationActive : 0U) |
-                   (faulted_ ? kTraceFlagFaulted : 0U);
+    record.flags = (operation_active_ ? kTraceFlagOperationActive : 0U) | (faulted_ ? kTraceFlagFaulted : 0U);
     if (task_status != nullptr) {
         record.task_state = task_status->tskstat;
         record.wait_factor = task_status->tskwait;
         record.wait_object_id = static_cast<std::uint32_t>(task_status->wid);
-        record.current_priority =
-            static_cast<std::int32_t>(task_status->tskpri);
-        record.base_priority =
-            static_cast<std::int32_t>(task_status->tskbpri);
+        record.current_priority = static_cast<std::int32_t>(task_status->tskpri);
+        record.base_priority = static_cast<std::int32_t>(task_status->tskbpri);
     }
     if (event != nullptr && type == TraceRecordType::kAiRuntimeStep) {
         /* Reuse the stable 64-byte record for the ai_runtime identity. */
@@ -358,24 +343,27 @@ void AiModelMonitor::WriteRecord(std::uint32_t now, TraceRecordType type,
         }
     }
     trace_format::AppendTraceRecord(
-        trace_header_, trace_records_, trace_capacity_, record,
+        trace_header_,
+        trace_records_,
+        trace_capacity_,
+        record,
         kThreadMonitorTraceCommitMagic,
         [this](const void *address, std::size_t size) {
             FlushTrace(address, size);
         },
-        [type, fault_code](ThreadMonitorTraceHeader &header,
-                           const ThreadMonitorTraceRecord &) {
+        [type, fault_code](ThreadMonitorTraceHeader &header, const ThreadMonitorTraceRecord &) {
             if (type == TraceRecordType::kFault) {
                 ++header.fault_count;
-                header.last_fault_code =
-                    static_cast<std::uint32_t>(fault_code);
+                header.last_fault_code = static_cast<std::uint32_t>(fault_code);
             }
-        });
+        }
+    );
 }
 
 void AiModelMonitor::FlushPendingTraceEvents()
 {
-    if (trace_header_ == nullptr || trace_records_ == nullptr) return;
+    if (trace_header_ == nullptr || trace_records_ == nullptr)
+        return;
 
     const std::uint32_t dropped = pending_queue_.TakeDroppedCount();
     trace_header_->dropped_count += dropped;
@@ -383,75 +371,83 @@ void AiModelMonitor::FlushPendingTraceEvents()
     pending_queue_.Drain([this](const PendingTraceEvent &queued_event) {
         PendingTraceEvent event = queued_event;
         event.timing_valid = step_correlator_.Observe(
-            event.inference_id, event.step_id, event.timestamp_ms,
-            event.begin, &event.elapsed_ms);
-        WriteRecord(event.timestamp_ms, TraceRecordType::kAiRuntimeStep,
-                    nullptr, E_OK, TraceFaultCode::kNone, &event);
+            event.inference_id, event.step_id, event.timestamp_ms, event.begin, &event.elapsed_ms
+        );
+        WriteRecord(event.timestamp_ms, TraceRecordType::kAiRuntimeStep, nullptr, E_OK, TraceFaultCode::kNone, &event);
     });
-    if (dropped != 0U) FlushTrace(trace_header_, sizeof(*trace_header_));
+    if (dropped != 0U)
+        FlushTrace(trace_header_, sizeof(*trace_header_));
 }
 
-void AiModelMonitor::FlushTrace(const void *address, std::size_t size) const
+void AiModelMonitor::FlushTrace(
+    const void *address,
+    std::size_t size
+) const
 {
-    if (address == nullptr || size == 0U) return;
+    if (address == nullptr || size == 0U)
+        return;
     SCB_CleanDCache_by_Addr(
-        reinterpret_cast<std::uint32_t *>(const_cast<void *>(address)),
-        static_cast<std::int32_t>(size));
+        reinterpret_cast<std::uint32_t *>(const_cast<void *>(address)), static_cast<std::int32_t>(size)
+    );
 }
 
-void AiModelMonitor::Entry(INT, void *exinf)
+void AiModelMonitor::Entry(
+    INT,
+    void *exinf
+)
 {
     auto *monitor = static_cast<AiModelMonitor *>(exinf);
-    if (monitor != nullptr) monitor->Run();
+    if (monitor != nullptr)
+        monitor->Run();
     tk_ext_tsk();
 }
 
 void AiModelMonitor::Run()
 {
     for (;;) {
-        if (stop_requested_) return;
+        if (stop_requested_)
+            return;
         (void)tk_dly_tsk(kMonitorPeriodTicks);
-        if (stop_requested_) return;
+        if (stop_requested_)
+            return;
 
         T_RTSK task_status = {};
-        const ER reference_status =
-            tk_ref_tsk(monitored_task_id_, &task_status);
+        const ER reference_status = tk_ref_tsk(monitored_task_id_, &task_status);
         const std::uint32_t now = Now();
         FlushPendingTraceEvents();
         if (reference_status != E_OK) {
-            ReportFault(now, nullptr, reference_status,
-                        TraceFaultCode::kTaskReference);
+            ReportFault(now, nullptr, reference_status, TraceFaultCode::kTaskReference);
             continue;
         }
         RecordSample(now, task_status);
-        if (operation_active_ &&
-            now - last_progress_tick_ > kOperationTimeoutTicks) {
-            ReportFault(now, &task_status, E_OK,
-                        TraceFaultCode::kOperationTimeout);
+        if (operation_active_ && now - last_progress_tick_ > kOperationTimeoutTicks) {
+            ReportFault(now, &task_status, E_OK, TraceFaultCode::kOperationTimeout);
         }
     }
 }
 
-void AiModelMonitor::ReportFault(std::uint32_t now,
-                                 const T_RTSK *task_status,
-                                 ER reference_status,
-                                 TraceFaultCode fault_code)
+void AiModelMonitor::ReportFault(
+    std::uint32_t now,
+    const T_RTSK *task_status,
+    ER reference_status,
+    TraceFaultCode fault_code
+)
 {
-    if (faulted_) return;
+    if (faulted_)
+        return;
     faulted_ = true;
-    WriteRecord(now, TraceRecordType::kFault, task_status, reference_status,
-                fault_code);
-    const unsigned int task_state =
-        task_status == nullptr ? 0U
-                               : static_cast<unsigned int>(task_status->tskstat);
-    const unsigned int wait_factor =
-        task_status == nullptr ? 0U
-                               : static_cast<unsigned int>(task_status->tskwait);
-    UAI_LOG_ERROR("ai: ai_model_monitor fault task=%d ref=%x state=%x wait=%x now=%u last=%u\n",
-                  static_cast<int>(monitored_task_id_),
-                  static_cast<unsigned int>(reference_status), task_state,
-                  wait_factor, static_cast<unsigned int>(now),
-                  static_cast<unsigned int>(last_progress_tick_));
+    WriteRecord(now, TraceRecordType::kFault, task_status, reference_status, fault_code);
+    const unsigned int task_state = task_status == nullptr ? 0U : static_cast<unsigned int>(task_status->tskstat);
+    const unsigned int wait_factor = task_status == nullptr ? 0U : static_cast<unsigned int>(task_status->tskwait);
+    UAI_LOG_ERROR(
+        "ai: ai_model_monitor fault task=%d ref=%x state=%x wait=%x now=%u last=%u\n",
+        static_cast<int>(monitored_task_id_),
+        static_cast<unsigned int>(reference_status),
+        task_state,
+        wait_factor,
+        static_cast<unsigned int>(now),
+        static_cast<unsigned int>(last_progress_tick_)
+    );
 }
 
 std::uint32_t AiModelMonitor::Now() const

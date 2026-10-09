@@ -25,12 +25,9 @@ public:
 
     bool Push(const Event &event)
     {
-        const std::uint32_t write =
-            __atomic_load_n(&write_index_, __ATOMIC_RELAXED);
-        const std::uint32_t read =
-            __atomic_load_n(&read_index_, __ATOMIC_ACQUIRE);
-        const std::uint32_t next =
-            (write + 1U) % static_cast<std::uint32_t>(Capacity);
+        const std::uint32_t write = __atomic_load_n(&write_index_, __ATOMIC_RELAXED);
+        const std::uint32_t read = __atomic_load_n(&read_index_, __ATOMIC_ACQUIRE);
+        const std::uint32_t next = (write + 1U) % static_cast<std::uint32_t>(Capacity);
         if (next == read) {
             __atomic_fetch_add(&dropped_count_, 1U, __ATOMIC_RELAXED);
             return false;
@@ -43,13 +40,12 @@ public:
     template <typename Consume>
     std::size_t Drain(Consume consume)
     {
-        std::uint32_t read =
-            __atomic_load_n(&read_index_, __ATOMIC_RELAXED);
+        std::uint32_t read = __atomic_load_n(&read_index_, __ATOMIC_RELAXED);
         std::size_t count = 0U;
         while (count < Capacity) {
-            const std::uint32_t write =
-                __atomic_load_n(&write_index_, __ATOMIC_ACQUIRE);
-            if (read == write) break;
+            const std::uint32_t write = __atomic_load_n(&write_index_, __ATOMIC_ACQUIRE);
+            if (read == write)
+                break;
             const Event event = events_[read];
             consume(event);
             read = (read + 1U) % static_cast<std::uint32_t>(Capacity);
@@ -59,10 +55,7 @@ public:
         return count;
     }
 
-    std::uint32_t TakeDroppedCount()
-    {
-        return __atomic_exchange_n(&dropped_count_, 0U, __ATOMIC_ACQ_REL);
-    }
+    std::uint32_t TakeDroppedCount() { return __atomic_exchange_n(&dropped_count_, 0U, __ATOMIC_ACQ_REL); }
 
 private:
     std::array<Event, Capacity> events_{};

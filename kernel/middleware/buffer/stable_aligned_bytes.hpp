@@ -21,7 +21,9 @@ public:
     void *data() { return storage_.data(); }
 
 private:
-    alignas(8) std::array<std::byte, Bytes> storage_{};
+    alignas(8) std::array<
+        std::byte,
+        Bytes> storage_{};
 };
 
 } // namespace uai::ai::common

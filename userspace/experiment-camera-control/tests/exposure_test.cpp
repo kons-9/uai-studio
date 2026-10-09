@@ -4,7 +4,10 @@
 
 void Require(bool condition)
 {
-    if (!condition) { std::cerr << "exposure check failed\n"; std::exit(1); }
+    if (!condition) {
+        std::cerr << "exposure check failed\n";
+        std::exit(1);
+    }
 }
 
 int main()

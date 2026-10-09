@@ -27,17 +27,13 @@ constexpr std::uint32_t kOutputHeight = static_cast<std::uint32_t>(kFrameHeight)
 #if PIPE2_CROP_NATIVE
 constexpr std::uint32_t kCropWidth = kOutputWidth;
 constexpr std::uint32_t kCropHeight = kOutputHeight;
-constexpr std::uint32_t kCropHorizontalStart =
-    (kSensorWidth - kCropWidth) / 2U;
-constexpr std::uint32_t kCropVerticalStart =
-    (kSensorHeight - kCropHeight) / 2U;
+constexpr std::uint32_t kCropHorizontalStart = (kSensorWidth - kCropWidth) / 2U;
+constexpr std::uint32_t kCropVerticalStart = (kSensorHeight - kCropHeight) / 2U;
 #elif PIPE2_CROP_INTEGER4
 constexpr std::uint32_t kCropWidth = 1600U;
 constexpr std::uint32_t kCropHeight = 1920U;
-constexpr std::uint32_t kCropHorizontalStart =
-    (kSensorWidth - kCropWidth) / 2U;
-constexpr std::uint32_t kCropVerticalStart =
-    (kSensorHeight - kCropHeight) / 2U;
+constexpr std::uint32_t kCropHorizontalStart = (kSensorWidth - kCropWidth) / 2U;
+constexpr std::uint32_t kCropVerticalStart = (kSensorHeight - kCropHeight) / 2U;
 #elif PIPE2_PIPE_DUAL
 constexpr std::uint32_t kCropWidth = 1620U;
 constexpr std::uint32_t kCropHeight = kSensorHeight;
@@ -62,32 +58,45 @@ DriverStatus ConfigureSensorProfile()
         return DriverStatus::kHardwareFailure;
     }
     const std::uint8_t standby = 0x01U;
-    if (sensor->IO.WriteReg(sensor->IO.Address, 0x3000U,
-                            const_cast<std::uint8_t *>(&standby), 1U) != 0) {
+    if (sensor->IO.WriteReg(sensor->IO.Address, 0x3000U, const_cast<std::uint8_t *>(&standby), 1U) != 0) {
         return DriverStatus::kHardwareFailure;
     }
     const std::uint8_t clock_select[] = {0x29U, 0x01U};
     const std::uint8_t lane_clock = 0x06U;
     const std::uint8_t system_mode = 0x02U;
-    if (sensor->IO.WriteReg(sensor->IO.Address, 0x314CU,
-                            const_cast<std::uint8_t *>(clock_select), 2U) != 0 ||
-        sensor->IO.WriteReg(sensor->IO.Address, 0x315AU,
-                            const_cast<std::uint8_t *>(&lane_clock), 1U) != 0 ||
-        sensor->IO.WriteReg(sensor->IO.Address, 0x319EU,
-                            const_cast<std::uint8_t *>(&system_mode), 1U) != 0) {
+    if (sensor->IO.WriteReg(sensor->IO.Address, 0x314CU, const_cast<std::uint8_t *>(clock_select), 2U) != 0
+        || sensor->IO.WriteReg(sensor->IO.Address, 0x315AU, const_cast<std::uint8_t *>(&lane_clock), 1U) != 0
+        || sensor->IO.WriteReg(sensor->IO.Address, 0x319EU, const_cast<std::uint8_t *>(&system_mode), 1U) != 0) {
         return DriverStatus::kHardwareFailure;
     }
     constexpr std::uint16_t timing_addresses[] = {
-        0x3A18U, 0x3A1AU, 0x3A1CU, 0x3A1EU, 0x3A20U,
-        0x3A22U, 0x3A24U, 0x3A26U, 0x3A28U};
+        0x3A18U, 0x3A1AU, 0x3A1CU, 0x3A1EU, 0x3A20U, 0x3A22U, 0x3A24U, 0x3A26U, 0x3A28U
+    };
     constexpr std::uint8_t timing_values[] = {
-        0x7FU, 0x00U, 0x37U, 0x00U, 0x37U, 0x00U, 0xF7U, 0x00U,
-        0x3FU, 0x00U, 0x6FU, 0x00U, 0x3FU, 0x00U, 0x5FU, 0x00U,
-        0x2FU, 0x00U};
+        0x7FU,
+        0x00U,
+        0x37U,
+        0x00U,
+        0x37U,
+        0x00U,
+        0xF7U,
+        0x00U,
+        0x3FU,
+        0x00U,
+        0x6FU,
+        0x00U,
+        0x3FU,
+        0x00U,
+        0x5FU,
+        0x00U,
+        0x2FU,
+        0x00U
+    };
     for (std::size_t index = 0U; index < 9U; ++index) {
-        if (sensor->IO.WriteReg(sensor->IO.Address, timing_addresses[index],
-                                const_cast<std::uint8_t *>(&timing_values[index * 2U]),
-                                2U) != 0) {
+        if (sensor->IO.WriteReg(
+                sensor->IO.Address, timing_addresses[index], const_cast<std::uint8_t *>(&timing_values[index * 2U]), 2U
+            )
+            != 0) {
             return DriverStatus::kHardwareFailure;
         }
     }
@@ -102,9 +111,7 @@ DriverStatus ConfigureSensorProfile()
     }
 
     const std::uint8_t streaming = 0x00U;
-    if (sensor->IO.WriteReg(sensor->IO.Address, 0x3000U,
-                            const_cast<std::uint8_t *>(
-                                &streaming), 1U) != 0) {
+    if (sensor->IO.WriteReg(sensor->IO.Address, 0x3000U, const_cast<std::uint8_t *>(&streaming), 1U) != 0) {
         return DriverStatus::kHardwareFailure;
     }
 #endif
@@ -120,9 +127,9 @@ DriverStatus ConfigurePipe(std::uint32_t pipe)
     crop.VSize = kCropHeight;
     crop.PipeArea = DCMIPP_POSITIVE_AREA;
 
-    if (HAL_DCMIPP_PIPE_DisableCrop(&hcamera_dcmipp, pipe) != HAL_OK ||
-        HAL_DCMIPP_PIPE_SetCropConfig(&hcamera_dcmipp, pipe, &crop) != HAL_OK ||
-        HAL_DCMIPP_PIPE_EnableCrop(&hcamera_dcmipp, pipe) != HAL_OK) {
+    if (HAL_DCMIPP_PIPE_DisableCrop(&hcamera_dcmipp, pipe) != HAL_OK
+        || HAL_DCMIPP_PIPE_SetCropConfig(&hcamera_dcmipp, pipe, &crop) != HAL_OK
+        || HAL_DCMIPP_PIPE_EnableCrop(&hcamera_dcmipp, pipe) != HAL_OK) {
         return DriverStatus::kHardwareFailure;
     }
 
@@ -139,10 +146,9 @@ DriverStatus ConfigurePipe(std::uint32_t pipe)
     downsize.HSize = kOutputWidth;
     downsize.VSize = kOutputHeight;
 
-    if (HAL_DCMIPP_PIPE_DisableDownsize(&hcamera_dcmipp, pipe) != HAL_OK ||
-        HAL_DCMIPP_PIPE_SetDownsizeConfig(&hcamera_dcmipp, pipe, &downsize) !=
-            HAL_OK ||
-        HAL_DCMIPP_PIPE_EnableDownsize(&hcamera_dcmipp, pipe) != HAL_OK) {
+    if (HAL_DCMIPP_PIPE_DisableDownsize(&hcamera_dcmipp, pipe) != HAL_OK
+        || HAL_DCMIPP_PIPE_SetDownsizeConfig(&hcamera_dcmipp, pipe, &downsize) != HAL_OK
+        || HAL_DCMIPP_PIPE_EnableDownsize(&hcamera_dcmipp, pipe) != HAL_OK) {
         return DriverStatus::kHardwareFailure;
     }
 #endif
@@ -151,8 +157,7 @@ DriverStatus ConfigurePipe(std::uint32_t pipe)
     pipe_config.FrameRate = DCMIPP_FRAME_RATE_ALL;
     pipe_config.PixelPipePitch = kOutputWidth * 2U;
     pipe_config.PixelPackerFormat = DCMIPP_PIXEL_PACKER_FORMAT_RGB565_1;
-    if (HAL_DCMIPP_PIPE_SetConfig(&hcamera_dcmipp, pipe, &pipe_config) !=
-        HAL_OK) {
+    if (HAL_DCMIPP_PIPE_SetConfig(&hcamera_dcmipp, pipe, &pipe_config) != HAL_OK) {
         return DriverStatus::kHardwareFailure;
     }
 
@@ -171,13 +176,9 @@ DriverStatus CameraDriver::Initialize()
         return DriverStatus::kAlreadyInitialized;
     }
 
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "camera_pipe2: BSP camera init begin\n")));
-    const int32_t camera_init_status =
-        BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10);
-    tm_printf(reinterpret_cast<const UB *>(
-                  "camera_pipe2: BSP camera init status=%d\n"),
-              camera_init_status);
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>("camera_pipe2: BSP camera init begin\n")));
+    const int32_t camera_init_status = BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10);
+    tm_printf(reinterpret_cast<const UB *>("camera_pipe2: BSP camera init status=%d\n"), camera_init_status);
     if (camera_init_status != BSP_ERROR_NONE) {
         return DriverStatus::kHardwareFailure;
     }
@@ -189,15 +190,14 @@ DriverStatus CameraDriver::Initialize()
     if (sensor == nullptr) {
         return DriverStatus::kHardwareFailure;
     }
-    tm_printf(reinterpret_cast<const UB *>(
-                  "camera_pipe2: test pattern begin obj=%08x io=%08x ctx=%08x\n"),
-              static_cast<unsigned int>(reinterpret_cast<std::uintptr_t>(sensor)),
-              static_cast<unsigned int>(reinterpret_cast<std::uintptr_t>(sensor->IO.WriteReg)),
-              static_cast<unsigned int>(reinterpret_cast<std::uintptr_t>(sensor->Ctx.WriteReg)));
-    const int32_t pattern_status = IMX335_SetTestPattern(
-        sensor, PIPE2_IMX335_TEST_PATTERN_MODE);
-    tm_printf(reinterpret_cast<const UB *>(
-                  "camera_pipe2: test pattern status=%d\n"), pattern_status);
+    tm_printf(
+        reinterpret_cast<const UB *>("camera_pipe2: test pattern begin obj=%08x io=%08x ctx=%08x\n"),
+        static_cast<unsigned int>(reinterpret_cast<std::uintptr_t>(sensor)),
+        static_cast<unsigned int>(reinterpret_cast<std::uintptr_t>(sensor->IO.WriteReg)),
+        static_cast<unsigned int>(reinterpret_cast<std::uintptr_t>(sensor->Ctx.WriteReg))
+    );
+    const int32_t pattern_status = IMX335_SetTestPattern(sensor, PIPE2_IMX335_TEST_PATTERN_MODE);
+    tm_printf(reinterpret_cast<const UB *>("camera_pipe2: test pattern status=%d\n"), pattern_status);
     if (pattern_status != IMX335_OK) {
         return DriverStatus::kHardwareFailure;
     }
@@ -209,13 +209,13 @@ DriverStatus CameraDriver::Initialize()
 
 #if PIPE2_PIPE_DUAL
     /* Pipe2 is the ancillary output and shares the ISP input with Pipe1. */
-    if (HAL_DCMIPP_PIPE_CSI_EnableShare(&hcamera_dcmipp, DCMIPP_PIPE2) !=
-        HAL_OK) {
+    if (HAL_DCMIPP_PIPE_CSI_EnableShare(&hcamera_dcmipp, DCMIPP_PIPE2) != HAL_OK) {
         return DriverStatus::kHardwareFailure;
     }
 #endif
 
-    if (!IsOk(ConfigurePipe(DCMIPP_PIPE1))
+    if (
+        !IsOk(ConfigurePipe(DCMIPP_PIPE1))
 #if PIPE2_PIPE_DUAL
         || !IsOk(ConfigurePipe(DCMIPP_PIPE2))
 #endif
@@ -239,16 +239,22 @@ DriverStatus CameraDriver::Start()
     /* The IMX335 needs time to settle after the BSP reset sequence. */
     HAL_Delay(100U);
 
-    if (HAL_DCMIPP_CSI_PIPE_Start(
-            &hcamera_dcmipp, DCMIPP_PIPE1, DCMIPP_VIRTUAL_CHANNEL0,
-            static_cast<std::uint32_t>(MainPipeFrameBufferAddress()),
-            DCMIPP_MODE_CONTINUOUS) != HAL_OK
-#if PIPE2_PIPE_DUAL
-        ||
+    if (
         HAL_DCMIPP_CSI_PIPE_Start(
-            &hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0,
-            static_cast<std::uint32_t>(AncillaryPipeFrameBufferAddress()),
-            DCMIPP_MODE_CONTINUOUS) != HAL_OK
+            &hcamera_dcmipp,
+            DCMIPP_PIPE1,
+            DCMIPP_VIRTUAL_CHANNEL0,
+            static_cast<std::uint32_t>(MainPipeFrameBufferAddress()),
+            DCMIPP_MODE_CONTINUOUS
+        ) != HAL_OK
+#if PIPE2_PIPE_DUAL
+        || HAL_DCMIPP_CSI_PIPE_Start(
+               &hcamera_dcmipp,
+               DCMIPP_PIPE2,
+               DCMIPP_VIRTUAL_CHANNEL0,
+               static_cast<std::uint32_t>(AncillaryPipeFrameBufferAddress()),
+               DCMIPP_MODE_CONTINUOUS
+           ) != HAL_OK
 #endif
     ) {
         return DriverStatus::kHardwareFailure;
@@ -271,9 +277,7 @@ DriverStatus CameraDriver::Process()
         return DriverStatus::kNotStarted;
     }
 
-    return BSP_CAMERA_BackgroundProcess() == BSP_ERROR_NONE
-               ? DriverStatus::kOk
-               : DriverStatus::kHardwareFailure;
+    return BSP_CAMERA_BackgroundProcess() == BSP_ERROR_NONE ? DriverStatus::kOk : DriverStatus::kHardwareFailure;
 }
 
 } // namespace uai::camera_pipe2::driver

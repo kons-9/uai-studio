@@ -4,8 +4,10 @@ namespace uai::camera_lcd::driver {
 
 namespace {
 
-alignas(64) std::uint8_t g_frame_buffer[kFrameBytes]
-    __attribute__((section(".camera_frame_buffer"), used));
+alignas(64) std::uint8_t g_frame_buffer[kFrameBytes] __attribute__((
+    section(".camera_frame_buffer"),
+    used
+));
 
 } // namespace
 

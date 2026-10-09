@@ -25,8 +25,7 @@ struct DetectionSet {
 };
 
 struct SegmentationSet {
-    common::OwnedBuffer<std::uint8_t,
-                        kSegmentationMaskWidth * kSegmentationMaskHeight> mask{};
+    common::OwnedBuffer<std::uint8_t, kSegmentationMaskWidth * kSegmentationMaskHeight> mask{};
     std::uint16_t mask_width = 0U;
     std::uint16_t mask_height = 0U;
     std::uint32_t mask_foreground_pixels = 0U;

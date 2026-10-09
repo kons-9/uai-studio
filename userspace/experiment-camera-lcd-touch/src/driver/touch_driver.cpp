@@ -76,10 +76,8 @@ DriverStatus TouchDriver::Read(TouchSample *sample)
 
     sample->active = state.TouchDetected != 0U;
     if (sample->active) {
-        sample->x = static_cast<std::uint16_t>(
-            state.TouchX < 800U ? state.TouchX : 799U);
-        sample->y = static_cast<std::uint16_t>(
-            state.TouchY < 480U ? state.TouchY : 479U);
+        sample->x = static_cast<std::uint16_t>(state.TouchX < 800U ? state.TouchX : 799U);
+        sample->y = static_cast<std::uint16_t>(state.TouchY < 480U ? state.TouchY : 479U);
     }
     return DriverStatus::kOk;
 }

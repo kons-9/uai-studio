@@ -15,19 +15,19 @@
 #define HAL_RIF_MODULE_ENABLED
 #define HAL_XSPI_MODULE_ENABLED
 
-#define HSE_VALUE                48000000UL
-#define HSI_VALUE                64000000UL
-#define LSE_VALUE                32768UL
-#define LSI_VALUE                32000UL
-#define MSI_VALUE                4000000UL
-#define VDD_VALUE                3300UL
-#define TICK_INT_PRIORITY        15U
-#define USE_RTOS                 0U
+#define HSE_VALUE 48000000UL
+#define HSI_VALUE 64000000UL
+#define LSE_VALUE 32768UL
+#define LSI_VALUE 32000UL
+#define MSI_VALUE 4000000UL
+#define VDD_VALUE 3300UL
+#define TICK_INT_PRIORITY 15U
+#define USE_RTOS 0U
 
 #define USE_HAL_DCMIPP_REGISTER_CALLBACKS 0U
-#define USE_HAL_DMA2D_REGISTER_CALLBACKS  0U
-#define USE_HAL_I2C_REGISTER_CALLBACKS    0U
-#define USE_HAL_LTDC_REGISTER_CALLBACKS   0U
+#define USE_HAL_DMA2D_REGISTER_CALLBACKS 0U
+#define USE_HAL_I2C_REGISTER_CALLBACKS 0U
+#define USE_HAL_LTDC_REGISTER_CALLBACKS 0U
 
 #include "stm32n6xx_hal_cortex.h"
 #include "stm32n6xx_hal_dcmipp.h"

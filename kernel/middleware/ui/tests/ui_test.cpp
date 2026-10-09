@@ -17,7 +17,7 @@ constexpr std::uint16_t kGuard = 0xA5A5U;
 template <std::uint16_t Height>
 struct FrameOf {
     /* One extra row on each side detects writes outside the canvas. */
-    std::array<std::uint16_t, kWidth * (Height + 2U)> pixels{};
+    std::array<std::uint16_t, kWidth *(Height + 2U)> pixels{};
 
     FrameOf()
     {
@@ -27,15 +27,16 @@ struct FrameOf {
         }
     }
     std::uint16_t *Begin() { return pixels.data() + kWidth; }
-    std::uint16_t At(std::uint16_t x, std::uint16_t y) const
+    std::uint16_t
+    At(std::uint16_t x,
+       std::uint16_t y) const
     {
         return pixels.at(kWidth + static_cast<std::size_t>(y) * kWidth + x);
     }
     bool GuardsIntact() const
     {
         for (std::size_t i = 0U; i < kWidth; ++i) {
-            if (pixels[i] != kGuard ||
-                pixels[kWidth * (Height + 1U) + i] != kGuard) {
+            if (pixels[i] != kGuard || pixels[kWidth * (Height + 1U) + i] != kGuard) {
                 return false;
             }
         }
@@ -45,7 +46,10 @@ struct FrameOf {
 using Frame = FrameOf<kHeight>;
 using TallFrame = FrameOf<32U>;
 
-TEST(UiCanvas, FillRectClipsToCanvasBounds)
+TEST(
+    UiCanvas,
+    FillRectClipsToCanvasBounds
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
@@ -61,7 +65,10 @@ TEST(UiCanvas, FillRectClipsToCanvasBounds)
     EXPECT_TRUE(frame.GuardsIntact());
 }
 
-TEST(UiCanvas, DrawFrameLeavesInteriorUntouched)
+TEST(
+    UiCanvas,
+    DrawFrameLeavesInteriorUntouched
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
@@ -75,7 +82,10 @@ TEST(UiCanvas, DrawFrameLeavesInteriorUntouched)
     EXPECT_EQ(frame.At(12U, 10U), kBackground);
 }
 
-TEST(UiCanvas, GlyphRendersAtScaleAndAdvance)
+TEST(
+    UiCanvas,
+    GlyphRendersAtScaleAndAdvance
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
@@ -103,7 +113,10 @@ constexpr uai::ai::ui::ButtonSpec kButtons[] = {
     {7U, {18U, 4U, 10U, 6U}, "B", {}},
 };
 
-TEST(UiButtonPanel, PressInsideThenReleaseEmitsTap)
+TEST(
+    UiButtonPanel,
+    PressInsideThenReleaseEmitsTap
+)
 {
     uai::ai::ui::ButtonPanel panel(kButtons, 2U);
 
@@ -127,7 +140,10 @@ TEST(UiButtonPanel, PressInsideThenReleaseEmitsTap)
     EXPECT_EQ(event.type, uai::ai::ui::EventType::kNone);
 }
 
-TEST(UiButtonPanel, PressOutsideButtonsEmitsNothing)
+TEST(
+    UiButtonPanel,
+    PressOutsideButtonsEmitsNothing
+)
 {
     uai::ai::ui::ButtonPanel panel(kButtons, 2U);
     EXPECT_EQ(panel.Update({true, 15U, 5U}).type, uai::ai::ui::EventType::kNone);
@@ -138,7 +154,10 @@ TEST(UiButtonPanel, PressOutsideButtonsEmitsNothing)
     EXPECT_EQ(panel.Update({true, 13U, 9U}).widget_id, 1U);
 }
 
-TEST(UiButtonPanel, PaintUsesPressedFillWhileHeld)
+TEST(
+    UiButtonPanel,
+    PaintUsesPressedFillWhileHeld
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
@@ -161,14 +180,20 @@ TEST(UiButtonPanel, PaintUsesPressedFillWhileHeld)
     EXPECT_TRUE(frame.GuardsIntact());
 }
 
-TEST(UiButtonPanel, NullTableIsEmpty)
+TEST(
+    UiButtonPanel,
+    NullTableIsEmpty
+)
 {
     uai::ai::ui::ButtonPanel panel(nullptr, 4U);
     EXPECT_EQ(panel.Count(), 0U);
     EXPECT_EQ(panel.Update({true, 1U, 1U}).type, uai::ai::ui::EventType::kNone);
 }
 
-TEST(UiButtonPanel, CheckedFillUntilPressedOverrides)
+TEST(
+    UiButtonPanel,
+    CheckedFillUntilPressedOverrides
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
@@ -196,7 +221,10 @@ TEST(UiButtonPanel, CheckedFillUntilPressedOverrides)
     EXPECT_EQ(frame.At(7U, 7U), 0x1111U);
 }
 
-TEST(UiLabelPanel, InitialTextAlignmentAndRuntimeReplacement)
+TEST(
+    UiLabelPanel,
+    InitialTextAlignmentAndRuntimeReplacement
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
@@ -235,17 +263,22 @@ TEST(UiLabelPanel, InitialTextAlignmentAndRuntimeReplacement)
     EXPECT_TRUE(clean.GuardsIntact());
 }
 
-TEST(UiLabelPanel, TextIsTruncatedToCapacity)
+TEST(
+    UiLabelPanel,
+    TextIsTruncatedToCapacity
+)
 {
     uai::ai::ui::LabelSpec label{1U, {0U, 0U, 8U, 8U}, "", {}};
     uai::ai::ui::LabelPanel panel(&label, 1U);
     std::string long_text(uai::ai::ui::kLabelTextCapacity + 10U, 'A');
     EXPECT_TRUE(panel.SetText(1U, long_text.c_str()));
-    EXPECT_EQ(std::string(panel.Text(1U)).size(),
-              uai::ai::ui::kLabelTextCapacity - 1U);
+    EXPECT_EQ(std::string(panel.Text(1U)).size(), uai::ai::ui::kLabelTextCapacity - 1U);
 }
 
-TEST(UiLabelPanel, PaddingInsetsAlignedText)
+TEST(
+    UiLabelPanel,
+    PaddingInsetsAlignedText
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
@@ -266,7 +299,10 @@ TEST(UiLabelPanel, PaddingInsetsAlignedText)
     EXPECT_EQ(frame.At(28U, 1U), kBackground);
 }
 
-TEST(UiPainterGroup, PaintsInOrder)
+TEST(
+    UiPainterGroup,
+    PaintsInOrder
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
@@ -284,7 +320,10 @@ TEST(UiPainterGroup, PaintsInOrder)
     EXPECT_EQ(frame.At(11U, 11U), 0x2222U);
 }
 
-TEST(UiButtonPanel, IconReplacesLabel)
+TEST(
+    UiButtonPanel,
+    IconReplacesLabel
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
@@ -311,10 +350,12 @@ constexpr uai::ai::ui::SliderStyle SmallSliderStyle()
     style.show_value = false;
     return style;
 }
-constexpr uai::ai::ui::SliderSpec kSlider{
-    9U, {0U, 0U, 32U, 16U}, "", 0, 30, 10, 10, SmallSliderStyle()};
+constexpr uai::ai::ui::SliderSpec kSlider{9U, {0U, 0U, 32U, 16U}, "", 0, 30, 10, 10, SmallSliderStyle()};
 
-TEST(UiSlider, ValueFollowsFingerAndSnapsToStep)
+TEST(
+    UiSlider,
+    ValueFollowsFingerAndSnapsToStep
+)
 {
     uai::ai::ui::SliderPanel panel(&kSlider, 1U);
     EXPECT_EQ(panel.Value(9U), 10);
@@ -353,7 +394,10 @@ TEST(UiSlider, ValueFollowsFingerAndSnapsToStep)
     EXPECT_FALSE(panel.SetValue(1U, 0));
 }
 
-TEST(UiSlider, PaintShowsFillUpToKnob)
+TEST(
+    UiSlider,
+    PaintShowsFillUpToKnob
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
@@ -375,7 +419,10 @@ TEST(UiSlider, PaintShowsFillUpToKnob)
     EXPECT_EQ(frame.At(track.x, track.y), 0x3333U);
 }
 
-TEST(UiScreen, SolidBackgroundAndRouting)
+TEST(
+    UiScreen,
+    SolidBackgroundAndRouting
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
@@ -412,14 +459,17 @@ TEST(UiScreen, SolidBackgroundAndRouting)
     EXPECT_EQ(untouched.At(0U, 0U), kBackground);
 }
 
-TEST(UiCanvas, EllipseFillAndFrameStayInsideBounds)
+TEST(
+    UiCanvas,
+    EllipseFillAndFrameStayInsideBounds
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
     const uai::ai::ui::Rect rect{2U, 2U, 16U, 12U};
     canvas.FillEllipse(rect, 0x1111U);
-    EXPECT_EQ(frame.At(10U, 8U), 0x1111U);   /* centre */
-    EXPECT_EQ(frame.At(2U, 8U), 0x1111U);    /* left extreme on the centre row */
+    EXPECT_EQ(frame.At(10U, 8U), 0x1111U);    /* centre */
+    EXPECT_EQ(frame.At(2U, 8U), 0x1111U);     /* left extreme on the centre row */
     EXPECT_EQ(frame.At(2U, 2U), kBackground); /* corner stays empty */
     EXPECT_EQ(frame.At(17U, 13U), kBackground);
     EXPECT_FALSE(uai::ai::ui::InsideEllipse(rect, 2, 2));
@@ -427,16 +477,20 @@ TEST(UiCanvas, EllipseFillAndFrameStayInsideBounds)
 
     canvas.DrawEllipseFrame(rect, 2U, 0x2222U);
     EXPECT_EQ(frame.At(2U, 8U), 0x2222U);
-    EXPECT_EQ(frame.At(10U, 8U), 0x1111U);  /* interior keeps the fill */
+    EXPECT_EQ(frame.At(10U, 8U), 0x1111U); /* interior keeps the fill */
     EXPECT_TRUE(frame.GuardsIntact());
 }
 
-TEST(UiButtonPanel, EllipseShapeHitTestFollowsOutline)
+TEST(
+    UiButtonPanel,
+    EllipseShapeHitTestFollowsOutline
+)
 {
     Frame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, kHeight);
-    uai::ai::ui::ButtonSpec button{1U, {0U, 0U, 16U, 16U}, "", {}, uai::ai::ui::Icon::kNone,
-                                   uai::ai::ui::Shape::kEllipse};
+    uai::ai::ui::ButtonSpec button{
+        1U, {0U, 0U, 16U, 16U}, "", {}, uai::ai::ui::Icon::kNone, uai::ai::ui::Shape::kEllipse
+    };
     button.style.fill = 0x1111U;
     button.style.border_width = 0U;
     uai::ai::ui::ButtonPanel panel(&button, 1U);
@@ -457,10 +511,12 @@ constexpr uai::ai::ui::DialStyle SmallDialStyle()
     style.show_value = false;
     return style;
 }
-constexpr uai::ai::ui::DialSpec kDial{
-    4U, {0U, 0U, 32U, 32U}, "", 0, 100, 10, 50, SmallDialStyle()};
+constexpr uai::ai::ui::DialSpec kDial{4U, {0U, 0U, 32U, 32U}, "", 0, 100, 10, 50, SmallDialStyle()};
 
-TEST(UiDial, AngleMapsToValueAcrossTheArc)
+TEST(
+    UiDial,
+    AngleMapsToValueAcrossTheArc
+)
 {
     const uai::ai::ui::Rect disc = uai::ai::ui::DialPanel::DiscOf(kDial);
     EXPECT_EQ(disc.width, 21U);
@@ -474,15 +530,26 @@ TEST(UiDial, AngleMapsToValueAcrossTheArc)
     EXPECT_EQ(uai::ai::ui::DialPanel::ValueAt(kDial, static_cast<std::uint16_t>(cx - 8U), cy), 20);
     EXPECT_EQ(uai::ai::ui::DialPanel::ValueAt(kDial, static_cast<std::uint16_t>(cx + 8U), cy), 80);
     /* Bottom-left corner of the gap snaps to min, bottom-right to max. */
-    EXPECT_EQ(uai::ai::ui::DialPanel::ValueAt(kDial, static_cast<std::uint16_t>(cx - 2U),
-                                              static_cast<std::uint16_t>(cy + 9U)), 0);
-    EXPECT_EQ(uai::ai::ui::DialPanel::ValueAt(kDial, static_cast<std::uint16_t>(cx + 2U),
-                                              static_cast<std::uint16_t>(cy + 9U)), 100);
+    EXPECT_EQ(
+        uai::ai::ui::DialPanel::ValueAt(
+            kDial, static_cast<std::uint16_t>(cx - 2U), static_cast<std::uint16_t>(cy + 9U)
+        ),
+        0
+    );
+    EXPECT_EQ(
+        uai::ai::ui::DialPanel::ValueAt(
+            kDial, static_cast<std::uint16_t>(cx + 2U), static_cast<std::uint16_t>(cy + 9U)
+        ),
+        100
+    );
     EXPECT_EQ(uai::ai::ui::DialPanel::SweepOf(kDial, 50), 135U);
     EXPECT_EQ(uai::ai::ui::DialPanel::SweepOf(kDial, 100), 270U);
 }
 
-TEST(UiDial, DragInsideDiscChangesValueAndPaintsArc)
+TEST(
+    UiDial,
+    DragInsideDiscChangesValueAndPaintsArc
+)
 {
     uai::ai::ui::DialPanel panel(&kDial, 1U);
     EXPECT_EQ(panel.Value(4U), 50);
@@ -498,8 +565,7 @@ TEST(UiDial, DragInsideDiscChangesValueAndPaintsArc)
     EXPECT_EQ(event.type, uai::ai::ui::EventType::kChange);
     EXPECT_EQ(event.value, 80);
     EXPECT_TRUE(panel.IsDragging());
-    EXPECT_EQ(panel.Update({true, static_cast<std::uint16_t>(cx + 8U), cy}).type,
-              uai::ai::ui::EventType::kNone);
+    EXPECT_EQ(panel.Update({true, static_cast<std::uint16_t>(cx + 8U), cy}).type, uai::ai::ui::EventType::kNone);
     panel.Update({false, 0U, 0U});
     EXPECT_EQ(panel.Value(4U), 80);
     EXPECT_TRUE(panel.SetValue(4U, 500));
@@ -515,10 +581,10 @@ TEST(UiDial, DragInsideDiscChangesValueAndPaintsArc)
     dial.initial = 50;
     uai::ai::ui::DialPanel painted(&dial, 1U);
     painted.Paint(canvas);
-    EXPECT_EQ(frame.At(cx, cy), 0x1111U);                                   /* face */
-    EXPECT_EQ(frame.At(static_cast<std::uint16_t>(cx - 9U), cy), 0x3333U); /* left ring: swept */
-    EXPECT_EQ(frame.At(static_cast<std::uint16_t>(cx + 9U), cy), 0x2222U); /* right ring: not yet */
-    EXPECT_EQ(frame.At(cx, static_cast<std::uint16_t>(cy - 9U)), 0x4444U); /* pointer at top */
+    EXPECT_EQ(frame.At(cx, cy), 0x1111U);                                      /* face */
+    EXPECT_EQ(frame.At(static_cast<std::uint16_t>(cx - 9U), cy), 0x3333U);     /* left ring: swept */
+    EXPECT_EQ(frame.At(static_cast<std::uint16_t>(cx + 9U), cy), 0x2222U);     /* right ring: not yet */
+    EXPECT_EQ(frame.At(cx, static_cast<std::uint16_t>(cy - 9U)), 0x4444U);     /* pointer at top */
     EXPECT_EQ(frame.At(cx, static_cast<std::uint16_t>(cy + 9U)), kBackground); /* gap */
 }
 
@@ -530,10 +596,12 @@ constexpr uai::ai::ui::WheelStyle SmallWheelStyle()
     return style;
 }
 /* Row height 15; bounds show one band plus partial neighbours. */
-constexpr uai::ai::ui::WheelSpec kWheel{
-    6U, {0U, 0U, 32U, 16U}, kWheelItems, 4U, 1U, SmallWheelStyle()};
+constexpr uai::ai::ui::WheelSpec kWheel{6U, {0U, 0U, 32U, 16U}, kWheelItems, 4U, 1U, SmallWheelStyle()};
 
-TEST(UiWheel, DragStepsThroughItems)
+TEST(
+    UiWheel,
+    DragStepsThroughItems
+)
 {
     uai::ai::ui::WheelPanel panel(&kWheel, 1U);
     EXPECT_EQ(panel.Value(6U), 1);
@@ -572,12 +640,15 @@ TEST(UiWheel, DragStepsThroughItems)
     wheel.style.border = 0x3333U;
     uai::ai::ui::WheelPanel painted(&wheel, 1U);
     painted.Paint(canvas);
-    EXPECT_EQ(frame.At(0U, 0U), 0x3333U);  /* border */
-    EXPECT_EQ(frame.At(2U, 8U), 0x2222U);  /* band covers the middle row */
+    EXPECT_EQ(frame.At(0U, 0U), 0x3333U); /* border */
+    EXPECT_EQ(frame.At(2U, 8U), 0x2222U); /* band covers the middle row */
     EXPECT_TRUE(frame.GuardsIntact());
 }
 
-TEST(UiNumber, FormatsDecimalsAndUnit)
+TEST(
+    UiNumber,
+    FormatsDecimalsAndUnit
+)
 {
     uai::ai::ui::NumberSpec number{7U, {0U, 0U, 32U, 16U}, "", "%", 1U, 0, {}};
     char text[uai::ai::ui::kNumberTextCapacity];
@@ -606,16 +677,21 @@ TEST(UiNumber, FormatsDecimalsAndUnit)
     painted.SetValue(7U, 9);
     painted.Paint(canvas);
     EXPECT_EQ(frame.At(1U, 1U), 0x1111U);
-    EXPECT_EQ(frame.At(25U, 4U), 0x2222U);  /* top bar of the '9' */
-    EXPECT_EQ(frame.At(27U, 5U), 0x2222U);  /* right stem */
+    EXPECT_EQ(frame.At(25U, 4U), 0x2222U); /* top bar of the '9' */
+    EXPECT_EQ(frame.At(27U, 5U), 0x2222U); /* right stem */
     EXPECT_EQ(frame.At(28U, 5U), 0x1111U);
 }
 
-TEST(UiImage, BlitSkipsTransparentKey)
+TEST(
+    UiImage,
+    BlitSkipsTransparentKey
+)
 {
     static constexpr std::uint16_t kBitmap[] = {
-        0xAAAAU, 0xF81FU,
-        0xF81FU, 0xBBBBU,
+        0xAAAAU,
+        0xF81FU,
+        0xF81FU,
+        0xBBBBU,
     };
     uai::ai::ui::ImageSpec image{9U, {30U, 14U, 2U, 2U}, kBitmap, true, 0xF81FU};
     uai::ai::ui::ImagePanel panel(&image, 1U);
@@ -637,7 +713,10 @@ TEST(UiImage, BlitSkipsTransparentKey)
 }
 
 /* Shape predicates on a 16x16 square: corners, apexes and centres. */
-TEST(UiCanvas, InsideShapeFollowsEachOutline)
+TEST(
+    UiCanvas,
+    InsideShapeFollowsEachOutline
+)
 {
     using uai::ai::ui::InsideShape;
     using uai::ai::ui::Shape;
@@ -687,7 +766,10 @@ TEST(UiCanvas, InsideShapeFollowsEachOutline)
     EXPECT_TRUE(frame.GuardsIntact());
 }
 
-TEST(UiButtonPanel, TriangleButtonHitTestFollowsOutline)
+TEST(
+    UiButtonPanel,
+    TriangleButtonHitTestFollowsOutline
+)
 {
     uai::ai::ui::ButtonSpec button{};
     button.id = 3U;
@@ -702,7 +784,10 @@ TEST(UiButtonPanel, TriangleButtonHitTestFollowsOutline)
     EXPECT_EQ(panel.Update({false, 0U, 0U}).type, uai::ai::ui::EventType::kNone);
 }
 
-TEST(UiPad, SegmentsTapAndRingRotationDetents)
+TEST(
+    UiPad,
+    SegmentsTapAndRingRotationDetents
+)
 {
     using uai::ai::ui::EventType;
     using uai::ai::ui::PadSegment;
@@ -737,10 +822,10 @@ TEST(UiPad, SegmentsTapAndRingRotationDetents)
     /* Sliding clockwise from the top (0 deg) to the right (90 deg) passes
      * two 45-degree detents; the release is then not a tap. */
     EXPECT_EQ(panel.Update({true, 16U, 2U}).type, EventType::kPress);
-    event = panel.Update({true, 26U, 6U});   /* ~45 deg */
+    event = panel.Update({true, 26U, 6U}); /* ~45 deg */
     EXPECT_EQ(event.type, EventType::kChange);
     EXPECT_EQ(event.value, 1);
-    event = panel.Update({true, 29U, 16U});  /* 90 deg */
+    event = panel.Update({true, 29U, 16U}); /* 90 deg */
     EXPECT_EQ(event.type, EventType::kChange);
     EXPECT_EQ(event.value, 1);
     EXPECT_EQ(panel.Update({false, 0U, 0U}).type, EventType::kNone);
@@ -759,7 +844,10 @@ TEST(UiPad, SegmentsTapAndRingRotationDetents)
     EXPECT_EQ(event.value, static_cast<std::int32_t>(PadSegment::kCenter));
 }
 
-TEST(UiPad, FastRotationReportsAllDetentsWithoutStationaryChanges)
+TEST(
+    UiPad,
+    FastRotationReportsAllDetentsWithoutStationaryChanges
+)
 {
     uai::ai::ui::PadSpec pad{};
     pad.id = 7U;
@@ -782,7 +870,10 @@ TEST(UiPad, FastRotationReportsAllDetentsWithoutStationaryChanges)
     EXPECT_EQ(panel.Update({false, 0U, 0U}).type, uai::ai::ui::EventType::kNone);
 }
 
-TEST(UiPad, LeavingRingReanchorsWithoutChangingValue)
+TEST(
+    UiPad,
+    LeavingRingReanchorsWithoutChangingValue
+)
 {
     uai::ai::ui::PadSpec pad{};
     pad.id = 7U;
@@ -803,7 +894,10 @@ TEST(UiPad, LeavingRingReanchorsWithoutChangingValue)
     }
 }
 
-TEST(UiPad, PaintColoursSegmentsAndCentre)
+TEST(
+    UiPad,
+    PaintColoursSegmentsAndCentre
+)
 {
     uai::ai::ui::PadSpec pad{};
     pad.id = 7U;
@@ -815,17 +909,17 @@ TEST(UiPad, PaintColoursSegmentsAndCentre)
     pad.style.arrow = 0x5555U;
     pad.style.border_width = 1U;
     uai::ai::ui::PadPanel panel(&pad, 1U);
-    panel.Update({true, 29U, 16U});  /* hold RIGHT */
+    panel.Update({true, 29U, 16U}); /* hold RIGHT */
 
     TallFrame frame;
     uai::ai::ui::Canvas canvas(frame.Begin(), kWidth, 32U);
     panel.Paint(canvas);
-    EXPECT_EQ(frame.At(16U, 16U), 0x3333U);  /* centre button */
-    EXPECT_EQ(frame.At(29U, 16U), 0x2222U);  /* pressed quadrant */
-    EXPECT_EQ(frame.At(2U, 16U), 0x1111U);   /* idle quadrant */
-    EXPECT_EQ(frame.At(27U, 16U), 0x5555U);  /* right arrow */
-    EXPECT_EQ(frame.At(16U, 0U), 0x4444U);   /* outer border */
-    EXPECT_EQ(frame.At(16U, 5U), 0x5555U);   /* up arrow apex row */
+    EXPECT_EQ(frame.At(16U, 16U), 0x3333U); /* centre button */
+    EXPECT_EQ(frame.At(29U, 16U), 0x2222U); /* pressed quadrant */
+    EXPECT_EQ(frame.At(2U, 16U), 0x1111U);  /* idle quadrant */
+    EXPECT_EQ(frame.At(27U, 16U), 0x5555U); /* right arrow */
+    EXPECT_EQ(frame.At(16U, 0U), 0x4444U);  /* outer border */
+    EXPECT_EQ(frame.At(16U, 5U), 0x5555U);  /* up arrow apex row */
     EXPECT_EQ(frame.At(0U, 0U), kBackground);
     EXPECT_TRUE(frame.GuardsIntact());
 }

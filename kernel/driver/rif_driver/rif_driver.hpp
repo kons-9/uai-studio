@@ -31,20 +31,34 @@ class RifManagement final {
 public:
     using Writer = RifDriver::Writer;
     using Accessor = driver::ResourceAccessor<RifDriver>;
-    static RifManagement &Instance() { static RifManagement m; return m; }
-    common::Error Initialize() { return driver_.Initialize(); }
-    common::Error Acquire(Accessor *a, TMO timeout = TMO_FEVR)
+    static RifManagement &Instance()
     {
-        if (!a) return {common::ErrorCode::kInvalidArgument};
-        *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout);
-        if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w));
+        static RifManagement m;
+        return m;
+    }
+    common::Error Initialize() { return driver_.Initialize(); }
+    common::Error Acquire(
+        Accessor *a,
+        TMO timeout = TMO_FEVR
+    )
+    {
+        if (!a)
+            return {common::ErrorCode::kInvalidArgument};
+        *a = {};
+        Writer w;
+        auto s = ownership_.Acquire(&w, timeout);
+        if (s.Ok())
+            *a = Accessor(driver_, static_cast<Writer &&>(w));
         return s;
     }
     RifManagement(const RifManagement &) = delete;
     RifManagement &operator=(const RifManagement &) = delete;
+
 private:
-    RifManagement() : driver_(ownership_) {} ~RifManagement() = default;
-    driver::ResourceManagement ownership_{}; RifDriver driver_;
+    RifManagement() : driver_(ownership_) {}
+    ~RifManagement() = default;
+    driver::ResourceManagement ownership_{};
+    RifDriver driver_;
 };
 
 } // namespace uai::ai::rif

@@ -15,35 +15,34 @@ namespace uai::ai::mini {
  * manager exactly once. */
 class InferenceFrameChannel final {
 public:
-    explicit InferenceFrameChannel(memory_manager::MemoryManager &memory)
-        : memory_(memory) {}
+    explicit InferenceFrameChannel(memory_manager::MemoryManager &memory) : memory_(memory) {}
 
     common::Error Create() { return channel_.Create(); }
 
     void Send(const pipeline::InferenceFrame &frame)
     {
-        const common::Error status = channel_.SendReplacingOldest(
-            frame, [this](const pipeline::InferenceFrame &discarded) {
+        const common::Error status =
+            channel_.SendReplacingOldest(frame, [this](const pipeline::InferenceFrame &discarded) {
                 memory_.ReleaseInferenceBuffer(discarded).LogStatus("memory");
             });
-        if (status.Ok()) return;
+        if (status.Ok())
+            return;
         memory_.ReleaseInferenceBuffer(frame).LogStatus("memory");
-        UAI_LOG_DEBUG("ai: frame dropped reason=%s sequence=%u\n",
-                      common::ErrorCodeName(status.Code()),
-                      static_cast<unsigned int>(frame.capture_sequence));
+        UAI_LOG_DEBUG(
+            "ai: frame dropped reason=%s sequence=%u\n",
+            common::ErrorCodeName(status.Code()),
+            static_cast<unsigned int>(frame.capture_sequence)
+        );
     }
 
-    common::Error Receive(pipeline::InferenceFrame *frame)
-    {
-        return channel_.ReceiveBlocking(frame);
-    }
+    common::Error Receive(pipeline::InferenceFrame *frame) { return channel_.ReceiveBlocking(frame); }
 
 private:
     memory_manager::MemoryManager &memory_;
     message_channel::LatestValueChannel<
-        pipeline::InferenceFrame, kFrameQueueDepth,
-        message_channel::MicroTKernelBackend<pipeline::InferenceFrame,
-                                             kFrameQueueDepth>>
+        pipeline::InferenceFrame,
+        kFrameQueueDepth,
+        message_channel::MicroTKernelBackend<pipeline::InferenceFrame, kFrameQueueDepth>>
         channel_;
 };
 
@@ -53,10 +52,7 @@ class InferenceResultChannel final {
 public:
     common::Error Create() { return channel_.Create(); }
 
-    common::Error Publish(const inference::BoxSet &boxes)
-    {
-        return channel_.SendReplacingOldestOnce(boxes);
-    }
+    common::Error Publish(const inference::BoxSet &boxes) { return channel_.SendReplacingOldestOnce(boxes); }
 
     message_channel::DrainResult DrainLatest(inference::BoxSet *latest)
     {
@@ -67,9 +63,9 @@ public:
 
 private:
     message_channel::LatestValueChannel<
-        inference::BoxSet, kResultQueueDepth,
-        message_channel::MicroTKernelBackend<inference::BoxSet,
-                                             kResultQueueDepth>>
+        inference::BoxSet,
+        kResultQueueDepth,
+        message_channel::MicroTKernelBackend<inference::BoxSet, kResultQueueDepth>>
         channel_;
 };
 

@@ -33,20 +33,22 @@ extern "C" void IAC_IRQHandler(void)
     const std::uint32_t flags3 = IAC->ISR[3];
     const std::uint32_t flags4 = IAC->ISR[4];
     if ((flags0 | flags1 | flags2 | flags3 | flags4) != 0U) {
-        UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                         "ai: IAC flags=%x,%x,%x,%x,%x\n"),
-                     static_cast<unsigned int>(flags0),
-                     static_cast<unsigned int>(flags1),
-                     static_cast<unsigned int>(flags2),
-                     static_cast<unsigned int>(flags3),
-                     static_cast<unsigned int>(flags4));
+        UAI_LOG_WARN(
+            reinterpret_cast<const UB *>("ai: IAC flags=%x,%x,%x,%x,%x\n"),
+            static_cast<unsigned int>(flags0),
+            static_cast<unsigned int>(flags1),
+            static_cast<unsigned int>(flags2),
+            static_cast<unsigned int>(flags3),
+            static_cast<unsigned int>(flags4)
+        );
     }
     if ((flags4 & 0x00400000U) != 0U) {
-        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                          "ai: RISAF12 iasr=%x iaesr=%x iaddr=%x\n"),
-                      static_cast<unsigned int>(RISAF12->IASR),
-                      static_cast<unsigned int>(RISAF12->IAR->IAESR),
-                      static_cast<unsigned int>(RISAF12->IAR->IADDR));
+        UAI_LOG_ERROR(
+            reinterpret_cast<const UB *>("ai: RISAF12 iasr=%x iaesr=%x iaddr=%x\n"),
+            static_cast<unsigned int>(RISAF12->IASR),
+            static_cast<unsigned int>(RISAF12->IAR->IAESR),
+            static_cast<unsigned int>(RISAF12->IAR->IADDR)
+        );
     }
     HAL_RIF_IRQHandler();
 }
@@ -65,18 +67,17 @@ extern "C" INT usermain(void)
     T_DINT npu_interrupt = {};
     npu_interrupt.intatr = TA_HLNG;
     npu_interrupt.inthdr = reinterpret_cast<FP>(NPU0_IRQHandler);
-    const ER npu_interrupt_status =
-        tk_def_int(static_cast<UINT>(NPU0_IRQn), &npu_interrupt);
+    const ER npu_interrupt_status = tk_def_int(static_cast<UINT>(NPU0_IRQn), &npu_interrupt);
 
     T_DINT iac_interrupt = {};
     iac_interrupt.intatr = TA_ASM;
     iac_interrupt.inthdr = reinterpret_cast<FP>(IAC_IRQHandler);
-    const ER iac_interrupt_status =
-        tk_def_int(static_cast<UINT>(IAC_IRQn), &iac_interrupt);
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "ai: kernel interrupts npu=%x iac=%x\n"),
-                 static_cast<unsigned int>(npu_interrupt_status),
-                 static_cast<unsigned int>(iac_interrupt_status));
+    const ER iac_interrupt_status = tk_def_int(static_cast<UINT>(IAC_IRQn), &iac_interrupt);
+    UAI_LOG_INFO(
+        reinterpret_cast<const UB *>("ai: kernel interrupts npu=%x iac=%x\n"),
+        static_cast<unsigned int>(npu_interrupt_status),
+        static_cast<unsigned int>(iac_interrupt_status)
+    );
     if (npu_interrupt_status != E_OK || iac_interrupt_status != E_OK) {
         context.Halt("ai: interrupt registration failed\n");
     }
@@ -85,8 +86,7 @@ extern "C" INT usermain(void)
     }
 
     context.CreateKernelObjects();
-    context.StartApplicationTask(
-        reinterpret_cast<FP>(uai::ai::task::ApplicationInitializeTask::Entry));
+    context.StartApplicationTask(reinterpret_cast<FP>(uai::ai::task::ApplicationInitializeTask::Entry));
 
     for (;;) {
         tk_slp_tsk(TMO_FEVR);

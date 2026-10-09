@@ -30,8 +30,7 @@ struct FakeFuture final : AiFuture {
         }
         const NextStep next = steps[index++];
         if (notify_during_evaluate != nullptr) {
-            EXPECT_TRUE(notify_during_evaluate->Signal(*this,
-                                                       WaitBitFlag::kNpuCompletion).Ok());
+            EXPECT_TRUE(notify_during_evaluate->Signal(*this, WaitBitFlag::kNpuCompletion).Ok());
             notify_during_evaluate = nullptr;
         }
         return {{}, next, index == count};
@@ -55,7 +54,10 @@ std::uint32_t Clock(void *context)
     auto *time = static_cast<std::uint32_t *>(context);
     return ++*time;
 }
-void Trace(void *context, const StepTrace &event)
+void Trace(
+    void *context,
+    const StepTrace &event
+)
 {
     auto &observed = *static_cast<Observations *>(context);
     observed.inference_id = event.inference_id;
@@ -69,14 +71,21 @@ void Trace(void *context, const StepTrace &event)
         observed.finish = event.timestamp;
     }
 }
-void Done(void *context, AiFuture &, common::Error error)
+void Done(
+    void *context,
+    AiFuture &,
+    common::Error error
+)
 {
     auto &observed = *static_cast<Observations *>(context);
     ++observed.done;
     observed.error = error;
 }
 
-TEST(AiRuntime, TraceBracketsEvaluateAndReadsClockOncePerEvent)
+TEST(
+    AiRuntime,
+    TraceBracketsEvaluateAndReadsClockOncePerEvent
+)
 {
     struct Sequence {
         std::uint32_t clock = 0U;
@@ -120,7 +129,8 @@ TEST(AiRuntime, TraceBracketsEvaluateAndReadsClockOncePerEvent)
             ++s.clock_reads;
             return s.clock += 10U;
         },
-        &sequence);
+        &sequence
+    );
     ASSERT_TRUE(runtime.Submit(future).Ok());
     EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kRan);
     EXPECT_TRUE(sequence.begin_before_evaluate);
@@ -133,13 +143,21 @@ TEST(AiRuntime, TraceBracketsEvaluateAndReadsClockOncePerEvent)
     PipelineRuntime untraced;
     std::uint32_t clock_reads = 0U;
     untraced.SetTrace(
-        [](void *, const StepTrace &event) { EXPECT_EQ(event.timestamp, 0U); },
-        nullptr, nullptr, &clock_reads);
+        [](void *, const StepTrace &event) {
+            EXPECT_EQ(event.timestamp, 0U);
+        },
+        nullptr,
+        nullptr,
+        &clock_reads
+    );
     ASSERT_TRUE(untraced.Submit(future).Ok());
     EXPECT_EQ(untraced.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kRan);
 }
 
-TEST(AiRuntime, ThreeQueuesAndTargetedWakeup)
+TEST(
+    AiRuntime,
+    ThreeQueuesAndTargetedWakeup
+)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
@@ -153,8 +171,7 @@ TEST(AiRuntime, ThreeQueuesAndTargetedWakeup)
     FakeFuture future;
     future.count = 3;
     future.steps[0] = {ExecutionContext::kNpu};
-    future.steps[1] = {ExecutionContext::kPostprocessCpu,
-                       WaitBitFlag::kNpuCompletion};
+    future.steps[1] = {ExecutionContext::kPostprocessCpu, WaitBitFlag::kNpuCompletion};
     ASSERT_TRUE(scheduler.Submit(future).Ok());
     EXPECT_EQ(post.RunOnce(), DispatchResult::kIdle);
     EXPECT_EQ(pre.RunOnce(), DispatchResult::kRan);
@@ -167,8 +184,7 @@ TEST(AiRuntime, ThreeQueuesAndTargetedWakeup)
     EXPECT_EQ(observed.done, 0);
     EXPECT_EQ(post.RunOnce(), DispatchResult::kIdle);
     FakeFuture stranger;
-    EXPECT_EQ(runtime.Signal(stranger, WaitBitFlag::kNpuCompletion).Code(),
-              common::ErrorCode::kInvalidState);
+    EXPECT_EQ(runtime.Signal(stranger, WaitBitFlag::kNpuCompletion).Code(), common::ErrorCode::kInvalidState);
     EXPECT_EQ(post.RunOnce(), DispatchResult::kIdle);
     ASSERT_TRUE(runtime.Signal(future, WaitBitFlag::kNpuCompletion).Ok());
     EXPECT_EQ(post.RunOnce(), DispatchResult::kRan);
@@ -180,16 +196,19 @@ TEST(AiRuntime, ThreeQueuesAndTargetedWakeup)
     EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kIdle);
 }
 
-TEST(AiRuntime, AnyWaitReleasesOnlyRequestedFuture)
+TEST(
+    AiRuntime,
+    AnyWaitReleasesOnlyRequestedFuture
+)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
     FakeFuture first;
     FakeFuture second;
     first.count = second.count = 2;
-    first.steps[0] = {ExecutionContext::kPostprocessCpu,
-                      WaitBitFlag::kNpuCompletion | WaitBitFlag::kExternal,
-                      WaitMode::kAny};
+    first.steps[0] = {
+        ExecutionContext::kPostprocessCpu, WaitBitFlag::kNpuCompletion | WaitBitFlag::kExternal, WaitMode::kAny
+    };
     second.steps[0] = first.steps[0];
     ASSERT_TRUE(scheduler.Submit(first).Ok());
     ASSERT_TRUE(scheduler.Submit(second).Ok());
@@ -204,7 +223,10 @@ TEST(AiRuntime, AnyWaitReleasesOnlyRequestedFuture)
     EXPECT_EQ(runtime.RunOne(ExecutionContext::kPostprocessCpu), DispatchResult::kRan);
 }
 
-TEST(AiRuntime, NotificationDuringEvaluateIsNotLost)
+TEST(
+    AiRuntime,
+    NotificationDuringEvaluateIsNotLost
+)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
@@ -218,7 +240,10 @@ TEST(AiRuntime, NotificationDuringEvaluateIsNotLost)
     EXPECT_EQ(future.index, 2U);
 }
 
-TEST(AiRuntime, MultipleWaitsAndErrors)
+TEST(
+    AiRuntime,
+    MultipleWaitsAndErrors
+)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
@@ -226,9 +251,9 @@ TEST(AiRuntime, MultipleWaitsAndErrors)
     runtime.SetObserver(&Done, &observed);
     FakeFuture future;
     future.count = 2;
-    future.steps[0] = {ExecutionContext::kPostprocessCpu,
-                       WaitBitFlag::kNpuCompletion | WaitBitFlag::kExternal,
-                       WaitMode::kAll};
+    future.steps[0] = {
+        ExecutionContext::kPostprocessCpu, WaitBitFlag::kNpuCompletion | WaitBitFlag::kExternal, WaitMode::kAll
+    };
     ASSERT_TRUE(scheduler.Submit(future).Ok());
     EXPECT_EQ(runtime.RunOne(ExecutionContext::kPreprocessCpu), DispatchResult::kRan);
     ASSERT_TRUE(runtime.Signal(future, WaitBitFlag::kNpuCompletion).Ok());
@@ -240,7 +265,10 @@ TEST(AiRuntime, MultipleWaitsAndErrors)
     EXPECT_EQ(observed.error.Code(), common::ErrorCode::kModel);
 }
 
-TEST(AiRuntime, NotReadyAndCapacity)
+TEST(
+    AiRuntime,
+    NotReadyAndCapacity
+)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
@@ -258,8 +286,7 @@ TEST(AiRuntime, NotReadyAndCapacity)
     for (std::size_t i = 0; i < PipelineRuntime::kCapacity - 1; ++i) {
         ASSERT_TRUE(scheduler.Submit(others[i]).Ok());
     }
-    EXPECT_EQ(scheduler.Submit(others[PipelineRuntime::kCapacity - 1]).Code(),
-              common::ErrorCode::kQueueFull);
+    EXPECT_EQ(scheduler.Submit(others[PipelineRuntime::kCapacity - 1]).Code(), common::ErrorCode::kQueueFull);
 }
 
 struct FrameOwner {
@@ -267,7 +294,11 @@ struct FrameOwner {
     AiFuture *last = nullptr;
 };
 
-void ReleaseFrame(void *context, AiFuture &future, common::Error error)
+void ReleaseFrame(
+    void *context,
+    AiFuture &future,
+    common::Error error
+)
 {
     auto &owner = *static_cast<FrameOwner *>(context);
     EXPECT_TRUE(error.Ok());
@@ -275,7 +306,10 @@ void ReleaseFrame(void *context, AiFuture &future, common::Error error)
     owner.last = &future;
 }
 
-TEST(AiRuntime, PersonFramesKeepOwnershipThroughPostprocess)
+TEST(
+    AiRuntime,
+    PersonFramesKeepOwnershipThroughPostprocess
+)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
@@ -317,13 +351,20 @@ void Unlock(void *context)
     static_cast<std::mutex *>(context)->unlock();
 }
 
-void CountDone(void *context, AiFuture &, common::Error error)
+void CountDone(
+    void *context,
+    AiFuture &,
+    common::Error error
+)
 {
     EXPECT_TRUE(error.Ok());
     ++*static_cast<std::atomic<int> *>(context);
 }
 
-TEST(AiRuntime, ConcurrentSubmissionAndDispatch)
+TEST(
+    AiRuntime,
+    ConcurrentSubmissionAndDispatch
+)
 {
     PipelineRuntime runtime;
     Scheduler scheduler(runtime);
@@ -332,8 +373,7 @@ TEST(AiRuntime, ConcurrentSubmissionAndDispatch)
     runtime.SetCriticalSection(&Lock, &Unlock, &mutex);
     runtime.SetObserver(&CountDone, &completed);
     constexpr std::size_t kJobs = 6U;
-    const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::seconds(5);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     FakeFuture futures[kJobs];
     for (auto &future : futures) {
         future.count = 3U;
@@ -343,23 +383,23 @@ TEST(AiRuntime, ConcurrentSubmissionAndDispatch)
     std::thread workers[]{
         std::thread([&] {
             Dispatcher dispatcher(runtime, ExecutionContext::kPreprocessCpu);
-            while (completed < static_cast<int>(kJobs) &&
-                   std::chrono::steady_clock::now() < deadline) {
-                if (dispatcher.RunOnce() == DispatchResult::kIdle) std::this_thread::yield();
+            while (completed < static_cast<int>(kJobs) && std::chrono::steady_clock::now() < deadline) {
+                if (dispatcher.RunOnce() == DispatchResult::kIdle)
+                    std::this_thread::yield();
             }
         }),
         std::thread([&] {
             Dispatcher dispatcher(runtime, ExecutionContext::kNpu);
-            while (completed < static_cast<int>(kJobs) &&
-                   std::chrono::steady_clock::now() < deadline) {
-                if (dispatcher.RunOnce() == DispatchResult::kIdle) std::this_thread::yield();
+            while (completed < static_cast<int>(kJobs) && std::chrono::steady_clock::now() < deadline) {
+                if (dispatcher.RunOnce() == DispatchResult::kIdle)
+                    std::this_thread::yield();
             }
         }),
         std::thread([&] {
             Dispatcher dispatcher(runtime, ExecutionContext::kPostprocessCpu);
-            while (completed < static_cast<int>(kJobs) &&
-                   std::chrono::steady_clock::now() < deadline) {
-                if (dispatcher.RunOnce() == DispatchResult::kIdle) std::this_thread::yield();
+            while (completed < static_cast<int>(kJobs) && std::chrono::steady_clock::now() < deadline) {
+                if (dispatcher.RunOnce() == DispatchResult::kIdle)
+                    std::this_thread::yield();
             }
         }),
     };
@@ -375,8 +415,10 @@ TEST(AiRuntime, ConcurrentSubmissionAndDispatch)
             }
         }),
     };
-    for (auto &producer : producers) producer.join();
-    for (auto &worker : workers) worker.join();
+    for (auto &producer : producers)
+        producer.join();
+    for (auto &worker : workers)
+        worker.join();
     EXPECT_EQ(completed.load(), static_cast<int>(kJobs));
 }
 

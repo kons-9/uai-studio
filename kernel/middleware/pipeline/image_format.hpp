@@ -12,10 +12,7 @@ struct ImageFormat {
     std::uint32_t height = 0U;
     std::uint32_t bytes_per_pixel = 0U;
 
-    constexpr std::size_t bytes() const
-    {
-        return static_cast<std::size_t>(width) * height * bytes_per_pixel;
-    }
+    constexpr std::size_t bytes() const { return static_cast<std::size_t>(width) * height * bytes_per_pixel; }
 };
 
 inline constexpr ImageFormat kCaptureFormat{800U, 480U, 2U};

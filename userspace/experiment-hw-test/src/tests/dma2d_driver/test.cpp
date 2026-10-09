@@ -30,10 +30,14 @@ Result Run(const Context &)
     handle.LayerCfg[1].InputAlpha = 0xff;
     Result result{Outcome::kFail, "dma2d-initialization"};
     if (HAL_DMA2D_Init(&handle) == HAL_OK && HAL_DMA2D_ConfigLayer(&handle, 1) == HAL_OK) {
-        if (HAL_DMA2D_Start(&handle,
+        if (HAL_DMA2D_Start(
+                &handle,
                 static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(source + 8)),
-                static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(destination + 8)), 8, 8) != HAL_OK ||
-            HAL_DMA2D_PollForTransfer(&handle, 100) != HAL_OK) {
+                static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(destination + 8)),
+                8,
+                8
+            ) != HAL_OK
+            || HAL_DMA2D_PollForTransfer(&handle, 100) != HAL_OK) {
             HAL_DMA2D_Abort(&handle);
             result = {Outcome::kFail, "dma2d-transfer-or-timeout"};
         } else {
@@ -53,7 +57,9 @@ Result Run(const Context &)
     __HAL_RCC_DMA2D_FORCE_RESET();
     __DSB();
     __HAL_RCC_DMA2D_RELEASE_RESET();
-    if (HAL_DMA2D_DeInit(&handle) != HAL_OK) { result = {Outcome::kFail, "dma2d-deinitialization"}; }
+    if (HAL_DMA2D_DeInit(&handle) != HAL_OK) {
+        result = {Outcome::kFail, "dma2d-deinitialization"};
+    }
     __HAL_RCC_DMA2D_CLK_DISABLE();
     return result;
 }

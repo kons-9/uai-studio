@@ -11,7 +11,10 @@ class DisplayDriver final {
 public:
     DriverStatus Initialize();
     DriverStatus Process();
-    TouchAction HandleTouchPress(std::uint16_t x, std::uint16_t y);
+    TouchAction HandleTouchPress(
+        std::uint16_t x,
+        std::uint16_t y
+    );
     void HandleTouchRelease();
 
 private:

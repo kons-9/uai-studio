@@ -5,17 +5,32 @@
 
 namespace experiment::hwtest {
 
-struct Registry { const Case *cases; std::size_t count; Context context; };
+struct Registry {
+    const Case *cases;
+    std::size_t count;
+    Context context;
+};
 
-inline console::Status Execute(void *context, int count, const char *const *arguments, const console::Writer &writer)
+inline console::Status Execute(
+    void *context,
+    int count,
+    const char *const *arguments,
+    const console::Writer &writer
+)
 {
     auto &registry = *static_cast<Registry *>(context);
     if (count == 2 && std::strcmp(arguments[1], "list") == 0) {
         for (std::size_t index = 0; index < registry.count; ++index) {
             const auto &test = registry.cases[index];
             char line[128];
-            std::snprintf(line, sizeof(line), "HWTEST CASE %s timeout_ms=%lu destructive=%u\n", test.name,
-                          static_cast<unsigned long>(test.timeout_ms), static_cast<unsigned>(test.destructive));
+            std::snprintf(
+                line,
+                sizeof(line),
+                "HWTEST CASE %s timeout_ms=%lu destructive=%u\n",
+                test.name,
+                static_cast<unsigned long>(test.timeout_ms),
+                static_cast<unsigned>(test.destructive)
+            );
             writer.Write(line);
             writer.Write("  verifies: ");
             writer.Write(test.purpose);
@@ -36,9 +51,15 @@ inline console::Status Execute(void *context, int count, const char *const *argu
         return console::Status::kInvalidArgument;
     }
     auto destination = writer;
-    Run(registry.cases, registry.count, selection, destructive, {&destination, [](void *target, const char *line) {
-        static_cast<console::Writer *>(target)->Write(line);
-    }}, registry.context);
+    Run(registry.cases,
+        registry.count,
+        selection,
+        destructive,
+        {&destination,
+         [](void *target, const char *line) {
+             static_cast<console::Writer *>(target)->Write(line);
+         }},
+        registry.context);
     return console::Status::kOk;
 }
 

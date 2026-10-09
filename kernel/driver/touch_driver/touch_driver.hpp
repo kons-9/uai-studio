@@ -16,7 +16,10 @@ class TouchDriver final {
 public:
     using Writer = driver::ResourceManagement::Writer;
 
-    common::Error Read(ui::TouchPoint *sample, const Writer &writer);
+    common::Error Read(
+        ui::TouchPoint *sample,
+        const Writer &writer
+    );
 
 private:
     friend class TouchManagement;
@@ -31,25 +34,40 @@ class TouchManagement final {
 public:
     using Writer = TouchDriver::Writer;
     using Accessor = driver::ResourceAccessor<TouchDriver>;
-    static TouchManagement &Instance() { static TouchManagement m; return m; }
-    common::Error Initialize() { return driver_.Initialize(); }
-    common::Error Acquire(Accessor *a, TMO timeout = TMO_FEVR)
+    static TouchManagement &Instance()
     {
-        if (!a) return {common::ErrorCode::kInvalidArgument};
-        *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout);
-        if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w));
+        static TouchManagement m;
+        return m;
+    }
+    common::Error Initialize() { return driver_.Initialize(); }
+    common::Error Acquire(
+        Accessor *a,
+        TMO timeout = TMO_FEVR
+    )
+    {
+        if (!a)
+            return {common::ErrorCode::kInvalidArgument};
+        *a = {};
+        Writer w;
+        auto s = ownership_.Acquire(&w, timeout);
+        if (s.Ok())
+            *a = Accessor(driver_, static_cast<Writer &&>(w));
         return s;
     }
     common::Error Read(ui::TouchPoint *sample)
     {
-        Accessor a; auto s = Acquire(&a);
+        Accessor a;
+        auto s = Acquire(&a);
         return s.Ok() ? a.Get()->Read(sample, a.Ownership()) : s;
     }
     TouchManagement(const TouchManagement &) = delete;
     TouchManagement &operator=(const TouchManagement &) = delete;
+
 private:
-    TouchManagement() : driver_(ownership_) {} ~TouchManagement() = default;
-    driver::ResourceManagement ownership_{}; TouchDriver driver_;
+    TouchManagement() : driver_(ownership_) {}
+    ~TouchManagement() = default;
+    driver::ResourceManagement ownership_{};
+    TouchDriver driver_;
 };
 
 } // namespace uai::ai::touch

@@ -11,46 +11,69 @@ struct Frames {
     std::uint32_t failures = 0;
 };
 
-inline bool SameRect(const Rect &first, const Rect &second)
+inline bool SameRect(
+    const Rect &first,
+    const Rect &second
+)
 {
-    return first.x == second.x && first.y == second.y &&
-           first.width == second.width && first.height == second.height;
+    return first.x == second.x && first.y == second.y && first.width == second.width && first.height == second.height;
 }
 
-inline bool SameGeometry(const Geometry &first, const Geometry &second)
+inline bool SameGeometry(
+    const Geometry &first,
+    const Geometry &second
+)
 {
-    return first.fps == second.fps && first.horizontal == second.horizontal &&
-           first.vertical == second.vertical && SameRect(first.crop, second.crop);
+    return first.fps == second.fps && first.horizontal == second.horizontal && first.vertical == second.vertical
+        && SameRect(first.crop, second.crop);
 }
 
-inline bool SameSettings(const State &first, const State &second)
+inline bool SameSettings(
+    const State &first,
+    const State &second
+)
 {
     const auto difference = [](std::int32_t first_value, std::int32_t second_value) {
         const auto delta = std::int64_t(first_value) - second_value;
         return delta < 0 ? -delta : delta;
     };
-    return first.auto_exposure == second.auto_exposure && first.compensation == second.compensation &&
-           first.auto_white_balance == second.auto_white_balance && SameRect(first.statistics, second.statistics) &&
-           (first.auto_white_balance || first.color_temperature == second.color_temperature) &&
-           (first.auto_exposure || (difference(first.reported_exposure_us, second.reported_exposure_us) <= 100 &&
-                                   difference(first.reported_gain_mdB, second.reported_gain_mdB) <= 300));
+    return first.auto_exposure == second.auto_exposure && first.compensation == second.compensation
+        && first.auto_white_balance == second.auto_white_balance && SameRect(first.statistics, second.statistics)
+        && (first.auto_white_balance || first.color_temperature == second.color_temperature)
+        && (first.auto_exposure
+            || (difference(first.reported_exposure_us, second.reported_exposure_us) <= 100
+                && difference(first.reported_gain_mdB, second.reported_gain_mdB) <= 300));
 }
 
 class Scenario {
 public:
-    Scenario(Runtime &runtime, console::Writer output, std::uint32_t (*clock)(), Frames (*frames)())
-        : runtime_(runtime), output_(output), clock_(clock), frames_(frames) {}
+    Scenario(
+        Runtime &runtime,
+        console::Writer output,
+        std::uint32_t (*clock)(),
+        Frames (*frames)()
+    )
+        : runtime_(runtime),
+          output_(output),
+          clock_(clock),
+          frames_(frames)
+    {}
 
     console::Status Start()
     {
-        if (active_) { return console::Status::kInvalidState; }
+        if (active_) {
+            return console::Status::kInvalidState;
+        }
         passed_ = failed_ = 0;
         stage_ = 0;
         stage_started_ = false;
         cleanup_status_ = console::Status::kOk;
         const auto status = runtime_.ReadState(original_);
         if (status != console::Status::kOk) {
-            Report("setup", "FAIL", "state-read"); ++failed_; Summary(); return status;
+            Report("setup", "FAIL", "state-read");
+            ++failed_;
+            Summary();
+            return status;
         }
         original_geometry_ = expected_geometry_ = runtime_.Configuration();
         expected_ = original_;
@@ -63,7 +86,9 @@ public:
 
     console::Status Stop()
     {
-        if (!active_) { return console::Status::kInvalidState; }
+        if (!active_) {
+            return console::Status::kInvalidState;
+        }
         Fail("aborted");
         return cleanup_status_;
     }
@@ -74,14 +99,27 @@ public:
 
     void Tick()
     {
-        if (!active_) { return; }
+        if (!active_) {
+            return;
+        }
         const auto now = clock_();
         const auto &step = steps_[stage_];
-        if (frames_().failures != initial_failures_) { Fail("camera-or-display-error"); return; }
-        if (runtime_.Recoveries() != recoveries_) { Fail("unexpected-recovery"); return; }
-        if (runtime_.Running() != (step.action != Action::kStop)) { Fail("capture-state"); return; }
+        if (frames_().failures != initial_failures_) {
+            Fail("camera-or-display-error");
+            return;
+        }
+        if (runtime_.Recoveries() != recoveries_) {
+            Fail("unexpected-recovery");
+            return;
+        }
+        if (runtime_.Running() != (step.action != Action::kStop)) {
+            Fail("capture-state");
+            return;
+        }
         if (!measuring_) {
-            if (now - entered_ < 500) { return; }
+            if (now - entered_ < 500) {
+                return;
+            }
             baseline_ = frames_();
             latest_ = baseline_;
             measurement_ = now;
@@ -93,55 +131,98 @@ public:
         const auto first = current.pipe1 - baseline_.pipe1;
         const auto second = current.pipe2 - baseline_.pipe2;
         if (step.action != Action::kStop) {
-            if (now - sampled_ > 1500) { Fail("observation-gap"); return; }
-            if (current.pipe1 != latest_.pipe1) { pipe1_progress_ = now; }
-            if (current.pipe2 != latest_.pipe2) { pipe2_progress_ = now; }
+            if (now - sampled_ > 1500) {
+                Fail("observation-gap");
+                return;
+            }
+            if (current.pipe1 != latest_.pipe1) {
+                pipe1_progress_ = now;
+            }
+            if (current.pipe2 != latest_.pipe2) {
+                pipe2_progress_ = now;
+            }
             if (now - pipe1_progress_ >= 1500 || now - pipe2_progress_ >= 1500) {
-                Fail("frame-timeout"); return;
+                Fail("frame-timeout");
+                return;
             }
         }
         latest_ = current;
         sampled_ = now;
-        if (now - measurement_ < step.duration_ms) { return; }
+        if (now - measurement_ < step.duration_ms) {
+            return;
+        }
         if (step.action == Action::kStop) {
-            if (first || second) { Fail("frames-while-stopped"); return; }
+            if (first || second) {
+                Fail("frames-while-stopped");
+                return;
+            }
         } else {
-            if (!first || !second) { Fail("frame-timeout"); return; }
+            if (!first || !second) {
+                Fail("frame-timeout");
+                return;
+            }
             State state;
-            if (runtime_.ReadState(state) != console::Status::kOk || !SameSettings(state, expected_) ||
-                !SameGeometry(runtime_.Configuration(), expected_geometry_)) {
-                Fail("state-mismatch"); return;
+            if (runtime_.ReadState(state) != console::Status::kOk || !SameSettings(state, expected_)
+                || !SameGeometry(runtime_.Configuration(), expected_geometry_)) {
+                Fail("state-mismatch");
+                return;
             }
             if (step.action == Action::kFps) {
                 const auto elapsed = now - measurement_;
                 const auto target = expected_geometry_.fps;
                 for (const auto count : {first, second}) {
                     const auto rate = std::uint64_t(count) * 1000;
-                    if (rate < std::uint64_t(target) * elapsed * 7 / 10 ||
-                        rate > std::uint64_t(target) * elapsed * 13 / 10) {
-                        Fail("fps-out-of-range"); return;
+                    if (rate < std::uint64_t(target) * elapsed * 7 / 10
+                        || rate > std::uint64_t(target) * elapsed * 13 / 10) {
+                        Fail("fps-out-of-range");
+                        return;
                     }
                 }
             }
         }
         char detail[128];
-        std::snprintf(detail, sizeof(detail), "pipe1=%lu pipe2=%lu elapsed_ms=%lu",
-                      static_cast<unsigned long>(first), static_cast<unsigned long>(second),
-                      static_cast<unsigned long>(now - measurement_));
+        std::snprintf(
+            detail,
+            sizeof(detail),
+            "pipe1=%lu pipe2=%lu elapsed_ms=%lu",
+            static_cast<unsigned long>(first),
+            static_cast<unsigned long>(second),
+            static_cast<unsigned long>(now - measurement_)
+        );
         Report(step.name, "PASS", detail);
         ++passed_;
         if (++stage_ == sizeof(steps_) / sizeof(steps_[0])) {
-            active_ = false; Summary(); return;
+            active_ = false;
+            Summary();
+            return;
         }
         Enter();
     }
 
 private:
     enum class Action {
-        kObserve, kManual, kExposure, kWhiteBalance, kAutoExposure, kCompensation,
-        kStatistics, kFps, kFlip, kCrop, kInvalid, kStop, kStart, kRecover, kRestore
+        kObserve,
+        kManual,
+        kExposure,
+        kWhiteBalance,
+        kAutoExposure,
+        kCompensation,
+        kStatistics,
+        kFps,
+        kFlip,
+        kCrop,
+        kInvalid,
+        kStop,
+        kStart,
+        kRecover,
+        kRestore
     };
-    struct Step { const char *name; Action action; std::uint32_t duration_ms; std::int32_t value; };
+    struct Step {
+        const char *name;
+        Action action;
+        std::uint32_t duration_ms;
+        std::int32_t value;
+    };
     inline static constexpr Step steps_[] = {
         {"baseline", Action::kObserve, 2000, 0},
         {"manual", Action::kManual, 3000, 0},
@@ -183,18 +264,30 @@ private:
         if (status == console::Status::kOk && !SameGeometry(runtime_.Configuration(), original_geometry_)) {
             status = runtime_.Change(original_geometry_);
         }
-        if (status == console::Status::kOk) { status = runtime_.RestoreState(original_); }
+        if (status == console::Status::kOk) {
+            status = runtime_.RestoreState(original_);
+        }
         State actual;
         if (status == console::Status::kOk) {
             status = runtime_.ReadState(actual);
-            if (status == console::Status::kOk && !SameSettings(actual, original_)) { status = console::Status::kHardware; }
+            if (status == console::Status::kOk && !SameSettings(actual, original_)) {
+                status = console::Status::kHardware;
+            }
         }
         return status;
     }
 
-    static void Discard(void *, const char *, std::size_t) {}
+    static void Discard(
+        void *,
+        const char *,
+        std::size_t
+    )
+    {}
 
-    console::Status Control(int count, const char *const *arguments)
+    console::Status Control(
+        int count,
+        const char *const *arguments
+    )
     {
         return Runtime::ControlCommand(&runtime_, count, arguments, {nullptr, Discard});
     }
@@ -208,13 +301,18 @@ private:
             const char *disable[] = {"cam", "ae", "off"};
             auto status = Control(3, disable);
             const char *manual[] = {"cam", "manual", "12000", "0"};
-            if (status == console::Status::kOk) { status = Control(4, manual); }
-            expected_.auto_exposure = false; expected_.reported_exposure_us = 12000; expected_.reported_gain_mdB = 0;
+            if (status == console::Status::kOk) {
+                status = Control(4, manual);
+            }
+            expected_.auto_exposure = false;
+            expected_.reported_exposure_us = 12000;
+            expected_.reported_gain_mdB = 0;
             return status;
         }
         case Action::kExposure: {
             const char *arguments[] = {"cam", "manual", value, "0"};
-            expected_.reported_exposure_us = step.value; expected_.reported_gain_mdB = 0;
+            expected_.reported_exposure_us = step.value;
+            expected_.reported_gain_mdB = 0;
             return Control(4, arguments);
         }
         case Action::kWhiteBalance: {
@@ -239,9 +337,15 @@ private:
             return Control(3, arguments);
         }
         case Action::kStatistics: {
-            if (original_.sensor_width < 4 || original_.sensor_height < 4) { return console::Status::kInvalidArgument; }
-            expected_.statistics = {original_.sensor_width / 4, original_.sensor_height / 4,
-                                    original_.sensor_width / 2, original_.sensor_height / 2};
+            if (original_.sensor_width < 4 || original_.sensor_height < 4) {
+                return console::Status::kInvalidArgument;
+            }
+            expected_.statistics = {
+                original_.sensor_width / 4,
+                original_.sensor_height / 4,
+                original_.sensor_width / 2,
+                original_.sensor_height / 2
+            };
             char coordinates[4][16];
             const auto &bounds = expected_.statistics;
             std::snprintf(coordinates[0], 16, "%lu", static_cast<unsigned long>(bounds.x));
@@ -267,20 +371,27 @@ private:
             const char *crop[] = {"capture", "crop", "0", "0", "0", "480"};
             for (const auto arguments : {fps, flip, crop}) {
                 const int count = arguments == fps ? 3 : arguments == flip ? 4 : 6;
-                if (Runtime::CaptureCommand(&runtime_, count, arguments, {nullptr, Discard}) != console::Status::kInvalidArgument) {
+                if (Runtime::CaptureCommand(&runtime_, count, arguments, {nullptr, Discard})
+                    != console::Status::kInvalidArgument) {
                     return console::Status::kHardware;
                 }
             }
             const char *exposure[] = {"cam", "manual", "99", "0"};
-            return Control(4, exposure) == console::Status::kInvalidArgument ? console::Status::kOk : console::Status::kHardware;
+            return Control(4, exposure) == console::Status::kInvalidArgument ? console::Status::kOk
+                                                                             : console::Status::kHardware;
         }
-        case Action::kStop: return runtime_.Stop();
-        case Action::kStart: return runtime_.Start();
-        case Action::kRecover: return runtime_.Recover();
+        case Action::kStop:
+            return runtime_.Stop();
+        case Action::kStart:
+            return runtime_.Start();
+        case Action::kRecover:
+            return runtime_.Recover();
         case Action::kRestore:
-            expected_ = original_; expected_geometry_ = original_geometry_;
+            expected_ = original_;
+            expected_geometry_ = original_geometry_;
             return RestoreOriginal();
-        default: return console::Status::kOk;
+        default:
+            return console::Status::kOk;
         }
     }
 
@@ -291,31 +402,53 @@ private:
         Report(step.name, "BEGIN", "");
         const auto begin = clock_();
         const auto status = Apply(step);
-        if (status != console::Status::kOk) { Fail(console::StatusName(status)); return; }
-        if (clock_() - begin > 5000) { Fail("action-deadline"); return; }
+        if (status != console::Status::kOk) {
+            Fail(console::StatusName(status));
+            return;
+        }
+        if (clock_() - begin > 5000) {
+            Fail("action-deadline");
+            return;
+        }
         recoveries_ = runtime_.Recoveries();
         entered_ = clock_();
         measuring_ = false;
         if (step.action != Action::kStop) {
             State actual;
-            if (runtime_.ReadState(actual) != console::Status::kOk || !SameSettings(actual, expected_) ||
-                !SameGeometry(runtime_.Configuration(), expected_geometry_)) {
-                Fail("state-mismatch"); return;
+            if (runtime_.ReadState(actual) != console::Status::kOk || !SameSettings(actual, expected_)
+                || !SameGeometry(runtime_.Configuration(), expected_geometry_)) {
+                Fail("state-mismatch");
+                return;
             }
             char settings[224];
-            std::snprintf(settings, sizeof(settings),
-                "CAMTEST STATE ae=%u ev_half=%d exposure_us=%ld gain_mdB=%ld wb_auto=%u wb_kelvin=%lu fps=%lu flip=%u,%u crop=%lu,%lu,%lu,%lu\n",
-                unsigned(actual.auto_exposure), actual.compensation, static_cast<long>(actual.reported_exposure_us),
-                static_cast<long>(actual.reported_gain_mdB), unsigned(actual.auto_white_balance),
-                static_cast<unsigned long>(actual.color_temperature), static_cast<unsigned long>(expected_geometry_.fps),
-                unsigned(expected_geometry_.horizontal), unsigned(expected_geometry_.vertical),
-                static_cast<unsigned long>(expected_geometry_.crop.x), static_cast<unsigned long>(expected_geometry_.crop.y),
-                static_cast<unsigned long>(expected_geometry_.crop.width), static_cast<unsigned long>(expected_geometry_.crop.height));
+            std::snprintf(
+                settings,
+                sizeof(settings),
+                "CAMTEST STATE ae=%u ev_half=%d exposure_us=%ld gain_mdB=%ld wb_auto=%u wb_kelvin=%lu fps=%lu "
+                "flip=%u,%u crop=%lu,%lu,%lu,%lu\n",
+                unsigned(actual.auto_exposure),
+                actual.compensation,
+                static_cast<long>(actual.reported_exposure_us),
+                static_cast<long>(actual.reported_gain_mdB),
+                unsigned(actual.auto_white_balance),
+                static_cast<unsigned long>(actual.color_temperature),
+                static_cast<unsigned long>(expected_geometry_.fps),
+                unsigned(expected_geometry_.horizontal),
+                unsigned(expected_geometry_.vertical),
+                static_cast<unsigned long>(expected_geometry_.crop.x),
+                static_cast<unsigned long>(expected_geometry_.crop.y),
+                static_cast<unsigned long>(expected_geometry_.crop.width),
+                static_cast<unsigned long>(expected_geometry_.crop.height)
+            );
             output_.Write(settings);
         }
     }
 
-    void Report(const char *name, const char *result, const char *detail)
+    void Report(
+        const char *name,
+        const char *result,
+        const char *detail
+    )
     {
         char line[256];
         std::snprintf(line, sizeof(line), "\nCAMTEST %s %s %s\n", name, result, detail);
@@ -327,8 +460,14 @@ private:
         char line[96];
         const auto total = sizeof(steps_) / sizeof(steps_[0]);
         const auto skipped = stage_ < total ? total - stage_ - (stage_started_ ? 1 : 0) : 0;
-        std::snprintf(line, sizeof(line), "CAMTEST SUMMARY pass=%u fail=%u skip=%lu visual=required\n", passed_, failed_,
-                      static_cast<unsigned long>(skipped));
+        std::snprintf(
+            line,
+            sizeof(line),
+            "CAMTEST SUMMARY pass=%u fail=%u skip=%lu visual=required\n",
+            passed_,
+            failed_,
+            static_cast<unsigned long>(skipped)
+        );
         output_.Write(line);
     }
 
@@ -339,8 +478,11 @@ private:
         active_ = false;
         cleanup_status_ = RestoreOriginal();
         if (cleanup_status_ != console::Status::kOk) {
-            Report("cleanup", "FAIL", console::StatusName(cleanup_status_)); ++failed_;
-        } else { output_.Write("CAMTEST CLEANUP driver-state-restored\n"); }
+            Report("cleanup", "FAIL", console::StatusName(cleanup_status_));
+            ++failed_;
+        } else {
+            output_.Write("CAMTEST CLEANUP driver-state-restored\n");
+        }
         Summary();
     }
 

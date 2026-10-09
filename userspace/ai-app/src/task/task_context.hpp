@@ -48,27 +48,55 @@ public:
 
     CameraRenderContext CameraContext()
     {
-        return {memory, cache, camera, lcd, touch, cpu_task_monitor, pipeline_task,
-                external_nor_ready, touch_ready, diagnostics};
+        return {
+            memory,
+            cache,
+            camera,
+            lcd,
+            touch,
+            cpu_task_monitor,
+            pipeline_task,
+            external_nor_ready,
+            touch_ready,
+            diagnostics
+        };
     }
 
     PipelineFrameContext FrameContext()
     {
-        return {memory, cache, camera, cpu_task_monitor, pipeline_task,
-            external_nor_ready, external_memory_ready,
-                diagnostics};
+        return {
+            memory,
+            cache,
+            camera,
+            cpu_task_monitor,
+            pipeline_task,
+            external_nor_ready,
+            external_memory_ready,
+            diagnostics
+        };
     }
 
-    PipelineWorkerContext WorkerContext()
-    {
-        return {cpu_task_monitor, pipeline_work_ready};
-    }
+    PipelineWorkerContext WorkerContext() { return {cpu_task_monitor, pipeline_work_ready}; }
 
     ApplicationInitializeContext InitializationContext()
     {
-        return {memory, cache, psram, rif, lcd, camera, touch, cpu_task_monitor,
-                camera_task, pipeline_task, app_stage, external_nor_ready,
-                touch_ready, external_memory_ready, diagnostics};
+        return {
+            memory,
+            cache,
+            psram,
+            rif,
+            lcd,
+            camera,
+            touch,
+            cpu_task_monitor,
+            camera_task,
+            pipeline_task,
+            app_stage,
+            external_nor_ready,
+            touch_ready,
+            external_memory_ready,
+            diagnostics
+        };
     }
 };
 

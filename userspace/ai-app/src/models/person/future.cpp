@@ -15,8 +15,7 @@ namespace uai::ai::models::person {
 namespace {
 
 constexpr std::uint32_t kMaxPostprocessDetections = 100U;
-constexpr std::size_t kMaxModelOutputs =
-    memory_manager::kMemoryConfig.model_output_bytes.size();
+constexpr std::size_t kMaxModelOutputs = memory_manager::kMemoryConfig.model_output_bytes.size();
 constexpr std::size_t kMaxDecodedDetections = inference::kMaxBoxes;
 
 struct ModelOutputView {
@@ -101,8 +100,11 @@ struct OdParams {
 
 extern "C" {
 std::int32_t od_st_yolox_pp_reset(OdParams *params);
-std::int32_t od_st_yolox_pp_process_int8(OdInput *input, OdOutput *output,
-                                         OdParams *params);
+std::int32_t od_st_yolox_pp_process_int8(
+    OdInput *input,
+    OdOutput *output,
+    OdParams *params
+);
 }
 
 OdParams g_postprocess{};
@@ -113,15 +115,17 @@ const float g_anchors_l[6] = {30.0F, 30.0F, 4.2F, 15.0F, 13.8F, 42.0F};
 const float g_anchors_m[6] = {15.0F, 15.0F, 2.1F, 7.5F, 6.9F, 21.0F};
 const float g_anchors_s[6] = {7.5F, 7.5F, 1.05F, 3.75F, 3.45F, 10.5F};
 
-void SortOutputs(const stai_network_info &info, std::size_t *output_order)
+void SortOutputs(
+    const stai_network_info &info,
+    std::size_t *output_order
+)
 {
-    for (std::size_t i = 0U; i < 3U; ++i) output_order[i] = i;
+    for (std::size_t i = 0U; i < 3U; ++i)
+        output_order[i] = i;
     for (std::size_t i = 1U; i < 3U; ++i) {
         const std::size_t value = output_order[i];
         std::size_t j = i;
-        while (j > 0U &&
-               info.outputs[output_order[j - 1U]].size_bytes >
-                   info.outputs[value].size_bytes) {
+        while (j > 0U && info.outputs[output_order[j - 1U]].size_bytes > info.outputs[value].size_bytes) {
             output_order[j] = output_order[j - 1U];
             --j;
         }
@@ -132,8 +136,7 @@ void SortOutputs(const stai_network_info &info, std::size_t *output_order)
 common::Error InitializeDecoder(const stai_network_info &info)
 {
     g_decoder_initialized = false;
-    if (info.outputs == nullptr || info.n_outputs != 3U ||
-        info.n_outputs > kMaxModelOutputs) {
+    if (info.outputs == nullptr || info.n_outputs != 3U || info.n_outputs > kMaxModelOutputs) {
         return common::Error{common::ErrorCode::kModel};
     }
     SortOutputs(info, g_output_order);
@@ -147,25 +150,18 @@ common::Error InitializeDecoder(const stai_network_info &info)
     g_postprocess.grid_height_m = 30;
     g_postprocess.grid_width_s = 15;
     g_postprocess.grid_height_s = 15;
-    g_postprocess.max_boxes_limit =
-        static_cast<std::int32_t>(kMaxPostprocessDetections);
+    g_postprocess.max_boxes_limit = static_cast<std::int32_t>(kMaxPostprocessDetections);
     g_postprocess.conf_threshold = 0.6F;
     g_postprocess.iou_threshold = 0.5F;
     g_postprocess.anchors_l = g_anchors_l;
     g_postprocess.anchors_m = g_anchors_m;
     g_postprocess.anchors_s = g_anchors_s;
-    g_postprocess.raw_s_scale =
-        info.outputs[g_output_order[0]].scale.data[0];
-    g_postprocess.raw_s_zero_point = static_cast<std::int8_t>(
-        info.outputs[g_output_order[0]].zeropoint.data[0]);
-    g_postprocess.raw_m_scale =
-        info.outputs[g_output_order[1]].scale.data[0];
-    g_postprocess.raw_m_zero_point = static_cast<std::int8_t>(
-        info.outputs[g_output_order[1]].zeropoint.data[0]);
-    g_postprocess.raw_l_scale =
-        info.outputs[g_output_order[2]].scale.data[0];
-    g_postprocess.raw_l_zero_point = static_cast<std::int8_t>(
-        info.outputs[g_output_order[2]].zeropoint.data[0]);
+    g_postprocess.raw_s_scale = info.outputs[g_output_order[0]].scale.data[0];
+    g_postprocess.raw_s_zero_point = static_cast<std::int8_t>(info.outputs[g_output_order[0]].zeropoint.data[0]);
+    g_postprocess.raw_m_scale = info.outputs[g_output_order[1]].scale.data[0];
+    g_postprocess.raw_m_zero_point = static_cast<std::int8_t>(info.outputs[g_output_order[1]].zeropoint.data[0]);
+    g_postprocess.raw_l_scale = info.outputs[g_output_order[2]].scale.data[0];
+    g_postprocess.raw_l_zero_point = static_cast<std::int8_t>(info.outputs[g_output_order[2]].zeropoint.data[0]);
     if (od_st_yolox_pp_reset(&g_postprocess) != 0) {
         return common::Error{common::ErrorCode::kModel};
     }
@@ -173,39 +169,40 @@ common::Error InitializeDecoder(const stai_network_info &info)
     return {common::ErrorCode::kOk};
 }
 
-float ClampProjectedCoordinate(float value, std::uint32_t limit)
+float ClampProjectedCoordinate(
+    float value,
+    std::uint32_t limit
+)
 {
-    if (value <= 0.0F) return 0.0F;
-    if (value >= static_cast<float>(limit)) return static_cast<float>(limit);
+    if (value <= 0.0F)
+        return 0.0F;
+    if (value >= static_cast<float>(limit))
+        return static_cast<float>(limit);
     return value;
 }
 
-void ProjectDetection(const OdDetection &source,
-                      const InferenceGeometry &geometry,
-                      Detection *destination)
+void ProjectDetection(
+    const OdDetection &source,
+    const InferenceGeometry &geometry,
+    Detection *destination
+)
 {
     float left = 0.0F;
     float top = 0.0F;
     float width = 0.0F;
     float height = 0.0F;
     if (geometry.projection == InputProjection::kLetterboxed) {
-        left = (source.x_center - source.width * 0.5F) *
-               static_cast<float>(geometry.frame_width);
-        top = ((source.y_center - source.height * 0.5F) *
-                   static_cast<float>(geometry.model_height) -
-               static_cast<float>(geometry.pad_top)) *
-              static_cast<float>(geometry.frame_height) /
-              static_cast<float>(geometry.content_height);
+        left = (source.x_center - source.width * 0.5F) * static_cast<float>(geometry.frame_width);
+        top = ((source.y_center - source.height * 0.5F) * static_cast<float>(geometry.model_height)
+               - static_cast<float>(geometry.pad_top))
+            * static_cast<float>(geometry.frame_height) / static_cast<float>(geometry.content_height);
         width = source.width * static_cast<float>(geometry.frame_width);
-        height = source.height * static_cast<float>(geometry.model_height) *
-                 static_cast<float>(geometry.frame_height) /
-                 static_cast<float>(geometry.content_height);
+        height = source.height * static_cast<float>(geometry.model_height) * static_cast<float>(geometry.frame_height)
+            / static_cast<float>(geometry.content_height);
     } else {
         const float crop_size = static_cast<float>(geometry.frame_height);
-        const float crop_x =
-            (static_cast<float>(geometry.frame_width) - crop_size) * 0.5F;
-        left = crop_x +
-               (source.x_center - source.width * 0.5F) * crop_size;
+        const float crop_x = (static_cast<float>(geometry.frame_width) - crop_size) * 0.5F;
+        left = crop_x + (source.x_center - source.width * 0.5F) * crop_size;
         top = (source.y_center - source.height * 0.5F) * crop_size;
         width = source.width * crop_size;
         height = source.height * crop_size;
@@ -213,24 +210,23 @@ void ProjectDetection(const OdDetection &source,
 
     destination->x = ClampProjectedCoordinate(left, geometry.frame_width);
     destination->y = ClampProjectedCoordinate(top, geometry.frame_height);
-    destination->width =
-        ClampProjectedCoordinate(width, geometry.frame_width);
-    destination->height =
-        ClampProjectedCoordinate(height, geometry.frame_height);
+    destination->width = ClampProjectedCoordinate(width, geometry.frame_width);
+    destination->height = ClampProjectedCoordinate(height, geometry.frame_height);
     destination->confidence = source.confidence;
     destination->class_index = source.class_index;
 }
 
-common::Error DecodePerson(const ModelOutputView &outputs,
-                           const InferenceGeometry &geometry,
-                           ModelResult *result)
+common::Error DecodePerson(
+    const ModelOutputView &outputs,
+    const InferenceGeometry &geometry,
+    ModelResult *result
+)
 {
     if (!g_decoder_initialized) {
         return {common::ErrorCode::kNotInitialized};
     }
-    if (result == nullptr || outputs.count < 3U ||
-        geometry.frame_width == 0U || geometry.frame_height == 0U ||
-        geometry.model_height == 0U || geometry.content_height == 0U) {
+    if (result == nullptr || outputs.count < 3U || geometry.frame_width == 0U || geometry.frame_height == 0U
+        || geometry.model_height == 0U || geometry.content_height == 0U) {
         return {common::ErrorCode::kInvalidArgument};
     }
 
@@ -241,39 +237,39 @@ common::Error DecodePerson(const ModelOutputView &outputs,
         return {common::ErrorCode::kInvalidArgument};
     }
 
-    OdInput input{const_cast<void *>(raw_l), const_cast<void *>(raw_m),
-                  const_cast<void *>(raw_s)};
+    OdInput input{const_cast<void *>(raw_l), const_cast<void *>(raw_m), const_cast<void *>(raw_s)};
     OdOutput output{g_postprocess_buffer, 0};
     g_postprocess.nb_detect = 0;
     if (od_st_yolox_pp_process_int8(&input, &output, &g_postprocess) != 0) {
         return common::Error{common::ErrorCode::kModel};
     }
 
-    const std::uint32_t available = output.count > 0
-                                        ? static_cast<std::uint32_t>(output.count)
-                                        : 0U;
+    const std::uint32_t available = output.count > 0 ? static_cast<std::uint32_t>(output.count) : 0U;
     result->detections_valid = true;
-    result->detection_count = available < kMaxDecodedDetections
-                                  ? available
-                                  : kMaxDecodedDetections;
+    result->detection_count = available < kMaxDecodedDetections ? available : kMaxDecodedDetections;
     for (std::uint32_t i = 0U; i < result->detection_count; ++i) {
-        ProjectDetection(g_postprocess_buffer[i], geometry,
-                         &result->detections[i]);
+        ProjectDetection(g_postprocess_buffer[i], geometry, &result->detections[i]);
     }
     return {common::ErrorCode::kOk};
 }
 
-std::int16_t ClampBoxCoordinate(float value, std::int32_t limit)
+std::int16_t ClampBoxCoordinate(
+    float value,
+    std::int32_t limit
+)
 {
-    if (value <= 0.0F) return 0;
+    if (value <= 0.0F)
+        return 0;
     if (value >= static_cast<float>(limit)) {
         return static_cast<std::int16_t>(limit);
     }
     return static_cast<std::int16_t>(value);
 }
 
-common::Error ConvertResult(const ModelResult &source,
-                            inference::BoxSet *destination)
+common::Error ConvertResult(
+    const ModelResult &source,
+    inference::BoxSet *destination
+)
 {
     if (destination == nullptr) {
         return {common::ErrorCode::kInvalidArgument};
@@ -283,20 +279,14 @@ common::Error ConvertResult(const ModelResult &source,
     }
 
     destination->person = {};
-    destination->person.count = source.detection_count <
-                                        inference::kMaxBoxes
-                                    ? source.detection_count
-                                    : inference::kMaxBoxes;
+    destination->person.count =
+        source.detection_count < inference::kMaxBoxes ? source.detection_count : inference::kMaxBoxes;
     for (std::uint32_t i = 0U; i < destination->person.count; ++i) {
         const Detection &detection = source.detections[i];
-        destination->person.boxes[i].x = ClampBoxCoordinate(
-            detection.x, pipeline::kCaptureFormat.width);
-        destination->person.boxes[i].y = ClampBoxCoordinate(
-            detection.y, pipeline::kCaptureFormat.height);
-        destination->person.boxes[i].width = ClampBoxCoordinate(
-            detection.width, pipeline::kCaptureFormat.width);
-        destination->person.boxes[i].height = ClampBoxCoordinate(
-            detection.height, pipeline::kCaptureFormat.height);
+        destination->person.boxes[i].x = ClampBoxCoordinate(detection.x, pipeline::kCaptureFormat.width);
+        destination->person.boxes[i].y = ClampBoxCoordinate(detection.y, pipeline::kCaptureFormat.height);
+        destination->person.boxes[i].width = ClampBoxCoordinate(detection.width, pipeline::kCaptureFormat.width);
+        destination->person.boxes[i].height = ClampBoxCoordinate(detection.height, pipeline::kCaptureFormat.height);
         destination->person.boxes[i].confidence = detection.confidence;
     }
     destination->person_valid = true;
@@ -310,8 +300,10 @@ common::Error Future::ConfigureDecoder(const stai_network_info &info)
     return InitializeDecoder(info);
 }
 
-void Future::Reset(const FutureContext &context,
-                   const pipeline::InferenceFrame &frame)
+void Future::Reset(
+    const FutureContext &context,
+    const pipeline::InferenceFrame &frame
+)
 {
     context_ = context;
     frame_ = frame;
@@ -348,13 +340,14 @@ common::Error Future::Preprocess()
         return {common::ErrorCode::kNotInitialized};
     }
     if (!preprocess_stage_logged_) {
-        UAI_LOG_INFO("ai: person preprocess begin seq=%u buffer=%x\n",
-                     static_cast<unsigned int>(frame_.capture_sequence),
-                     static_cast<unsigned int>(frame_.buffer.address));
+        UAI_LOG_INFO(
+            "ai: person preprocess begin seq=%u buffer=%x\n",
+            static_cast<unsigned int>(frame_.capture_sequence),
+            static_cast<unsigned int>(frame_.buffer.address)
+        );
     }
-    if (!frame_ || !frame_.from_pipe2 ||
-        frame_.output_count < context_.info->n_outputs ||
-        frame_.buffer.size < context_.info->inputs[0].size_bytes) {
+    if (!frame_ || !frame_.from_pipe2 || frame_.output_count < context_.info->n_outputs
+        || frame_.buffer.size < context_.info->inputs[0].size_bytes) {
         return {common::ErrorCode::kInvalidArgument};
     }
     frame_.input_prepared_by_cpu = false;
@@ -369,14 +362,11 @@ common::Error Future::Preprocess()
     /* Pipe2 wrote this buffer using DMA. A CPU read/invalidate here must not
      * overwrite the DMA image with dirty cache lines. */
     const buffer::Buffer range{
-        input.address,
-        context_.info->inputs[0].size_bytes,
-        input.index,
-        buffer::Region::kInference};
+        input.address, context_.info->inputs[0].size_bytes, input.index, buffer::Region::kInference
+    };
     common::Error status = context_.cache->PrepareForCpuRead(range);
     if (status.Ok() && !preprocess_stage_logged_) {
-        UAI_LOG_INFO("ai: person preprocess done seq=%u\n",
-                     static_cast<unsigned int>(frame_.capture_sequence));
+        UAI_LOG_INFO("ai: person preprocess done seq=%u\n", static_cast<unsigned int>(frame_.capture_sequence));
         preprocess_stage_logged_ = true;
     }
     return status;
@@ -384,48 +374,44 @@ common::Error Future::Preprocess()
 
 common::Error Future::Infer()
 {
-    if (context_.npu == nullptr || context_.npu_writer == nullptr ||
-        context_.model == nullptr ||
-        context_.info == nullptr) {
+    if (context_.npu == nullptr || context_.npu_writer == nullptr || context_.model == nullptr
+        || context_.info == nullptr) {
         return {common::ErrorCode::kNotInitialized};
     }
     if (!infer_stage_logged_) {
-        UAI_LOG_INFO("ai: person infer begin seq=%u\n",
-                     static_cast<unsigned int>(frame_.capture_sequence));
+        UAI_LOG_INFO("ai: person infer begin seq=%u\n", static_cast<unsigned int>(frame_.capture_sequence));
     }
     const buffer::Buffer &input = frame_.buffer;
-    npu::Status result =
-        context_.npu->SelectModel(*context_.model, *context_.npu_writer);
-    if (!result.Ok()) return result.error;
-    context_.npu->SetEpochTraceModelKindId(context_.model_kind_id,
-                                           *context_.npu_writer);
+    npu::Status result = context_.npu->SelectModel(*context_.model, *context_.npu_writer);
+    if (!result.Ok())
+        return result.error;
+    context_.npu->SetEpochTraceModelKindId(context_.model_kind_id, *context_.npu_writer);
 
     result = context_.npu->SetInput(
-        reinterpret_cast<stai_ptr>(input.address),
-        context_.info->inputs[0].size_bytes, *context_.npu_writer);
-    if (!result.Ok()) return result.error;
+        reinterpret_cast<stai_ptr>(input.address), context_.info->inputs[0].size_bytes, *context_.npu_writer
+    );
+    if (!result.Ok())
+        return result.error;
 
     stai_ptr outputs[memory_manager::kMemoryConfig.model_output_bytes.size()]{};
     for (std::uint16_t i = 0U; i < context_.info->n_outputs; ++i) {
         const auto &output = frame_.outputs[i];
-        if (!output || output.size < context_.info->outputs[i].size_bytes ||
-            output.alignment == 0U ||
-            output.address % output.alignment != 0U) {
+        if (!output || output.size < context_.info->outputs[i].size_bytes || output.alignment == 0U
+            || output.address % output.alignment != 0U) {
             return {common::ErrorCode::kInvalidArgument};
         }
         outputs[i] = reinterpret_cast<stai_ptr>(output.address);
     }
-    result = context_.npu->SetOutputs(outputs, context_.info->n_outputs,
-                                      *context_.npu_writer);
-    if (!result.Ok()) return result.error;
+    result = context_.npu->SetOutputs(outputs, context_.info->n_outputs, *context_.npu_writer);
+    if (!result.Ok())
+        return result.error;
     result = context_.npu->Run(*context_.npu_writer);
     if (!result.Ok()) {
         result.error.LogStatus("person.infer", common::LogLevel::kWarn);
         return result.error;
     }
     if (!infer_stage_logged_) {
-        UAI_LOG_INFO("ai: person infer done seq=%u\n",
-                     static_cast<unsigned int>(frame_.capture_sequence));
+        UAI_LOG_INFO("ai: person infer done seq=%u\n", static_cast<unsigned int>(frame_.capture_sequence));
         infer_stage_logged_ = true;
     }
     result = context_.npu->NewInference(*context_.npu_writer);
@@ -434,8 +420,7 @@ common::Error Future::Infer()
 
 common::Error Future::Postprocess()
 {
-    if (context_.cache == nullptr || context_.info == nullptr ||
-        context_.publish == nullptr) {
+    if (context_.cache == nullptr || context_.info == nullptr || context_.publish == nullptr) {
         return {common::ErrorCode::kNotInitialized};
     }
     ModelOutputView view{};
@@ -443,12 +428,11 @@ common::Error Future::Postprocess()
     for (std::uint16_t i = 0U; i < context_.info->n_outputs; ++i) {
         const auto &output = frame_.outputs[i];
         const buffer::Buffer range{
-            output.address,
-            context_.info->outputs[i].size_bytes,
-            output.index,
-            buffer::Region::kInference};
+            output.address, context_.info->outputs[i].size_bytes, output.index, buffer::Region::kInference
+        };
         common::Error status = context_.cache->PrepareForCpuRead(range);
-        if (!status.Ok()) return status;
+        if (!status.Ok())
+            return status;
         view.tensors[i] = reinterpret_cast<const void *>(output.address);
     }
 
@@ -459,23 +443,26 @@ common::Error Future::Postprocess()
     geometry.model_width = kInputWidth;
     geometry.model_height = kInputHeight;
     geometry.content_height =
-        (kInputWidth * pipeline::kInferenceContentFormat.height +
-         pipeline::kInferenceContentFormat.width - 1U) /
-        pipeline::kInferenceContentFormat.width;
+        (kInputWidth * pipeline::kInferenceContentFormat.height + pipeline::kInferenceContentFormat.width - 1U)
+        / pipeline::kInferenceContentFormat.width;
     geometry.pad_top = (geometry.model_height - geometry.content_height) / 2U;
 
     ModelResult decoded{};
     common::Error status = DecodePerson(view, geometry, &decoded);
-    if (!status.Ok()) return status;
+    if (!status.Ok())
+        return status;
 
     inference::BoxSet boxes{};
     status = ConvertResult(decoded, &boxes);
-    if (!status.Ok()) return status;
+    if (!status.Ok())
+        return status;
     context_.publish(context_.publish_context, boxes);
     if (!postprocess_stage_logged_) {
-        UAI_LOG_INFO("ai: person postprocess done seq=%u boxes=%u\n",
-                     static_cast<unsigned int>(frame_.capture_sequence),
-                     static_cast<unsigned int>(boxes.person.count));
+        UAI_LOG_INFO(
+            "ai: person postprocess done seq=%u boxes=%u\n",
+            static_cast<unsigned int>(frame_.capture_sequence),
+            static_cast<unsigned int>(boxes.person.count)
+        );
         postprocess_stage_logged_ = true;
     }
     return {};
@@ -496,8 +483,7 @@ ai_runtime::AiRuntimeResult Future::Evaluate()
         status = Infer();
         if (status.Ok()) {
             phase_ = Phase::kPostprocess;
-            return {{}, {ai_runtime::ExecutionContext::kPostprocessCpu},
-                    false};
+            return {{}, {ai_runtime::ExecutionContext::kPostprocessCpu}, false};
         }
         break;
     case Phase::kPostprocess:

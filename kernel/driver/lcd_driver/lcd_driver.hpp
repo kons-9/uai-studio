@@ -20,59 +20,84 @@ class LcdDriver final {
 public:
     using Writer = driver::ResourceManagement::Writer;
 
-    common::Error AcquireWriter(Writer *writer, TMO timeout = TMO_FEVR) const
-    { return management_->Acquire(writer, timeout); }
+    common::Error AcquireWriter(
+        Writer *writer,
+        TMO timeout = TMO_FEVR
+    ) const
+    {
+        return management_->Acquire(writer, timeout);
+    }
     void KeepClocksOnSleep() const;
     void KeepClocksOnSleep(const Writer &writer) const;
     common::Error ShowInitialFrame(
         const inference::BoxSet &boxes,
-        bool coordinate_pattern = false);
+        bool coordinate_pattern = false
+    );
     common::Error ShowInitialFrame(
-        const inference::BoxSet &boxes, const Writer &writer,
-        bool coordinate_pattern = false);
+        const inference::BoxSet &boxes,
+        const Writer &writer,
+        bool coordinate_pattern = false
+    );
     common::Error SynchronizeCurrentFrame();
     common::Error SynchronizeCurrentFrame(const Writer &writer);
-    common::Error GenerateCoordinatePattern(
-        const buffer::Buffer &destination) const;
+    common::Error GenerateCoordinatePattern(const buffer::Buffer &destination) const;
     common::Error GenerateCoordinatePattern(
         const buffer::Buffer &destination,
-        const Writer &writer) const;
+        const Writer &writer
+    ) const;
     common::Error ComposeAndPresent(
         const pipeline::CaptureFrame &capture,
         const inference::BoxSet &boxes,
         const ui::Painter *overlay = nullptr,
-        bool log_copy_crc = false);
+        bool log_copy_crc = false
+    );
     common::Error ComposeAndPresent(
         const pipeline::CaptureFrame &capture,
-        const inference::BoxSet &boxes, const Writer &writer,
+        const inference::BoxSet &boxes,
+        const Writer &writer,
         const ui::Painter *overlay = nullptr,
-        bool log_copy_crc = false);
+        bool log_copy_crc = false
+    );
+    common::Error ComposeInferenceAndPresent(const pipeline::InferenceFrame &frame);
     common::Error ComposeInferenceAndPresent(
-        const pipeline::InferenceFrame &frame);
-    common::Error ComposeInferenceAndPresent(
-        const pipeline::InferenceFrame &frame, const Writer &writer);
+        const pipeline::InferenceFrame &frame,
+        const Writer &writer
+    );
     /* Presents the overlay alone (it must paint every pixel, e.g. a solid
      * background screen); no capture frame is copied. */
     common::Error PresentOverlay(const ui::Painter &overlay);
-    common::Error PresentOverlay(const ui::Painter &overlay, const Writer &writer);
-    void SetTimingDiagnostics(bool enabled, const Writer &writer);
+    common::Error PresentOverlay(
+        const ui::Painter &overlay,
+        const Writer &writer
+    );
+    void SetTimingDiagnostics(
+        bool enabled,
+        const Writer &writer
+    );
 
 private:
     friend class LcdManagement;
     ~LcdDriver() = default;
     LcdDriver(driver::ResourceManagement &management) : management_(&management) {}
-    common::Error Initialize(memory_manager::MemoryManager &memory,
-                             cache::CacheManagement &cache);
+    common::Error Initialize(
+        memory_manager::MemoryManager &memory,
+        cache::CacheManagement &cache
+    );
     driver::ResourceManagement *management_;
-    static void FillInitialFrame(const pipeline::DisplayBuffer &buffer,
-                                 const inference::BoxSet &boxes,
-                                 bool coordinate_pattern);
-    static void DrawBoxes(const pipeline::DisplayBuffer &buffer,
-                          const inference::BoxSet &boxes);
-    static void DrawInferenceRegion(
-        const pipeline::DisplayBuffer &buffer);
-    static void DrawMask(const pipeline::DisplayBuffer &buffer,
-                         const inference::BoxSet &boxes);
+    static void FillInitialFrame(
+        const pipeline::DisplayBuffer &buffer,
+        const inference::BoxSet &boxes,
+        bool coordinate_pattern
+    );
+    static void DrawBoxes(
+        const pipeline::DisplayBuffer &buffer,
+        const inference::BoxSet &boxes
+    );
+    static void DrawInferenceRegion(const pipeline::DisplayBuffer &buffer);
+    static void DrawMask(
+        const pipeline::DisplayBuffer &buffer,
+        const inference::BoxSet &boxes
+    );
     static common::Error FromBackend(uai::driver::DriverStatus status);
     memory_manager::MemoryManager *memory_ = nullptr;
     cache::CacheManagement *cache_ = nullptr;
@@ -85,31 +110,106 @@ class LcdManagement final {
 public:
     using Writer = LcdDriver::Writer;
     using Accessor = driver::ResourceAccessor<LcdDriver>;
-    static LcdManagement &Instance() { static LcdManagement m; return m; }
-    common::Error Initialize(memory_manager::MemoryManager &memory, cache::CacheManagement &cache)
-    { return driver_.Initialize(memory, cache); }
-    common::Error Acquire(Accessor *a, TMO timeout = TMO_FEVR)
+    static LcdManagement &Instance()
     {
-        if (!a) return {common::ErrorCode::kInvalidArgument};
-        *a = {}; Writer w; auto s = ownership_.Acquire(&w, timeout);
-        if (s.Ok()) *a = Accessor(driver_, static_cast<Writer &&>(w));
+        static LcdManagement m;
+        return m;
+    }
+    common::Error Initialize(
+        memory_manager::MemoryManager &memory,
+        cache::CacheManagement &cache
+    )
+    {
+        return driver_.Initialize(memory, cache);
+    }
+    common::Error Acquire(
+        Accessor *a,
+        TMO timeout = TMO_FEVR
+    )
+    {
+        if (!a)
+            return {common::ErrorCode::kInvalidArgument};
+        *a = {};
+        Writer w;
+        auto s = ownership_.Acquire(&w, timeout);
+        if (s.Ok())
+            *a = Accessor(driver_, static_cast<Writer &&>(w));
         return s;
     }
     common::Error Validate(const Writer &w) const { return ownership_.Validate(w); }
-    void KeepClocksOnSleep() { (void)WithWriter([](LcdDriver &d, const Writer &w) { d.KeepClocksOnSleep(w); return common::Error{}; }); }
-    common::Error ShowInitialFrame(const inference::BoxSet &b, bool p = false) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ShowInitialFrame(b, w, p); }); }
-    common::Error SynchronizeCurrentFrame() { return WithWriter([](LcdDriver &d, const Writer &w) { return d.SynchronizeCurrentFrame(w); }); }
-    common::Error GenerateCoordinatePattern(const buffer::Buffer &b) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.GenerateCoordinatePattern(b, w); }); }
-    common::Error ComposeAndPresent(const pipeline::CaptureFrame &f, const inference::BoxSet &b, const ui::Painter *overlay = nullptr, bool crc = false) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ComposeAndPresent(f, b, w, overlay, crc); }); }
-    common::Error ComposeInferenceAndPresent(const pipeline::InferenceFrame &f) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.ComposeInferenceAndPresent(f, w); }); }
-    common::Error PresentOverlay(const ui::Painter &overlay) { return WithWriter([&](LcdDriver &d, const Writer &w) { return d.PresentOverlay(overlay, w); }); }
-    void SetTimingDiagnostics(bool enabled) { (void)WithWriter([&](LcdDriver &d, const Writer &w) { d.SetTimingDiagnostics(enabled, w); return common::Error{}; }); }
+    void KeepClocksOnSleep()
+    {
+        (void)WithWriter([](LcdDriver &d, const Writer &w) {
+            d.KeepClocksOnSleep(w);
+            return common::Error{};
+        });
+    }
+    common::Error ShowInitialFrame(
+        const inference::BoxSet &b,
+        bool p = false
+    )
+    {
+        return WithWriter([&](LcdDriver &d, const Writer &w) {
+            return d.ShowInitialFrame(b, w, p);
+        });
+    }
+    common::Error SynchronizeCurrentFrame()
+    {
+        return WithWriter([](LcdDriver &d, const Writer &w) {
+            return d.SynchronizeCurrentFrame(w);
+        });
+    }
+    common::Error GenerateCoordinatePattern(const buffer::Buffer &b)
+    {
+        return WithWriter([&](LcdDriver &d, const Writer &w) {
+            return d.GenerateCoordinatePattern(b, w);
+        });
+    }
+    common::Error ComposeAndPresent(
+        const pipeline::CaptureFrame &f,
+        const inference::BoxSet &b,
+        const ui::Painter *overlay = nullptr,
+        bool crc = false
+    )
+    {
+        return WithWriter([&](LcdDriver &d, const Writer &w) {
+            return d.ComposeAndPresent(f, b, w, overlay, crc);
+        });
+    }
+    common::Error ComposeInferenceAndPresent(const pipeline::InferenceFrame &f)
+    {
+        return WithWriter([&](LcdDriver &d, const Writer &w) {
+            return d.ComposeInferenceAndPresent(f, w);
+        });
+    }
+    common::Error PresentOverlay(const ui::Painter &overlay)
+    {
+        return WithWriter([&](LcdDriver &d, const Writer &w) {
+            return d.PresentOverlay(overlay, w);
+        });
+    }
+    void SetTimingDiagnostics(bool enabled)
+    {
+        (void)WithWriter([&](LcdDriver &d, const Writer &w) {
+            d.SetTimingDiagnostics(enabled, w);
+            return common::Error{};
+        });
+    }
     LcdManagement(const LcdManagement &) = delete;
     LcdManagement &operator=(const LcdManagement &) = delete;
+
 private:
-    LcdManagement() : driver_(ownership_) {} ~LcdManagement() = default;
-    template <typename F> common::Error WithWriter(F f) { Accessor a; auto s = Acquire(&a); return s.Ok() ? f(*a.Get(), a.Ownership()) : s; }
-    driver::ResourceManagement ownership_{}; LcdDriver driver_;
+    LcdManagement() : driver_(ownership_) {}
+    ~LcdManagement() = default;
+    template <typename F>
+    common::Error WithWriter(F f)
+    {
+        Accessor a;
+        auto s = Acquire(&a);
+        return s.Ok() ? f(*a.Get(), a.Ownership()) : s;
+    }
+    driver::ResourceManagement ownership_{};
+    LcdDriver driver_;
 };
 
 } // namespace uai::ai::lcd

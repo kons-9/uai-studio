@@ -27,11 +27,19 @@ class CpuTaskMonitor final {
 public:
     common::Error Start();
     common::Error Stop();
-    common::Error RegisterTask(ID task_id, const char *name);
+    common::Error RegisterTask(
+        ID task_id,
+        const char *name
+    );
     static common::Error RegisterTaskForActiveMonitor(
-        ID task_id, const char *name);
+        ID task_id,
+        const char *name
+    );
     std::uint32_t BeginTaskLoop() const;
-    void RecordTaskLoop(ID task_id, std::uint32_t start_cycles);
+    void RecordTaskLoop(
+        ID task_id,
+        std::uint32_t start_cycles
+    );
     /* Must be called after external PSRAM has been initialized. */
     common::Error InitializeTraceBuffer();
     void Report();
@@ -52,22 +60,38 @@ private:
         std::uint32_t loop_last_cycles = 0U;
     };
 
-    static void DispatchExec(ID task_id, ID lsid);
-    static void DispatchStop(ID task_id, ID lsid, UINT state);
+    static void DispatchExec(
+        ID task_id,
+        ID lsid
+    );
+    static void DispatchStop(
+        ID task_id,
+        ID lsid,
+        UINT state
+    );
     static void InterruptEnter(UINT intno);
     static void InterruptLeave(UINT intno);
 
     void OnDispatchExec(ID task_id);
-    void OnDispatchStop(ID task_id, UINT state);
+    void OnDispatchStop(
+        ID task_id,
+        UINT state
+    );
     void OnInterruptEnter();
     void OnInterruptLeave();
-    void AccountTask(ID task_id, std::uint32_t cycles);
+    void AccountTask(
+        ID task_id,
+        std::uint32_t cycles
+    );
     TaskSlot *FindTaskSlot(ID task_id);
     void UpdateTraceTaskName(ID task_id);
     void ResetCounters();
     bool TraceHeaderValid() const;
     void AppendTraceRecord(const CpuTaskMonitorTraceRecord &record);
-    void FlushTrace(const void *address, std::size_t size) const;
+    void FlushTrace(
+        const void *address,
+        std::size_t size
+    ) const;
 
     static CpuTaskMonitor *volatile active_instance_;
 
@@ -95,13 +119,26 @@ class CpuTaskMonitor final {
 public:
     common::Error Start() { return {}; }
     common::Error Stop() { return {}; }
-    common::Error RegisterTask(ID, const char *) { return {}; }
-    static common::Error RegisterTaskForActiveMonitor(ID, const char *)
+    common::Error RegisterTask(
+        ID,
+        const char *
+    )
+    {
+        return {};
+    }
+    static common::Error RegisterTaskForActiveMonitor(
+        ID,
+        const char *
+    )
     {
         return {};
     }
     std::uint32_t BeginTaskLoop() const { return 0U; }
-    void RecordTaskLoop(ID, std::uint32_t) {}
+    void RecordTaskLoop(
+        ID,
+        std::uint32_t
+    )
+    {}
     common::Error InitializeTraceBuffer() { return {}; }
     void Report() {}
     bool Active() const { return false; }

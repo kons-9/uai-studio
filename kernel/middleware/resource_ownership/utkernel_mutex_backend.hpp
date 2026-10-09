@@ -18,12 +18,16 @@ public:
         T_CMTX config{};
         config.mtxatr = TA_INHERIT;
         const ID id = tk_cre_mtx(&config);
-        if (id < E_OK) return Map(id);
+        if (id < E_OK)
+            return Map(id);
         *lock = id;
         return {};
     }
 
-    common::Error Lock(int lock, Timeout timeout)
+    common::Error Lock(
+        int lock,
+        Timeout timeout
+    )
     {
         const ER status = tk_loc_mtx(static_cast<ID>(lock), timeout);
         return status == E_OK ? common::Error{} : Map(status);
@@ -34,8 +38,7 @@ public:
 private:
     static common::Error Map(ER status)
     {
-        return {status == E_TMOUT ? common::ErrorCode::kTimeout
-                                  : common::ErrorCode::kOwnership};
+        return {status == E_TMOUT ? common::ErrorCode::kTimeout : common::ErrorCode::kOwnership};
     }
 };
 

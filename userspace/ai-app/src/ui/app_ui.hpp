@@ -22,7 +22,11 @@ namespace uai::ai::app_ui {
 class AppUi final {
 public:
     explicit AppUi(task::ModelControl &models)
-        : AppUi(models, std::make_index_sequence<kScreenCount>{}) {}
+        : AppUi(
+              models,
+              std::make_index_sequence<kScreenCount>{}
+          )
+    {}
 
     /* Overlay of the current screen to pass to the LCD driver. */
     const ui::Painter &Overlay() const { return screens_[current_]; }
@@ -57,13 +61,20 @@ public:
 
 private:
     template <std::size_t... Index>
-    AppUi(task::ModelControl &models, std::index_sequence<Index...>)
-        : models_(models), screens_{ui::Screen(kScreens[Index])...}
+    AppUi(
+        task::ModelControl &models,
+        std::index_sequence<Index...>
+    )
+        : models_(models),
+          screens_{ui::Screen(kScreens[Index])...}
     {
         Initialize();
     }
     void Initialize();
-    void ToggleModel(task::ModelBit bit, std::uint16_t widget_id);
+    void ToggleModel(
+        task::ModelBit bit,
+        std::uint16_t widget_id
+    );
     void ToggleBoxes();
     void SetMinConfidence(std::int32_t percent);
     /* Reflects the model mask on the menu buttons. */

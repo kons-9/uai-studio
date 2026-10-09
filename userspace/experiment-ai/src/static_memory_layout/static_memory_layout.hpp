@@ -65,15 +65,9 @@ struct Region {
     const std::uint8_t *begin = nullptr;
     const std::uint8_t *end = nullptr;
 
-    std::uintptr_t address() const
-    {
-        return reinterpret_cast<std::uintptr_t>(begin);
-    }
+    std::uintptr_t address() const { return reinterpret_cast<std::uintptr_t>(begin); }
 
-    std::size_t size() const
-    {
-        return reinterpret_cast<std::uintptr_t>(end) - address();
-    }
+    std::size_t size() const { return reinterpret_cast<std::uintptr_t>(end) - address(); }
 };
 
 /* Addresses and capacities of memory which is reserved by the linker script.
@@ -83,10 +77,7 @@ struct Region {
 struct Layout {
     std::array<Region, static_cast<std::size_t>(Key::kCount)> regions{};
 
-    constexpr const Region &Get(Key key) const
-    {
-        return regions[static_cast<std::size_t>(key)];
-    }
+    constexpr const Region &Get(Key key) const { return regions[static_cast<std::size_t>(key)]; }
 };
 
 inline constexpr Layout kLayout = {
@@ -98,19 +89,13 @@ inline constexpr Layout kLayout = {
         {__sample_ai_inference0_start__, __sample_ai_inference0_end__},
         {__sample_ai_inference1_start__, __sample_ai_inference1_end__},
         {__sample_ai_inference2_start__, __sample_ai_inference2_end__},
-        {__sample_ai_inference_scratch_start__,
-         __sample_ai_inference_scratch_end__},
-        {__sample_ai_inference_source0_start__,
-         __sample_ai_inference_source0_end__},
-        {__sample_ai_inference_source1_start__,
-         __sample_ai_inference_source1_end__},
-        {__sample_ai_inference_source2_start__,
-         __sample_ai_inference_source2_end__},
+        {__sample_ai_inference_scratch_start__, __sample_ai_inference_scratch_end__},
+        {__sample_ai_inference_source0_start__, __sample_ai_inference_source0_end__},
+        {__sample_ai_inference_source1_start__, __sample_ai_inference_source1_end__},
+        {__sample_ai_inference_source2_start__, __sample_ai_inference_source2_end__},
         {__sample_ai_raw_dump_start__, __sample_ai_raw_dump_end__},
-        {__sample_ai_segmentation_mask0_start__,
-         __sample_ai_segmentation_mask0_end__},
-        {__sample_ai_segmentation_mask1_start__,
-         __sample_ai_segmentation_mask1_end__},
+        {__sample_ai_segmentation_mask0_start__, __sample_ai_segmentation_mask0_end__},
+        {__sample_ai_segmentation_mask1_start__, __sample_ai_segmentation_mask1_end__},
         {__sample_ai_pipe2_drop_start__, __sample_ai_pipe2_drop_end__},
         {__sample_ai_thread_monitor_start__, __sample_ai_thread_monitor_end__},
     }},

@@ -30,8 +30,7 @@ Result Run(const Context &context)
             context.wait(interval);
             const auto elapsed = context.clock() - begin;
             const auto ticks = static_cast<std::uint32_t>(__HAL_TIM_GET_COUNTER(&handle) - initial);
-            const auto expected = static_cast<std::uint64_t>(elapsed) * kernel_hz /
-                                  (handle.Init.Prescaler + 1) / 1000;
+            const auto expected = static_cast<std::uint64_t>(elapsed) * kernel_hz / (handle.Init.Prescaler + 1) / 1000;
             if (elapsed == 0 || ticks + 2000U < expected || ticks > expected + 2000U) {
                 result = {Outcome::kFail, "tim2-counter-rate-mismatch"};
                 break;
@@ -42,10 +41,14 @@ Result Run(const Context &context)
         } else {
             const auto stopped = __HAL_TIM_GET_COUNTER(&handle);
             context.wait(5);
-            if (__HAL_TIM_GET_COUNTER(&handle) != stopped) { result = {Outcome::kFail, "tim2-running-after-stop"}; }
+            if (__HAL_TIM_GET_COUNTER(&handle) != stopped) {
+                result = {Outcome::kFail, "tim2-running-after-stop"};
+            }
         }
     }
-    if (HAL_TIM_Base_DeInit(&handle) != HAL_OK) { result = {Outcome::kFail, "tim2-deinitialization"}; }
+    if (HAL_TIM_Base_DeInit(&handle) != HAL_OK) {
+        result = {Outcome::kFail, "tim2-deinitialization"};
+    }
     __HAL_RCC_TIM2_CLK_DISABLE();
     return result;
 }

@@ -10,8 +10,10 @@ extern void AiCameraPipe2FrameEventCallback(void);
  * callbacks from every pipe to the Pipe1 callback.
  * experiment-ai uses Pipe1 for display and Pipe2 for the RGB888 NN input, so the
  * callbacks must retain the pipe identity. */
-void HAL_DCMIPP_PIPE_VsyncEventCallback(DCMIPP_HandleTypeDef *hdcmipp,
-                                        uint32_t pipe)
+void HAL_DCMIPP_PIPE_VsyncEventCallback(
+    DCMIPP_HandleTypeDef *hdcmipp,
+    uint32_t pipe
+)
 {
     UNUSED(hdcmipp);
     if (pipe == DCMIPP_PIPE1) {
@@ -22,8 +24,10 @@ void HAL_DCMIPP_PIPE_VsyncEventCallback(DCMIPP_HandleTypeDef *hdcmipp,
     }
 }
 
-void HAL_DCMIPP_PIPE_FrameEventCallback(DCMIPP_HandleTypeDef *hdcmipp,
-                                        uint32_t pipe)
+void HAL_DCMIPP_PIPE_FrameEventCallback(
+    DCMIPP_HandleTypeDef *hdcmipp,
+    uint32_t pipe
+)
 {
     UNUSED(hdcmipp);
     if (pipe == DCMIPP_PIPE1) {

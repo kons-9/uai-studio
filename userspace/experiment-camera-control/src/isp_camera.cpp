@@ -24,8 +24,8 @@ bool IsInitialized()
 {
     /* STM32Cube N6's ISP handle has no isInitialized member. ISP_Init sets
      * these fields on success, while ISP_DeInit clears the handle. */
-    return hcamera_isp.hDcmipp != nullptr && hcamera_isp.algorithm != nullptr &&
-           hcamera_isp.sensorInfo.width != 0U && hcamera_isp.sensorInfo.height != 0U;
+    return hcamera_isp.hDcmipp != nullptr && hcamera_isp.algorithm != nullptr && hcamera_isp.sensorInfo.width != 0U
+        && hcamera_isp.sensorInfo.height != 0U;
 }
 
 }
@@ -44,12 +44,12 @@ console::Status IspCamera::Read(State &state)
     std::uint8_t white_balance = 0;
     ISP_ExposureCompTypeDef compensation{};
     ISP_StatAreaTypeDef area{};
-    if (ISP_GetAECState(&hcamera_isp, &automatic) != ISP_OK ||
-        ISP_GetExposureTarget(&hcamera_isp, &compensation, &next.target) != ISP_OK ||
-        ISP_GetStatArea(&hcamera_isp, &area) != ISP_OK ||
-        ISP_GetWBRefMode(&hcamera_isp, &white_balance, &next.color_temperature) != ISP_OK ||
-        helpers.GetSensorExposure(hcamera_isp.cameraInstance, &next.reported_exposure_us) != ISP_OK ||
-        helpers.GetSensorGain(hcamera_isp.cameraInstance, &next.reported_gain_mdB) != ISP_OK) {
+    if (ISP_GetAECState(&hcamera_isp, &automatic) != ISP_OK
+        || ISP_GetExposureTarget(&hcamera_isp, &compensation, &next.target) != ISP_OK
+        || ISP_GetStatArea(&hcamera_isp, &area) != ISP_OK
+        || ISP_GetWBRefMode(&hcamera_isp, &white_balance, &next.color_temperature) != ISP_OK
+        || helpers.GetSensorExposure(hcamera_isp.cameraInstance, &next.reported_exposure_us) != ISP_OK
+        || helpers.GetSensorGain(hcamera_isp.cameraInstance, &next.reported_gain_mdB) != ISP_OK) {
         return console::Status::kHardware;
     }
     next.auto_exposure = automatic != 0;
@@ -64,8 +64,7 @@ console::Status IspCamera::Read(State &state)
 
 console::Status IspCamera::AutoExposure(bool enabled)
 {
-    return IsInitialized() ? Convert(ISP_SetAECState(&hcamera_isp, enabled ? 1 : 0))
-                           : console::Status::kInvalidState;
+    return IsInitialized() ? Convert(ISP_SetAECState(&hcamera_isp, enabled ? 1 : 0)) : console::Status::kInvalidState;
 }
 
 console::Status IspCamera::Compensation(int half_stops)
@@ -74,11 +73,14 @@ console::Status IspCamera::Compensation(int half_stops)
         return console::Status::kInvalidArgument;
     }
     return IsInitialized()
-               ? Convert(ISP_SetExposureTarget(&hcamera_isp, static_cast<ISP_ExposureCompTypeDef>(half_stops)))
-               : console::Status::kInvalidState;
+        ? Convert(ISP_SetExposureTarget(&hcamera_isp, static_cast<ISP_ExposureCompTypeDef>(half_stops)))
+        : console::Status::kInvalidState;
 }
 
-console::Status IspCamera::Manual(std::int32_t exposure_us, std::int32_t gain_mdB)
+console::Status IspCamera::Manual(
+    std::int32_t exposure_us,
+    std::int32_t gain_mdB
+)
 {
     State previous;
     const auto read = Read(previous);
@@ -89,9 +91,10 @@ console::Status IspCamera::Manual(std::int32_t exposure_us, std::int32_t gain_md
         return console::Status::kInvalidState;
     }
     const auto &info = hcamera_isp.sensorInfo;
-    if (exposure_us < 0 || gain_mdB < 0 || static_cast<std::uint32_t>(exposure_us) < info.exposure_min ||
-        static_cast<std::uint32_t>(exposure_us) > info.exposure_max ||
-        static_cast<std::uint32_t>(gain_mdB) < info.gain_min || static_cast<std::uint32_t>(gain_mdB) > info.gain_max) {
+    if (exposure_us < 0 || gain_mdB < 0 || static_cast<std::uint32_t>(exposure_us) < info.exposure_min
+        || static_cast<std::uint32_t>(exposure_us) > info.exposure_max
+        || static_cast<std::uint32_t>(gain_mdB) < info.gain_min
+        || static_cast<std::uint32_t>(gain_mdB) > info.gain_max) {
         return console::Status::kInvalidArgument;
     }
     auto &helpers = hcamera_isp.appliHelpers;
@@ -99,7 +102,8 @@ console::Status IspCamera::Manual(std::int32_t exposure_us, std::int32_t gain_md
         return console::Status::kHardware;
     }
     const auto instance = hcamera_isp.cameraInstance;
-    if (helpers.SetSensorExposure(instance, exposure_us) != ISP_OK || helpers.SetSensorGain(instance, gain_mdB) != ISP_OK) {
+    if (helpers.SetSensorExposure(instance, exposure_us) != ISP_OK
+        || helpers.SetSensorGain(instance, gain_mdB) != ISP_OK) {
         helpers.SetSensorExposure(instance, previous.reported_exposure_us);
         helpers.SetSensorGain(instance, previous.reported_gain_mdB);
         return console::Status::kHardware;

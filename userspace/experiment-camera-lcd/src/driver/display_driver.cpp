@@ -33,8 +33,8 @@ DriverStatus DisplayDriver::Initialize()
         return DriverStatus::kHardwareFailure;
     }
 
-    if (BSP_LCD_SetLayerVisible(0U, 0U, ENABLE) != BSP_ERROR_NONE ||
-        BSP_LCD_SetLayerVisible(0U, 1U, DISABLE) != BSP_ERROR_NONE) {
+    if (BSP_LCD_SetLayerVisible(0U, 0U, ENABLE) != BSP_ERROR_NONE
+        || BSP_LCD_SetLayerVisible(0U, 1U, DISABLE) != BSP_ERROR_NONE) {
         return DriverStatus::kHardwareFailure;
     }
 

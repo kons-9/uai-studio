@@ -32,12 +32,8 @@ static void board_camera_display_master_config(void)
 
     HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DCMIPP, &master);
     HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC1, &master);
-    HAL_RIF_RISC_SetSlaveSecureAttributes(
-        RIF_RISC_PERIPH_INDEX_DCMIPP,
-        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-    HAL_RIF_RISC_SetSlaveSecureAttributes(
-        RIF_RISC_PERIPH_INDEX_LTDCL1,
-        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+    HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_DCMIPP, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+    HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_LTDCL1, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
 }
 #endif
 
@@ -46,9 +42,8 @@ static void board_system_clock_config(void)
     RCC_OscInitTypeDef oscillator = {0};
     RCC_ClkInitTypeDef clocks = {0};
 
-    if (HAL_PWREx_ConfigSupply(PWR_EXTERNAL_SOURCE_SUPPLY) != HAL_OK ||
-        HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) !=
-            HAL_OK) {
+    if (HAL_PWREx_ConfigSupply(PWR_EXTERNAL_SOURCE_SUPPLY) != HAL_OK
+        || HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK) {
         Error_Handler();
     }
 
@@ -125,10 +120,8 @@ static void board_system_clock_config(void)
         Error_Handler();
     }
 
-    clocks.ClockType = RCC_CLOCKTYPE_CPUCLK | RCC_CLOCKTYPE_SYSCLK |
-                       RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1 |
-                       RCC_CLOCKTYPE_PCLK2 | RCC_CLOCKTYPE_PCLK4 |
-                       RCC_CLOCKTYPE_PCLK5;
+    clocks.ClockType = RCC_CLOCKTYPE_CPUCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1
+        | RCC_CLOCKTYPE_PCLK2 | RCC_CLOCKTYPE_PCLK4 | RCC_CLOCKTYPE_PCLK5;
     clocks.CPUCLKSource = RCC_CPUCLKSOURCE_IC1;
     clocks.SYSCLKSource = RCC_SYSCLKSOURCE_IC2_IC6_IC11;
     clocks.AHBCLKDivider = RCC_HCLK_DIV2;

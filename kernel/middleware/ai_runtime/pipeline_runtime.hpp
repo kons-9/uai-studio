@@ -16,25 +16,56 @@ namespace uai::ai::ai_runtime {
 class PipelineRuntime final {
 public:
     static constexpr std::size_t kCapacity = 8U;
-    using DoneCallback = void (*)(void *, AiFuture &, common::Error);
-    using TraceCallback = void (*)(void *, const StepTrace &);
-    using WakeCallback = void (*)(void *, ExecutionContext);
+    using DoneCallback = void (*)(
+        void *,
+        AiFuture &,
+        common::Error
+    );
+    using TraceCallback = void (*)(
+        void *,
+        const StepTrace &
+    );
+    using WakeCallback = void (*)(
+        void *,
+        ExecutionContext
+    );
     using Clock = std::uint32_t (*)(void *);
     using CriticalSection = void (*)(void *);
 
-    void SetObserver(DoneCallback callback, void *context);
-    void SetTrace(TraceCallback callback, void *context, Clock clock,
-                  void *clock_context);
-    void SetWakeCallback(WakeCallback callback, void *context);
-    void SetCriticalSection(CriticalSection enter, CriticalSection exit,
-                            void *context);
+    void SetObserver(
+        DoneCallback callback,
+        void *context
+    );
+    void SetTrace(
+        TraceCallback callback,
+        void *context,
+        Clock clock,
+        void *clock_context
+    );
+    void SetWakeCallback(
+        WakeCallback callback,
+        void *context
+    );
+    void SetCriticalSection(
+        CriticalSection enter,
+        CriticalSection exit,
+        void *context
+    );
     common::Error Submit(AiFuture &future);
     /* Events belong to a specific future, not to every NPU waiter. */
-    common::Error Signal(AiFuture &future, WaitBitFlag flags);
+    common::Error Signal(
+        AiFuture &future,
+        WaitBitFlag flags
+    );
     DispatchResult RunOne(ExecutionContext lane);
 
 private:
-    enum class State : std::uint8_t { kFree, kQueued, kExecuting, kWaiting };
+    enum class State : std::uint8_t {
+        kFree,
+        kQueued,
+        kExecuting,
+        kWaiting
+    };
     struct Slot {
         AiFuture *future = nullptr;
         std::uint32_t inference_id = 0;
@@ -53,19 +84,25 @@ private:
     public:
         explicit Guard(PipelineRuntime &runtime) : runtime_(runtime)
         {
-            if (runtime_.enter_ != nullptr) runtime_.enter_(runtime_.lock_context_);
+            if (runtime_.enter_ != nullptr)
+                runtime_.enter_(runtime_.lock_context_);
         }
         ~Guard()
         {
-            if (runtime_.exit_ != nullptr) runtime_.exit_(runtime_.lock_context_);
+            if (runtime_.exit_ != nullptr)
+                runtime_.exit_(runtime_.lock_context_);
         }
+
     private:
         PipelineRuntime &runtime_;
     };
 
     static std::size_t LaneIndex(ExecutionContext lane);
     static bool Satisfied(const Slot &slot);
-    void Enqueue(std::size_t index, ExecutionContext lane);
+    void Enqueue(
+        std::size_t index,
+        ExecutionContext lane
+    );
     void Wake(ExecutionContext lane) const;
 
     Slot slots_[kCapacity]{};

@@ -1,9 +1,18 @@
 #include "app_state.hpp"
 #include <cstdlib>
 #include <deque>
-void Require(bool condition) { if (!condition) { std::exit(1); } }
+void Require(bool condition)
+{
+    if (!condition) {
+        std::exit(1);
+    }
+}
 struct Port : experiment::ui::Backend {
-    enum class Outcome { kSuccess, kPartialFailure, kUnchangedFailure };
+    enum class Outcome {
+        kSuccess,
+        kPartialFailure,
+        kUnchangedFailure
+    };
     unsigned calls = 0;
     experiment::features::State actual{};
     std::deque<Outcome> outcomes;
@@ -11,14 +20,19 @@ struct Port : experiment::ui::Backend {
     {
         ++calls;
         const auto outcome = outcomes.empty() ? Outcome::kSuccess : outcomes.front();
-        if (!outcomes.empty()) { outcomes.pop_front(); }
-        if (outcome != Outcome::kUnchangedFailure) { actual = next; }
+        if (!outcomes.empty()) {
+            outcomes.pop_front();
+        }
+        if (outcome != Outcome::kUnchangedFailure) {
+            actual = next;
+        }
         return outcome == Outcome::kSuccess;
     }
 };
 void TestGuardsAndCommit()
 {
-    Port port; experiment::ui::AppState state(port);
+    Port port;
+    experiment::ui::AppState state(port);
     Require(!state.Dispatch(experiment::features::Action::kShowPipe2) && port.calls == 0);
     const experiment::features::Action rejected[] = {
         experiment::features::Action::kToggleBoxes,
@@ -35,7 +49,8 @@ void TestGuardsAndCommit()
 }
 void TestRollback()
 {
-    Port port; experiment::ui::AppState state(port);
+    Port port;
+    experiment::ui::AppState state(port);
     port.outcomes = {Port::Outcome::kPartialFailure, Port::Outcome::kSuccess};
     Require(!state.Dispatch(experiment::features::Action::kToggleBoxes) && port.calls == 2);
     Require(state.Features().index == 0 && port.actual.index == 0 && state.Render().updates == 0);
@@ -46,10 +61,15 @@ void TestRollback()
 }
 void TestRollbackFailureAndRecovery()
 {
-    Port port; experiment::ui::AppState state(port);
+    Port port;
+    experiment::ui::AppState state(port);
     Require(state.Publish({0, 1}, {0, 0, 20, 20}, 100) && state.Visible(1));
-    port.outcomes = {Port::Outcome::kPartialFailure, Port::Outcome::kUnchangedFailure,
-                     Port::Outcome::kUnchangedFailure, Port::Outcome::kSuccess};
+    port.outcomes = {
+        Port::Outcome::kPartialFailure,
+        Port::Outcome::kUnchangedFailure,
+        Port::Outcome::kUnchangedFailure,
+        Port::Outcome::kSuccess
+    };
     Require(!state.Dispatch(experiment::features::Action::kToggleBoxes) && port.calls == 2);
     Require(state.Features().index == 0 && port.actual.index != 0 && state.Render().updates == 0);
     Require(state.Render().faulted && state.Render().error && !state.Visible(1));
@@ -64,12 +84,14 @@ void TestRollbackFailureAndRecovery()
 }
 void TestResultAndTouch()
 {
-    Port port; experiment::ui::AppState state(port);
+    Port port;
+    experiment::ui::AppState state(port);
     Require(experiment::features::Value({999}, 0) == nullptr);
     Require(state.Publish({UINT32_MAX - 5, 1}, {0, 0, 20, 20}, 10));
     Require(!state.Publish({0, 1}, {0, 0, 20, 20}, 10));
     Require(state.Visible(3) && !state.Visible(4));
-    state.Touch(true, 0); state.Touch(true, -1);
+    state.Touch(true, 0);
+    state.Touch(true, -1);
     Require(!state.Touch(false, 0) && state.Render().pressed == -1);
     state.Touch(true, 0);
     Require(state.Touch(false, 0));

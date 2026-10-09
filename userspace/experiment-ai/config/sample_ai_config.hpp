@@ -33,7 +33,9 @@ inline constexpr CameraConfig kCamera{
 
 inline constexpr std::uintptr_t kModelNorProbeOffset = 0x00380000UL;
 
-static_assert(!(kCamera.demosaic_linear && kCamera.disable_demosaic),
-              "demosaic modes are mutually exclusive");
+static_assert(
+    !(kCamera.demosaic_linear && kCamera.disable_demosaic),
+    "demosaic modes are mutually exclusive"
+);
 
 } // namespace uai::ai::config

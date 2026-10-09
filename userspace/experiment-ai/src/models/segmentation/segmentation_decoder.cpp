@@ -24,13 +24,9 @@ common::Error Invalid(const char *operation)
 
 common::Error Decoder::Initialize(const ModelOutputSpec &spec)
 {
-    if (spec.count != 1U || spec.tensors[0].size_bytes != kMaskBytes * 2U ||
-        static_memory_layout::kLayout
-                .Get(StaticMemoryKey::kSegmentationMask0)
-                .size() < kMaskBytes ||
-        static_memory_layout::kLayout
-                .Get(StaticMemoryKey::kSegmentationMask1)
-                .size() < kMaskBytes) {
+    if (spec.count != 1U || spec.tensors[0].size_bytes != kMaskBytes * 2U
+        || static_memory_layout::kLayout.Get(StaticMemoryKey::kSegmentationMask0).size() < kMaskBytes
+        || static_memory_layout::kLayout.Get(StaticMemoryKey::kSegmentationMask1).size() < kMaskBytes) {
         initialized_ = false;
         return Invalid("segmentation.decoder.output_shape");
     }
@@ -41,28 +37,25 @@ common::Error Decoder::Initialize(const ModelOutputSpec &spec)
      * the two regions so the producer never starts by overwriting the last
      * published result. */
     initialized_ = true;
-    return {common::ErrorCode::kOk, 0U,
-            "segmentation.decoder.initialize"};
+    return {common::ErrorCode::kOk, 0U, "segmentation.decoder.initialize"};
 }
 
-common::Error Decoder::Decode(const InferenceCompletionContext &context,
-                              ModelResult *result)
+common::Error Decoder::Decode(
+    const InferenceCompletionContext &context,
+    ModelResult *result
+)
 {
     if (!initialized_) {
-        return {common::ErrorCode::kNotInitialized, 0U,
-                "segmentation.decoder.decode"};
+        return {common::ErrorCode::kNotInitialized, 0U, "segmentation.decoder.decode"};
     }
-    if (result == nullptr || context.outputs.count != 1U ||
-        context.outputs.tensors[0].data == nullptr) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "segmentation.decoder.decode"};
+    if (result == nullptr || context.outputs.count != 1U || context.outputs.tensors[0].data == nullptr) {
+        return {common::ErrorCode::kInvalidArgument, 0U, "segmentation.decoder.decode"};
     }
 
-    const auto *logits = reinterpret_cast<const std::int8_t *>(
-        context.outputs.tensors[0].data);
+    const auto *logits = reinterpret_cast<const std::int8_t *>(context.outputs.tensors[0].data);
     const auto &mask_region = static_memory_layout::kLayout.Get(
-        mask_buffer_index_ == 0U ? StaticMemoryKey::kSegmentationMask0
-                                 : StaticMemoryKey::kSegmentationMask1);
+        mask_buffer_index_ == 0U ? StaticMemoryKey::kSegmentationMask0 : StaticMemoryKey::kSegmentationMask1
+    );
     auto *mask = reinterpret_cast<std::uint8_t *>(mask_region.address());
     std::uint32_t foreground_pixels = 0U;
     for (std::size_t i = 0U; i < kMaskBytes; ++i) {

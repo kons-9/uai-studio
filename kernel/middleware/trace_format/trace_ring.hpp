@@ -5,15 +5,23 @@
 
 namespace uai::ai::middleware::trace_format {
 
-template <typename Header, typename Record, typename Flush,
-          typename UpdateHeader>
-bool AppendTraceRecord(Header *header, Record *records,
-                       std::uint32_t capacity, const Record &source_record,
-                       std::uint32_t commit_magic, Flush flush,
-                       UpdateHeader update_header)
+template <
+    typename Header,
+    typename Record,
+    typename Flush,
+    typename UpdateHeader>
+bool AppendTraceRecord(
+    Header *header,
+    Record *records,
+    std::uint32_t capacity,
+    const Record &source_record,
+    std::uint32_t commit_magic,
+    Flush flush,
+    UpdateHeader update_header
+)
 {
-    if (header == nullptr || records == nullptr || capacity == 0U ||
-        header->capacity != capacity || header->write_index >= capacity) {
+    if (header == nullptr || records == nullptr || capacity == 0U || header->capacity != capacity
+        || header->write_index >= capacity) {
         return false;
     }
 

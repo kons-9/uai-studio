@@ -41,32 +41,48 @@ struct InferenceCompletion {
 class InferenceDispatcher final {
 public:
     using PipelineStageObserver = void (*)(
-        void *context, std::uint32_t end_ms, std::uint32_t end_cycles,
-        std::uint32_t elapsed_cycles, std::uint32_t model_kind_id,
-        std::uint32_t stage_id);
+        void *context,
+        std::uint32_t end_ms,
+        std::uint32_t end_cycles,
+        std::uint32_t elapsed_cycles,
+        std::uint32_t model_kind_id,
+        std::uint32_t stage_id
+    );
 
-    common::Error Initialize(scheduler::Scheduler &scheduler,
-                             npu::NpuDriver &npu,
-                             cache::CacheDriver &cache);
+    common::Error Initialize(
+        scheduler::Scheduler &scheduler,
+        npu::NpuDriver &npu,
+        cache::CacheDriver &cache
+    );
     common::Error RefreshSelectedModel();
-    common::Error BeginInference(memory_allocator::InferenceFrame &frame,
-                                 PrefetchProvider prefetch_provider = nullptr,
-                                 void *prefetch_context = nullptr,
-                                 bool select_model = false);
+    common::Error BeginInference(
+        memory_allocator::InferenceFrame &frame,
+        PrefetchProvider prefetch_provider = nullptr,
+        void *prefetch_context = nullptr,
+        bool select_model = false
+    );
     common::Error WaitForInference(InferenceCompletion *completion);
-    common::Error CompleteInference(const InferenceCompletion &completion,
-                                    memory_allocator::BoxSet *result);
-    common::Error TryInfer(memory_allocator::InferenceFrame &frame,
-                           memory_allocator::BoxSet *result,
-                           PrefetchProvider prefetch_provider = nullptr,
-                           void *prefetch_context = nullptr,
-                           bool select_model = false);
-    common::Error PrepareInputFor(const models::ModelBinding &binding,
-                                  memory_allocator::InferenceFrame &frame);
+    common::Error CompleteInference(
+        const InferenceCompletion &completion,
+        memory_allocator::BoxSet *result
+    );
+    common::Error TryInfer(
+        memory_allocator::InferenceFrame &frame,
+        memory_allocator::BoxSet *result,
+        PrefetchProvider prefetch_provider = nullptr,
+        void *prefetch_context = nullptr,
+        bool select_model = false
+    );
+    common::Error PrepareInputFor(
+        const models::ModelBinding &binding,
+        memory_allocator::InferenceFrame &frame
+    );
     common::Error Shutdown();
 
-    void SetPipelineStageObserver(PipelineStageObserver observer,
-                                  void *context)
+    void SetPipelineStageObserver(
+        PipelineStageObserver observer,
+        void *context
+    )
     {
         pipeline_stage_observer_ = observer;
         pipeline_stage_context_ = context;
@@ -117,10 +133,14 @@ private:
     static common::Error ExecuteOutputDecoding(void *context);
     static common::Error ExecuteResultConversion(void *context);
     static common::Error ExecuteInferenceFinalize(void *context);
-    common::Error ExecuteStage(PipelineState &state,
-                               models::ModelStageId *executed_stage);
-    common::Error BuildCompletion(const PipelineState &state,
-                                  InferenceCompletion *completion) const;
+    common::Error ExecuteStage(
+        PipelineState &state,
+        models::ModelStageId *executed_stage
+    );
+    common::Error BuildCompletion(
+        const PipelineState &state,
+        InferenceCompletion *completion
+    ) const;
     static common::Error ExecutePipeline(PipelineState &state);
     common::Error ConfigureCurrentModel();
 
