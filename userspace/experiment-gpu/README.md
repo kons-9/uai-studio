@@ -2,7 +2,7 @@
 
 ## 状態と目的
 
-CPU参照Copy/Convert/Fill/Blend/最近傍Resize、DMA2D実転送とHALモック、起動時の一括シナリオを実装済み。GPU用の1ファームを1回起動して検証する。NPUとモデル書き込みは対象外。GPU2D/NemaGFXは対応SDK/ライセンス/ボード設定が未確認で未接続のため、`gpu2d=UNAVAILABLE`を明示する。ARMビルドと実機確認は未完了。kernel/driver・middlewareには依存しない。
+CPU参照Copy/Convert/Fill/Blend/最近傍Resize、DMA2D実転送とHALモック、起動時の一括シナリオを実装済み。GPU用の1ファームを1回起動して検証する。NPUとモデル書き込みは対象外。STM32N657にはNeoChrom GPU2Dが搭載されるが、この実験はGPU2Dを呼び出さない。`gpu2d=UNAVAILABLE`はハードウェア未搭載ではなく、この実験でGPU2Dを未接続・未検証という意味。NemaGFXの統合とGPU2D用ボード設定は未実施。STM32N6570-DKでARMビルドと実機DMA2Dシナリオを確認済み。kernel/driver・middlewareには依存しない。
 
 ## 実装済みと実行方法
 
@@ -23,7 +23,7 @@ make -C userspace/experiment-gpu monitor
 make -C userspace/experiment-gpu ram-run
 ```
 
-UARTの`camera: pipe1=started pipe2=started`を確認すると、追加コマンドなしで全シナリオが進む。結果が出るまで約1分。途中のFAILも集計に残し、残りの条件を同じ起動で検証する。再実行は`gpu scenario start`、状態確認は`gpu scenario stat`。実行中はカメラ設定・capture操作と単発GPU比較をロックする。
+UARTの`camera: pipe1=started pipe2=started`を確認すると、追加コマンドなしで全シナリオが進む。各ケースを約600ms表示してから次へ進み、60秒の負荷試験も行うため、完了まで約75秒。途中のFAILも集計に残し、残りの条件を同じ起動で検証する。起動時にDMA2DでRGB565の色帯とシナリオ表示を作り、カメラ映像と同じLTDC Layer 0のフレームバッファへ描画する。画面右上の大きな色帯と判定表示、左上のケース番号で進行を確認できる。UARTはフレームバッファへのDMA2D書き込み後に画素を読み返して確認する。`gpu visual off|on`で表示を切り替えられる。再実行は`gpu scenario start`、状態確認は`gpu scenario stat`。実行中はカメラ設定・capture操作と単発GPU比較をロックする。
 
 ## 一括シナリオ
 
@@ -37,15 +37,17 @@ UARTの`camera: pipe1=started pipe2=started`を確認すると、追加コマン
 
 合計26項目。各転送で入力パターンを更新し、行末余白・未使用領域・前後32バイトのガード・入力の不変性を検査する。ガードを含むバッファ全体をDMA前後にcache同期する。画像は専用SRAMの64x32、padding条件は63x31。PSRAM全画面転送の帯域試験ではない。
 
-出力例（実機で未取得）:
+出力例:
 
 ```text
-GPU SCENARIO START cases=26 stress_ms=60000 npu=excluded
-GPU SCENARIO copy-rgb888 PASS cycles=... max_channel_error=0 corrupted_bytes=0
-GPU SCENARIO SUMMARY dma2d=PASS pass=26 fail=0 transfers=... gpu2d=UNAVAILABLE npu=excluded visual=required
+GPU VISUAL PASS dma2d=pixel-checked output=layer0 status=pending
+GPU VISUAL PASS framebuffer=layer0 readback=ok
+GPU SCENARIO START cases=26 case_interval_ms=600 stress_ms=60000 npu=excluded
+GPU SCENARIO 01/26 copy-rgb888 PASS cycles=... max_channel_error=0 corrupted_bytes=0
+GPU SCENARIO SUMMARY dma2d=PASS pass=26 fail=0 transfers=2022 gpu2d=UNAVAILABLE npu=excluded visual=required
 ```
 
-これはDMA2Dの自動判定であり、GPU2Dの合格ではない。LCDの色・行ずれ・欠けは目視が必要。既存のcamera/display処理エラーカウンタを監視するが、CSI個別エラーやLTDCアンダーラン専用カウンタは未接続。
+これはDMA2Dの自動判定であり、GPU2Dの合格ではない。色帯はDMA2DからLTDCの表示フレームバッファへの出力を目視するための目印であり、カメラ画像全体の色・行ずれ・欠けは別途目視が必要。既存のcamera/display処理エラーカウンタを監視するが、CSI個別エラーやLTDCアンダーラン専用カウンタは未接続。
 
 ## 構成と残る確認
 

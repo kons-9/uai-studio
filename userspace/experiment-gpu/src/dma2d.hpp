@@ -21,6 +21,7 @@ public:
         if (offset > 0x3fff) {
             return false;
         }
+        ConfigureAccess();
         __HAL_RCC_DMA2D_CLK_ENABLE();
         handle_ = {};
         handle_.Instance = DMA2D;
@@ -29,7 +30,9 @@ public:
                                                                   : DMA2D_M2M_PFC;
         handle_.Init.ColorMode = destination.format == Format::kRgb565 ? DMA2D_OUTPUT_RGB565 : DMA2D_OUTPUT_RGB888;
         handle_.Init.OutputOffset = offset;
-        handle_.Init.RedBlueSwap = destination.format == Format::kRgb888 ? DMA2D_RB_SWAP : DMA2D_RB_REGULAR;
+        handle_.Init.RedBlueSwap = request.operation != Operation::kFill && destination.format == Format::kRgb888
+            ? DMA2D_RB_SWAP
+            : DMA2D_RB_REGULAR;
         if (HAL_DMA2D_Init(&handle_) != HAL_OK) {
             return false;
         }
@@ -50,6 +53,10 @@ public:
         auto source = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(request.source.data));
         if (request.operation == Operation::kFill) {
             source = request.color;
+            if (destination.format == Format::kRgb888) {
+                source = ((request.color & 0x0000ff) << 16) | (request.color & 0x00ff00)
+                    | ((request.color & 0xff0000) >> 16);
+            }
         }
         const auto output = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(destination.data));
         const auto status = request.operation == Operation::kBlend
@@ -74,6 +81,25 @@ public:
     }
 
 private:
+    static void ConfigureAccess()
+    {
+        static bool configured = false;
+        if (configured) {
+            return;
+        }
+
+        __HAL_RCC_RIFSC_CLK_ENABLE();
+        HAL_RIF_RISC_SetSlaveSecureAttributes(
+            RIF_RISC_PERIPH_INDEX_DMA2D,
+            RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV
+        );
+        RIMC_MasterConfig_t master{};
+        master.MasterCID = RIF_CID_1;
+        master.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV;
+        HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_DMA2D, &master);
+        configured = true;
+    }
+
     static bool Cacheable(const Image &image)
     {
         const auto address = reinterpret_cast<std::uintptr_t>(image.data);

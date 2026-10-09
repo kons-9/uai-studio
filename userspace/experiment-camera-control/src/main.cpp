@@ -46,7 +46,7 @@ void DrawScenarioAction(const char *action)
     }
 
     char label[40];
-    std::snprintf(label, sizeof(label), "CAMTEST: %s", action);
+    std::snprintf(label, sizeof(label), "GPU TEST: %s", action);
     constexpr std::uint16_t x = 8;
     constexpr std::uint16_t y = 8;
     constexpr std::uint16_t padding = 8;
@@ -61,8 +61,8 @@ void DrawScenarioAction(const char *action)
         static_cast<std::uint16_t>(uai::camera_pipe2::driver::kDisplayWidth),
         static_cast<std::uint16_t>(uai::camera_pipe2::driver::kFrameHeight)
     );
-    canvas.FillRect({x, y, box_width, box_height}, uai::ai::ui::Rgb565(8, 16, 24));
-    canvas.DrawText(x + padding, y + 7U, label, scale, uai::ai::ui::Rgb565(255, 240, 96));
+    canvas.FillRect({x, y, box_width, box_height}, uai::ai::ui::Rgb565(0, 104, 232));
+    canvas.DrawText(x + padding, y + 7U, label, scale, uai::ai::ui::Rgb565(255, 255, 255));
 
     const auto address = reinterpret_cast<std::uintptr_t>(frame);
     const auto pitch = uai::camera_pipe2::driver::kDisplayWidth * sizeof(std::uint16_t);

@@ -4,6 +4,8 @@
 
 namespace uai::camera_pipe2::driver {
 
+void SetVisualOverlayPreserved(bool preserve);
+
 class DisplayDriver final {
 public:
     DriverStatus Initialize();

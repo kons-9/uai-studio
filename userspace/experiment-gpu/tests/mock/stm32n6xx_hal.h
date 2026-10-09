@@ -16,8 +16,19 @@ enum {
     DMA2D_INPUT_RGB888,
     DMA2D_RB_SWAP,
     DMA2D_RB_REGULAR,
-    DMA2D_REPLACE_ALPHA
+    DMA2D_REPLACE_ALPHA,
+    RIF_CID_1,
+    RIF_ATTRIBUTE_SEC = 1,
+    RIF_ATTRIBUTE_PRIV = 2,
+    RIF_MASTER_INDEX_DMA2D,
+    RIF_RISC_PERIPH_INDEX_DMA2D
 };
+struct RIMC_MasterConfig_t {
+    std::uint32_t MasterCID, SecPriv;
+};
+inline void __HAL_RCC_RIFSC_CLK_ENABLE() {}
+inline void HAL_RIF_RISC_SetSlaveSecureAttributes(std::uint32_t, std::uint32_t) {}
+inline void HAL_RIF_RIMC_ConfigMasterAttributes(std::uint32_t, const RIMC_MasterConfig_t *) {}
 inline void *DMA2D = nullptr;
 struct DMA2D_InitTypeDef {
     std::uint32_t Mode, ColorMode, OutputOffset, RedBlueSwap;
