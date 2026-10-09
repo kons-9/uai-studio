@@ -43,6 +43,7 @@ add_subdirectory("${UAI_ROOT}/kernel/middleware/trace_format/tests" trace_format
 add_subdirectory("${UAI_ROOT}/kernel/middleware/pipeline/tests" pipeline)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/ui/tests" ui)
 add_subdirectory("${UAI_ROOT}/kernel/driver/dma2d_driver/tests" dma2d_driver)
+add_subdirectory("${UAI_ROOT}/kernel/driver/peripheral_driver/tests" peripheral_driver)
 add_subdirectory("${UAI_ROOT}/userspace/hw-test/tests" hw_test)
 
 uai_add_host_test(frame_channels_test

@@ -15,6 +15,14 @@ public:
 
     CacheDriver(const CacheDriver &) = delete;
     CacheDriver &operator=(const CacheDriver &) = delete;
+    static common::Error CleanInvalidate(
+        void *address,
+        std::size_t bytes
+    );
+    static common::Error Invalidate(
+        void *address,
+        std::size_t bytes
+    );
     common::Error PrepareForDmaWrite(const buffer::Buffer &buffer) const;
     common::Error PrepareForDmaWrite(
         const buffer::Buffer &buffer,

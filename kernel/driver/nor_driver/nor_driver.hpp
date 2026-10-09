@@ -14,12 +14,20 @@ class NorManagement;
 class NorDriver final {
 public:
     using Writer = driver::ResourceManagement::Writer;
+    using Diagnostic = registers::Diagnostic;
 
     NorDriver(const NorDriver &) = delete;
     NorDriver &operator=(const NorDriver &) = delete;
 
     /* Called only while the corresponding management Accessor owns the Writer. */
     void KeepClocksOnSleep(const Writer &writer) const;
+    common::Error Read(
+        std::uint32_t address,
+        std::uint8_t *output,
+        std::size_t bytes,
+        const Writer &writer
+    );
+    Diagnostic Diagnostics(const Writer &writer) const;
 
 private:
     friend class NorManagement;
@@ -29,9 +37,11 @@ private:
     /* Initialize the NOR, verify the model-data aperture, and enable mapping.
      * Call after PSRAM initialization because BSP_XSPI_RAM_Init resets XSPIM. */
     int Initialize(const Writer &writer);
+    common::Error PrepareRead(const Writer &writer);
 
     registers::NorRegisterLayer registers_{};
     bool initialized_ = false;
+    bool read_ready_ = false;
 };
 
 /* The management owns the single NOR driver and grants exclusive access to it.
@@ -53,6 +63,19 @@ public:
         {
             if (Valid())
                 driver_->KeepClocksOnSleep(writer_);
+        }
+        common::Error Read(
+            std::uint32_t address,
+            std::uint8_t *output,
+            std::size_t bytes
+        )
+        {
+            return Valid() ? driver_->Read(address, output, bytes, writer_)
+                           : common::Error{common::ErrorCode::kNotInitialized};
+        }
+        NorDriver::Diagnostic Diagnostics() const
+        {
+            return Valid() ? driver_->Diagnostics(writer_) : NorDriver::Diagnostic{};
         }
 
     private:
@@ -105,6 +128,21 @@ public:
     }
 
     common::Error Validate(const NorDriver::Writer &writer) const { return ownership_.Validate(writer); }
+
+    common::Error OpenReadOnly(
+        Accessor *accessor,
+        TMO timeout = TMO_FEVR
+    )
+    {
+        if (accessor == nullptr)
+            return {common::ErrorCode::kInvalidArgument};
+        *accessor = {};
+        const auto initialized = ownership_.Initialize();
+        if (!initialized.Ok() && initialized.Code() != common::ErrorCode::kAlreadyInitialized)
+            return initialized;
+        const auto status = Acquire(accessor, timeout);
+        return status.Ok() ? driver_.PrepareRead(accessor->writer_) : status;
+    }
 
     NorManagement(const NorManagement &) = delete;
     NorManagement &operator=(const NorManagement &) = delete;

@@ -110,6 +110,18 @@ volatile uint32_t uai_nor_reset_sr = 0;
 volatile uint32_t uai_nor_reset_cr = 0;
 volatile uint32_t uai_nor_sr_after_init = 0;
 volatile uint32_t uai_nor_cr_after_init = 0;
+volatile uint32_t uai_nor_diag_code = UAI_NOR_DIAG_NONE;
+volatile uint32_t uai_nor_diag_stage = 0;
+volatile int32_t uai_nor_diag_component_result = 0;
+volatile uint32_t uai_nor_diag_hal_error = 0;
+volatile uint32_t uai_nor_diag_hal_state = 0;
+volatile uint32_t uai_nor_diag_sr = 0;
+volatile uint32_t uai_nor_diag_cr = 0;
+volatile uint32_t uai_nor_diag_ccr = 0;
+volatile uint32_t uai_nor_diag_dlr = 0;
+volatile uint32_t uai_nor_diag_ir = 0;
+volatile uint32_t uai_nor_diag_ar = 0;
+volatile uint32_t uai_nor_diag_xspim_cr = 0;
 
 XSPI_NOR_Ctx_t XSPI_Nor_Ctx[XSPI_NOR_INSTANCES_NUMBER] = {
     {XSPI_ACCESS_NONE, MX66UW1G45G_SPI_MODE, MX66UW1G45G_STR_TRANSFER}
@@ -168,6 +180,7 @@ static uint32_t XSPIRam_IsMspCbValid[XSPI_RAM_INSTANCES_NUMBER] = {0};
 static void XSPI_NOR_MspInit(const XSPI_HandleTypeDef *hxspi);
 static void XSPI_NOR_MspDeInit(const XSPI_HandleTypeDef *hxspi);
 static int32_t XSPI_NOR_ResetMemory(uint32_t Instance);
+static void XSPI_NOR_CaptureDiagnostic(uint32_t stage, XSPI_HandleTypeDef *handle, int32_t component_result);
 static int32_t XSPI_NOR_EnterDOPIMode(uint32_t Instance);
 static int32_t XSPI_NOR_EnterSOPIMode(uint32_t Instance);
 static int32_t XSPI_NOR_ExitOPIMode(uint32_t Instance);
@@ -213,6 +226,18 @@ int32_t BSP_XSPI_NOR_Init(
     if (Instance >= XSPI_NOR_INSTANCES_NUMBER) {
         ret = BSP_ERROR_WRONG_PARAM;
     } else {
+        uai_nor_diag_code = UAI_NOR_DIAG_NONE;
+        uai_nor_diag_stage = 0U;
+        uai_nor_diag_component_result = 0;
+        uai_nor_diag_hal_error = 0U;
+        uai_nor_diag_hal_state = 0U;
+        uai_nor_diag_sr = 0U;
+        uai_nor_diag_cr = 0U;
+        uai_nor_diag_ccr = 0U;
+        uai_nor_diag_dlr = 0U;
+        uai_nor_diag_ir = 0U;
+        uai_nor_diag_ar = 0U;
+        uai_nor_diag_xspim_cr = XSPIM->CR;
         /* Check if the instance is already initialized */
         if (XSPI_Nor_Ctx[Instance].IsInitialized == XSPI_ACCESS_NONE) {
             uai_nor_bsp_stage = 1;
@@ -249,6 +274,7 @@ int32_t BSP_XSPI_NOR_Init(
             uai_nor_sr_after_init = hxspi_nor[Instance].Instance->SR;
             uai_nor_cr_after_init = hxspi_nor[Instance].Instance->CR;
             if (nor_hal_status != HAL_OK) {
+                XSPI_NOR_CaptureDiagnostic(UAI_NOR_DIAG_STAGE_XSPI_INIT, &hxspi_nor[Instance], (int32_t)nor_hal_status);
                 ret = BSP_ERROR_PERIPH_FAILURE;
             } else {
                 RCC_PeriphCLKInitTypeDef clock = {0};
@@ -258,6 +284,7 @@ int32_t BSP_XSPI_NOR_Init(
                 /* PLL1 is 1200 MHz in the camera clock profile: /6 = 200 MHz. */
                 clock.ICSelection[RCC_IC3].ClockDivider = 6U;
                 if (HAL_RCCEx_PeriphCLKConfig(&clock) != HAL_OK) {
+                    XSPI_NOR_CaptureDiagnostic(UAI_NOR_DIAG_STAGE_CLOCK_CONFIG, &hxspi_nor[Instance], (int32_t)HAL_ERROR);
                     ret = BSP_ERROR_PERIPH_FAILURE;
                 } else {
                     XSPIM_CfgTypeDef crossbar = {0};
@@ -265,6 +292,7 @@ int32_t BSP_XSPI_NOR_Init(
                     crossbar.IOPort = HAL_XSPIM_IOPORT_2;
                     crossbar.Req2AckTime = 1U;
                     if (HAL_XSPIM_Config(&hxspi_nor[Instance], &crossbar, HAL_XSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) {
+                        XSPI_NOR_CaptureDiagnostic(UAI_NOR_DIAG_STAGE_XSPIM_CONFIG, &hxspi_nor[Instance], (int32_t)HAL_ERROR);
                         ret = BSP_ERROR_PERIPH_FAILURE;
                     }
                 }
@@ -282,11 +310,13 @@ int32_t BSP_XSPI_NOR_Init(
                           XSPI_Nor_Ctx[Instance].InterfaceMode,
                           XSPI_Nor_Ctx[Instance].TransferRate
                       ) != MX66UW1G45G_OK)) {
+                XSPI_NOR_CaptureDiagnostic(UAI_NOR_DIAG_STAGE_MEM_READY, &hxspi_nor[Instance], MX66UW1G45G_ERROR);
                 ret = BSP_ERROR_COMPONENT_FAILURE;
             }
             /* Configure the memory */
             else if ((uai_nor_bsp_stage = 5,
                       BSP_XSPI_NOR_ConfigFlash(Instance, Init->InterfaceMode, Init->TransferRate) != BSP_ERROR_NONE)) {
+                    XSPI_NOR_CaptureDiagnostic(UAI_NOR_DIAG_STAGE_FLASH_CONFIG, &hxspi_nor[Instance], BSP_ERROR_COMPONENT_FAILURE);
                 ret = BSP_ERROR_COMPONENT_FAILURE;
             } else {
                 uai_nor_bsp_stage = 6;
@@ -491,6 +521,7 @@ int32_t BSP_XSPI_NOR_Read(
                     Size
                 )
                 != MX66UW1G45G_OK) {
+                XSPI_NOR_CaptureDiagnostic(UAI_NOR_DIAG_STAGE_STR_READ, &hxspi_nor[Instance], MX66UW1G45G_ERROR);
                 ret = BSP_ERROR_COMPONENT_FAILURE;
             } else {
                 ret = BSP_ERROR_NONE;
@@ -501,6 +532,7 @@ int32_t BSP_XSPI_NOR_Read(
             (void)(HAL_XSPI_SetClockPrescaler(&hxspi_nor[Instance], 0));
 
             if (MX66UW1G45G_ReadDTR(&hxspi_nor[Instance], pData, ReadAddr, Size) != MX66UW1G45G_OK) {
+                XSPI_NOR_CaptureDiagnostic(UAI_NOR_DIAG_STAGE_DTR_READ, &hxspi_nor[Instance], MX66UW1G45G_ERROR);
                 ret = BSP_ERROR_COMPONENT_FAILURE;
             } else {
                 ret = BSP_ERROR_NONE;
@@ -1591,22 +1623,24 @@ static int32_t XSPI_NOR_ResetMemory(uint32_t Instance)
    * RAM-launch. Reset it using that live protocol first; a cold-started NOR
    * already in SPI mode simply ignores these octal commands and is still
    * ready for the SPI polling below. */
-    uai_nor_reset_stage = 10;
+    uai_nor_reset_stage = UAI_NOR_DIAG_STAGE_RESET_ENABLE_OPI_DTR;
     uai_nor_reset_result =
         MX66UW1G45G_ResetEnable(&hxspi_nor[Instance], BSP_XSPI_NOR_OPI_MODE, BSP_XSPI_NOR_DTR_TRANSFER);
     uai_nor_reset_hal_error = hxspi_nor[Instance].ErrorCode;
     uai_nor_reset_sr = XSPI2->SR;
     uai_nor_reset_cr = XSPI2->CR;
     if (uai_nor_reset_result != MX66UW1G45G_OK) {
+        XSPI_NOR_CaptureDiagnostic(uai_nor_reset_stage, &hxspi_nor[Instance], uai_nor_reset_result);
         ret = BSP_ERROR_COMPONENT_FAILURE;
     } else {
-        uai_nor_reset_stage = 11;
+        uai_nor_reset_stage = UAI_NOR_DIAG_STAGE_RESET_OPI_DTR;
         uai_nor_reset_result =
             MX66UW1G45G_ResetMemory(&hxspi_nor[Instance], BSP_XSPI_NOR_OPI_MODE, BSP_XSPI_NOR_DTR_TRANSFER);
         uai_nor_reset_hal_error = hxspi_nor[Instance].ErrorCode;
         uai_nor_reset_sr = XSPI2->SR;
         uai_nor_reset_cr = XSPI2->CR;
         if (uai_nor_reset_result != MX66UW1G45G_OK) {
+            XSPI_NOR_CaptureDiagnostic(uai_nor_reset_stage, &hxspi_nor[Instance], uai_nor_reset_result);
             ret = BSP_ERROR_COMPONENT_FAILURE;
         } else {
             XSPI_Nor_Ctx[Instance].IsInitialized = XSPI_ACCESS_INDIRECT;
@@ -1620,6 +1654,42 @@ static int32_t XSPI_NOR_ResetMemory(uint32_t Instance)
 
     /* Return BSP status */
     return ret;
+}
+
+static void XSPI_NOR_CaptureDiagnostic(uint32_t stage, XSPI_HandleTypeDef *handle, int32_t component_result)
+{
+    uint32_t sr = 0U;
+    uint32_t error = 0U;
+    uai_nor_diag_stage = stage;
+    uai_nor_diag_component_result = component_result;
+    if (handle != NULL) {
+        error = handle->ErrorCode;
+        uai_nor_diag_hal_error = error;
+        uai_nor_diag_hal_state = handle->State;
+        if (handle->Instance != NULL) {
+            sr = handle->Instance->SR;
+            uai_nor_diag_sr = sr;
+            uai_nor_diag_cr = handle->Instance->CR;
+            uai_nor_diag_ccr = handle->Instance->CCR;
+            uai_nor_diag_dlr = handle->Instance->DLR;
+            uai_nor_diag_ir = handle->Instance->IR;
+            uai_nor_diag_ar = handle->Instance->AR;
+        }
+    }
+    uai_nor_diag_xspim_cr = XSPIM->CR;
+    if ((error & HAL_XSPI_ERROR_TIMEOUT) != 0U) {
+        if (((sr & HAL_XSPI_FLAG_BUSY) != 0U) && ((sr & (HAL_XSPI_FLAG_FT | HAL_XSPI_FLAG_TC)) == 0U)) {
+            uai_nor_diag_code = UAI_NOR_DIAG_TIMEOUT_BUSY_NO_EVENT;
+        } else if ((sr & HAL_XSPI_FLAG_BUSY) != 0U) {
+            uai_nor_diag_code = UAI_NOR_DIAG_TIMEOUT_BUSY_WITH_EVENT;
+        } else {
+            uai_nor_diag_code = UAI_NOR_DIAG_TIMEOUT_NOT_BUSY;
+        }
+    } else if (error != 0U) {
+        uai_nor_diag_code = UAI_NOR_DIAG_HAL_ERROR;
+    } else {
+        uai_nor_diag_code = UAI_NOR_DIAG_COMPONENT_FAILURE_NO_HAL_ERROR;
+    }
 }
 
 /**

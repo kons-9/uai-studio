@@ -8,10 +8,6 @@ namespace uai::ai::psram {
 
 bool PsramDriver::Initialize()
 {
-    if (initialized_) {
-        return true;
-    }
-
     common::Error management_status = management_->Initialize();
     if (!management_status.Ok() && management_status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return false;
@@ -19,6 +15,10 @@ bool PsramDriver::Initialize()
     Writer writer;
     if (!management_->Acquire(&writer).Ok())
         return false;
+
+    if (initialized_) {
+        return true;
+    }
 
     if (!registers_.Initialize()) {
         return false;

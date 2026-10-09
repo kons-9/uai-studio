@@ -2,6 +2,8 @@
 #include "graphics/dma2d.hpp"
 #include "graphics/scenario.hpp"
 #include "graphics/verification.hpp"
+#include "driver/cache_driver/cache_driver.hpp"
+#include "driver/peripheral_driver/peripheral_driver.hpp"
 
 namespace experiment::hwtest::integrated {
 namespace {
@@ -18,23 +20,13 @@ public:
     {
         const graphics::VerificationCache cache{
             [](void *address, std::int32_t bytes) {
-                SCB_CleanInvalidateDCache_by_Addr(address, bytes);
-                __DSB();
+                (void)uai::ai::cache::CacheDriver::CleanInvalidate(address, bytes);
             },
             [](void *address, std::int32_t bytes) {
-                __DSB();
-                SCB_InvalidateDCache_by_Addr(address, bytes);
-                __DSB();
+                (void)uai::ai::cache::CacheDriver::Invalidate(address, bytes);
             }
         };
-        return verification_.Run(
-            test,
-            dma_,
-            [] {
-                return DWT->CYCCNT;
-            },
-            cache
-        );
+        return verification_.Run(test, dma_, uai::ai::peripheral::CycleCount, cache);
     }
     void Reset()
     {

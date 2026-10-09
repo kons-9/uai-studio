@@ -6,6 +6,7 @@
 extern "C" {
 #include "driver/c_bsp/xspi_bsp.h"
 #include "stm32n6xx_hal.h"
+extern XSPI_NOR_Ctx_t XSPI_Nor_Ctx[];
 }
 
 namespace uai::ai::nor::registers {
@@ -20,6 +21,8 @@ void DebugPrint(const char *message)
 
 int NorRegisterLayer::Initialize()
 {
+    __HAL_RCC_RIFSC_CLK_ENABLE();
+    HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_XSPI2, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
     BSP_XSPI_NOR_Init_t nor_init = {};
     nor_init.InterfaceMode = BSP_XSPI_NOR_OPI_MODE;
     nor_init.TransferRate = BSP_XSPI_NOR_DTR_TRANSFER;
@@ -40,7 +43,14 @@ int NorRegisterLayer::Initialize()
         static_cast<unsigned long>(XSPIM->CR)
     );
     DebugPrint(message);
-    return status == BSP_ERROR_NONE ? 0 : -1;
+    const auto control = XSPI2->CR;
+    const bool mapped = XSPI_Nor_Ctx[0].IsInitialized == XSPI_ACCESS_MMP;
+    return status == BSP_ERROR_NONE && XSPI_Nor_Ctx[0].IsInitialized != XSPI_ACCESS_NONE
+            && XSPI_Nor_Ctx[0].InterfaceMode == BSP_XSPI_NOR_OPI_MODE
+            && XSPI_Nor_Ctx[0].TransferRate == BSP_XSPI_NOR_DTR_TRANSFER && (control & XSPI_CR_EN) != 0U
+            && (mapped || (XSPI2->SR & XSPI_SR_BUSY) == 0U)
+        ? 0
+        : -1;
 }
 
 int NorRegisterLayer::Read(
@@ -49,10 +59,25 @@ int NorRegisterLayer::Read(
     std::size_t size
 )
 {
-    if (buffer == nullptr || size == 0U) {
+    constexpr std::uint32_t capacity = 128U * 1024U * 1024U;
+    if (buffer == nullptr || size == 0U || address >= capacity || size > capacity - address) {
         return -1;
     }
     return BSP_XSPI_NOR_Read(0U, buffer, address, size) == BSP_ERROR_NONE ? 0 : -1;
+}
+
+Diagnostic NorRegisterLayer::Diagnostics() const
+{
+    return {
+        uai_nor_diag_code,
+        uai_nor_diag_stage,
+        uai_nor_diag_component_result,
+        uai_nor_diag_hal_error,
+        uai_nor_diag_hal_state,
+        uai_nor_diag_sr,
+        uai_nor_diag_cr,
+        uai_nor_diag_ccr
+    };
 }
 
 int NorRegisterLayer::EnableMemoryMappedMode()

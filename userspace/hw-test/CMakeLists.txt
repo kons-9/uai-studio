@@ -32,7 +32,7 @@ add_custom_command(OUTPUT ${_memory_outputs}
         ${_memory_generator_sources}
     VERBATIM)
 add_custom_target(hw-test-memory-layout DEPENDS ${_memory_outputs})
-foreach(target uai-memory-layout uai-middleware uai-drivers uai-driver-overrides)
+foreach(target uai-memory-layout uai-middleware uai-drivers uai-driver-overrides uai-driver-time-override)
     add_dependencies(${target} hw-test-memory-layout)
 endforeach()
 add_executable(${TARGET_NAME}
@@ -62,8 +62,7 @@ add_executable(${TARGET_NAME}
     src/tests/nor_driver/test.cpp
     src/tests/dma2d_driver/test.cpp
     src/tests/dma2d_driver/suite.cpp
-    src/driver/board/hal_time.c
-    src/driver/c_bsp/stm32n6570_discovery_xspi.c
+    $<TARGET_OBJECTS:uai-driver-time-override>
     "${BSP}/stm32n6570_discovery_lcd.c"
     "${BSP}/stm32n6570_discovery_bus.c"
     "${COMPONENTS}/imx335/imx335.c"
@@ -77,23 +76,6 @@ add_executable(${TARGET_NAME}
     "${COMPONENTS}/aps256xx/aps256xx.c"
     "${COMPONENTS}/mx66uw1g45g/mx66uw1g45g.c"
     "${STM32CUBE_N6_DIR}/Utilities/Fonts/font12.c")
-
-set(_generated_hal_config "${CUBEMX_OUTPUT_DIR}/FSBL/Core/Inc/stm32n6xx_hal_conf.h")
-foreach(module dcmipp rng hash crc crc_ex rif dma dma_ex rtc rtc_ex tim tim_ex ltdc)
-    string(REGEX REPLACE "_ex$" "" _base_module "${module}")
-    string(TOUPPER "${_base_module}" _base_module)
-    set(_module_enabled OFF)
-    if(EXISTS "${_generated_hal_config}")
-        file(STRINGS "${_generated_hal_config}" _module_enabled
-            REGEX "^#define[ \t]+HAL_${_base_module}_MODULE_ENABLED")
-    endif()
-    set(_generated_hal_source
-        "${CUBEMX_OUTPUT_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_${module}.c")
-    if(NOT _module_enabled OR NOT EXISTS "${_generated_hal_source}")
-        target_sources(${TARGET_NAME} PRIVATE
-            "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_${module}.c")
-    endif()
-endforeach()
 
 foreach(selection SDMMC ETHERNET USB AUDIO EXTERNAL_INPUT)
     option(HWTEST_ENABLE_${selection} "Select the external ${selection} fixture (compile-time blocked until integrated)" OFF)
@@ -147,13 +129,6 @@ set(_memory_script "${UAI_GENERATED_INCLUDE_DIR}/memory-contract.ld")
 add_dependencies(${TARGET_NAME} hw-test-memory-layout)
 target_link_options(${TARGET_NAME} PRIVATE
     "-T${_memory_script}" "-T${_scratch_script}" "-T${_linker_script}" -Wl,-u,uai_ram_entry
-    # Wrap the reset-phase component calls so the NOR test can report which
-    # SPI/OPI reset command times out without patching the Cube BSP sources.
-    "-Wl,--wrap=MX66UW1G45G_ReadStatusRegister"
-    "-Wl,--wrap=MX66UW1G45G_ResetEnable"
-    "-Wl,--wrap=MX66UW1G45G_ResetMemory"
-    "-Wl,--wrap=HAL_XSPI_Command"
-    "-Wl,--wrap=HAL_XSPI_Receive"
     "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.map" -Wl,--print-memory-usage)
 set_target_properties(${TARGET_NAME} PROPERTIES LINK_DEPENDS "${_linker_script};${_scratch_script};${_memory_script}")
 add_custom_command(TARGET ${TARGET_NAME} POST_BUILD

@@ -4,7 +4,7 @@
 
 STM32N6570-DKのHWを検査するアプリ。[experiment-hw-test](../experiment-hw-test/README.md)と同じ17試験、カメラ制御、LCD画面、UARTコマンドを持ち、共有middlewareとDMA2D driverを使う。AI推論・モデル生成・STEdgeAIランタイムは不要。
 
-`uai::middleware`のUIと画像演算・転送検証器、`uai::drivers`のDMA2D driverを使用する。ローカルmiddlewareの実装コピーは持たない。通常の周辺機器・カメラ・ISP・GT911の試験fixture、UART処理、IOC、ボード設定は本アプリ内に保持し、他userspaceの実装を参照しない。元experimentは変更せず独立した構成を維持する。
+`uai::middleware`のUIと画像演算・転送検証器、`uai::drivers`の周辺機器・メモリ・LCD・DMA2D driverを使用する。`src/tests`はHAL/BSP/CMSISやレジスタへ直接アクセスしない。クロック・RIF・初期化・キャッシュ同期・停止・deinitはkernel側のAPIへ集約する。カメラ・ISP・GT911の試験fixture、UART処理、IOC、ボード設定は本アプリ内に保持し、他userspaceの実装を参照しない。元experimentは変更せず独立した構成を維持する。
 
 LCD表示の初期化確認に続いて、RNG、HASH、CRC、GPDMA、HPDMA、RTC、TIM、SRAM、PSRAM、NOR、DMA2Dと、カメラ両Pipe・ISP制御・DMA2D詳細・GT911読取りを実行する。未実装項目をSKIPで登録することはしない。外部機器の試験は選択時にstatic_assertでコンパイルを止める。実装済みと実機検証済みは区別する。
 
@@ -26,8 +26,9 @@ LCD表示の初期化確認に続いて、RNG、HASH、CRC、GPDMA、HPDMA、RTC
 | [generate_memory.py](generate_memory.py)、[config/memory_layout.json](config/memory_layout.json) | AIモデルなしの共有メモリ契約生成 |
 | [src/tests/suite.cpp](src/tests/suite.cpp) | 実装済み試験だけの登録表、目的、タイムアウト |
 | [src/tests/suite.hpp](src/tests/suite.hpp) | 各`<hardware>_driver::Run`の宣言 |
-| [src/tests/board.hpp](src/tests/board.hpp) | HALと試験対象のRIF設定 |
-| [src/tests/dma_copy.hpp](src/tests/dma_copy.hpp) | GPDMA/HPDMA共通の実転送・ガード・cache検査 |
+| [src/tests/board.hpp](src/tests/board.hpp) | 試験ContextへのHAL非依存の互換include |
+| [src/tests/dma_copy.hpp](src/tests/dma_copy.hpp) | 共有DMAコピーAPIによるガード・入力保持検査 |
+| [kernel周辺ドライバ](../../kernel/driver/peripheral_driver/peripheral_driver.hpp) | 排他付きRNG・SHA-256・CRC・GPDMA/HPDMA・TIM2・RTC API |
 | [config/stm32n6xx_hal_conf.h](config/stm32n6xx_hal_conf.h) | ローカルHAL設定へ試験対象モジュールを追加 |
 | [camera-runtime-ram.ld](camera-runtime-ram.ld) | コード・表示ページ・撮像バッファの独立したSRAM配置 |
 | [scratch.ld](scratch.ld) | PSRAMの`0x91000000`から4KiBを試験専用に予約 |
@@ -39,7 +40,7 @@ LCD表示の初期化確認に続いて、RNG、HASH、CRC、GPDMA、HPDMA、RTC
 
 LCD左側の試験一覧は上下スワイプでスクロールでき、行をタップして選択できる。右側の結果ログも上下スワイプでスクロールできる。見出しに登録済みの総試験数、開始前の`P/F/T`に選択した試験数を表示する。複数シナリオを持つ試験は一覧の試験名の横に`n/n`を表示する。`RUN`で選択した試験または試験セットを開始する。新しい実行を始めると、前回のログを消して今回の結果を表示する。
 
-通常のHW試験はHAL／BSPと試験専用領域を使い、experimentと同じ合格条件を保つ。`dma2d-suite`は共有検証器と共有DMA2D driverを経由する。通常の`dma2d`試験は元のARGB8888検査を保持し、共有driverの所有権を取得してから実行する。検査後はDMA2Dクロックを戻し、後続の共有driver転送を可能にする。互換性のため試験コードの`experiment::*`名前空間は維持しているが、元experimentをimport・リンクしない。
+通常のHW試験は共有driver APIと試験専用領域を使い、既知ベクトル・転送ガード・読み取り安定性・日時繰り上がり・カウンタ停止を検査する。`dma2d-suite`は共有検証器と共有DMA2D driverを経由する。通常の`dma2d`試験も共有driverが対応するRGB565の8×8転送を使い、HALでの再初期化やクロック操作は行わない。NORはモデル不要の`OpenReadOnly`で初期化し、kernel側で取得した診断情報を報告する。互換性のため試験コードの`experiment::*`名前空間は維持しているが、元experimentをimport・リンクしない。
 
 ## 共通I/F
 
@@ -51,7 +52,7 @@ Result Run(const Context &context);
 }
 ```
 
-`Context`は`clock()`によるミリ秒時刻、`wait(milliseconds)`、wrapを考慮した`Expired(begin, timeout)`、シナリオ進捗の`Progress(current, total)`を提供する。`Result`は`Outcome::kPass`または`Outcome::kFail`とUART出力用の詳細文字列を返す。試験側がクロック・RIF・HAL初期化、有限時間の検査、停止・deinitを担当する。対象資源はこの専用アプリが占有し、通常アプリと同時に実行しない。
+`Context`は`clock()`によるミリ秒時刻、`wait(milliseconds)`、wrapを考慮した`Expired(begin, timeout)`、シナリオ進捗の`Progress(current, total)`を提供する。`Result`は`Outcome::kPass`または`Outcome::kFail`とUART出力用の詳細文字列を返す。試験側はdriver APIを呼び、有限時間内の結果を期待値と比較する。周辺driverのAccessorを解放すると、開いているTIM2・RTCも終了する。対象資源はこの専用アプリが占有し、通常アプリと同時に実行しない。
 
 ランナは実行関数・目的・時間上限の欠落や重複登録を拒否する。破壊的試験の許可不足は実行前のFAILであり、SKIPにはしない。同期処理のため、時間上限の事後確認だけでハングを中断することはできない。
 
@@ -68,7 +69,7 @@ Result Run(const Context &context);
 | sram | 専用4KiB領域のアドレス由来・4パターンの読み書き一致 | 本体実装済み |
 | psram | 各パターンをXSPI1の専用領域へ書き、cache clean/invalidate後も全バイト一致 | 本体実装済み |
 | nor-read | XSPI2の先頭256バイトを2回読み、一致。消去・書込みは行わない | 本体実装済み |
-| dma2d | 8×8 ARGB8888実転送、全guardと入力保持、D-cache整合 | 本体実装済み |
+| dma2d | 共有driver APIで8×8 RGB565実転送、全guardと入力保持、D-cache整合 | 本体実装済み |
 | camera-pipes | Pipe1/2のフレーム進行を60秒監視 | 負荷試験（`all-stress`） |
 | camera-control | 32段階のISP・geometry・停止／再開／復旧検査 | 負荷試験（`all-stress`） |
 | dma2d-suite | 25種の画素・guard・cache検査と60秒のカメラ/LCD同時負荷 | 負荷試験（`all-stress`） |
@@ -140,14 +141,14 @@ python3 userspace/hw-test/runner.py --uart /dev/ttyACM0 \
 
 ```sh
 cmake -S kernel/middleware/tests -B build/middleware-tests
-cmake --build build/middleware-tests --target hw_test image_processing_test dma2d_driver_test ui_test
-ctest --test-dir build/middleware-tests -R '^(hw_test|image_processing_test|dma2d_driver_test|ui_test)$' --output-on-failure
+cmake --build build/middleware-tests --target hw_test image_processing_test dma2d_driver_test peripheral_driver_test ui_test
+ctest --test-dir build/middleware-tests -R '^(hw_test|image_processing_test|dma2d_driver_test|peripheral_driver_test|ui_test)$' --output-on-failure
 python3 -m unittest discover -s userspace/hw-test/tests -p 'test_*.py' -v
 ```
 
-ホストでは試験登録、共有UI描画、共有画像検証器、25ケースと60秒負荷シナリオの進行、メモリ契約、ビルド登録、リンク監査を検査する。ハードウェア試験の関数は実行せず、実機のPASSやキャッシュ整合を証明するものではない。
+ホストでは試験登録、共有UI描画、共有画像検証器、25ケースと60秒負荷シナリオの進行、メモリ契約、ビルド登録、リンク監査を検査する。実装済み試験のHALなし構文チェックと低レイヤ依存監査、周辺driverのHALスタブ付きテストも実行する。実機のPASSやキャッシュ整合を証明するものではない。
 
-最終ELFのビルド後は[check_link.py](check_link.py)がHAL／IRQのstrong実装に加え、UIとDMA2Dが意図した共有オブジェクトから配置されたことをnmとリンクマップで確認する。
+最終ELFのビルド後は[check_link.py](check_link.py)がHAL／IRQのstrong実装に加え、UI・DMA2D・周辺driver・NOR・表示状態APIとHAL時刻処理がkernelオブジェクトから配置されたことをnmとリンクマップで確認する。
 
 ## 安全条件と確認範囲
 

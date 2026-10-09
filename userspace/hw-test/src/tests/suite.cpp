@@ -15,7 +15,7 @@ const Case cases[] = {
     {"sram", sram_driver::Run, false, 1000, "CPU address/data patterns in a dedicated 4 KiB SRAM buffer"},
     {"psram", psram_driver::Run, false, 2000, "XSPI1 patterns after cache clean/invalidate in reserved PSRAM"},
     {"nor-read", nor_driver::Run, false, 12000, "XSPI2 read-only repeat stability; not an expected-content CRC test"},
-    {"dma2d", dma2d_driver::Run, false, 1000, "DMA2D ARGB8888 copy, guards and CPU/DMA D-cache coherence"},
+    {"dma2d", dma2d_driver::Run, false, 1000, "DMA2D driver RGB565 copy, guards and CPU/DMA D-cache coherence"},
     {"camera-pipes",
      integrated::CameraPipes,
      false,

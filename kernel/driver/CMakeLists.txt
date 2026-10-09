@@ -29,6 +29,7 @@ set(UAI_DRIVER_SOURCES
     touch_driver/touch_driver.cpp)
     if(APP_TARGET STREQUAL "hw-test")
         list(FILTER UAI_DRIVER_SOURCES EXCLUDE REGEX "^npu_driver/")
+        list(APPEND UAI_DRIVER_SOURCES peripheral_driver/peripheral_driver.cpp)
     endif()
 list(TRANSFORM UAI_DRIVER_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 list(APPEND UAI_DRIVER_SOURCES
@@ -49,6 +50,24 @@ if(NOT _generated_dma2d_enabled OR NOT EXISTS "${_generated_dma2d_source}")
         "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dma2d.c")
 endif()
 
+if(APP_TARGET STREQUAL "hw-test")
+    foreach(module dcmipp rng hash crc crc_ex rif dma dma_ex rtc rtc_ex tim tim_ex ltdc)
+        string(REGEX REPLACE "_ex$" "" _base_module "${module}")
+        string(TOUPPER "${_base_module}" _base_module)
+        set(_module_enabled OFF)
+        if(EXISTS "${_generated_hal_config}")
+            file(STRINGS "${_generated_hal_config}" _module_enabled
+                REGEX "^#define[ \t]+HAL_${_base_module}_MODULE_ENABLED")
+        endif()
+        set(_generated_hal_source
+            "${CUBEMX_OUTPUT_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_${module}.c")
+        if(NOT _module_enabled OR NOT EXISTS "${_generated_hal_source}")
+            list(APPEND UAI_DRIVER_SOURCES
+                "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_${module}.c")
+        endif()
+    endforeach()
+endif()
+
 set(AI_CAMERA_BSP_SOURCE
     "${CMAKE_CURRENT_SOURCE_DIR}/camera_driver/board_driver/stm32n6570_discovery_camera.c")
 set_source_files_properties(${AI_CAMERA_BSP_SOURCE} PROPERTIES
@@ -57,6 +76,11 @@ set_source_files_properties(${AI_CAMERA_BSP_SOURCE} PROPERTIES
 
 add_library(uai-drivers STATIC ${UAI_DRIVER_SOURCES})
 add_library(uai::drivers ALIAS uai-drivers)
+
+if(APP_TARGET STREQUAL "hw-test")
+    target_include_directories(uai-drivers BEFORE PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/peripheral_driver/include")
+endif()
 
 target_include_directories(uai-drivers
     PUBLIC
@@ -75,6 +99,7 @@ target_include_directories(uai-drivers
         "${AI_COMPONENT_ROOT}/imx335"
         "${AI_COMPONENT_ROOT}/gt911"
         "${AI_COMPONENT_ROOT}/mx66uw1g45g"
+        "${AI_COMPONENT_ROOT}/aps256xx"
         "${AI_ISP_ROOT}/Inc"
         "${AI_ISP_ROOT}/../evision/Inc"
         "${CMAKE_CURRENT_SOURCE_DIR}/board/include"
@@ -112,3 +137,11 @@ target_link_libraries(uai-driver-overrides PRIVATE uai::drivers)
 target_compile_options(uai-driver-overrides PRIVATE
     -O3
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
+
+if(APP_TARGET STREQUAL "hw-test")
+    add_library(uai-driver-time-override OBJECT board/hal_time.c)
+    target_link_libraries(uai-driver-time-override PRIVATE uai::drivers)
+    target_compile_options(uai-driver-time-override PRIVATE
+        -O3
+        $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
+endif()

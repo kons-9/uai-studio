@@ -1,6 +1,7 @@
 #pragma once
 
 #include "board.hpp"
+#include "driver/cache_driver/cache_driver.hpp"
 
 namespace experiment::hwtest::tests {
 
@@ -16,7 +17,9 @@ inline Result CheckMemoryPatterns(
             data[index] = static_cast<std::uint8_t>((index * 37U) ^ (0x55U * pattern));
         }
         if (flush_cache) {
-            SCB_CleanInvalidateDCache_by_Addr(buffer, static_cast<std::int32_t>(size));
+            if (!uai::ai::cache::CacheDriver::CleanInvalidate(buffer, size).Ok()) {
+                return {Outcome::kFail, "memory-cache-synchronization"};
+            }
         }
         for (std::size_t index = 0; index < size; ++index) {
             if (data[index] != static_cast<std::uint8_t>((index * 37U) ^ (0x55U * pattern))) {

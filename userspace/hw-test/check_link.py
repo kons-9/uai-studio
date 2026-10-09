@@ -6,6 +6,8 @@ import subprocess
 EXPECTED = {
     "HAL_GetTick": "hal_time.c",
     "HAL_Delay": "hal_time.c",
+    "BSP_XSPI_NOR_Init": "stm32n6570_discovery_xspi.c",
+    "BSP_XSPI_RAM_Init": "stm32n6570_discovery_xspi.c",
     "HAL_DCMIPP_PIPE_VsyncEventCallback": "frame_events.c",
     "HAL_DCMIPP_PIPE_FrameEventCallback": "frame_events.c",
     "experiment_original_vsync": "dcmipp_callbacks.c",
@@ -15,14 +17,19 @@ EXPECTED = {
     "DCMIPP_IRQHandler": "irq_handlers.c",
 }
 
+SHARED = (
+    ("5dma2d11Dma2dDriver8Transfer", "dma2d_driver.cpp"),
+    ("PeripheralDriver4Copy", "peripheral_driver.cpp"),
+    ("NorDriver4Read", "nor_driver.cpp"),
+    ("ReadDisplayState", "lcd_registers.cpp"),
+    ("2ui6Canvas8FillRect", "canvas.cpp"),
+)
+
 
 def audit(symbols, map_text):
     definitions = {}
     expected = dict(EXPECTED)
-    for fragment, source in (
-        ("5dma2d11Dma2dDriver8Transfer", "dma2d_driver.cpp"),
-        ("2ui6Canvas8FillRect", "canvas.cpp"),
-    ):
+    for fragment, source in SHARED:
         matches = [line.split()[2] for line in symbols.splitlines()
                    if len(line.split()) == 3 and fragment in line.split()[2]]
         if len(matches) != 1:
@@ -44,6 +51,10 @@ def audit(symbols, map_text):
             (source + ".obj", source + ".o", source + ".obj)", source + ".o)")
         ):
             raise ValueError(f"{symbol}: unexpected or missing map origin: {objects}")
+        shared_source = source in {shared_source for _, shared_source in SHARED}
+        kernel_symbol = symbol in ("HAL_GetTick", "HAL_Delay", "BSP_XSPI_NOR_Init", "BSP_XSPI_RAM_Init")
+        if (shared_source or kernel_symbol) and "kernel/" not in objects[0]:
+            raise ValueError(f"{symbol}: implementation must come from kernel: {objects[0]}")
 
 
 def main():
@@ -58,7 +69,7 @@ def main():
         audit(symbols, arguments.map.read_text())
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, str(error) + "\n")
-    print("PASS: HAL/IRQ overrides and shared UI/DMA2D implementations have the expected strong definitions and origins")
+    print("PASS: HAL/IRQ overrides and shared UI/driver implementations have the expected strong definitions and origins")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 #include "driver/lcd_driver/registers/lcd_registers.hpp"
+#include "driver/lcd_driver/display_state.hpp"
 
 #include "middleware/memory/static_memory_layout.hpp"
 #include "middleware/memory/generated/static_memory_layout/key.hpp"
@@ -6,6 +7,21 @@
 extern "C" {
 #include "stm32n6xx_hal.h"
 #include "stm32n6570_discovery_lcd.h"
+}
+
+namespace uai::ai::lcd {
+
+DisplayState ReadDisplayState()
+{
+    return {
+        (LTDC->GCR & LTDC_GCR_LTDCEN) != 0U,
+        (LTDC_Layer1->CR & LTDC_LxCR_LEN) != 0U,
+        LTDC_Layer1->PFCR == LTDC_PIXEL_FORMAT_RGB565,
+        LTDC_Layer1->CFBAR,
+        LTDC_Layer1->CFBLNR & LTDC_LxCFBLNR_CFBLNBR
+    };
+}
+
 }
 
 namespace uai::ai::lcd::registers {

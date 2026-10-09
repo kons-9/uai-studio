@@ -23,6 +23,7 @@ extern "C" {
 #include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
 void tm_com_init(void);
+volatile UW uai_systick_count;
 }
 
 #if defined(HWTEST_AUTORUN_TEST)
