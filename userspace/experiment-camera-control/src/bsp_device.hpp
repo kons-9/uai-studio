@@ -11,6 +11,7 @@ public:
     console::Status Close() override;
     console::Status Poll() override;
     console::Status Configure(const Geometry &geometry) override;
+
 private:
     uai::camera_pipe2::driver::CameraDriver camera_;
     bool opened_ = false;

@@ -19,8 +19,10 @@ void tm_com_init(void);
 namespace {
 
 constexpr SZ kCameraTouchTaskStackSize = 32 * 1024;
-alignas(8) INT g_camera_touch_task_stack[kCameraTouchTaskStackSize / sizeof(INT)]
-    __attribute__((section(".camera_task_stack"), used));
+alignas(8) INT g_camera_touch_task_stack[kCameraTouchTaskStackSize / sizeof(INT)] __attribute__((
+    section(".camera_task_stack"),
+    used
+));
 
 void InitializeCameraTouchUart()
 {
@@ -54,43 +56,45 @@ void InitializeCameraTouchUart()
     }
 }
 
-void CameraTouchTask(INT, void *)
+void CameraTouchTask(
+    INT,
+    void *
+)
 {
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "camera_lcd_touch: initializing LCD, GT911, and IMX335 camera\n")));
+    tm_putstring(
+        reinterpret_cast<UB *>(const_cast<char *>("camera_lcd_touch: initializing LCD, GT911, and IMX335 camera\n"))
+    );
 
     uai::camera_lcd_touch::driver::DisplayDriver display;
     uai::camera_lcd_touch::driver::CameraDriver camera;
     uai::camera_lcd_touch::driver::TouchDriver touch;
 
     /* Give the LCD a deterministic black camera plane until the first frame. */
-    for (std::size_t offset = 0U;
-         offset < uai::camera_lcd_touch::driver::kFrameBytes; offset += 2U) {
+    for (std::size_t offset = 0U; offset < uai::camera_lcd_touch::driver::kFrameBytes; offset += 2U) {
         uai::camera_lcd_touch::driver::FrameBuffer()[offset] = 0U;
         uai::camera_lcd_touch::driver::FrameBuffer()[offset + 1U] = 0U;
     }
     SCB_CleanDCache_by_Addr(
-        reinterpret_cast<std::uint32_t *>(
-            uai::camera_lcd_touch::driver::FrameBuffer()),
-        static_cast<std::int32_t>(uai::camera_lcd_touch::driver::kFrameBytes));
+        reinterpret_cast<std::uint32_t *>(uai::camera_lcd_touch::driver::FrameBuffer()),
+        static_cast<std::int32_t>(uai::camera_lcd_touch::driver::kFrameBytes)
+    );
 
     if (!uai::camera_lcd_touch::driver::IsOk(display.Initialize())) {
         HaltWithMessage("camera_lcd_touch: display initialization failed\n");
     }
 
     uai::camera_lcd_touch::driver::TouchInitDiagnostics touch_diagnostics{};
-    if (!uai::camera_lcd_touch::driver::IsOk(
-            touch.Initialize(&touch_diagnostics))) {
-        tm_printf(reinterpret_cast<const UB *>(
-                      "touch: init bus=%ld id=%ld/%08lx ctrl=%ld\n"),
-                  static_cast<long>(touch_diagnostics.bus_status),
-                  static_cast<long>(touch_diagnostics.id_status),
-                  static_cast<unsigned long>(touch_diagnostics.id),
-                  static_cast<long>(touch_diagnostics.controller_status));
+    if (!uai::camera_lcd_touch::driver::IsOk(touch.Initialize(&touch_diagnostics))) {
+        tm_printf(
+            reinterpret_cast<const UB *>("touch: init bus=%ld id=%ld/%08lx ctrl=%ld\n"),
+            static_cast<long>(touch_diagnostics.bus_status),
+            static_cast<long>(touch_diagnostics.id_status),
+            static_cast<unsigned long>(touch_diagnostics.id),
+            static_cast<long>(touch_diagnostics.controller_status)
+        );
         HaltWithMessage("camera_lcd_touch: GT911 initialization failed\n");
     }
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "camera_lcd_touch: GT911 polling ready\n")));
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>("camera_lcd_touch: GT911 polling ready\n")));
 
     if (!uai::camera_lcd_touch::driver::IsOk(camera.Initialize())) {
         HaltWithMessage("camera_lcd_touch: camera initialization failed\n");
@@ -100,8 +104,7 @@ void CameraTouchTask(INT, void *)
         HaltWithMessage("camera_lcd_touch: camera start failed\n");
     }
 
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "camera_lcd_touch: pipe1=started preview=started\n")));
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>("camera_lcd_touch: pipe1=started preview=started\n")));
 
     bool touch_active = false;
     for (;;) {
@@ -112,11 +115,12 @@ void CameraTouchTask(INT, void *)
         if (sample.active && !touch_active) {
             const auto action = display.HandleTouchPress(sample.x, sample.y);
             if (action != uai::camera_lcd_touch::driver::TouchAction::kNone) {
-                tm_printf(reinterpret_cast<const UB *>(
-                              "touch: action=%s x=%u y=%u\n"),
-                          uai::camera_lcd_touch::driver::TouchActionName(action),
-                          static_cast<UINT>(sample.x),
-                          static_cast<UINT>(sample.y));
+                tm_printf(
+                    reinterpret_cast<const UB *>("touch: action=%s x=%u y=%u\n"),
+                    uai::camera_lcd_touch::driver::TouchActionName(action),
+                    static_cast<UINT>(sample.x),
+                    static_cast<UINT>(sample.y)
+                );
             }
         } else if (!sample.active && touch_active) {
             display.HandleTouchRelease();

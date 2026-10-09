@@ -37,8 +37,10 @@ struct Diagnostics {
  * and the backend lifecycle; sensor register details stay in registers/. */
 class CameraDriver final {
 public:
-    common::Error Initialize(memory_allocator::MemoryAllocator &memory,
-                             cache::CacheDriver &cache);
+    common::Error Initialize(
+        memory_allocator::MemoryAllocator &memory,
+        cache::CacheDriver &cache
+    );
     void KeepClocksOnSleep() const;
     common::Error Start();
     common::Error Stop();

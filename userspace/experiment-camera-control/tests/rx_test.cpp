@@ -6,7 +6,10 @@
 
 void Require(bool condition)
 {
-    if (!condition) { std::cerr << "rx check failed\n"; std::exit(1); }
+    if (!condition) {
+        std::cerr << "rx check failed\n";
+        std::exit(1);
+    }
 }
 
 void TestQueue()
@@ -32,34 +35,54 @@ void TestQueue()
     Require(queue.Push('x') && queue.Pop(value, error) && value == 'x' && !error);
 }
 
-experiment::console::Status Execute(void *context, int, const char *const *, const experiment::console::Writer &)
+experiment::console::Status Execute(
+    void *context,
+    int,
+    const char *const *,
+    const experiment::console::Writer &
+)
 {
     ++*static_cast<unsigned *>(context);
     return experiment::console::Status::kOk;
 }
 
-void Write(void *context, const char *text, std::size_t size)
+void Write(
+    void *context,
+    const char *text,
+    std::size_t size
+)
 {
     static_cast<std::string *>(context)->append(text, size);
 }
 
-void Push(experiment::console::RxQueue &queue, const char *text)
+void Push(
+    experiment::console::RxQueue &queue,
+    const char *text
+)
 {
-    for (; *text; ++text) { Require(queue.Push(*text)); }
+    for (; *text; ++text) {
+        Require(queue.Push(*text));
+    }
 }
 
-void Drain(experiment::console::RxQueue &queue, experiment::console::Shell &shell)
+void Drain(
+    experiment::console::RxQueue &queue,
+    experiment::console::Shell &shell
+)
 {
     char character = 0;
     bool error = false;
-    while (queue.Pop(character, error)) { shell.Feed(character, error); }
+    while (queue.Pop(character, error)) {
+        shell.Feed(character, error);
+    }
 }
 
 void TestErrorLines()
 {
     unsigned valid = 0, damaged = 0, recovered = 0;
     const experiment::console::Command commands[] = {
-        {"valid", "valid", Execute, &valid}, {"damaged", "damaged", Execute, &damaged},
+        {"valid", "valid", Execute, &valid},
+        {"damaged", "damaged", Execute, &damaged},
         {"recovered", "recovered", Execute, &recovered}
     };
     std::string output;
@@ -74,8 +97,10 @@ void TestErrorLines()
     Require(valid == 1 && damaged == 0 && recovered == 1);
     const auto first_error = output.find("ERR uart-receive");
     const auto second_error = output.find("ERR uart-receive", first_error + 1);
-    Require(first_error != std::string::npos && second_error != std::string::npos &&
-            output.find("ERR uart-receive", second_error + 1) == std::string::npos);
+    Require(
+        first_error != std::string::npos && second_error != std::string::npos
+        && output.find("ERR uart-receive", second_error + 1) == std::string::npos
+    );
     Push(queue, "dam");
     Drain(queue, shell);
     queue.Error();
@@ -93,20 +118,25 @@ void TestOverflowLines()
 {
     unsigned valid = 0, damaged = 0, recovered = 0;
     const experiment::console::Command commands[] = {
-        {"valid", "valid", Execute, &valid}, {"damaged", "damaged", Execute, &damaged},
+        {"valid", "valid", Execute, &valid},
+        {"damaged", "damaged", Execute, &damaged},
         {"recovered", "recovered", Execute, &recovered}
     };
     std::string output;
     experiment::console::Shell shell(commands, 3, {&output, Write});
     experiment::console::RxQueue queue;
-    for (unsigned index = 0; index < 41; ++index) { Push(queue, "valid\r"); }
+    for (unsigned index = 0; index < 41; ++index) {
+        Push(queue, "valid\r");
+    }
     Push(queue, "damaged   ");
     Require(!queue.Push('x'));
     Drain(queue, shell);
     Push(queue, "\rrecovered\r");
     Drain(queue, shell);
     Require(valid == 41 && damaged == 0 && recovered == 1);
-    for (unsigned index = 0; index < 41; ++index) { Push(queue, "valid\r"); }
+    for (unsigned index = 0; index < 41; ++index) {
+        Push(queue, "valid\r");
+    }
     Push(queue, "damaged   ");
     Require(!queue.Push('\r'));
     Drain(queue, shell);

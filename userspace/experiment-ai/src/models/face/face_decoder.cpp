@@ -13,7 +13,6 @@ namespace uai::ai::models::face {
 
 namespace {
 
-
 constexpr std::size_t kBoxes0 = 512U;
 constexpr std::size_t kBoxes1 = 384U;
 constexpr std::size_t kTotalBoxes = kBoxes0 + kBoxes1;
@@ -31,7 +30,10 @@ fd_blazeface_pp_static_param_t g_face_params{};
 fd_pp_outBuffer_t g_face_output[kTotalBoxes]{};
 fd_pp_keyPoints_t g_face_keypoints[kTotalBoxes][kKeypoints]{};
 
-float ClampCoordinate(float value, std::uint32_t limit)
+float ClampCoordinate(
+    float value,
+    std::uint32_t limit
+)
 {
     if (value <= 0.0F) {
         return 0.0F;
@@ -47,8 +49,10 @@ common::Error Invalid(const char *operation)
     return {common::ErrorCode::kModel, 0U, operation};
 }
 
-bool InitializeFacePostprocess(const ModelOutputSpec &spec,
-                               const std::size_t *output_order)
+bool InitializeFacePostprocess(
+    const ModelOutputSpec &spec,
+    const std::size_t *output_order
+)
 {
     const std::size_t box0 = output_order[0];
     const std::size_t score0 = output_order[1];
@@ -67,34 +71,31 @@ bool InitializeFacePostprocess(const ModelOutputSpec &spec,
     g_face_params.pAnchors_0 = g_Anchors_0;
     g_face_params.pAnchors_1 = g_Anchors_1;
     g_face_params.boxe_0_scale = spec.tensors[box0].scale;
-    g_face_params.boxe_0_zero_point = static_cast<std::uint8_t>(
-        spec.tensors[box0].zero_point);
+    g_face_params.boxe_0_zero_point = static_cast<std::uint8_t>(spec.tensors[box0].zero_point);
     g_face_params.proba_0_scale = spec.tensors[score0].scale;
-    g_face_params.proba_0_zero_point = static_cast<std::uint8_t>(
-        spec.tensors[score0].zero_point);
+    g_face_params.proba_0_zero_point = static_cast<std::uint8_t>(spec.tensors[score0].zero_point);
     g_face_params.boxe_1_scale = spec.tensors[box1].scale;
-    g_face_params.boxe_1_zero_point = static_cast<std::uint8_t>(
-        spec.tensors[box1].zero_point);
+    g_face_params.boxe_1_zero_point = static_cast<std::uint8_t>(spec.tensors[box1].zero_point);
     g_face_params.proba_1_scale = spec.tensors[score1].scale;
-    g_face_params.proba_1_zero_point = static_cast<std::uint8_t>(
-        spec.tensors[score1].zero_point);
+    g_face_params.proba_1_zero_point = static_cast<std::uint8_t>(spec.tensors[score1].zero_point);
     for (std::size_t i = 0U; i < kTotalBoxes; ++i) {
         g_face_output[i].pKeyPoints = g_face_keypoints[i];
     }
     return fd_blazeface_pp_reset(&g_face_params) == 0;
 }
 
-bool RunFacePostprocess(const void *raw_detections_0,
-                        const void *scores_0,
-                        const void *raw_detections_1,
-                        const void *scores_1,
-                        RawDetection *detections,
-                        std::uint32_t capacity,
-                        std::uint32_t *count)
+bool RunFacePostprocess(
+    const void *raw_detections_0,
+    const void *scores_0,
+    const void *raw_detections_1,
+    const void *scores_1,
+    RawDetection *detections,
+    std::uint32_t capacity,
+    std::uint32_t *count
+)
 {
-    if (raw_detections_0 == nullptr || scores_0 == nullptr ||
-        raw_detections_1 == nullptr || scores_1 == nullptr ||
-        detections == nullptr || count == nullptr) {
+    if (raw_detections_0 == nullptr || scores_0 == nullptr || raw_detections_1 == nullptr || scores_1 == nullptr
+        || detections == nullptr || count == nullptr) {
         return false;
     }
 
@@ -102,17 +103,15 @@ bool RunFacePostprocess(const void *raw_detections_0,
         const_cast<void *>(raw_detections_0),
         const_cast<void *>(raw_detections_1),
         const_cast<void *>(scores_0),
-        const_cast<void *>(scores_1)};
+        const_cast<void *>(scores_1)
+    };
     fd_pp_out_t output{g_face_output, 0};
     g_face_params.nb_detect = 0;
     if (fd_blazeface_pp_process_int8(&input, &output, &g_face_params) != 0) {
         return false;
     }
 
-    const std::uint32_t available = output.nb_detect > 0
-                                        ? static_cast<std::uint32_t>(
-                                              output.nb_detect)
-                                        : 0U;
+    const std::uint32_t available = output.nb_detect > 0 ? static_cast<std::uint32_t>(output.nb_detect) : 0U;
     const std::uint32_t copied = available < capacity ? available : capacity;
     for (std::uint32_t i = 0U; i < copied; ++i) {
         detections[i].x_center = g_face_output[i].x_center;
@@ -172,15 +171,16 @@ common::Error Decoder::Initialize(const ModelOutputSpec &spec)
     return {common::ErrorCode::kOk, 0U, "face.decoder.initialize"};
 }
 
-common::Error Decoder::Decode(const InferenceCompletionContext &context,
-                      ModelResult *result) const
+common::Error Decoder::Decode(
+    const InferenceCompletionContext &context,
+    ModelResult *result
+) const
 {
     if (!initialized_) {
         return {common::ErrorCode::kNotInitialized, 0U, "face.decoder.decode"};
     }
-    if (result == nullptr || context.outputs.count < 4U ||
-        context.geometry.frame_width == 0U ||
-        context.geometry.frame_height == 0U) {
+    if (result == nullptr || context.outputs.count < 4U || context.geometry.frame_width == 0U
+        || context.geometry.frame_height == 0U) {
         return {common::ErrorCode::kInvalidArgument, 0U, "face.decoder.decode"};
     }
 
@@ -188,23 +188,19 @@ common::Error Decoder::Decode(const InferenceCompletionContext &context,
     const TensorView &score0 = context.outputs.tensors[output_order_[1]];
     const TensorView &score1 = context.outputs.tensors[output_order_[2]];
     const TensorView &box1 = context.outputs.tensors[output_order_[3]];
-    if (box0.data == nullptr || score0.data == nullptr ||
-        score1.data == nullptr || box1.data == nullptr) {
+    if (box0.data == nullptr || score0.data == nullptr || score1.data == nullptr || box1.data == nullptr) {
         return {common::ErrorCode::kInvalidArgument, 0U, "face.decoder.outputs"};
     }
 
     RawDetection raw[kMaxDecodedDetections]{};
     std::uint32_t raw_count = 0U;
-    if (!RunFacePostprocess(box0.data, score0.data, box1.data, score1.data,
-                            raw, kMaxDecodedDetections, &raw_count)) {
+    if (!RunFacePostprocess(box0.data, score0.data, box1.data, score1.data, raw, kMaxDecodedDetections, &raw_count)) {
         return Invalid("face.decoder.postprocess");
     }
 
     result->kind = ModelKind::kFace;
     result->detections_valid = true;
-    result->detection_count = raw_count < kMaxDecodedDetections
-                                  ? raw_count
-                                  : kMaxDecodedDetections;
+    result->detection_count = raw_count < kMaxDecodedDetections ? raw_count : kMaxDecodedDetections;
     const InferenceGeometry &geometry = context.geometry;
     for (std::uint32_t i = 0U; i < result->detection_count; ++i) {
         const RawDetection &source = raw[i];
@@ -213,39 +209,28 @@ common::Error Decoder::Decode(const InferenceCompletionContext &context,
         float width = 0.0F;
         float height = 0.0F;
         if (geometry.projection == InputProjection::kLetterboxed) {
-            if (geometry.content_height == 0U ||
-                geometry.model_height == 0U) {
+            if (geometry.content_height == 0U || geometry.model_height == 0U) {
                 return Invalid("face.decoder.geometry");
             }
-            left = (source.x_center - source.width * 0.5F) *
-                   static_cast<float>(geometry.frame_width);
-            top = ((source.y_center - source.height * 0.5F) *
-                       static_cast<float>(geometry.model_height) -
-                   static_cast<float>(geometry.pad_top)) *
-                  static_cast<float>(geometry.frame_height) /
-                  static_cast<float>(geometry.content_height);
+            left = (source.x_center - source.width * 0.5F) * static_cast<float>(geometry.frame_width);
+            top = ((source.y_center - source.height * 0.5F) * static_cast<float>(geometry.model_height)
+                   - static_cast<float>(geometry.pad_top))
+                * static_cast<float>(geometry.frame_height) / static_cast<float>(geometry.content_height);
             width = source.width * static_cast<float>(geometry.frame_width);
-            height = source.height * static_cast<float>(geometry.model_height) *
-                     static_cast<float>(geometry.frame_height) /
-                     static_cast<float>(geometry.content_height);
+            height = source.height * static_cast<float>(geometry.model_height)
+                * static_cast<float>(geometry.frame_height) / static_cast<float>(geometry.content_height);
         } else {
             const float crop_size = static_cast<float>(geometry.frame_height);
-            const float crop_x =
-                (static_cast<float>(geometry.frame_width) - crop_size) * 0.5F;
-            left = crop_x +
-                   (source.x_center - source.width * 0.5F) * crop_size;
+            const float crop_x = (static_cast<float>(geometry.frame_width) - crop_size) * 0.5F;
+            left = crop_x + (source.x_center - source.width * 0.5F) * crop_size;
             top = (source.y_center - source.height * 0.5F) * crop_size;
             width = source.width * crop_size;
             height = source.height * crop_size;
         }
-        result->detections[i].x =
-            ClampCoordinate(left, geometry.frame_width);
-        result->detections[i].y =
-            ClampCoordinate(top, geometry.frame_height);
-        result->detections[i].width =
-            ClampCoordinate(width, geometry.frame_width);
-        result->detections[i].height =
-            ClampCoordinate(height, geometry.frame_height);
+        result->detections[i].x = ClampCoordinate(left, geometry.frame_width);
+        result->detections[i].y = ClampCoordinate(top, geometry.frame_height);
+        result->detections[i].width = ClampCoordinate(width, geometry.frame_width);
+        result->detections[i].height = ClampCoordinate(height, geometry.frame_height);
         result->detections[i].confidence = source.confidence;
     }
     return {common::ErrorCode::kOk, 0U, "face.decoder.decode"};

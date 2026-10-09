@@ -32,21 +32,28 @@ struct ScriptedBackend {
         return {};
     }
     bool created() const { return is_created; }
-    uai::ai::common::Error Send(const Payload &, bool)
+    uai::ai::common::Error Send(
+        const Payload &,
+        bool
+    )
     {
         ++script.send_calls;
-        if (script.send_failures == 0U) return {};
+        if (script.send_failures == 0U)
+            return {};
         --script.send_failures;
         return {uai::ai::common::ErrorCode::kBufferOverflow};
     }
-    uai::ai::common::Error Receive(Payload *payload, bool)
+    uai::ai::common::Error Receive(
+        Payload *payload,
+        bool
+    )
     {
         *payload = {};
         return script.receive_status;
     }
 };
 
-constexpr ER kOtherError = -17;  // any non-E_OK, non-E_TMOUT code
+constexpr ER kOtherError = -17; // any non-E_OK, non-E_TMOUT code
 T_CMBF created{};
 ID next_id = 1;
 Payload queued{};
@@ -64,22 +71,36 @@ ID tk_cre_mbf(const T_CMBF *config)
     return next_id;
 }
 
-ER tk_snd_mbf(ID queue, const void *message, SZ size, TMO timeout)
+ER tk_snd_mbf(
+    ID queue,
+    const void *message,
+    SZ size,
+    TMO timeout
+)
 {
-    if (queue != 1 || size != sizeof(Payload)) return kOtherError;
+    if (queue != 1 || size != sizeof(Payload))
+        return kOtherError;
     send_timeout = timeout;
-    if (send_result != E_OK) return send_result;
+    if (send_result != E_OK)
+        return send_result;
     std::memcpy(&queued, message, size);
     pending = true;
     return E_OK;
 }
 
-INT tk_rcv_mbf(ID queue, void *message, TMO timeout)
+INT tk_rcv_mbf(
+    ID queue,
+    void *message,
+    TMO timeout
+)
 {
-    if (queue != 1) return kOtherError;
+    if (queue != 1)
+        return kOtherError;
     receive_timeout = timeout;
-    if (receive_result != 0) return receive_result;
-    if (!pending) return E_TMOUT;
+    if (receive_result != 0)
+        return receive_result;
+    if (!pending)
+        return E_TMOUT;
     std::memcpy(message, &queued, sizeof(queued));
     pending = false;
     return sizeof(queued);
@@ -102,7 +123,10 @@ protected:
     }
 };
 
-TEST_F(MessageChannelTest, BackendOwnsUserBufferAndMapsTimeouts)
+TEST_F(
+    MessageChannelTest,
+    BackendOwnsUserBufferAndMapsTimeouts
+)
 {
     static_assert(!std::is_copy_constructible_v<Channel>);
     static_assert(!std::is_move_constructible_v<Channel>);
@@ -129,7 +153,10 @@ TEST_F(MessageChannelTest, BackendOwnsUserBufferAndMapsTimeouts)
     EXPECT_EQ(::receive_timeout, TMO_POL);
 }
 
-TEST_F(MessageChannelTest, MapsOsResultsToErrorCodes)
+TEST_F(
+    MessageChannelTest,
+    MapsOsResultsToErrorCodes
+)
 {
     Channel channel;
     Payload payload{};
@@ -168,29 +195,43 @@ protected:
     ScriptedLatestChannel channel;
 };
 
-TEST_F(LatestValueChannelTest, GivesUpAgainstEndlesslyRefillingProducer)
+TEST_F(
+    LatestValueChannelTest,
+    GivesUpAgainstEndlesslyRefillingProducer
+)
 {
     script.send_failures = 100U;
     Payload latest{};
-    const DrainResult drain = channel.DrainLatest(
-        &latest, [](const Payload &) { return true; });
+    const DrainResult drain = channel.DrainLatest(&latest, [](const Payload &) {
+        return true;
+    });
     EXPECT_EQ(drain.error.Code(), common::ErrorCode::kTimeout);
     EXPECT_TRUE(drain.updated);
 
     unsigned int discarded = 0U;
-    const common::Error send = channel.SendReplacingOldest(
-        Payload{}, [&discarded](const Payload &) { ++discarded; });
+    const common::Error send = channel.SendReplacingOldest(Payload{}, [&discarded](const Payload &) {
+        ++discarded;
+    });
     EXPECT_EQ(send.Code(), common::ErrorCode::kBufferOverflow);
     EXPECT_EQ(discarded, 4U);
 }
 
-TEST_F(LatestValueChannelTest, RetriesSendAfterConsumerDrainedTheQueue)
+TEST_F(
+    LatestValueChannelTest,
+    RetriesSendAfterConsumerDrainedTheQueue
+)
 {
     script.send_failures = 1U;
     script.receive_status = {common::ErrorCode::kNoFrame};
     unsigned int discarded = 0U;
-    EXPECT_TRUE(channel.SendReplacingOldest(
-        Payload{}, [&discarded](const Payload &) { ++discarded; }).Ok());
+    EXPECT_TRUE(channel
+                    .SendReplacingOldest(
+                        Payload{},
+                        [&discarded](const Payload &) {
+                            ++discarded;
+                        }
+                    )
+                    .Ok());
     EXPECT_EQ(discarded, 0U);
     EXPECT_EQ(script.send_calls, 2U);
 
@@ -199,8 +240,7 @@ TEST_F(LatestValueChannelTest, RetriesSendAfterConsumerDrainedTheQueue)
 
     script.send_failures = 1U;
     script.receive_status = {common::ErrorCode::kHardware};
-    EXPECT_EQ(channel.SendReplacingOldestOnce(Payload{}).Code(),
-              common::ErrorCode::kHardware);
+    EXPECT_EQ(channel.SendReplacingOldestOnce(Payload{}).Code(), common::ErrorCode::kHardware);
 }
 
 } // namespace

@@ -69,10 +69,16 @@ class NpuDriver final {
 public:
     using RunProgressCallback = void (*)(void *context);
     using EpochTraceObserver = void (*)(
-        void *context, std::uint32_t model_kind_id, std::uint32_t end_ms,
-        std::uint32_t end_cycles, std::uint32_t elapsed_cycles,
-        std::uint32_t epoch_index, std::uint32_t epoch_flags,
-        std::uintptr_t epoch_address, std::uint32_t callback_type);
+        void *context,
+        std::uint32_t model_kind_id,
+        std::uint32_t end_ms,
+        std::uint32_t end_cycles,
+        std::uint32_t elapsed_cycles,
+        std::uint32_t epoch_index,
+        std::uint32_t epoch_flags,
+        std::uintptr_t epoch_address,
+        std::uint32_t callback_type
+    );
 
     static common::Error InitializeMemory();
     static void KeepMemoryClocksOnSleep();
@@ -86,52 +92,74 @@ public:
     bool IsLoaded(const models::ModelRuntime &model) const;
 
     Status GetInfo(stai_network_info *info) const;
-    Status GetInputs(stai_ptr *inputs, stai_size *count) const;
-    Status SetInput(stai_ptr input, stai_size size) const;
-    Status GetOutputs(stai_ptr *outputs, stai_size *count) const;
-    Status SetOutputs(const stai_ptr *outputs, stai_size count) const;
+    Status GetInputs(
+        stai_ptr *inputs,
+        stai_size *count
+    ) const;
+    Status SetInput(
+        stai_ptr input,
+        stai_size size
+    ) const;
+    Status GetOutputs(
+        stai_ptr *outputs,
+        stai_size *count
+    ) const;
+    Status SetOutputs(
+        const stai_ptr *outputs,
+        stai_size count
+    ) const;
 
     /* StartRun submits the current model and returns while the NPU is
      * executing. WaitRun completes the same submission. Run remains the
      * blocking convenience operation for callers without prefetching. */
     Status StartRun();
     /* Poll only. It never blocks and never calls ContinueRun(). */
-    Status PollRun(RunProgressCallback progress = nullptr,
-                   void *progress_context = nullptr);
+    Status PollRun(
+        RunProgressCallback progress = nullptr,
+        void *progress_context = nullptr
+    );
     /* Wait only for the IRQ event. The ISR remains responsible for setting
      * the event; all ST.AI decisions stay in task context. */
     Status WaitForIrq();
     /* Continue one generated epoch from task context. */
     Status ContinueRun();
-    Status WaitRun(RunProgressCallback progress = nullptr,
-                   void *progress_context = nullptr);
+    Status WaitRun(
+        RunProgressCallback progress = nullptr,
+        void *progress_context = nullptr
+    );
     Status Run();
     Status NewInference();
     Status Shutdown();
 
     /* Install the low-overhead sink used by ThreadMonitor.  The generated
      * model callback is registered internally for every loaded model. */
-    void SetEpochTraceObserver(EpochTraceObserver observer, void *context)
+    void SetEpochTraceObserver(
+        EpochTraceObserver observer,
+        void *context
+    )
     {
         epoch_trace_observer_ = observer;
         epoch_trace_context_ = context;
     }
-    void SetEpochTraceModelKindId(std::uint32_t model_kind_id)
-    {
-        epoch_trace_model_kind_id_ = model_kind_id;
-    }
+    void SetEpochTraceModelKindId(std::uint32_t model_kind_id) { epoch_trace_model_kind_id_ = model_kind_id; }
 
     bool Initialized() const { return initialized_; }
     const ExecutionSnapshot &LastExecution() const { return last_execution_; }
+
 private:
-    static void EpochTraceThunk(void *context, std::uint32_t callback_type,
-                                std::uint32_t epoch_index,
-                                std::uint32_t epoch_flags,
-                                std::uintptr_t epoch_address);
-    void ObserveEpochTrace(std::uint32_t callback_type,
-                           std::uint32_t epoch_index,
-                           std::uint32_t epoch_flags,
-                           std::uintptr_t epoch_address);
+    static void EpochTraceThunk(
+        void *context,
+        std::uint32_t callback_type,
+        std::uint32_t epoch_index,
+        std::uint32_t epoch_flags,
+        std::uintptr_t epoch_address
+    );
+    void ObserveEpochTrace(
+        std::uint32_t callback_type,
+        std::uint32_t epoch_index,
+        std::uint32_t epoch_flags,
+        std::uintptr_t epoch_address
+    );
     static bool IsError(stai_return_code code);
     Status InvalidState(const char *operation) const;
 

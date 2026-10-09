@@ -23,8 +23,10 @@ public:
     common::Error Start();
     common::Error Stop();
     /* Register the trace label before Start initializes the shared buffer. */
-    common::Error RegisterModelName(ai_runtime::AiModelId model_id,
-                                    const char *name);
+    common::Error RegisterModelName(
+        ai_runtime::AiModelId model_id,
+        const char *name
+    );
 
     void ObserveAiRuntimeStep(const ai_runtime::StepTrace &trace);
     bool Faulted() const { return faulted_; }
@@ -44,26 +46,41 @@ private:
         bool timing_valid = false;
     };
 
-    using PendingTraceQueue =
-        message_channel::FixedEventQueue<PendingTraceEvent,
-                                         kPendingTraceEventCapacity>;
+    using PendingTraceQueue = message_channel::FixedEventQueue<PendingTraceEvent, kPendingTraceEventCapacity>;
 
-    static void Entry(INT stacd, void *exinf);
+    static void Entry(
+        INT stacd,
+        void *exinf
+    );
     void Run();
-    void ReportFault(std::uint32_t now, const T_RTSK *task_status,
-                     ER reference_status, TraceFaultCode fault_code);
+    void ReportFault(
+        std::uint32_t now,
+        const T_RTSK *task_status,
+        ER reference_status,
+        TraceFaultCode fault_code
+    );
     bool InitializeTraceBuffer();
     bool TraceHeaderValid() const;
     bool TraceModelNamesMatch() const;
     void UpdateTraceModelNames();
     void QueueTraceEvent(const PendingTraceEvent &event);
     void FlushPendingTraceEvents();
-    void RecordSample(std::uint32_t now, const T_RTSK &task_status);
-    void WriteRecord(std::uint32_t now, TraceRecordType type,
-                     const T_RTSK *task_status, ER reference_status,
-                     TraceFaultCode fault_code,
-                     const PendingTraceEvent *event = nullptr);
-    void FlushTrace(const void *address, std::size_t size) const;
+    void RecordSample(
+        std::uint32_t now,
+        const T_RTSK &task_status
+    );
+    void WriteRecord(
+        std::uint32_t now,
+        TraceRecordType type,
+        const T_RTSK *task_status,
+        ER reference_status,
+        TraceFaultCode fault_code,
+        const PendingTraceEvent *event = nullptr
+    );
+    void FlushTrace(
+        const void *address,
+        std::size_t size
+    ) const;
     std::uint32_t Now() const;
 
     ID monitored_task_id_ = 0;
@@ -75,8 +92,7 @@ private:
 
     TraceStepCorrelator step_correlator_{};
     static PendingTraceQueue pending_queue_;
-    ThreadMonitorTraceModelName
-        registered_model_names_[kThreadMonitorModelNameCapacity]{};
+    ThreadMonitorTraceModelName registered_model_names_[kThreadMonitorModelNameCapacity]{};
     ThreadMonitorTraceHeader *trace_header_ = nullptr;
     ThreadMonitorTraceModelName *trace_model_names_ = nullptr;
     ThreadMonitorTraceRecord *trace_records_ = nullptr;

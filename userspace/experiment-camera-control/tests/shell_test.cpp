@@ -21,8 +21,12 @@ struct Recorder {
     int calls = 0;
 };
 
-experiment::console::Status Record(void *context, int count, const char *const *arguments,
-                                   const experiment::console::Writer &writer)
+experiment::console::Status Record(
+    void *context,
+    int count,
+    const char *const *arguments,
+    const experiment::console::Writer &writer
+)
 {
     auto &recorder = *static_cast<Recorder *>(context);
     recorder.arguments.assign(arguments, arguments + count);
@@ -31,7 +35,10 @@ experiment::console::Status Record(void *context, int count, const char *const *
     return experiment::console::Status::kOk;
 }
 
-experiment::console::Status Send(experiment::console::Shell &shell, const std::string &text)
+experiment::console::Status Send(
+    experiment::console::Shell &shell,
+    const std::string &text
+)
 {
     auto status = experiment::console::Status::kOk;
     for (char character : text) {
@@ -47,8 +54,8 @@ int main()
     Recorder recorder;
     const experiment::console::Command commands[] = {{"run", "run <value>", Record, &recorder}};
     experiment::console::Shell shell(commands, 1, {&recorder, [](void *context, const char *text, std::size_t size) {
-        static_cast<Recorder *>(context)->output.append(text, size);
-    }});
+                                                       static_cast<Recorder *>(context)->output.append(text, size);
+                                                   }});
     Require(Send(shell, "  run\t12x\b3\r\n") == experiment::console::Status::kOk);
     Require(recorder.calls == 1 && recorder.arguments == std::vector<std::string>({"run", "123"}));
     Require(recorder.output.find("executed\n> ") != std::string::npos);

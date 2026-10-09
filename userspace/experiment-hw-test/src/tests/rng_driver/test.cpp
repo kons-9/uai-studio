@@ -19,19 +19,23 @@ Result Run(const Context &context)
         result = {Outcome::kPass, "64-words-no-hardware-error"};
         for (unsigned index = 0; index < 64; ++index) {
             std::uint32_t sample = 0;
-            if (context.Expired(begin, 500) || HAL_RNG_GenerateRandomNumber(&handle, &sample) != HAL_OK ||
-                HAL_RNG_GetError(&handle) != HAL_RNG_ERROR_NONE) {
+            if (context.Expired(begin, 500) || HAL_RNG_GenerateRandomNumber(&handle, &sample) != HAL_OK
+                || HAL_RNG_GetError(&handle) != HAL_RNG_ERROR_NONE) {
                 result = {Outcome::kFail, "rng-read-or-clock-seed-error"};
                 break;
             }
-            if (index == 0) { first = sample; }
+            if (index == 0) {
+                first = sample;
+            }
             varied = varied || sample != first;
         }
         if (result.outcome == Outcome::kPass && !varied) {
             result = {Outcome::kFail, "rng-stuck-output"};
         }
     }
-    if (HAL_RNG_DeInit(&handle) != HAL_OK) { result = {Outcome::kFail, "rng-deinitialization"}; }
+    if (HAL_RNG_DeInit(&handle) != HAL_OK) {
+        result = {Outcome::kFail, "rng-deinitialization"};
+    }
     __HAL_RCC_RNG_CLK_DISABLE();
     return result;
 }

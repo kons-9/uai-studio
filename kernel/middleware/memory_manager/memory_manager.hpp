@@ -30,35 +30,52 @@ public:
 
     common::Error Initialize();
 
-    common::Error CaptureBuffer(std::uint8_t index,
-                                buffer::Buffer *buffer) const;
-    common::Error InferenceBuffer(std::uint8_t index,
-                                  buffer::Buffer *buffer) const;
+    common::Error CaptureBuffer(
+        std::uint8_t index,
+        buffer::Buffer *buffer
+    ) const;
+    common::Error InferenceBuffer(
+        std::uint8_t index,
+        buffer::Buffer *buffer
+    ) const;
     common::Error InferenceDropBuffer(buffer::Buffer *buffer) const;
-    common::Error CaptureBuffers(std::uintptr_t *first,
-                                 std::uintptr_t *second) const;
-    common::Error InferenceBuffers(std::uintptr_t *buffers,
-                                   std::size_t count) const;
-    common::Error ImportCompletedCapture(std::uintptr_t address,
-                                         pipeline::CaptureFrame *frame);
-    common::Error ImportCompletedInference(std::uintptr_t address,
-                                           std::uint32_t sequence,
-                                           pipeline::InferenceFrame *frame);
-    common::Error ReserveCompletedInference(std::uintptr_t address,
-                                            std::uint32_t sequence);
-    common::Error DropCompletedInference(std::uintptr_t address,
-                                         std::uint32_t sequence);
+    common::Error CaptureBuffers(
+        std::uintptr_t *first,
+        std::uintptr_t *second
+    ) const;
+    common::Error InferenceBuffers(
+        std::uintptr_t *buffers,
+        std::size_t count
+    ) const;
+    common::Error ImportCompletedCapture(
+        std::uintptr_t address,
+        pipeline::CaptureFrame *frame
+    );
+    common::Error ImportCompletedInference(
+        std::uintptr_t address,
+        std::uint32_t sequence,
+        pipeline::InferenceFrame *frame
+    );
+    common::Error ReserveCompletedInference(
+        std::uintptr_t address,
+        std::uint32_t sequence
+    );
+    common::Error DropCompletedInference(
+        std::uintptr_t address,
+        std::uint32_t sequence
+    );
     bool IsInferenceBufferFree(std::uintptr_t address) const;
-    common::Error ValidateCaptureFrame(
-        const pipeline::CaptureFrame &frame) const;
+    common::Error ValidateCaptureFrame(const pipeline::CaptureFrame &frame) const;
 
     common::Error AcquireDisplayBuffer(pipeline::DisplayBuffer *buffer);
     common::Error CommitDisplayBuffer(const pipeline::DisplayBuffer &buffer);
     common::Error CompleteDisplayHandoff();
     common::Error ReleaseDisplayBuffer(const pipeline::DisplayBuffer &buffer);
 
-    common::Error AcquireInferenceBuffer(const pipeline::CaptureFrame &capture,
-                                         pipeline::InferenceFrame *frame);
+    common::Error AcquireInferenceBuffer(
+        const pipeline::CaptureFrame &capture,
+        pipeline::InferenceFrame *frame
+    );
     common::Error ClaimInferenceBuffer(const pipeline::InferenceFrame &frame);
     common::Error ReleaseInferenceBuffer(const pipeline::InferenceFrame &frame);
 
@@ -67,13 +84,20 @@ private:
     using InferencePool = buffer::LeasePool<kInferenceBufferCount>;
 
     common::Error ValidateLayout() const;
-    void PopulateInferenceFrame(const InferencePool::Slot &slot,
-                                std::uint32_t sequence, bool from_pipe2,
-                                pipeline::InferenceFrame *frame) const;
-    common::Error LookupDisplay(const buffer::Buffer &buffer,
-                                DisplayPool::Slot **slot);
-    common::Error LookupInference(const pipeline::InferenceFrame &frame,
-                                  InferencePool::Slot **slot);
+    void PopulateInferenceFrame(
+        const InferencePool::Slot &slot,
+        std::uint32_t sequence,
+        bool from_pipe2,
+        pipeline::InferenceFrame *frame
+    ) const;
+    common::Error LookupDisplay(
+        const buffer::Buffer &buffer,
+        DisplayPool::Slot **slot
+    );
+    common::Error LookupInference(
+        const pipeline::InferenceFrame &frame,
+        InferencePool::Slot **slot
+    );
 
     bool initialized_ = false;
     DisplayPool display_{};

@@ -34,8 +34,7 @@ struct InferenceFrame {
     buffer::Buffer buffer{};
     buffer::Buffer source{};
     buffer::Buffer scratch{};
-    buffer::Buffer
-        outputs[memory_manager::kMemoryConfig.model_output_bytes.size()]{};
+    buffer::Buffer outputs[memory_manager::kMemoryConfig.model_output_bytes.size()]{};
     std::uint8_t output_count = 0U;
     std::uint32_t capture_sequence = 0U;
     /* A sequence identifies the camera frame. The lease identifies the

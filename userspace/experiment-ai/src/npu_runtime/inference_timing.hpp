@@ -42,15 +42,9 @@ struct InferenceTiming {
         }
     }
 
-    InferencePhaseTiming &At(InferencePhase phase)
-    {
-        return phases[InferencePhaseIndex(phase)];
-    }
+    InferencePhaseTiming &At(InferencePhase phase) { return phases[InferencePhaseIndex(phase)]; }
 
-    const InferencePhaseTiming &At(InferencePhase phase) const
-    {
-        return phases[InferencePhaseIndex(phase)];
-    }
+    const InferencePhaseTiming &At(InferencePhase phase) const { return phases[InferencePhaseIndex(phase)]; }
 };
 
 } // namespace uai::ai::npu_runtime

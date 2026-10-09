@@ -10,29 +10,31 @@ common::Error Scheduler::InvalidState(const char *operation) const
 common::Error Scheduler::RegisterModel(const models::ModelBinding &binding)
 {
     if (initialized_) {
-        return {common::ErrorCode::kAlreadyInitialized, 0U,
-                "npu_runtime.scheduler.register"};
+        return {common::ErrorCode::kAlreadyInitialized, 0U, "npu_runtime.scheduler.register"};
     }
     if (binding.model == nullptr || binding.runtime == nullptr) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "npu_runtime.scheduler.binding"};
+        return {common::ErrorCode::kInvalidArgument, 0U, "npu_runtime.scheduler.binding"};
     }
     if (binding_count_ >= kMaxRegisteredModels) {
-        return {common::ErrorCode::kNoBuffer,
-                static_cast<std::uint32_t>(binding_count_),
-                "npu_runtime.scheduler.capacity"};
+        return {
+            common::ErrorCode::kNoBuffer, static_cast<std::uint32_t>(binding_count_), "npu_runtime.scheduler.capacity"
+        };
     }
     if (Find(binding.kind) != nullptr) {
-        return {common::ErrorCode::kInvalidArgument,
-                static_cast<std::uint32_t>(binding.kind),
-                "npu_runtime.scheduler.duplicate"};
+        return {
+            common::ErrorCode::kInvalidArgument,
+            static_cast<std::uint32_t>(binding.kind),
+            "npu_runtime.scheduler.duplicate"
+        };
     }
 
     const models::ModelDescriptor &descriptor = binding.model->GetDescriptor();
     if (descriptor.kind != binding.kind) {
-        return {common::ErrorCode::kInvalidArgument,
-                static_cast<std::uint32_t>(binding.kind),
-                "npu_runtime.scheduler.kind_mismatch"};
+        return {
+            common::ErrorCode::kInvalidArgument,
+            static_cast<std::uint32_t>(binding.kind),
+            "npu_runtime.scheduler.kind_mismatch"
+        };
     }
     bindings_[binding_count_++] = binding;
     return {common::ErrorCode::kOk, 0U, "npu_runtime.scheduler.register"};
@@ -41,19 +43,16 @@ common::Error Scheduler::RegisterModel(const models::ModelBinding &binding)
 common::Error Scheduler::Initialize()
 {
     if (initialized_) {
-        return {common::ErrorCode::kAlreadyInitialized, 0U,
-                "npu_runtime.scheduler.initialize"};
+        return {common::ErrorCode::kAlreadyInitialized, 0U, "npu_runtime.scheduler.initialize"};
     }
     if (binding_count_ == 0U) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "npu_runtime.scheduler.models"};
+        return {common::ErrorCode::kInvalidArgument, 0U, "npu_runtime.scheduler.models"};
     }
 
     active_ = BindingAt(0U);
     if (active_ == nullptr || active_->runtime == nullptr) {
         active_ = nullptr;
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "npu_runtime.scheduler.initial_model"};
+        return {common::ErrorCode::kInvalidArgument, 0U, "npu_runtime.scheduler.initial_model"};
     }
 
     initialized_ = true;
@@ -66,8 +65,7 @@ common::Error Scheduler::SelectNext()
         return InvalidState("npu_runtime.scheduler.select_next");
     }
     if (binding_count_ <= 1U) {
-        return {common::ErrorCode::kOk, 0U,
-                "npu_runtime.scheduler.select_next"};
+        return {common::ErrorCode::kOk, 0U, "npu_runtime.scheduler.select_next"};
     }
 
     std::size_t active_index = 0U;
@@ -77,16 +75,12 @@ common::Error Scheduler::SelectNext()
         }
     }
     if (active_index >= binding_count_) {
-        return {common::ErrorCode::kInvalidState, 0U,
-                "npu_runtime.scheduler.active_model"};
+        return {common::ErrorCode::kInvalidState, 0U, "npu_runtime.scheduler.active_model"};
     }
-    const std::size_t next_index =
-        (active_index + 1U) % binding_count_;
+    const std::size_t next_index = (active_index + 1U) % binding_count_;
     const models::ModelBinding *next = BindingAt(next_index);
     if (next == nullptr) {
-        return {common::ErrorCode::kModel,
-                static_cast<std::uint32_t>(next_index),
-                "npu_runtime.scheduler.next_model"};
+        return {common::ErrorCode::kModel, static_cast<std::uint32_t>(next_index), "npu_runtime.scheduler.next_model"};
     }
     return SelectModel(next->kind);
 }
@@ -106,9 +100,11 @@ common::Error Scheduler::SelectModel(models::ModelKind kind)
     }
     const models::ModelBinding *binding = Find(kind);
     if (binding == nullptr || binding->runtime == nullptr) {
-        return {common::ErrorCode::kInvalidArgument,
-                static_cast<std::uint32_t>(kind),
-                "npu_runtime.scheduler.model_not_registered"};
+        return {
+            common::ErrorCode::kInvalidArgument,
+            static_cast<std::uint32_t>(kind),
+            "npu_runtime.scheduler.model_not_registered"
+        };
     }
     active_ = binding;
     return {common::ErrorCode::kOk, 0U, "npu_runtime.scheduler.select"};
@@ -155,51 +151,55 @@ const models::ModelDescriptor *Scheduler::GetDescriptor() const
     return &active_->model->GetDescriptor();
 }
 
-common::Error Scheduler::ConfigureActiveDecoder(
-    const models::ModelOutputSpec &spec)
+common::Error Scheduler::ConfigureActiveDecoder(const models::ModelOutputSpec &spec)
 {
     if (!initialized_ || active_ == nullptr) {
         return InvalidState("npu_runtime.scheduler.configure_decoder");
     }
     if (active_->model == nullptr) {
-        return {common::ErrorCode::kModel,
-                static_cast<std::uint32_t>(active_->kind),
-                "npu_runtime.scheduler.decoder_model"};
+        return {
+            common::ErrorCode::kModel, static_cast<std::uint32_t>(active_->kind), "npu_runtime.scheduler.decoder_model"
+        };
     }
     const models::ModelCallbacks callbacks = active_->model->GetCallbacks();
     if (callbacks.configure == nullptr || callbacks.user_data == nullptr) {
-        return {common::ErrorCode::kModel,
-                static_cast<std::uint32_t>(active_->kind),
-                "npu_runtime.scheduler.decoder_missing"};
+        return {
+            common::ErrorCode::kModel,
+            static_cast<std::uint32_t>(active_->kind),
+            "npu_runtime.scheduler.decoder_missing"
+        };
     }
     return callbacks.configure(spec, callbacks.user_data);
 }
 
 common::Error Scheduler::DecodeActiveOutputs(
     const models::InferenceCompletionContext &context,
-    models::ModelResult *result) const
+    models::ModelResult *result
+) const
 {
     if (!initialized_ || active_ == nullptr) {
         return InvalidState("npu_runtime.scheduler.decode_outputs");
     }
     if (active_->model == nullptr) {
-        return {common::ErrorCode::kModel,
-                static_cast<std::uint32_t>(active_->kind),
-                "npu_runtime.scheduler.decode_model"};
+        return {
+            common::ErrorCode::kModel, static_cast<std::uint32_t>(active_->kind), "npu_runtime.scheduler.decode_model"
+        };
     }
     const models::ModelCallbacks callbacks = active_->model->GetCallbacks();
-    if (callbacks.on_inference_complete == nullptr ||
-        callbacks.user_data == nullptr) {
-        return {common::ErrorCode::kModel,
-                static_cast<std::uint32_t>(active_->kind),
-                "npu_runtime.scheduler.decoder_missing"};
+    if (callbacks.on_inference_complete == nullptr || callbacks.user_data == nullptr) {
+        return {
+            common::ErrorCode::kModel,
+            static_cast<std::uint32_t>(active_->kind),
+            "npu_runtime.scheduler.decoder_missing"
+        };
     }
-    return callbacks.on_inference_complete(context, result,
-                                            callbacks.user_data);
+    return callbacks.on_inference_complete(context, result, callbacks.user_data);
 }
 
 common::Error Scheduler::PrepareActiveInput(
-    memory_allocator::InferenceFrame &frame, cache::CacheDriver &cache) const
+    memory_allocator::InferenceFrame &frame,
+    cache::CacheDriver &cache
+) const
 {
     if (!initialized_ || active_ == nullptr) {
         return InvalidState("npu_runtime.scheduler.prepare_input");
@@ -209,7 +209,9 @@ common::Error Scheduler::PrepareActiveInput(
 
 common::Error Scheduler::PrepareInputFor(
     const models::ModelBinding &binding,
-    memory_allocator::InferenceFrame &frame, cache::CacheDriver &cache) const
+    memory_allocator::InferenceFrame &frame,
+    cache::CacheDriver &cache
+) const
 {
     if (!initialized_ || binding.model == nullptr) {
         return InvalidState("npu_runtime.scheduler.prepare_input");
@@ -219,15 +221,16 @@ common::Error Scheduler::PrepareInputFor(
 
 common::Error Scheduler::ConvertActiveResult(
     const models::ModelResult &source,
-    memory_allocator::BoxSet *destination) const
+    memory_allocator::BoxSet *destination
+) const
 {
     if (!initialized_ || active_ == nullptr) {
         return InvalidState("npu_runtime.scheduler.convert_result");
     }
     if (active_->model == nullptr) {
-        return {common::ErrorCode::kModel,
-                static_cast<std::uint32_t>(active_->kind),
-                "npu_runtime.scheduler.result_model"};
+        return {
+            common::ErrorCode::kModel, static_cast<std::uint32_t>(active_->kind), "npu_runtime.scheduler.result_model"
+        };
     }
     return active_->model->ConvertResult(source, destination);
 }

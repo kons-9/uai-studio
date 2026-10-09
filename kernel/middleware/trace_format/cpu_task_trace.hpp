@@ -21,9 +21,7 @@ struct CpuTaskMonitorTraceTaskName {
 
 static_assert(sizeof(CpuTaskMonitorTraceTaskName) == 32U);
 inline constexpr std::uint32_t kCpuTaskMonitorTraceDataOffset =
-    64U +
-    kCpuTaskMonitorTaskNameCount *
-        sizeof(CpuTaskMonitorTraceTaskName);
+    64U + kCpuTaskMonitorTaskNameCount * sizeof(CpuTaskMonitorTraceTaskName);
 
 enum class CpuTaskMonitorTraceRecordType : std::uint8_t {
     kReport = 1U,
@@ -48,8 +46,7 @@ struct alignas(32) CpuTaskMonitorTraceHeader {
     std::uint32_t last_period_cycles = 0U;
     std::uint32_t last_interrupt_percent = 0U;
     std::uint32_t task_name_count = 0U;
-    std::uint32_t task_name_entry_size =
-        sizeof(CpuTaskMonitorTraceTaskName);
+    std::uint32_t task_name_entry_size = sizeof(CpuTaskMonitorTraceTaskName);
     std::uint32_t reserved = 0U;
 };
 
@@ -65,8 +62,7 @@ struct alignas(32) CpuTaskMonitorTraceRecord {
     std::uint32_t interrupt_percent = 0U;
     std::uint32_t interrupt_count = 0U;
     std::uint32_t unknown_task_events = 0U;
-    std::uint8_t type = static_cast<std::uint8_t>(
-        CpuTaskMonitorTraceRecordType::kTask);
+    std::uint8_t type = static_cast<std::uint8_t>(CpuTaskMonitorTraceRecordType::kTask);
     std::uint8_t reserved0[3] = {};
     std::uint32_t commit_marker = 0U;
     std::uint32_t reserved1[3] = {};

@@ -17,17 +17,16 @@ namespace uai::camera_lcd_touch::driver {
 
 namespace {
 
-void ComposeDisplayFrame(OverlayUi &overlay_ui, std::uint16_t *display)
+void ComposeDisplayFrame(
+    OverlayUi &overlay_ui,
+    std::uint16_t *display
+)
 {
     auto *capture = FrameBuffer();
-    SCB_InvalidateDCache_by_Addr(
-        reinterpret_cast<std::uint32_t *>(capture),
-        static_cast<std::int32_t>(kFrameBytes));
+    SCB_InvalidateDCache_by_Addr(reinterpret_cast<std::uint32_t *>(capture), static_cast<std::int32_t>(kFrameBytes));
     std::memcpy(display, capture, kFrameBytes);
     overlay_ui.DrawOn(display);
-    SCB_CleanDCache_by_Addr(
-        reinterpret_cast<std::uint32_t *>(display),
-        static_cast<std::int32_t>(kFrameBytes));
+    SCB_CleanDCache_by_Addr(reinterpret_cast<std::uint32_t *>(display), static_cast<std::int32_t>(kFrameBytes));
 }
 
 } // namespace
@@ -45,8 +44,7 @@ DriverStatus DisplayDriver::Initialize()
     HAL_NVIC_EnableIRQ(LTDC_UP_IRQn);
 
     BSP_LCD_LayerConfig_t camera_layer{};
-    camera_layer.Address = static_cast<std::uint32_t>(
-        DisplayFrameBufferAddress(front_buffer_index_));
+    camera_layer.Address = static_cast<std::uint32_t>(DisplayFrameBufferAddress(front_buffer_index_));
     camera_layer.PixelFormat = LCD_PIXEL_FORMAT_RGB565;
     camera_layer.X0 = 0U;
     camera_layer.X1 = 800U;
@@ -65,8 +63,8 @@ DriverStatus DisplayDriver::Initialize()
     ComposeDisplayFrame(overlay_ui_, DisplayFrameBuffer(0U));
     ComposeDisplayFrame(overlay_ui_, DisplayFrameBuffer(1U));
 
-    if (BSP_LCD_SetLayerVisible(0U, 0U, ENABLE) != BSP_ERROR_NONE ||
-        BSP_LCD_SetLayerVisible(0U, 1U, DISABLE) != BSP_ERROR_NONE) {
+    if (BSP_LCD_SetLayerVisible(0U, 0U, ENABLE) != BSP_ERROR_NONE
+        || BSP_LCD_SetLayerVisible(0U, 1U, DISABLE) != BSP_ERROR_NONE) {
         return DriverStatus::kHardwareFailure;
     }
 
@@ -96,16 +94,13 @@ DriverStatus DisplayDriver::Process()
         flip_pending_ = false;
     }
 
-    const auto back_buffer_index =
-        static_cast<std::uint8_t>(1U - front_buffer_index_);
+    const auto back_buffer_index = static_cast<std::uint8_t>(1U - front_buffer_index_);
     ComposeDisplayFrame(overlay_ui_, DisplayFrameBuffer(back_buffer_index));
     pending_reload_count_ = camera_lcd_touch_ltdc_reload_count + 1U;
     if (HAL_LTDC_SetAddress_NoReload(
-            &hlcd_ltdc,
-            static_cast<std::uint32_t>(
-                DisplayFrameBufferAddress(back_buffer_index)),
-            LTDC_LAYER_1) != HAL_OK ||
-        HAL_LTDC_Reload(&hlcd_ltdc, LTDC_RELOAD_VERTICAL_BLANKING) != HAL_OK) {
+            &hlcd_ltdc, static_cast<std::uint32_t>(DisplayFrameBufferAddress(back_buffer_index)), LTDC_LAYER_1
+        ) != HAL_OK
+        || HAL_LTDC_Reload(&hlcd_ltdc, LTDC_RELOAD_VERTICAL_BLANKING) != HAL_OK) {
         return DriverStatus::kHardwareFailure;
     }
     pending_buffer_index_ = back_buffer_index;
@@ -113,7 +108,10 @@ DriverStatus DisplayDriver::Process()
     return DriverStatus::kOk;
 }
 
-TouchAction DisplayDriver::HandleTouchPress(std::uint16_t x, std::uint16_t y)
+TouchAction DisplayDriver::HandleTouchPress(
+    std::uint16_t x,
+    std::uint16_t y
+)
 {
     return overlay_ui_.PressAt(x, y);
 }

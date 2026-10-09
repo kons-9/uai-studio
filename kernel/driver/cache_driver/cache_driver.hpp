@@ -15,18 +15,21 @@ public:
 
     CacheDriver(const CacheDriver &) = delete;
     CacheDriver &operator=(const CacheDriver &) = delete;
+    common::Error PrepareForDmaWrite(const buffer::Buffer &buffer) const;
     common::Error PrepareForDmaWrite(
-        const buffer::Buffer &buffer) const;
-    common::Error PrepareForDmaWrite(
-        const buffer::Buffer &buffer, const Writer &writer) const;
+        const buffer::Buffer &buffer,
+        const Writer &writer
+    ) const;
+    common::Error PrepareForCpuRead(const buffer::Buffer &buffer) const;
     common::Error PrepareForCpuRead(
-        const buffer::Buffer &buffer) const;
-    common::Error PrepareForCpuRead(
-        const buffer::Buffer &buffer, const Writer &writer) const;
+        const buffer::Buffer &buffer,
+        const Writer &writer
+    ) const;
+    common::Error PrepareForPeripheralRead(const buffer::Buffer &buffer) const;
     common::Error PrepareForPeripheralRead(
-        const buffer::Buffer &buffer) const;
-    common::Error PrepareForPeripheralRead(
-        const buffer::Buffer &buffer, const Writer &writer) const;
+        const buffer::Buffer &buffer,
+        const Writer &writer
+    ) const;
     void KeepClocksOnSleep() const;
     void KeepClocksOnSleep(const Writer &writer) const;
 
@@ -50,39 +53,63 @@ public:
     common::Error Initialize()
     {
         common::Error status = ownership_.Initialize();
-        if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized) return status;
+        if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized)
+            return status;
         Accessor accessor;
         status = Acquire(&accessor);
         return status.Ok() ? driver_.Initialize(accessor.Ownership()) : status;
     }
-    common::Error Acquire(Accessor *accessor, TMO timeout = TMO_FEVR)
+    common::Error Acquire(
+        Accessor *accessor,
+        TMO timeout = TMO_FEVR
+    )
     {
-        if (accessor == nullptr) return {common::ErrorCode::kInvalidArgument};
+        if (accessor == nullptr)
+            return {common::ErrorCode::kInvalidArgument};
         *accessor = {};
         CacheDriver::Writer writer;
         const common::Error status = ownership_.Acquire(&writer, timeout);
-        if (status.Ok()) *accessor = Accessor(driver_, static_cast<Writer &&>(writer));
+        if (status.Ok())
+            *accessor = Accessor(driver_, static_cast<Writer &&>(writer));
         return status;
     }
-    common::Error Validate(const Writer &writer) const
-    { return ownership_.Validate(writer); }
+    common::Error Validate(const Writer &writer) const { return ownership_.Validate(writer); }
     common::Error PrepareForDmaWrite(const buffer::Buffer &buffer)
-    { return WithWriter([&](CacheDriver &d, const Writer &w) { return d.PrepareForDmaWrite(buffer, w); }); }
+    {
+        return WithWriter([&](CacheDriver &d, const Writer &w) {
+            return d.PrepareForDmaWrite(buffer, w);
+        });
+    }
     common::Error PrepareForCpuRead(const buffer::Buffer &buffer)
-    { return WithWriter([&](CacheDriver &d, const Writer &w) { return d.PrepareForCpuRead(buffer, w); }); }
+    {
+        return WithWriter([&](CacheDriver &d, const Writer &w) {
+            return d.PrepareForCpuRead(buffer, w);
+        });
+    }
     common::Error PrepareForPeripheralRead(const buffer::Buffer &buffer)
-    { return WithWriter([&](CacheDriver &d, const Writer &w) { return d.PrepareForPeripheralRead(buffer, w); }); }
+    {
+        return WithWriter([&](CacheDriver &d, const Writer &w) {
+            return d.PrepareForPeripheralRead(buffer, w);
+        });
+    }
     void KeepClocksOnSleep()
-    { (void)WithWriter([](CacheDriver &d, const Writer &w) { d.KeepClocksOnSleep(w); return common::Error{common::ErrorCode::kOk}; }); }
+    {
+        (void)WithWriter([](CacheDriver &d, const Writer &w) {
+            d.KeepClocksOnSleep(w);
+            return common::Error{common::ErrorCode::kOk};
+        });
+    }
     CacheManagement(const CacheManagement &) = delete;
     CacheManagement &operator=(const CacheManagement &) = delete;
+
 private:
     template <typename Operation>
     common::Error WithWriter(Operation operation)
     {
         Accessor accessor;
         const common::Error status = Acquire(&accessor);
-        if (!status.Ok()) return status;
+        if (!status.Ok())
+            return status;
         return operation(*accessor.Get(), accessor.Ownership());
     }
     CacheManagement() = default;

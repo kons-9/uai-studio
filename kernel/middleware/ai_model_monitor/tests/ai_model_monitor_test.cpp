@@ -27,10 +27,10 @@ unsigned int monitor_delays = 0U;
 template <typename Predicate>
 bool WaitUntil(Predicate predicate)
 {
-    const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::seconds(3);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     while (!predicate()) {
-        if (std::chrono::steady_clock::now() >= deadline) return false;
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
         std::this_thread::yield();
     }
     return true;
@@ -39,10 +39,10 @@ bool WaitUntil(Predicate predicate)
 bool WriteDumpIfRequested()
 {
     const char *path = std::getenv("UAI_AI_TRACE_TEST_DUMP");
-    if (path == nullptr) return true;
+    if (path == nullptr)
+        return true;
     std::ofstream output(path, std::ios::binary);
-    output.write(reinterpret_cast<const char *>(trace_memory),
-                 sizeof(trace_memory));
+    output.write(reinterpret_cast<const char *>(trace_memory), sizeof(trace_memory));
     return output.good();
 }
 
@@ -51,7 +51,8 @@ void RunMonitorCycle()
     struct CycleComplete {};
     monitor_delays = 0U;
     uai::test::kernel::delay_hook = [](RELTIM) {
-        if (++monitor_delays == 2U) throw CycleComplete{};
+        if (++monitor_delays == 2U)
+            throw CycleComplete{};
     };
     const T_CTSK task = uai::test::kernel::created_task;
     try {
@@ -63,34 +64,40 @@ void RunMonitorCycle()
 
 std::vector<ThreadMonitorTraceRecord> StepRecords()
 {
-    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(
-        trace_memory);
-    const auto *records = reinterpret_cast<const ThreadMonitorTraceRecord *>(
-        trace_memory + kThreadMonitorTraceDataOffset);
+    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(trace_memory);
+    const auto *records =
+        reinterpret_cast<const ThreadMonitorTraceRecord *>(trace_memory + kThreadMonitorTraceDataOffset);
     std::vector<ThreadMonitorTraceRecord> result;
     for (std::uint32_t index = 0U; index < header->record_count; ++index) {
-        if (records[index].type ==
-            static_cast<std::uint8_t>(TraceRecordType::kAiRuntimeStep)) {
+        if (records[index].type == static_cast<std::uint8_t>(TraceRecordType::kAiRuntimeStep)) {
             result.push_back(records[index]);
         }
     }
     return result;
 }
 
-ai_runtime::StepTrace Step(std::uint32_t inference_id,
-                           std::uint32_t timestamp, bool begin)
+ai_runtime::StepTrace Step(
+    std::uint32_t inference_id,
+    std::uint32_t timestamp,
+    bool begin
+)
 {
-    return {inference_id, static_cast<ai_runtime::AiModelId>(1U), 1U,
-            ai_runtime::ExecutionContext::kNpu, timestamp, begin};
+    return {
+        inference_id, static_cast<ai_runtime::AiModelId>(1U), 1U, ai_runtime::ExecutionContext::kNpu, timestamp, begin
+    };
 }
 
 } // namespace
 
-extern "C" std::uint32_t __get_PRIMASK() { return interrupt_mask; }
+extern "C" std::uint32_t __get_PRIMASK()
+{
+    return interrupt_mask;
+}
 
 extern "C" void __disable_irq()
 {
-    if (interrupt_mask == 0U) interrupt_mutex.lock();
+    if (interrupt_mask == 0U)
+        interrupt_mutex.lock();
     interrupt_mask = 1U;
 }
 
@@ -98,7 +105,8 @@ extern "C" void __set_PRIMASK(std::uint32_t primask)
 {
     const bool enable = interrupt_mask != 0U && primask == 0U;
     interrupt_mask = primask;
-    if (enable) interrupt_mutex.unlock();
+    if (enable)
+        interrupt_mutex.unlock();
 }
 
 namespace uai::ai::static_memory_layout {
@@ -110,7 +118,10 @@ const Region Region::GetRegionFromKey(Key)
 
 } // namespace uai::ai::static_memory_layout
 
-TEST(AiModelMonitor, InterleavedDurations)
+TEST(
+    AiModelMonitor,
+    InterleavedDurations
+)
 {
     std::memset(trace_memory, 0, sizeof(trace_memory));
     AiModelMonitor monitor;
@@ -121,36 +132,40 @@ TEST(AiModelMonitor, InterleavedDurations)
     monitor.ObserveAiRuntimeStep(Step(2U, 50U, false));
     ASSERT_TRUE(monitor.Stop().Ok());
 
-    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(
-        trace_memory);
-    const auto *records = reinterpret_cast<const ThreadMonitorTraceRecord *>(
-        trace_memory + kThreadMonitorTraceDataOffset);
+    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(trace_memory);
+    const auto *records =
+        reinterpret_cast<const ThreadMonitorTraceRecord *>(trace_memory + kThreadMonitorTraceDataOffset);
     ASSERT_EQ(header->record_count, 4U);
     EXPECT_EQ(records[2].npu_elapsed_ms, 30U);
     EXPECT_EQ(records[3].npu_elapsed_ms, 30U);
 }
 
-TEST(AiModelMonitor, RecoversTimingAfterUnmatchedBegins)
+TEST(
+    AiModelMonitor,
+    RecoversTimingAfterUnmatchedBegins
+)
 {
     std::memset(trace_memory, 0, sizeof(trace_memory));
     AiModelMonitor monitor;
     ASSERT_TRUE(monitor.Start().Ok());
-    for (std::uint32_t inference_id = 1U; inference_id <= 17U;
-         ++inference_id) {
+    for (std::uint32_t inference_id = 1U; inference_id <= 17U; ++inference_id) {
         monitor.ObserveAiRuntimeStep(Step(inference_id, inference_id, true));
     }
     monitor.ObserveAiRuntimeStep(Step(17U, 47U, false));
     monitor.ObserveAiRuntimeStep(Step(1U, 48U, false));
     ASSERT_TRUE(monitor.Stop().Ok());
 
-    const auto *records = reinterpret_cast<const ThreadMonitorTraceRecord *>(
-        trace_memory + kThreadMonitorTraceDataOffset);
+    const auto *records =
+        reinterpret_cast<const ThreadMonitorTraceRecord *>(trace_memory + kThreadMonitorTraceDataOffset);
     EXPECT_EQ(records[17].npu_elapsed_ms, 30U);
     EXPECT_NE(records[17].flags & kTraceFlagTimingValid, 0U);
     EXPECT_EQ(records[18].flags & kTraceFlagTimingValid, 0U);
 }
 
-TEST(AiModelMonitor, ConcurrentProducers)
+TEST(
+    AiModelMonitor,
+    ConcurrentProducers
+)
 {
     std::memset(trace_memory, 0, sizeof(trace_memory));
     AiModelMonitor monitor;
@@ -160,7 +175,9 @@ TEST(AiModelMonitor, ConcurrentProducers)
     std::atomic<bool> synchronization_failed{false};
     const auto produce = [&](std::uint32_t first_id) {
         ++ready;
-        if (!WaitUntil([&] { return go.load(); })) {
+        if (!WaitUntil([&] {
+                return go.load();
+            })) {
             synchronization_failed = true;
             return;
         }
@@ -170,26 +187,29 @@ TEST(AiModelMonitor, ConcurrentProducers)
     };
     std::thread first(produce, 1U);
     std::thread second(produce, 41U);
-    const bool producers_ready = WaitUntil([&] { return ready.load() == 2; });
+    const bool producers_ready = WaitUntil([&] {
+        return ready.load() == 2;
+    });
     go = true;
     first.join();
     second.join();
     ASSERT_TRUE(monitor.Stop().Ok());
     EXPECT_TRUE(producers_ready);
     EXPECT_FALSE(synchronization_failed.load());
-    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(
-        trace_memory);
+    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(trace_memory);
     EXPECT_EQ(header->record_count, 80U);
     EXPECT_EQ(header->dropped_count, 0U);
 }
 
-TEST(AiModelMonitor, MissingBeginIsNotValidTiming)
+TEST(
+    AiModelMonitor,
+    MissingBeginIsNotValidTiming
+)
 {
     std::memset(trace_memory, 0, sizeof(trace_memory));
     AiModelMonitor monitor;
     ASSERT_TRUE(monitor.Start().Ok());
-    for (std::uint32_t inference_id = 1U; inference_id <= 127U;
-         ++inference_id) {
+    for (std::uint32_t inference_id = 1U; inference_id <= 127U; ++inference_id) {
         monitor.ObserveAiRuntimeStep(Step(inference_id, inference_id, true));
     }
     monitor.ObserveAiRuntimeStep(Step(128U, 1000U, true));
@@ -197,8 +217,7 @@ TEST(AiModelMonitor, MissingBeginIsNotValidTiming)
     monitor.ObserveAiRuntimeStep(Step(128U, 1030U, false));
     ASSERT_TRUE(monitor.Stop().Ok());
 
-    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(
-        trace_memory);
+    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(trace_memory);
     const auto records = StepRecords();
     ASSERT_EQ(records.size(), 128U);
     EXPECT_EQ(header->dropped_count, 1U);
@@ -206,7 +225,10 @@ TEST(AiModelMonitor, MissingBeginIsNotValidTiming)
     EXPECT_EQ(records[127].flags & kTraceFlagTimingValid, 0U);
 }
 
-TEST(AiModelMonitor, ZeroDurationAndTimestampWrapAreValid)
+TEST(
+    AiModelMonitor,
+    ZeroDurationAndTimestampWrapAreValid
+)
 {
     std::memset(trace_memory, 0, sizeof(trace_memory));
     AiModelMonitor monitor;
@@ -227,7 +249,10 @@ TEST(AiModelMonitor, ZeroDurationAndTimestampWrapAreValid)
     EXPECT_NE(records[3].flags & kTraceFlagTimingValid, 0U);
 }
 
-TEST(AiModelMonitor, ConcurrentProducersAndConsumerAcrossWraps)
+TEST(
+    AiModelMonitor,
+    ConcurrentProducersAndConsumerAcrossWraps
+)
 {
     std::memset(trace_memory, 0, sizeof(trace_memory));
     AiModelMonitor monitor;
@@ -242,7 +267,9 @@ TEST(AiModelMonitor, ConcurrentProducersAndConsumerAcrossWraps)
                 monitor.ObserveAiRuntimeStep(Step(inference_id, inference_id, true));
             }
             ++completed_batches;
-            if (!WaitUntil([&] { return released_batches.load() > batch; })) {
+            if (!WaitUntil([&] {
+                    return released_batches.load() > batch;
+                })) {
                 synchronization_failed = true;
                 return;
             }
@@ -267,8 +294,7 @@ TEST(AiModelMonitor, ConcurrentProducersAndConsumerAcrossWraps)
     ASSERT_TRUE(monitor.Stop().Ok());
     EXPECT_FALSE(synchronization_failed.load());
 
-    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(
-        trace_memory);
+    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(trace_memory);
     const auto records = StepRecords();
     ASSERT_EQ(records.size(), 512U);
     EXPECT_EQ(header->dropped_count, 0U);
@@ -282,7 +308,10 @@ TEST(AiModelMonitor, ConcurrentProducersAndConsumerAcrossWraps)
     }
 }
 
-TEST(AiModelMonitor, FullQueueRejectsMessagesAcrossWraps)
+TEST(
+    AiModelMonitor,
+    FullQueueRejectsMessagesAcrossWraps
+)
 {
     std::memset(trace_memory, 0, sizeof(trace_memory));
     AiModelMonitor monitor;
@@ -297,8 +326,7 @@ TEST(AiModelMonitor, FullQueueRejectsMessagesAcrossWraps)
     }
     ASSERT_TRUE(monitor.Stop().Ok());
 
-    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(
-        trace_memory);
+    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(trace_memory);
     const auto records = StepRecords();
     ASSERT_EQ(records.size(), 762U);
     EXPECT_EQ(header->dropped_count, 6U);

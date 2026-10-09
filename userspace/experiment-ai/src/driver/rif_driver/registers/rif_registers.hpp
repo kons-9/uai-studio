@@ -12,9 +12,9 @@ namespace uai::ai::rif::registers {
  * keeps the STM32 register knowledge out of the initialization flow.
  */
 enum class RisafRegister : std::uint32_t {
-    kConfiguration = 0x000U, /* CFGR */
-    kStartAddress = 0x004U, /* STARTR */
-    kEndAddress = 0x008U, /* ENDR */
+    kConfiguration = 0x000U,    /* CFGR */
+    kStartAddress = 0x004U,     /* STARTR */
+    kEndAddress = 0x008U,       /* ENDR */
     kCidConfiguration = 0x00CU, /* CIDCFGR */
 };
 

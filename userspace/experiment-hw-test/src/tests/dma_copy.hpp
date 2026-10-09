@@ -24,9 +24,10 @@ inline Result CheckDmaCopy(DMA_Channel_TypeDef *channel)
     handle.Init.TransferEventMode = DMA_TCEM_BLOCK_TRANSFER;
     handle.Init.Mode = DMA_NORMAL;
     Result result{Outcome::kFail, "dma-initialization"};
-    if (HAL_DMA_Init(&handle) == HAL_OK &&
-        HAL_DMA_ConfigChannelAttributes(&handle, DMA_CHANNEL_PRIV | DMA_CHANNEL_SEC |
-                                        DMA_CHANNEL_SRC_SEC | DMA_CHANNEL_DEST_SEC) == HAL_OK) {
+    if (HAL_DMA_Init(&handle) == HAL_OK
+        && HAL_DMA_ConfigChannelAttributes(
+               &handle, DMA_CHANNEL_PRIV | DMA_CHANNEL_SEC | DMA_CHANNEL_SRC_SEC | DMA_CHANNEL_DEST_SEC
+           ) == HAL_OK) {
         result = {Outcome::kPass, "seven-byte-lengths-data-guards-and-cache"};
         static constexpr std::size_t lengths[] = {1, 3, 31, 32, 33, 255, 256};
         for (const auto length : lengths) {
@@ -37,11 +38,13 @@ inline Result CheckDmaCopy(DMA_Channel_TypeDef *channel)
             }
             SCB_CleanDCache_by_Addr(source, sizeof(source));
             SCB_CleanInvalidateDCache_by_Addr(destination, sizeof(destination));
-            if (HAL_DMA_Start(&handle,
+            if (HAL_DMA_Start(
+                    &handle,
                     static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(source + offset)),
                     static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(destination + offset)),
-                    static_cast<std::uint32_t>(length)) != HAL_OK ||
-                HAL_DMA_PollForTransfer(&handle, HAL_DMA_FULL_TRANSFER, 100) != HAL_OK) {
+                    static_cast<std::uint32_t>(length)
+                ) != HAL_OK
+                || HAL_DMA_PollForTransfer(&handle, HAL_DMA_FULL_TRANSFER, 100) != HAL_OK) {
                 HAL_DMA_Abort(&handle);
                 result = {Outcome::kFail, "dma-transfer-or-timeout"};
                 break;
@@ -56,10 +59,14 @@ inline Result CheckDmaCopy(DMA_Channel_TypeDef *channel)
                     break;
                 }
             }
-            if (result.outcome == Outcome::kFail) { break; }
+            if (result.outcome == Outcome::kFail) {
+                break;
+            }
         }
     }
-    if (HAL_DMA_DeInit(&handle) != HAL_OK) { result = {Outcome::kFail, "dma-deinitialization"}; }
+    if (HAL_DMA_DeInit(&handle) != HAL_OK) {
+        result = {Outcome::kFail, "dma-deinitialization"};
+    }
     return result;
 }
 

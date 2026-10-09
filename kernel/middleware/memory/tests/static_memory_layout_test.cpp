@@ -5,7 +5,10 @@
 namespace uai::ai::static_memory_layout {
 namespace {
 
-TEST(StaticMemoryLayout, AddressRangeValidityAndOverlap)
+TEST(
+    StaticMemoryLayout,
+    AddressRangeValidityAndOverlap
+)
 {
     EXPECT_TRUE((AddressRange{0x1000U, 0x2000U}).is_valid());
     EXPECT_FALSE((AddressRange{0x1000U, 0x1000U}).is_valid());
@@ -22,7 +25,10 @@ TEST(StaticMemoryLayout, AddressRangeValidityAndOverlap)
     EXPECT_TRUE(base.overlaps(base));
 }
 
-TEST(StaticMemoryLayout, RegionDerivesAddressSizeAndRange)
+TEST(
+    StaticMemoryLayout,
+    RegionDerivesAddressSizeAndRange
+)
 {
     alignas(32) static std::uint8_t storage[64U];
     const Region region{storage, storage + sizeof(storage)};

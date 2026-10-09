@@ -27,13 +27,13 @@ common::Error TouchDriver::Initialize()
         return {common::ErrorCode::kAlreadyInitialized};
     }
     common::Error management_status = management_->Initialize();
-    if (!management_status.Ok() &&
-        management_status.Code() != common::ErrorCode::kAlreadyInitialized) {
+    if (!management_status.Ok() && management_status.Code() != common::ErrorCode::kAlreadyInitialized) {
         return management_status;
     }
     Writer writer;
     management_status = management_->Acquire(&writer);
-    if (!management_status.Ok()) return management_status;
+    if (!management_status.Ok())
+        return management_status;
 
     /* The LCD and GT911 share this reset line; release it after LCD setup. */
     TS_NRST_GPIO_CLK_ENABLE();
@@ -67,10 +67,13 @@ common::Error TouchDriver::Initialize()
         controller_status = GT911_Init(&g_controller);
     }
     if (controller_status != GT911_OK) {
-        UAI_LOG_WARN("touch: gt911 init failed bus=%d id=%d/%x ctrl=%d\n",
-                     static_cast<int>(bus_status), static_cast<int>(id_status),
-                     static_cast<unsigned int>(id),
-                     static_cast<int>(controller_status));
+        UAI_LOG_WARN(
+            "touch: gt911 init failed bus=%d id=%d/%x ctrl=%d\n",
+            static_cast<int>(bus_status),
+            static_cast<int>(id_status),
+            static_cast<unsigned int>(id),
+            static_cast<int>(controller_status)
+        );
         return {common::ErrorCode::kHardware};
     }
 
@@ -78,10 +81,14 @@ common::Error TouchDriver::Initialize()
     return {common::ErrorCode::kOk};
 }
 
-common::Error TouchDriver::Read(ui::TouchPoint *sample, const Writer &writer)
+common::Error TouchDriver::Read(
+    ui::TouchPoint *sample,
+    const Writer &writer
+)
 {
     common::Error ownership = management_->Validate(writer);
-    if (!ownership.Ok()) return ownership;
+    if (!ownership.Ok())
+        return ownership;
     if (!initialized_) {
         return {common::ErrorCode::kNotInitialized};
     }
@@ -95,10 +102,8 @@ common::Error TouchDriver::Read(ui::TouchPoint *sample, const Writer &writer)
     }
     sample->active = state.TouchDetected != 0U;
     if (sample->active) {
-        sample->x = static_cast<std::uint16_t>(
-            state.TouchX < kTouchWidth ? state.TouchX : kTouchWidth - 1U);
-        sample->y = static_cast<std::uint16_t>(
-            state.TouchY < kTouchHeight ? state.TouchY : kTouchHeight - 1U);
+        sample->x = static_cast<std::uint16_t>(state.TouchX < kTouchWidth ? state.TouchX : kTouchWidth - 1U);
+        sample->y = static_cast<std::uint16_t>(state.TouchY < kTouchHeight ? state.TouchY : kTouchHeight - 1U);
     } else {
         sample->x = 0U;
         sample->y = 0U;

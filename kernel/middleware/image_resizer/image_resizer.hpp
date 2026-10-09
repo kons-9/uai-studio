@@ -40,7 +40,10 @@ struct Selection {
 /* Backend selection is deliberately independent from HAL register writes.
  * This keeps the policy testable and lets the camera driver apply the
  * returned DCMIPP plan to either Pipe1 or Pipe2. */
-common::Error Select(const Request &request, Selection *selection);
+common::Error Select(
+    const Request &request,
+    Selection *selection
+);
 
 const char *HardwareName(Hardware hardware);
 

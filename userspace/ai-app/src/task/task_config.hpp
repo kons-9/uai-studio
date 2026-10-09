@@ -31,16 +31,13 @@ enum class DisplayDiagnosticMode : std::uint8_t {
 };
 
 inline constexpr InferenceMode kInferenceMode = InferenceMode::kNpu;
-inline constexpr DisplayDiagnosticMode kDisplayDiagnosticMode =
-    DisplayDiagnosticMode::kCameraPreview;
+inline constexpr DisplayDiagnosticMode kDisplayDiagnosticMode = DisplayDiagnosticMode::kCameraPreview;
 inline constexpr bool kDisplayCoordinatePatternDiagnostic =
     kDisplayDiagnosticMode == DisplayDiagnosticMode::kStaticPattern;
-inline constexpr bool kSyntheticComposeDiagnostic =
-    kDisplayDiagnosticMode == DisplayDiagnosticMode::kSyntheticCompose;
+inline constexpr bool kSyntheticComposeDiagnostic = kDisplayDiagnosticMode == DisplayDiagnosticMode::kSyntheticCompose;
 inline constexpr bool kLiveCaptureFreezeDiagnostic =
     kDisplayDiagnosticMode == DisplayDiagnosticMode::kLiveCaptureFreeze;
-inline constexpr bool kCopyInferenceFrames =
-    kInferenceMode != InferenceMode::kDisabled;
+inline constexpr bool kCopyInferenceFrames = kInferenceMode != InferenceMode::kDisabled;
 
 /* Runtime diagnostics. Per-frame diagnostics remain disabled in normal
  * operation; the low-rate inference_fps aggregate is enabled to expose

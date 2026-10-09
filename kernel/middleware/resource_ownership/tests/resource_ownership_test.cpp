@@ -25,10 +25,14 @@ ID tk_cre_mtx(const T_CMTX *config)
     ++g_mutex.created;
     return g_mutex.create_result;
 }
-ER tk_loc_mtx(ID mutex, TMO timeout)
+ER tk_loc_mtx(
+    ID mutex,
+    TMO timeout
+)
 {
     g_mutex.last_timeout = timeout;
-    if (g_mutex.lock_result != E_OK) return g_mutex.lock_result;
+    if (g_mutex.lock_result != E_OK)
+        return g_mutex.lock_result;
     g_mutex.locks.push_back(mutex);
     return E_OK;
 }
@@ -46,46 +50,45 @@ protected:
     void SetUp() override { g_mutex.Reset(); }
 };
 
-TEST_F(ResourceOwnershipTest, InitializeCreatesInheritMutexOnce)
+TEST_F(
+    ResourceOwnershipTest,
+    InitializeCreatesInheritMutexOnce
+)
 {
     ResourceManagement management;
     ResourceManagement::Writer writer;
-    EXPECT_EQ(management.Acquire(&writer).Code(),
-              common::ErrorCode::kNotInitialized);
+    EXPECT_EQ(management.Acquire(&writer).Code(), common::ErrorCode::kNotInitialized);
     EXPECT_FALSE(writer.Valid());
-    EXPECT_EQ(management.Validate(writer).Code(),
-              common::ErrorCode::kNotInitialized);
+    EXPECT_EQ(management.Validate(writer).Code(), common::ErrorCode::kNotInitialized);
 
     ASSERT_TRUE(management.Initialize().Ok());
     EXPECT_EQ(g_mutex.created, 1);
     EXPECT_EQ(g_mutex.last_attr, TA_INHERIT);
-    EXPECT_EQ(management.Initialize().Code(),
-              common::ErrorCode::kAlreadyInitialized);
+    EXPECT_EQ(management.Initialize().Code(), common::ErrorCode::kAlreadyInitialized);
     EXPECT_EQ(g_mutex.created, 1);
 
     ResourceManagement failing;
     g_mutex.create_result = -1;
     EXPECT_EQ(failing.Initialize().Code(), common::ErrorCode::kOwnership);
-    EXPECT_EQ(failing.Acquire(&writer).Code(),
-              common::ErrorCode::kNotInitialized);
+    EXPECT_EQ(failing.Acquire(&writer).Code(), common::ErrorCode::kNotInitialized);
 }
 
-TEST_F(ResourceOwnershipTest, AcquireMapsTimeoutAndReleasesExactlyOnce)
+TEST_F(
+    ResourceOwnershipTest,
+    AcquireMapsTimeoutAndReleasesExactlyOnce
+)
 {
     ResourceManagement management;
     ASSERT_TRUE(management.Initialize().Ok());
-    EXPECT_EQ(management.Acquire(nullptr).Code(),
-              common::ErrorCode::kInvalidArgument);
+    EXPECT_EQ(management.Acquire(nullptr).Code(), common::ErrorCode::kInvalidArgument);
 
     g_mutex.lock_result = E_TMOUT;
     ResourceManagement::Writer writer;
-    EXPECT_EQ(management.Acquire(&writer, 5).Code(),
-              common::ErrorCode::kTimeout);
+    EXPECT_EQ(management.Acquire(&writer, 5).Code(), common::ErrorCode::kTimeout);
     EXPECT_EQ(g_mutex.last_timeout, 5);
     EXPECT_FALSE(writer.Valid());
     g_mutex.lock_result = -99;
-    EXPECT_EQ(management.Acquire(&writer).Code(),
-              common::ErrorCode::kOwnership);
+    EXPECT_EQ(management.Acquire(&writer).Code(), common::ErrorCode::kOwnership);
     EXPECT_EQ(g_mutex.last_timeout, TMO_FEVR);
 
     g_mutex.lock_result = E_OK;
@@ -99,8 +102,7 @@ TEST_F(ResourceOwnershipTest, AcquireMapsTimeoutAndReleasesExactlyOnce)
         ResourceManagement::Writer moved(std::move(held));
         EXPECT_FALSE(held.Valid());
         EXPECT_TRUE(moved.Valid());
-        EXPECT_EQ(management.Validate(held).Code(),
-                  common::ErrorCode::kOwnership);
+        EXPECT_EQ(management.Validate(held).Code(), common::ErrorCode::kOwnership);
         EXPECT_TRUE(management.Validate(moved).Ok());
 
         ResourceManagement::Writer &self = moved;
@@ -112,7 +114,10 @@ TEST_F(ResourceOwnershipTest, AcquireMapsTimeoutAndReleasesExactlyOnce)
     EXPECT_EQ(g_mutex.unlocks[0], g_mutex.locks[0]);
 }
 
-TEST_F(ResourceOwnershipTest, MoveAssignReleasesPreviousAndRejectsForeignWriter)
+TEST_F(
+    ResourceOwnershipTest,
+    MoveAssignReleasesPreviousAndRejectsForeignWriter
+)
 {
     ResourceManagement first;
     ResourceManagement second;

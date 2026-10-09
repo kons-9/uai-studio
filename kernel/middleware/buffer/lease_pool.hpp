@@ -30,20 +30,15 @@ public:
     Slot &operator[](std::uint8_t index) { return slots_[index]; }
     const Slot &operator[](std::uint8_t index) const { return slots_[index]; }
 
-    Slot *Find(std::uint8_t index)
-    {
-        return index < Capacity ? &slots_[index] : nullptr;
-    }
+    Slot *Find(std::uint8_t index) { return index < Capacity ? &slots_[index] : nullptr; }
 
-    const Slot *Find(std::uint8_t index) const
-    {
-        return index < Capacity ? &slots_[index] : nullptr;
-    }
+    const Slot *Find(std::uint8_t index) const { return index < Capacity ? &slots_[index] : nullptr; }
 
     Slot *FindByAddress(std::uintptr_t address)
     {
         for (Slot &slot : slots_) {
-            if (slot.buffer.address == address) return &slot;
+            if (slot.buffer.address == address)
+                return &slot;
         }
         return nullptr;
     }
@@ -51,7 +46,8 @@ public:
     const Slot *FindByAddress(std::uintptr_t address) const
     {
         for (const Slot &slot : slots_) {
-            if (slot.buffer.address == address) return &slot;
+            if (slot.buffer.address == address)
+                return &slot;
         }
         return nullptr;
     }
@@ -59,16 +55,21 @@ public:
     Slot *FindFree()
     {
         for (Slot &slot : slots_) {
-            if (slot.state == BufferState::kFree) return &slot;
+            if (slot.state == BufferState::kFree)
+                return &slot;
         }
         return nullptr;
     }
 
     /* Enter `next` and mint a token that is never zero. */
-    std::uint64_t Lease(Slot &slot, BufferState next)
+    std::uint64_t Lease(
+        Slot &slot,
+        BufferState next
+    )
     {
         ++next_token_;
-        if (next_token_ == 0U) ++next_token_;
+        if (next_token_ == 0U)
+            ++next_token_;
         slot.state = next;
         slot.lease_token = next_token_;
         return slot.lease_token;

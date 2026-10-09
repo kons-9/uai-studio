@@ -11,14 +11,14 @@ struct MemoryConfig {
 
     constexpr std::size_t AlignUp(std::size_t value) const
     {
-        return (value + buffer_alignment - 1U) /
-               buffer_alignment * buffer_alignment;
+        return (value + buffer_alignment - 1U) / buffer_alignment * buffer_alignment;
     }
 
     constexpr std::size_t inference_output_storage_bytes() const
     {
         std::size_t total = 0U;
-        for (const std::size_t bytes : model_output_bytes) total += AlignUp(bytes);
+        for (const std::size_t bytes : model_output_bytes)
+            total += AlignUp(bytes);
         return total;
     }
 };

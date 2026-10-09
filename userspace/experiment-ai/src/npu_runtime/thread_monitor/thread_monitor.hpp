@@ -96,26 +96,34 @@ public:
     void BeginOperation();
     void Progress();
     bool EndOperation();
-    void ObserveNpuExecution(std::uint32_t end_ms,
-                             std::uint32_t elapsed_ms,
-                             std::uint32_t model_kind_id);
-    void ObserveNpuEpoch(std::uint32_t end_ms,
-                         std::uint32_t end_cycles,
-                         std::uint32_t elapsed_cycles,
-                         std::uint32_t model_kind_id,
-                         std::uint32_t epoch_index,
-                         std::uint32_t epoch_flags,
-                         std::uint32_t epoch_address,
-                         std::uint32_t callback_type);
-    void ObserveInferencePhase(std::uint32_t end_ms,
-                               std::uint32_t elapsed_ms,
-                               InferencePhase phase,
-                               std::uint32_t model_kind_id);
-    void ObservePipelineStage(std::uint32_t end_ms,
-                              std::uint32_t end_cycles,
-                              std::uint32_t elapsed_cycles,
-                              std::uint32_t stage_id,
-                              std::uint32_t model_kind_id);
+    void ObserveNpuExecution(
+        std::uint32_t end_ms,
+        std::uint32_t elapsed_ms,
+        std::uint32_t model_kind_id
+    );
+    void ObserveNpuEpoch(
+        std::uint32_t end_ms,
+        std::uint32_t end_cycles,
+        std::uint32_t elapsed_cycles,
+        std::uint32_t model_kind_id,
+        std::uint32_t epoch_index,
+        std::uint32_t epoch_flags,
+        std::uint32_t epoch_address,
+        std::uint32_t callback_type
+    );
+    void ObserveInferencePhase(
+        std::uint32_t end_ms,
+        std::uint32_t elapsed_ms,
+        InferencePhase phase,
+        std::uint32_t model_kind_id
+    );
+    void ObservePipelineStage(
+        std::uint32_t end_ms,
+        std::uint32_t end_cycles,
+        std::uint32_t elapsed_cycles,
+        std::uint32_t stage_id,
+        std::uint32_t model_kind_id
+    );
 
     bool Faulted() const { return faulted_; }
 
@@ -130,28 +138,45 @@ private:
         std::uint32_t epoch_end_cycles = 0U;
         std::uint32_t epoch_elapsed_cycles = 0U;
         std::uint32_t callback_type = 0U;
-        std::uint8_t record_type =
-            static_cast<std::uint8_t>(TraceRecordType::kInferencePhase);
+        std::uint8_t record_type = static_cast<std::uint8_t>(TraceRecordType::kInferencePhase);
         std::uint16_t phase_id = 0U;
     };
 
-    static void Entry(INT stacd, void *exinf);
+    static void Entry(
+        INT stacd,
+        void *exinf
+    );
     void Run();
-    void ReportFault(std::uint32_t now, const T_RTSK *task_status,
-                     ER reference_status, TraceFaultCode fault_code);
+    void ReportFault(
+        std::uint32_t now,
+        const T_RTSK *task_status,
+        ER reference_status,
+        TraceFaultCode fault_code
+    );
     bool InitializeTraceBuffer();
     bool TraceHeaderValid() const;
-    void RecordSample(std::uint32_t now, const T_RTSK &task_status);
+    void RecordSample(
+        std::uint32_t now,
+        const T_RTSK &task_status
+    );
     bool QueueTraceEvent(const PendingTraceEvent &event);
     void FlushPendingTraceEvents();
-    void WriteRecord(std::uint32_t now, TraceRecordType type,
-                     const T_RTSK *task_status, ER reference_status,
-                     TraceFaultCode fault_code, bool has_npu_timing = false,
-                     std::uint32_t npu_elapsed_ms = 0U,
-                     std::uint32_t model_kind_id = kUnknownModelKindId,
-                     std::uint16_t phase_id = 0U,
-                     const PendingTraceEvent *event = nullptr);
-    void FlushTrace(const void *address, std::size_t size) const;
+    void WriteRecord(
+        std::uint32_t now,
+        TraceRecordType type,
+        const T_RTSK *task_status,
+        ER reference_status,
+        TraceFaultCode fault_code,
+        bool has_npu_timing = false,
+        std::uint32_t npu_elapsed_ms = 0U,
+        std::uint32_t model_kind_id = kUnknownModelKindId,
+        std::uint16_t phase_id = 0U,
+        const PendingTraceEvent *event = nullptr
+    );
+    void FlushTrace(
+        const void *address,
+        std::size_t size
+    ) const;
     std::uint32_t Now() const;
 
     ID monitored_task_id_ = 0;

@@ -9,7 +9,11 @@ namespace uai::ai::nor::registers {
 class NorRegisterLayer final {
 public:
     int Initialize();
-    int Read(std::uint8_t *buffer, std::uint32_t address, std::size_t size);
+    int Read(
+        std::uint8_t *buffer,
+        std::uint32_t address,
+        std::size_t size
+    );
     int EnableMemoryMappedMode();
 };
 

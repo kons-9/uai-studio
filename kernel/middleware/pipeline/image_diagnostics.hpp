@@ -8,7 +8,10 @@
 
 namespace uai::ai::pipeline {
 
-constexpr std::uint32_t Crc32Bytes(const std::uint8_t *bytes, std::size_t size)
+constexpr std::uint32_t Crc32Bytes(
+    const std::uint8_t *bytes,
+    std::size_t size
+)
 {
     std::uint32_t crc = 0xFFFFFFFFU;
     for (std::size_t index = 0U; index < size; ++index) {
@@ -26,7 +29,10 @@ struct LuminanceStatistics {
 };
 
 inline LuminanceStatistics SampleRgb565Luminance(
-    const std::uint16_t *pixels, std::size_t count, std::size_t step)
+    const std::uint16_t *pixels,
+    std::size_t count,
+    std::size_t step
+)
 {
     std::uint32_t sum = 0U;
     std::uint32_t peak = 0U;
@@ -36,8 +42,7 @@ inline LuminanceStatistics SampleRgb565Luminance(
         const std::uint32_t red = ((pixel >> 11U) & 0x1FU) * 255U / 31U;
         const std::uint32_t green = ((pixel >> 5U) & 0x3FU) * 255U / 63U;
         const std::uint32_t blue = (pixel & 0x1FU) * 255U / 31U;
-        const std::uint32_t luminance =
-            (77U * red + 150U * green + 29U * blue) >> 8U;
+        const std::uint32_t luminance = (77U * red + 150U * green + 29U * blue) >> 8U;
         sum += luminance;
         peak = luminance > peak ? luminance : peak;
         ++samples;
@@ -52,9 +57,12 @@ struct Rgb888Statistics {
     std::uint32_t mean_luminance = 0U;
 };
 
-inline Rgb888Statistics InspectRgb888(const std::uint8_t *bytes,
-                                      std::size_t size, std::size_t pixel_count,
-                                      std::size_t sample_step)
+inline Rgb888Statistics InspectRgb888(
+    const std::uint8_t *bytes,
+    std::size_t size,
+    std::size_t pixel_count,
+    std::size_t sample_step
+)
 {
     Rgb888Statistics result{};
     result.crc = Crc32Bytes(bytes, size);
@@ -66,18 +74,21 @@ inline Rgb888Statistics InspectRgb888(const std::uint8_t *bytes,
     std::uint32_t samples = 0U;
     for (std::size_t pixel = 0U; pixel < pixel_count; pixel += sample_step) {
         const std::size_t index = pixel * 3U;
-        sum += (77U * bytes[index] + 150U * bytes[index + 1U] +
-                29U * bytes[index + 2U]) >> 8U;
+        sum += (77U * bytes[index] + 150U * bytes[index + 1U] + 29U * bytes[index + 2U]) >> 8U;
         ++samples;
     }
     result.mean_luminance = samples == 0U ? 0U : sum / samples;
     return result;
 }
 
-inline bool RowHasData(const std::uint16_t *pixels, std::size_t width)
+inline bool RowHasData(
+    const std::uint16_t *pixels,
+    std::size_t width
+)
 {
     for (std::size_t column = 0U; column < width; ++column) {
-        if (pixels[column] != 0U) return true;
+        if (pixels[column] != 0U)
+            return true;
     }
     return false;
 }
@@ -101,8 +112,8 @@ inline CaptureRowStatistics InspectCaptureRows(const std::uint16_t *pixels)
         const bool nonzero = RowHasData(data, kCaptureFormat.width);
         result.has_data[row] = nonzero;
         result.row_crcs[row] = Crc32Bytes(
-            reinterpret_cast<const std::uint8_t *>(data),
-            kCaptureFormat.width * kCaptureFormat.bytes_per_pixel);
+            reinterpret_cast<const std::uint8_t *>(data), kCaptureFormat.width * kCaptureFormat.bytes_per_pixel
+        );
         if (nonzero) {
             ++result.nonzero_rows;
             result.first_nonzero = result.first_nonzero < row ? result.first_nonzero : row;
@@ -117,7 +128,8 @@ inline CaptureRowStatistics InspectCaptureRows(const std::uint16_t *pixels)
                 break;
             }
         }
-        if (!seen) ++result.distinct_row_crcs;
+        if (!seen)
+            ++result.distinct_row_crcs;
     }
     return result;
 }

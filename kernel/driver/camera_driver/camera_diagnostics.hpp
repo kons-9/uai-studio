@@ -17,7 +17,10 @@ struct SensorDiagnostics {
 };
 
 SensorDiagnostics ReadSensorDiagnostics();
-void DumpCaptureRegisters(const pipeline::CaptureFrame &frame,
-                          const Diagnostics &diagnostics, std::uint32_t crc);
+void DumpCaptureRegisters(
+    const pipeline::CaptureFrame &frame,
+    const Diagnostics &diagnostics,
+    std::uint32_t crc
+);
 
 } // namespace uai::ai::camera

@@ -26,47 +26,26 @@ constexpr std::uint32_t kFallbackVmax = 4500U;
 namespace uai::ai::camera::sensor::registers {
 namespace {
 
-
 constexpr RegisterDescription kDescriptions[] = {
-    {Imx335Register::kModeSelect, "MODE_SELECT",
-     "Sensor streaming state: 0x00 stream, 0x01 standby.", 1U},
-    {Imx335Register::kFrameHold, "HOLD",
-     "Groups frame timing and exposure updates at a frame boundary.", 1U},
-    {Imx335Register::kVmax, "VMAX",
-     "Vertical frame length in sensor lines; controls frame period.", 3U},
-    {Imx335Register::kShutter, "SHUTTER",
-     "Exposure position in lines; lower value gives longer exposure.", 3U},
-    {Imx335Register::kGain, "GAIN",
-     "Analog gain code used by the IMX335 gain helper.", 2U},
-    {Imx335Register::kMipiClockSelect, "INCKSEL1",
-     "MIPI clock profile selected for the sensor link rate.", 2U},
-    {Imx335Register::kMipiLaneClock, "INCKSEL2",
-     "Second part of the MIPI lane clock profile.", 1U},
-    {Imx335Register::kMipiSystemMode, "SYSMODE",
-     "MIPI system mode paired with the selected lane clock.", 1U},
-    {Imx335Register::kMipiTclkPost, "TCLKPOST",
-     "MIPI clock postamble timing for the selected lane rate.", 2U},
-    {Imx335Register::kMipiTclkPrepare, "TCLKPREPARE",
-     "MIPI clock prepare timing for the selected lane rate.", 2U},
-    {Imx335Register::kMipiTclkTrail, "TCLKTRAIL",
-     "MIPI clock trail timing for the selected lane rate.", 2U},
-    {Imx335Register::kMipiTclkZero, "TCLKZERO",
-     "MIPI clock zero timing for the selected lane rate.", 2U},
-    {Imx335Register::kMipiThsPrepare, "THSPREPARE",
-     "MIPI data prepare timing for the selected lane rate.", 2U},
-    {Imx335Register::kMipiThsZero, "THSZERO",
-     "MIPI data zero timing for the selected lane rate.", 2U},
-    {Imx335Register::kMipiThsTrail, "THSTRAIL",
-     "MIPI data trail timing for the selected lane rate.", 2U},
-    {Imx335Register::kMipiThsExit, "THSEXIT",
-     "MIPI data exit timing for the selected lane rate.", 2U},
-    {Imx335Register::kMipiTplx, "TPLX",
-     "MIPI low-power transition timing for the selected lane rate.", 2U},
-    {Imx335Register::kTestPattern, "TPG",
-     "Sensor test-pattern selector; -1 is represented by the enable table.",
-     1U},
-    {Imx335Register::kChipId, "CHIP_ID",
-     "Read-only sensor identification value.", 1U},
+    {Imx335Register::kModeSelect, "MODE_SELECT", "Sensor streaming state: 0x00 stream, 0x01 standby.", 1U},
+    {Imx335Register::kFrameHold, "HOLD", "Groups frame timing and exposure updates at a frame boundary.", 1U},
+    {Imx335Register::kVmax, "VMAX", "Vertical frame length in sensor lines; controls frame period.", 3U},
+    {Imx335Register::kShutter, "SHUTTER", "Exposure position in lines; lower value gives longer exposure.", 3U},
+    {Imx335Register::kGain, "GAIN", "Analog gain code used by the IMX335 gain helper.", 2U},
+    {Imx335Register::kMipiClockSelect, "INCKSEL1", "MIPI clock profile selected for the sensor link rate.", 2U},
+    {Imx335Register::kMipiLaneClock, "INCKSEL2", "Second part of the MIPI lane clock profile.", 1U},
+    {Imx335Register::kMipiSystemMode, "SYSMODE", "MIPI system mode paired with the selected lane clock.", 1U},
+    {Imx335Register::kMipiTclkPost, "TCLKPOST", "MIPI clock postamble timing for the selected lane rate.", 2U},
+    {Imx335Register::kMipiTclkPrepare, "TCLKPREPARE", "MIPI clock prepare timing for the selected lane rate.", 2U},
+    {Imx335Register::kMipiTclkTrail, "TCLKTRAIL", "MIPI clock trail timing for the selected lane rate.", 2U},
+    {Imx335Register::kMipiTclkZero, "TCLKZERO", "MIPI clock zero timing for the selected lane rate.", 2U},
+    {Imx335Register::kMipiThsPrepare, "THSPREPARE", "MIPI data prepare timing for the selected lane rate.", 2U},
+    {Imx335Register::kMipiThsZero, "THSZERO", "MIPI data zero timing for the selected lane rate.", 2U},
+    {Imx335Register::kMipiThsTrail, "THSTRAIL", "MIPI data trail timing for the selected lane rate.", 2U},
+    {Imx335Register::kMipiThsExit, "THSEXIT", "MIPI data exit timing for the selected lane rate.", 2U},
+    {Imx335Register::kMipiTplx, "TPLX", "MIPI low-power transition timing for the selected lane rate.", 2U},
+    {Imx335Register::kTestPattern, "TPG", "Sensor test-pattern selector; -1 is represented by the enable table.", 1U},
+    {Imx335Register::kChipId, "CHIP_ID", "Read-only sensor identification value.", 1U},
 };
 
 IMX335_Object_t *Sensor()
@@ -84,10 +63,12 @@ const RegisterDescription *Find(Imx335Register address)
     return nullptr;
 }
 
-common::Error HardwareError(const char *operation, int32_t status)
+common::Error HardwareError(
+    const char *operation,
+    int32_t status
+)
 {
-    return {common::ErrorCode::kHardware, static_cast<std::uint32_t>(status),
-            operation};
+    return {common::ErrorCode::kHardware, static_cast<std::uint32_t>(status), operation};
 }
 
 } // namespace
@@ -100,12 +81,14 @@ const RegisterDescription *Imx335RegisterLayer::Describe(std::size_t *count)
     return kDescriptions;
 }
 
-common::Error Imx335RegisterLayer::Read(Imx335Register address, void *data,
-                                std::size_t size) const
+common::Error Imx335RegisterLayer::Read(
+    Imx335Register address,
+    void *data,
+    std::size_t size
+) const
 {
     const RegisterDescription *description = Find(address);
-    if (description == nullptr || data == nullptr ||
-        size != description->size || size > UINT16_MAX) {
+    if (description == nullptr || data == nullptr || size != description->size || size > UINT16_MAX) {
         return {common::ErrorCode::kInvalidArgument, 0U, "camera.register.read"};
     }
     auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
@@ -113,18 +96,23 @@ common::Error Imx335RegisterLayer::Read(Imx335Register address, void *data,
         return HardwareError("camera.register.read", -1);
     }
     const int32_t status = sensor->IO.ReadReg(
-        sensor->IO.Address, static_cast<std::uint16_t>(address),
-        static_cast<std::uint8_t *>(data), static_cast<std::uint16_t>(size));
+        sensor->IO.Address,
+        static_cast<std::uint16_t>(address),
+        static_cast<std::uint8_t *>(data),
+        static_cast<std::uint16_t>(size)
+    );
     return status == 0 ? common::Error{common::ErrorCode::kOk, 0U, "camera.register.read"}
                        : HardwareError("camera.register.read", status);
 }
 
-common::Error Imx335RegisterLayer::Write(Imx335Register address, const void *data,
-                                 std::size_t size) const
+common::Error Imx335RegisterLayer::Write(
+    Imx335Register address,
+    const void *data,
+    std::size_t size
+) const
 {
     const RegisterDescription *description = Find(address);
-    if (description == nullptr || data == nullptr ||
-        size != description->size || size > UINT16_MAX) {
+    if (description == nullptr || data == nullptr || size != description->size || size > UINT16_MAX) {
         return {common::ErrorCode::kInvalidArgument, 0U, "camera.register.write"};
     }
     auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
@@ -132,9 +120,11 @@ common::Error Imx335RegisterLayer::Write(Imx335Register address, const void *dat
         return HardwareError("camera.register.write", -1);
     }
     const int32_t status = sensor->IO.WriteReg(
-        sensor->IO.Address, static_cast<std::uint16_t>(address),
+        sensor->IO.Address,
+        static_cast<std::uint16_t>(address),
         const_cast<std::uint8_t *>(static_cast<const std::uint8_t *>(data)),
-        static_cast<std::uint16_t>(size));
+        static_cast<std::uint16_t>(size)
+    );
     return status == 0 ? common::Error{common::ErrorCode::kOk, 0U, "camera.register.write"}
                        : HardwareError("camera.register.write", status);
 }
@@ -145,13 +135,14 @@ common::Error Imx335RegisterLayer::SetStreaming(bool enabled) const
     return Write(Imx335Register::kModeSelect, &mode, sizeof(mode));
 }
 
-common::Error Imx335RegisterLayer::Configure(int test_pattern_mode,
-                                     int32_t framerate) const
+common::Error Imx335RegisterLayer::Configure(
+    int test_pattern_mode,
+    int32_t framerate
+) const
 {
     IMX335_Object_t *sensor = Sensor();
-    if (sensor == nullptr ||
-        IMX335_SetTestPattern(sensor, test_pattern_mode) != IMX335_OK ||
-        IMX335_SetFramerate(sensor, framerate) != IMX335_OK) {
+    if (sensor == nullptr || IMX335_SetTestPattern(sensor, test_pattern_mode) != IMX335_OK
+        || IMX335_SetFramerate(sensor, framerate) != IMX335_OK) {
         return HardwareError("camera.sensor.configure", IMX335_ERROR);
     }
     return {common::ErrorCode::kOk, 0U, "camera.sensor.configure"};
@@ -160,8 +151,7 @@ common::Error Imx335RegisterLayer::Configure(int test_pattern_mode,
 common::Error Imx335RegisterLayer::SetExposureMicroseconds(int32_t exposure) const
 {
     IMX335_Object_t *sensor = Sensor();
-    if (sensor == nullptr || exposure < 0 ||
-        IMX335_SetExposure(sensor, exposure) != IMX335_OK) {
+    if (sensor == nullptr || exposure < 0 || IMX335_SetExposure(sensor, exposure) != IMX335_OK) {
         return HardwareError("camera.sensor.exposure", IMX335_ERROR);
     }
     return {common::ErrorCode::kOk, 0U, "camera.sensor.exposure"};
@@ -170,8 +160,7 @@ common::Error Imx335RegisterLayer::SetExposureMicroseconds(int32_t exposure) con
 common::Error Imx335RegisterLayer::SetGainMilliDb(int32_t gain_mdB) const
 {
     IMX335_Object_t *sensor = Sensor();
-    if (sensor == nullptr || gain_mdB < IMX335_GAIN_MIN ||
-        IMX335_SetGain(sensor, gain_mdB) != IMX335_OK) {
+    if (sensor == nullptr || gain_mdB < IMX335_GAIN_MIN || IMX335_SetGain(sensor, gain_mdB) != IMX335_OK) {
         return HardwareError("camera.sensor.gain", IMX335_ERROR);
     }
     return {common::ErrorCode::kOk, 0U, "camera.sensor.gain"};
@@ -198,17 +187,20 @@ common::Error Imx335RegisterLayer::ConfigureMipi891Mbps() const
         {Imx335Register::kMipiThsExit, 0x5FU, 0x00U},
         {Imx335Register::kMipiTplx, 0x2FU, 0x00U},
     };
-    common::Error status = Write(Imx335Register::kMipiClockSelect,
-                          incksel1, sizeof(incksel1));
-    if (!status.Ok()) return status;
+    common::Error status = Write(Imx335Register::kMipiClockSelect, incksel1, sizeof(incksel1));
+    if (!status.Ok())
+        return status;
     status = Write(Imx335Register::kMipiLaneClock, &incksel2, sizeof(incksel2));
-    if (!status.Ok()) return status;
+    if (!status.Ok())
+        return status;
     status = Write(Imx335Register::kMipiSystemMode, &sysmode, sizeof(sysmode));
-    if (!status.Ok()) return status;
+    if (!status.Ok())
+        return status;
     for (const Timing &timing : timings) {
         const std::uint8_t value[] = {timing.low, timing.high};
         status = Write(timing.address, value, sizeof(value));
-        if (!status.Ok()) return status;
+        if (!status.Ok())
+            return status;
     }
     return {common::ErrorCode::kOk, 0U, "camera.register.mipi_891"};
 }
@@ -216,8 +208,7 @@ common::Error Imx335RegisterLayer::ConfigureMipi891Mbps() const
 common::Error Imx335RegisterLayer::ReadSnapshot(SensorRegisterSnapshot *snapshot) const
 {
     if (snapshot == nullptr) {
-        return {common::ErrorCode::kInvalidArgument, 0U,
-                "camera.register.snapshot"};
+        return {common::ErrorCode::kInvalidArgument, 0U, "camera.register.snapshot"};
     }
     std::uint8_t vmax[3] = {};
     std::uint8_t shutter[3] = {};
@@ -234,75 +225,78 @@ common::Error Imx335RegisterLayer::ReadSnapshot(SensorRegisterSnapshot *snapshot
     if (!status.Ok()) {
         return status;
     }
-    snapshot->vmax = static_cast<std::uint32_t>(vmax[0]) |
-                     (static_cast<std::uint32_t>(vmax[1]) << 8U) |
-                     (static_cast<std::uint32_t>(vmax[2]) << 16U);
-    snapshot->shutter = static_cast<std::uint32_t>(shutter[0]) |
-                        (static_cast<std::uint32_t>(shutter[1]) << 8U) |
-                        (static_cast<std::uint32_t>(shutter[2]) << 16U);
-    snapshot->gain = static_cast<std::uint32_t>(gain[0]) |
-                     (static_cast<std::uint32_t>(gain[1]) << 8U);
+    snapshot->vmax = static_cast<std::uint32_t>(vmax[0]) | (static_cast<std::uint32_t>(vmax[1]) << 8U)
+        | (static_cast<std::uint32_t>(vmax[2]) << 16U);
+    snapshot->shutter = static_cast<std::uint32_t>(shutter[0]) | (static_cast<std::uint32_t>(shutter[1]) << 8U)
+        | (static_cast<std::uint32_t>(shutter[2]) << 16U);
+    snapshot->gain = static_cast<std::uint32_t>(gain[0]) | (static_cast<std::uint32_t>(gain[1]) << 8U);
     return {common::ErrorCode::kOk, 0U, "camera.register.snapshot"};
 }
 
 } // namespace uai::ai::camera::sensor::registers
 
-extern "C" ISP_StatusTypeDef AiSetImx335Exposure(uint32_t instance,
-                                                   int32_t exposure)
+extern "C" ISP_StatusTypeDef AiSetImx335Exposure(
+    uint32_t instance,
+    int32_t exposure
+)
 {
     (void)instance;
-    if (exposure < 0) return ISP_ERR_EINVAL;
+    if (exposure < 0)
+        return ISP_ERR_EINVAL;
 
     g_ai_last_exposure_request_us = static_cast<unsigned int>(exposure);
-    const std::uint32_t lines = static_cast<std::uint32_t>(
-        static_cast<float>(exposure) /
-        static_cast<float>(kLinePeriodMicroseconds));
+    const std::uint32_t lines =
+        static_cast<std::uint32_t>(static_cast<float>(exposure) / static_cast<float>(kLinePeriodMicroseconds));
     uai::ai::camera::sensor::registers::SensorRegisterSnapshot snapshot{};
-    const auto snapshot_status =
-        uai::ai::camera::sensor::registers::Imx335RegisterLayer{}
-            .ReadSnapshot(&snapshot);
+    const auto snapshot_status = uai::ai::camera::sensor::registers::Imx335RegisterLayer{}.ReadSnapshot(&snapshot);
     const std::uint32_t vmax =
-        snapshot_status.Ok() && snapshot.vmax > kMinimumShutterLines
-            ? snapshot.vmax
-            : kFallbackVmax;
+        snapshot_status.Ok() && snapshot.vmax > kMinimumShutterLines ? snapshot.vmax : kFallbackVmax;
     const std::uint32_t max_lines = vmax - kMinimumShutterLines;
     const std::uint32_t limited_lines = lines > max_lines ? max_lines : lines;
     g_ai_last_exposure_lines = limited_lines;
-    const auto status =
-        uai::ai::camera::sensor::registers::Imx335RegisterLayer{}
-            .SetExposureMicroseconds(
-        static_cast<int32_t>(limited_lines * kLinePeriodMicroseconds));
+    const auto status = uai::ai::camera::sensor::registers::Imx335RegisterLayer{}.SetExposureMicroseconds(
+        static_cast<int32_t>(limited_lines * kLinePeriodMicroseconds)
+    );
     return status.Ok() ? ISP_OK : ISP_ERR_EINVAL;
 }
 
-extern "C" ISP_StatusTypeDef AiGetImx335Exposure(uint32_t instance,
-                                                   int32_t *exposure)
+extern "C" ISP_StatusTypeDef AiGetImx335Exposure(
+    uint32_t instance,
+    int32_t *exposure
+)
 {
     (void)instance;
-    if (exposure == nullptr || Camera_CompObj == nullptr) return ISP_ERR_EINVAL;
+    if (exposure == nullptr || Camera_CompObj == nullptr)
+        return ISP_ERR_EINVAL;
     *exposure = static_cast<int32_t>(g_ai_last_exposure_request_us);
     return ISP_OK;
 }
 
-extern "C" ISP_StatusTypeDef AiSetImx335Gain(uint32_t instance,
-                                               int32_t gain_mdB)
+extern "C" ISP_StatusTypeDef AiSetImx335Gain(
+    uint32_t instance,
+    int32_t gain_mdB
+)
 {
     (void)instance;
-    if (gain_mdB < IMX335_GAIN_MIN) return ISP_ERR_EINVAL;
-    if (gain_mdB > 30000) gain_mdB = 30000;
-    const auto status =
-        uai::ai::camera::sensor::registers::Imx335RegisterLayer{}
-            .SetGainMilliDb(gain_mdB);
-    if (!status.Ok()) return ISP_ERR_EINVAL;
+    if (gain_mdB < IMX335_GAIN_MIN)
+        return ISP_ERR_EINVAL;
+    if (gain_mdB > 30000)
+        gain_mdB = 30000;
+    const auto status = uai::ai::camera::sensor::registers::Imx335RegisterLayer{}.SetGainMilliDb(gain_mdB);
+    if (!status.Ok())
+        return ISP_ERR_EINVAL;
     g_ai_last_sensor_gain_mdB = static_cast<unsigned int>(gain_mdB);
     return ISP_OK;
 }
 
-extern "C" ISP_StatusTypeDef AiGetImx335Gain(uint32_t instance,
-                                               int32_t *gain_mdB)
+extern "C" ISP_StatusTypeDef AiGetImx335Gain(
+    uint32_t instance,
+    int32_t *gain_mdB
+)
 {
     (void)instance;
-    if (gain_mdB == nullptr || Camera_CompObj == nullptr) return ISP_ERR_EINVAL;
+    if (gain_mdB == nullptr || Camera_CompObj == nullptr)
+        return ISP_ERR_EINVAL;
     *gain_mdB = static_cast<int32_t>(g_ai_last_sensor_gain_mdB);
     return ISP_OK;
 }
@@ -319,15 +313,16 @@ extern "C" int32_t AiGetSensorGainMdB(void)
     return static_cast<int32_t>(g_ai_last_sensor_gain_mdB);
 }
 
-extern "C" int32_t AiReadSensorRegisters(uint32_t *vmax,
-                                           uint32_t *shutter,
-                                           uint32_t *gain)
+extern "C" int32_t AiReadSensorRegisters(
+    uint32_t *vmax,
+    uint32_t *shutter,
+    uint32_t *gain
+)
 {
-    if (vmax == nullptr || shutter == nullptr || gain == nullptr) return -1;
+    if (vmax == nullptr || shutter == nullptr || gain == nullptr)
+        return -1;
     uai::ai::camera::sensor::registers::SensorRegisterSnapshot snapshot{};
-    if (!uai::ai::camera::sensor::registers::Imx335RegisterLayer{}
-             .ReadSnapshot(&snapshot)
-             .Ok()) {
+    if (!uai::ai::camera::sensor::registers::Imx335RegisterLayer{}.ReadSnapshot(&snapshot).Ok()) {
         return -1;
     }
     *vmax = snapshot.vmax;

@@ -18,13 +18,18 @@ enum class WaitBitFlag : std::uint32_t {
     kExternal = 1U << 1,
 };
 
-constexpr WaitBitFlag operator|(WaitBitFlag lhs, WaitBitFlag rhs)
+constexpr WaitBitFlag operator|(
+    WaitBitFlag lhs,
+    WaitBitFlag rhs
+)
 {
-    return static_cast<WaitBitFlag>(static_cast<std::uint32_t>(lhs) |
-                                    static_cast<std::uint32_t>(rhs));
+    return static_cast<WaitBitFlag>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
 }
 
-enum class WaitMode : std::uint8_t { kAll, kAny };
+enum class WaitMode : std::uint8_t {
+    kAll,
+    kAny
+};
 
 struct NextStep {
     ExecutionContext context = ExecutionContext::kPreprocessCpu;
@@ -62,6 +67,11 @@ struct StepTrace {
     bool begin = false;
 };
 
-enum class DispatchResult : std::uint8_t { kIdle, kNotReady, kRan, kFailed };
+enum class DispatchResult : std::uint8_t {
+    kIdle,
+    kNotReady,
+    kRan,
+    kFailed
+};
 
 } // namespace uai::ai::ai_runtime

@@ -26,29 +26,41 @@ public:
         config.maxmsz = static_cast<INT>(slots_.message_bytes());
         config.bufptr = slots_.data();
         const ID id = tk_cre_mbf(&config);
-        if (id < E_OK) return {common::ErrorCode::kHardware};
+        if (id < E_OK)
+            return {common::ErrorCode::kHardware};
         id_ = id;
         return {};
     }
 
     bool created() const { return id_ >= E_OK; }
 
-    common::Error Send(const Message &message, bool wait)
+    common::Error Send(
+        const Message &message,
+        bool wait
+    )
     {
-        if (!created()) return {common::ErrorCode::kNotInitialized};
-        const ER error =
-            tk_snd_mbf(id_, &message, sizeof(message), wait ? TMO_FEVR : TMO_POL);
-        if (error == E_OK) return {};
-        if (error == E_TMOUT) return {common::ErrorCode::kBufferOverflow};
+        if (!created())
+            return {common::ErrorCode::kNotInitialized};
+        const ER error = tk_snd_mbf(id_, &message, sizeof(message), wait ? TMO_FEVR : TMO_POL);
+        if (error == E_OK)
+            return {};
+        if (error == E_TMOUT)
+            return {common::ErrorCode::kBufferOverflow};
         return {common::ErrorCode::kHardware};
     }
 
-    common::Error Receive(Message *message, bool wait)
+    common::Error Receive(
+        Message *message,
+        bool wait
+    )
     {
-        if (!created()) return {common::ErrorCode::kNotInitialized};
+        if (!created())
+            return {common::ErrorCode::kNotInitialized};
         const INT size = tk_rcv_mbf(id_, message, wait ? TMO_FEVR : TMO_POL);
-        if (size == static_cast<INT>(sizeof(*message))) return {};
-        if (size == E_TMOUT) return {common::ErrorCode::kNoFrame};
+        if (size == static_cast<INT>(sizeof(*message)))
+            return {};
+        if (size == E_TMOUT)
+            return {common::ErrorCode::kNoFrame};
         return {common::ErrorCode::kHardware};
     }
 

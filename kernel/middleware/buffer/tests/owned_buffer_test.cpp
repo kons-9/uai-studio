@@ -7,7 +7,10 @@
 namespace uai::ai::common {
 namespace {
 
-TEST(OwnedBufferTest, CapacityCountsElements)
+TEST(
+    OwnedBufferTest,
+    CapacityCountsElements
+)
 {
     OwnedBuffer<std::uint16_t, 2U> values{};
     const std::uint16_t source[]{100U, 200U, 300U};

@@ -13,18 +13,30 @@ namespace uai::ai::resource_ownership {
 class OwnershipToken final {
 public:
     using Lock = int;
-    using ReleaseFunction = void (*)(const void *, Lock) noexcept;
+    using ReleaseFunction = void (*)(
+        const void *,
+        Lock
+    ) noexcept;
 
     OwnershipToken() = default;
-    OwnershipToken(const void *owner, Lock lock, ReleaseFunction release)
-        : owner_(owner), lock_(lock), release_(release) {}
+    OwnershipToken(
+        const void *owner,
+        Lock lock,
+        ReleaseFunction release
+    )
+        : owner_(owner),
+          lock_(lock),
+          release_(release)
+    {}
     ~OwnershipToken() { Release(); }
 
     OwnershipToken(const OwnershipToken &) = delete;
     OwnershipToken &operator=(const OwnershipToken &) = delete;
 
     OwnershipToken(OwnershipToken &&other) noexcept
-        : owner_(other.owner_), lock_(other.lock_), release_(other.release_)
+        : owner_(other.owner_),
+          lock_(other.lock_),
+          release_(other.release_)
     {
         other.Forget();
     }
@@ -41,7 +53,10 @@ public:
     }
 
     bool Valid() const { return owner_ != nullptr && release_ != nullptr; }
-    bool Matches(const void *owner, Lock lock) const
+    bool Matches(
+        const void *owner,
+        Lock lock
+    ) const
     {
         return owner_ == owner && lock_ == lock;
     }
@@ -89,40 +104,54 @@ public:
 
     common::Error Initialize()
     {
-        if (initialized_) return {common::ErrorCode::kAlreadyInitialized};
+        if (initialized_)
+            return {common::ErrorCode::kAlreadyInitialized};
         OwnershipToken::Lock lock = 0;
         const common::Error status = backend_.Create(&lock);
-        if (!status.Ok()) return status;
+        if (!status.Ok())
+            return status;
         lock_ = lock;
         initialized_ = true;
         return {};
     }
 
-    common::Error Acquire(Writer *writer,
-                          Timeout timeout = Backend::kForever) const
+    common::Error Acquire(
+        Writer *writer,
+        Timeout timeout = Backend::kForever
+    ) const
     {
-        if (writer == nullptr) return {common::ErrorCode::kInvalidArgument};
+        if (writer == nullptr)
+            return {common::ErrorCode::kInvalidArgument};
         *writer = {};
-        if (!initialized_) return {common::ErrorCode::kNotInitialized};
+        if (!initialized_)
+            return {common::ErrorCode::kNotInitialized};
         const common::Error status = backend_.Lock(lock_, timeout);
-        if (!status.Ok()) return status;
+        if (!status.Ok())
+            return status;
         *writer = Writer(this, lock_, &ResourceOwnership::ReleaseToken);
         return {};
     }
 
     common::Error Validate(const Writer &writer) const
     {
-        if (!initialized_) return {common::ErrorCode::kNotInitialized};
-        if (!writer.Matches(this, lock_)) return {common::ErrorCode::kOwnership};
+        if (!initialized_)
+            return {common::ErrorCode::kNotInitialized};
+        if (!writer.Matches(this, lock_))
+            return {common::ErrorCode::kOwnership};
         return {};
     }
 
 private:
-    static void ReleaseToken(const void *owner, OwnershipToken::Lock lock) noexcept
+    static void ReleaseToken(
+        const void *owner,
+        OwnershipToken::Lock lock
+    ) noexcept
     {
-        if (owner == nullptr) return;
+        if (owner == nullptr)
+            return;
         const auto &self = *static_cast<const ResourceOwnership *>(owner);
-        if (self.initialized_ && lock == self.lock_) self.backend_.Unlock(lock);
+        if (self.initialized_ && lock == self.lock_)
+            self.backend_.Unlock(lock);
     }
 
     mutable Backend backend_{};
@@ -138,8 +167,13 @@ public:
     using Writer = OwnershipToken;
 
     ResourceAccessor() = default;
-    ResourceAccessor(Resource &resource, Writer &&writer)
-        : resource_(&resource), writer_(static_cast<Writer &&>(writer)) {}
+    ResourceAccessor(
+        Resource &resource,
+        Writer &&writer
+    )
+        : resource_(&resource),
+          writer_(static_cast<Writer &&>(writer))
+    {}
 
     ResourceAccessor(const ResourceAccessor &) = delete;
     ResourceAccessor &operator=(const ResourceAccessor &) = delete;

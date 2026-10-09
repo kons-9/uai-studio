@@ -11,13 +11,15 @@ namespace {
 std::string captured_log;
 }
 
-extern "C" int tm_printf(const UB *format, ...)
+extern "C" int tm_printf(
+    const UB *format,
+    ...
+)
 {
     char text[512];
     va_list arguments;
     va_start(arguments, format);
-    const int result = std::vsnprintf(
-        text, sizeof(text), reinterpret_cast<const char *>(format), arguments);
+    const int result = std::vsnprintf(text, sizeof(text), reinterpret_cast<const char *>(format), arguments);
     va_end(arguments);
     captured_log += text;
     return result;
@@ -53,7 +55,10 @@ constexpr CodeContract codes[] = {
 
 static_assert(kLogLevel == LogLevel::UAI_EXPECT_LOG_LEVEL);
 
-TEST(ErrorTest, PreservesValueContract)
+TEST(
+    ErrorTest,
+    PreservesValueContract
+)
 {
     constexpr Error status;
     EXPECT_EQ(status.Code(), ErrorCode::kOk);
@@ -66,31 +71,35 @@ TEST(ErrorTest, PreservesValueContract)
     EXPECT_STREQ(ErrorCodeName(static_cast<ErrorCode>(255U)), "unknown");
 }
 
-TEST(ErrorTest, PreservesLoggingContractForEveryCode)
+TEST(
+    ErrorTest,
+    PreservesLoggingContractForEveryCode
+)
 {
     for (const auto &entry : codes) {
         SCOPED_TRACE(entry.name);
         captured_log.clear();
         (Error{entry.code}).LogStatus("test");
-        if (entry.code == ErrorCode::kOk ||
-            (entry.routine && !UAI_EXPECT_ROUTINE_LOG)) {
+        if (entry.code == ErrorCode::kOk || (entry.routine && !UAI_EXPECT_ROUTINE_LOG)) {
             EXPECT_TRUE(captured_log.empty());
         } else {
-            EXPECT_EQ(captured_log,
-                      "error: component=test code=" +
-                          std::string(entry.name) + "(" +
-                          std::to_string(entry.value) + ")\n");
+            EXPECT_EQ(
+                captured_log,
+                "error: component=test code=" + std::string(entry.name) + "(" + std::to_string(entry.value) + ")\n"
+            );
         }
     }
 }
 
-TEST(ErrorTest, LogsAtCallerSelectedLevel)
+TEST(
+    ErrorTest,
+    LogsAtCallerSelectedLevel
+)
 {
     const Error routine{ErrorCode::kNoFrame};
     captured_log.clear();
     routine.LogStatus("test", LogLevel::kError);
-    EXPECT_EQ(captured_log,
-              "error: component=test code=no_frame(6)\n");
+    EXPECT_EQ(captured_log, "error: component=test code=no_frame(6)\n");
 
     const Error failure{ErrorCode::kHardware};
     captured_log.clear();

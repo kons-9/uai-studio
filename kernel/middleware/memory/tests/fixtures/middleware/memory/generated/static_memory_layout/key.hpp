@@ -4,6 +4,11 @@
 
 namespace uai::ai::static_memory_layout {
 
-enum class Key : std::uint8_t { kFirst, kSecond, kThird, kCount };
+enum class Key : std::uint8_t {
+    kFirst,
+    kSecond,
+    kThird,
+    kCount
+};
 
 } // namespace uai::ai::static_memory_layout

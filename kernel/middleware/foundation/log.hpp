@@ -34,8 +34,7 @@ inline constexpr LogLevel kLogLevel = LogLevel::kInfo;
 
 constexpr bool IsLogEnabled(LogLevel level)
 {
-    return static_cast<std::uint8_t>(level) <=
-           static_cast<std::uint8_t>(kLogLevel);
+    return static_cast<std::uint8_t>(level) <= static_cast<std::uint8_t>(kLogLevel);
 }
 
 inline const UB *ToMonitorText(const char *text)
@@ -53,27 +52,22 @@ const UB *ToMonitorText(const UB *) = delete;
  * the macro means disabled messages do not call into T-Monitor and their
  * arguments are not evaluated at runtime.
  */
-#define UAI_LOGF(level, format, ...)                                      \
-    do {                                                                   \
-        if (::uai::ai::common::IsLogEnabled(level)) {                      \
-            tm_printf(::uai::ai::common::ToMonitorText(format), ##__VA_ARGS__); \
-        }                                                                  \
+#define UAI_LOGF(level, format, ...)                                                                                   \
+    do {                                                                                                               \
+        if (::uai::ai::common::IsLogEnabled(level)) {                                                                  \
+            tm_printf(::uai::ai::common::ToMonitorText(format), ##__VA_ARGS__);                                        \
+        }                                                                                                              \
     } while (false)
 
-#define UAI_LOG_TEXT(level, text)                                         \
-    do {                                                                   \
-        if (::uai::ai::common::IsLogEnabled(level)) {                      \
-            tm_putstring(::uai::ai::common::ToMonitorText(text));         \
-        }                                                                  \
+#define UAI_LOG_TEXT(level, text)                                                                                      \
+    do {                                                                                                               \
+        if (::uai::ai::common::IsLogEnabled(level)) {                                                                  \
+            tm_putstring(::uai::ai::common::ToMonitorText(text));                                                      \
+        }                                                                                                              \
     } while (false)
 
-#define UAI_LOG_ERROR(format, ...)                                         \
-    UAI_LOGF(::uai::ai::common::LogLevel::kError, format, ##__VA_ARGS__)
-#define UAI_LOG_WARN(format, ...)                                          \
-    UAI_LOGF(::uai::ai::common::LogLevel::kWarn, format, ##__VA_ARGS__)
-#define UAI_LOG_INFO(format, ...)                                          \
-    UAI_LOGF(::uai::ai::common::LogLevel::kInfo, format, ##__VA_ARGS__)
-#define UAI_LOG_DEBUG(format, ...)                                         \
-    UAI_LOGF(::uai::ai::common::LogLevel::kDebug, format, ##__VA_ARGS__)
-#define UAI_LOG_TRACE(format, ...)                                         \
-    UAI_LOGF(::uai::ai::common::LogLevel::kTrace, format, ##__VA_ARGS__)
+#define UAI_LOG_ERROR(format, ...) UAI_LOGF(::uai::ai::common::LogLevel::kError, format, ##__VA_ARGS__)
+#define UAI_LOG_WARN(format, ...) UAI_LOGF(::uai::ai::common::LogLevel::kWarn, format, ##__VA_ARGS__)
+#define UAI_LOG_INFO(format, ...) UAI_LOGF(::uai::ai::common::LogLevel::kInfo, format, ##__VA_ARGS__)
+#define UAI_LOG_DEBUG(format, ...) UAI_LOGF(::uai::ai::common::LogLevel::kDebug, format, ##__VA_ARGS__)
+#define UAI_LOG_TRACE(format, ...) UAI_LOGF(::uai::ai::common::LogLevel::kTrace, format, ##__VA_ARGS__)

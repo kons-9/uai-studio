@@ -31,7 +31,8 @@ common::Error InitializeDrivers(ApplicationInitializeContext &context)
         return status;
     }
     status = context.memory.Initialize();
-    if (!status.Ok()) return status;
+    if (!status.Ok())
+        return status;
 
     status = context.rif.Initialize();
     if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized) {
@@ -64,8 +65,7 @@ common::Error InitializeDrivers(ApplicationInitializeContext &context)
     /* The GT911 shares the LCD reset line, so bring it up after the LCD. A
      * missing or failed touch controller only disables the on-screen UI. */
     const common::Error touch_status = context.touch.Initialize();
-    context.touch_ready = touch_status.Ok() ||
-        touch_status.Code() == common::ErrorCode::kAlreadyInitialized;
+    context.touch_ready = touch_status.Ok() || touch_status.Code() == common::ErrorCode::kAlreadyInitialized;
     if (!context.touch_ready) {
         touch_status.LogStatus("touch");
         UAI_LOG_WARN("touch: controller unavailable; on-screen UI disabled\n");
@@ -76,7 +76,8 @@ common::Error InitializeDrivers(ApplicationInitializeContext &context)
     if (context.external_nor_ready) {
         nor::NorManagement::Accessor nor_accessor;
         status = nor::NorManagement::Instance().Acquire(&nor_accessor);
-        if (!status.Ok()) return status;
+        if (!status.Ok())
+            return status;
         nor_accessor.KeepClocksOnSleep();
     }
     npu::NpuDriver::KeepMemoryClocksOnSleep();
@@ -92,11 +93,9 @@ void ApplicationInitializeTask::Entry()
     root.application_task.Run(root.InitializationContext());
 }
 
-void ApplicationInitializeTask::Start(
-    middleware::cpu_task_monitor::CpuTaskMonitor &monitor)
+void ApplicationInitializeTask::Start(middleware::cpu_task_monitor::CpuTaskMonitor &monitor)
 {
-    common::Task::Start(monitor, reinterpret_cast<FP>(Entry), stack_,
-                5, "application_initialize");
+    common::Task::Start(monitor, reinterpret_cast<FP>(Entry), stack_, 5, "application_initialize");
 }
 
 void ApplicationInitializeTask::Run(ApplicationInitializeContext context)
@@ -123,8 +122,7 @@ void ApplicationInitializeTask::Run(ApplicationInitializeContext context)
             UAI_LOG_WARN("ai: external NOR unavailable; inference disabled\n");
         }
     }
-    const common::Error cpu_trace_status =
-        context.cpu_task_monitor.InitializeTraceBuffer();
+    const common::Error cpu_trace_status = context.cpu_task_monitor.InitializeTraceBuffer();
     if (!cpu_trace_status.Ok()) {
         cpu_trace_status.LogStatus("cpu_task_monitor.trace");
     }
@@ -133,21 +131,26 @@ void ApplicationInitializeTask::Run(ApplicationInitializeContext context)
     context.app_stage = 4U;
     if (context.diagnostics.register_dump) {
         driver::board::DumpPeripheralRegisters("after_access");
-        UAI_LOG_DEBUG("boot: npu cache init=%x enable=%x invalidate=%x cr1=%x sr=%x\n",
-                      g_npu_cache_init_status, g_npu_cache_enable_status,
-                      g_npu_cache_invalidate_status, g_npu_cache_cr1,
-                      g_npu_cache_sr);
+        UAI_LOG_DEBUG(
+            "boot: npu cache init=%x enable=%x invalidate=%x cr1=%x sr=%x\n",
+            g_npu_cache_init_status,
+            g_npu_cache_enable_status,
+            g_npu_cache_invalidate_status,
+            g_npu_cache_cr1,
+            g_npu_cache_sr
+        );
     }
     UAI_LOG_INFO("boot: external memory init result=ok detail=0\n");
     if (context.external_nor_ready) {
-        const volatile std::uint32_t *model_data =
-            reinterpret_cast<const volatile std::uint32_t *>(kModelDataAddress);
-        UAI_LOG_DEBUG("boot: model data @%s=%x,%x,%x,%x\n",
-                      kModelDataAddressName,
-                      static_cast<unsigned int>(model_data[0]),
-                      static_cast<unsigned int>(model_data[1]),
-                      static_cast<unsigned int>(model_data[2]),
-                      static_cast<unsigned int>(model_data[3]));
+        const volatile std::uint32_t *model_data = reinterpret_cast<const volatile std::uint32_t *>(kModelDataAddress);
+        UAI_LOG_DEBUG(
+            "boot: model data @%s=%x,%x,%x,%x\n",
+            kModelDataAddressName,
+            static_cast<unsigned int>(model_data[0]),
+            static_cast<unsigned int>(model_data[1]),
+            static_cast<unsigned int>(model_data[2]),
+            static_cast<unsigned int>(model_data[3])
+        );
     } else {
         UAI_LOG_WARN("boot: model data read skipped; NOR is not mapped\n");
     }
@@ -167,9 +170,16 @@ void ApplicationInitializeTask::Run(ApplicationInitializeContext context)
     }
     context.app_stage = 6U;
 
-    common::Task::RunForever(context.cpu_task_monitor, "application_initialize",
-                     [] { tk_dly_tsk(1000); },
-                     [&] { context.cpu_task_monitor.Report(); });
+    common::Task::RunForever(
+        context.cpu_task_monitor,
+        "application_initialize",
+        [] {
+            tk_dly_tsk(1000);
+        },
+        [&] {
+            context.cpu_task_monitor.Report();
+        }
+    );
 }
 
 } // namespace uai::ai::task

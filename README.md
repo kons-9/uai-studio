@@ -152,6 +152,19 @@ make -C userspace/ai-app ram-run
 
 利用できるターゲットは`make -C userspace/ai-app help`で確認できます。
 
+## C/C++のフォーマット
+
+clang-format 21で、Git管理対象のC/C++ソースを整形します。
+設定は[.clang-format](.clang-format)、外部コード・ビルド生成物などの除外対象は[.clang-format-ignore](.clang-format-ignore)で管理します。
+
+```sh
+bash build-system/scripts/format.sh --fix
+bash build-system/scripts/format.sh --check
+```
+
+GitHub Actionsはpushごとに同じチェックを実行し、整形漏れがあれば失敗します。修正コミットは自動追加しません。
+実行ファイル名を変更する場合は`CLANG_FORMAT`で指定できます。
+
 ## 外部Flashから起動する場合
 
 FSBL、署名済みアプリ、モデル重み、command blobを外部NORへ書き込み、リセット後にFSBLからアプリを起動します。`STM32_SigningTool_CLI`がPATHにない場合は`local.mk`の`STM32_SIGNING_TOOL_CLI`で指定します。

@@ -21,17 +21,22 @@ class NpuRuntime final {
 public:
     common::Error RegisterModel(const models::ModelBinding &binding);
     common::Error Initialize(cache::CacheDriver &cache);
-    common::Error Begin(memory_allocator::InferenceFrame &frame,
-                        PrefetchProvider prefetch_provider = nullptr,
-                        void *prefetch_context = nullptr,
-                        bool select_model = false);
+    common::Error Begin(
+        memory_allocator::InferenceFrame &frame,
+        PrefetchProvider prefetch_provider = nullptr,
+        void *prefetch_context = nullptr,
+        bool select_model = false
+    );
     common::Error Wait(InferenceCompletion *completion);
-    common::Error Complete(const InferenceCompletion &completion,
-                           memory_allocator::BoxSet *result);
-    common::Error Run(memory_allocator::InferenceFrame &frame,
-                      memory_allocator::BoxSet *result,
-                      PrefetchProvider prefetch_provider = nullptr,
-                      void *prefetch_context = nullptr);
+    common::Error Complete(
+        const InferenceCompletion &completion,
+        memory_allocator::BoxSet *result
+    );
+    common::Error
+    Run(memory_allocator::InferenceFrame &frame,
+        memory_allocator::BoxSet *result,
+        PrefetchProvider prefetch_provider = nullptr,
+        void *prefetch_context = nullptr);
     common::Error Shutdown();
 
     bool Initialized() const { return initialized_; }

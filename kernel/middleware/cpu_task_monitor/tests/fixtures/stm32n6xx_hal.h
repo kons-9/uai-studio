@@ -22,4 +22,7 @@ extern UaiTestCoreDebug uai_test_core_debug;
 uint32_t __get_PRIMASK(void);
 void __disable_irq(void);
 void __enable_irq(void);
-void SCB_CleanDCache_by_Addr(uint32_t *address, int32_t size);
+void SCB_CleanDCache_by_Addr(
+    uint32_t *address,
+    int32_t size
+);

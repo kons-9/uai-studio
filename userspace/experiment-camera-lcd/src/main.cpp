@@ -32,8 +32,7 @@ void halt_with_message(const char *message)
 /* µT-Kernelから呼び出されるユーザータスクのエントリーポイント。 */
 extern "C" INT usermain(void)
 {
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "camera_lcd: initializing LCD and IMX335 camera\n")));
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>("camera_lcd: initializing LCD and IMX335 camera\n")));
 
     uai::camera_lcd::driver::DisplayDriver display;
     uai::camera_lcd::driver::CameraDriver camera;
@@ -43,9 +42,7 @@ extern "C" INT usermain(void)
     }
 
     /* Stage 1 diagnostic: show a solid RGB565 red frame before camera start. */
-    for (std::size_t offset = 0U;
-         offset < uai::camera_lcd::driver::kFrameBytes;
-         offset += 2U) {
+    for (std::size_t offset = 0U; offset < uai::camera_lcd::driver::kFrameBytes; offset += 2U) {
         uai::camera_lcd::driver::FrameBuffer()[offset] = 0x00U;
         uai::camera_lcd::driver::FrameBuffer()[offset + 1U] = 0xf8U;
     }
@@ -58,15 +55,17 @@ extern "C" INT usermain(void)
         halt_with_message("camera_lcd: camera start failed\n");
     }
 
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>(
-        "camera_lcd: camera preview started\n")));
+    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>("camera_lcd: camera preview started\n")));
 
     uint8_t sensor_mode = 0xffU;
-    const int32_t sensor_read_status = BSP_I2C1_ReadReg16(
-        CAMERA_IMX335_ADDRESS, IMX335_REG_MODE_SELECT, &sensor_mode, 1U);
+    const int32_t sensor_read_status =
+        BSP_I2C1_ReadReg16(CAMERA_IMX335_ADDRESS, IMX335_REG_MODE_SELECT, &sensor_mode, 1U);
 
-    tm_printf(reinterpret_cast<const UB *>(
-        "camera_lcd: regs dcmipp=%08x/%08x p1=%08x/%08x addr=%08x csi=%08x/%08x err=%08x/%08x ltdc=%08x bccr=%08x cdsr=%08x l1=%08x/%08x/%08x/%08x/%08x l2=%08x fb=%02x/%02x i2c=%ld mode=%02x\n"),
+    tm_printf(
+        reinterpret_cast<const UB *>(
+            "camera_lcd: regs dcmipp=%08x/%08x p1=%08x/%08x addr=%08x csi=%08x/%08x err=%08x/%08x ltdc=%08x bccr=%08x "
+            "cdsr=%08x l1=%08x/%08x/%08x/%08x/%08x l2=%08x fb=%02x/%02x i2c=%ld mode=%02x\n"
+        ),
         DCMIPP->CMSR1,
         DCMIPP->CMSR2,
         DCMIPP->P1SR,
@@ -88,7 +87,8 @@ extern "C" INT usermain(void)
         static_cast<UINT>(uai::camera_lcd::driver::FrameBuffer()[0]),
         static_cast<UINT>(uai::camera_lcd::driver::FrameBuffer()[1]),
         static_cast<long>(sensor_read_status),
-        static_cast<UINT>(sensor_mode));
+        static_cast<UINT>(sensor_mode)
+    );
 
     for (;;) {
         if (!uai::camera_lcd::driver::IsOk(camera.Process())) {

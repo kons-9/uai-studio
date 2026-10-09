@@ -26,9 +26,7 @@ struct ThreadMonitorTraceModelName {
 
 static_assert(sizeof(ThreadMonitorTraceModelName) == 32U);
 inline constexpr std::uint16_t kThreadMonitorTraceDataOffset =
-    static_cast<std::uint16_t>(
-        64U + kThreadMonitorModelNameCapacity *
-                  sizeof(ThreadMonitorTraceModelName));
+    static_cast<std::uint16_t>(64U + kThreadMonitorModelNameCapacity * sizeof(ThreadMonitorTraceModelName));
 
 enum class TraceRecordType : std::uint8_t {
     kSample = 1U,
@@ -64,8 +62,7 @@ struct alignas(32) ThreadMonitorTraceHeader {
     std::uint32_t fault_count = 0U;
     std::uint32_t next_sequence = 0U;
     std::uint32_t model_name_count = 0U;
-    std::uint32_t model_name_entry_size =
-        sizeof(ThreadMonitorTraceModelName);
+    std::uint32_t model_name_entry_size = sizeof(ThreadMonitorTraceModelName);
     std::uint32_t reserved = 0U;
 };
 

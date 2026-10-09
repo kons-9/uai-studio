@@ -8,7 +8,10 @@
 namespace uai::ai::common {
 namespace {
 
-TEST(StableAlignedBytesTest, HasAlignedUserBufferAndExactByteSize)
+TEST(
+    StableAlignedBytesTest,
+    HasAlignedUserBufferAndExactByteSize
+)
 {
     StableAlignedBytes<16U> bytes;
     static_assert(alignof(StableAlignedBytes<16U>) >= 8U);

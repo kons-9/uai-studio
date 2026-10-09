@@ -14,10 +14,10 @@ namespace uai::ai::static_memory_layout {
 
 const Region Region::GetRegionFromKey(Key key)
 {
-    const auto address = 0x91000000U +
-                         static_cast<std::uintptr_t>(key) * 0x100000U;
-    return {reinterpret_cast<const std::uint8_t *>(address),
-            reinterpret_cast<const std::uint8_t *>(address + 0x100000U)};
+    const auto address = 0x91000000U + static_cast<std::uintptr_t>(key) * 0x100000U;
+    return {
+        reinterpret_cast<const std::uint8_t *>(address), reinterpret_cast<const std::uint8_t *>(address + 0x100000U)
+    };
 }
 
 } // namespace uai::ai::static_memory_layout
@@ -40,18 +40,19 @@ std::size_t send_calls = 0U;
 
 ID tk_cre_mbf(const T_CMBF *config)
 {
-    if (!config || !(config->mbfatr & TA_USERBUF) || !config->bufptr ||
-        config->maxmsz == 0) return -1;
-    const SZ slot_size = sizeof(INT) +
-                         (config->maxmsz + sizeof(INT) - 1U) / sizeof(INT) *
-                             sizeof(INT);
-    buffers.push_back({config->maxmsz,
-                       capacity_override ? capacity_override :
-                           config->bufsz / slot_size, {}});
+    if (!config || !(config->mbfatr & TA_USERBUF) || !config->bufptr || config->maxmsz == 0)
+        return -1;
+    const SZ slot_size = sizeof(INT) + (config->maxmsz + sizeof(INT) - 1U) / sizeof(INT) * sizeof(INT);
+    buffers.push_back({config->maxmsz, capacity_override ? capacity_override : config->bufsz / slot_size, {}});
     return static_cast<ID>(buffers.size());
 }
 
-ER tk_snd_mbf(ID queue, const void *message, SZ size, TMO)
+ER tk_snd_mbf(
+    ID queue,
+    const void *message,
+    SZ size,
+    TMO
+)
 {
     ++send_calls;
     if (!send_failures.empty()) {
@@ -68,15 +69,21 @@ ER tk_snd_mbf(ID queue, const void *message, SZ size, TMO)
     return E_OK;
 }
 
-INT tk_rcv_mbf(ID queue, void *message, TMO)
+INT tk_rcv_mbf(
+    ID queue,
+    void *message,
+    TMO
+)
 {
     if (!receive_results.empty()) {
         const INT result = receive_results.front();
         receive_results.pop_front();
-        if (result != E_OK) return result;
+        if (result != E_OK)
+            return result;
     }
     auto &buffer = buffers.at(static_cast<std::size_t>(queue - 1));
-    if (buffer.messages.empty()) return E_TMOUT;
+    if (buffer.messages.empty())
+        return E_TMOUT;
     const auto data = buffer.messages.front();
     std::memcpy(message, data.data(), data.size());
     buffer.messages.pop_front();
@@ -102,7 +109,10 @@ protected:
     memory_manager::MemoryManager memory{};
 };
 
-TEST_F(FrameChannelsTest, FullFrameQueueReleasesOldestLease)
+TEST_F(
+    FrameChannelsTest,
+    FullFrameQueueReleasesOldestLease
+)
 {
     capacity_override = 1;
     InferenceFrameChannel channel(memory);
@@ -127,7 +137,10 @@ TEST_F(FrameChannelsTest, FullFrameQueueReleasesOldestLease)
     EXPECT_TRUE(memory.ReleaseInferenceBuffer(received).Ok());
 }
 
-TEST_F(FrameChannelsTest, ResultQueueKeepsNewestAndDrainIgnoresInvalidResult)
+TEST_F(
+    FrameChannelsTest,
+    ResultQueueKeepsNewestAndDrainIgnoresInvalidResult
+)
 {
     InferenceResultChannel channel;
     ASSERT_TRUE(channel.Create().Ok());
@@ -148,7 +161,10 @@ TEST_F(FrameChannelsTest, ResultQueueKeepsNewestAndDrainIgnoresInvalidResult)
     EXPECT_EQ(active.model_sequence, 4U);
 }
 
-TEST_F(FrameChannelsTest, ResultRetriesOnlyOnceOnOverflow)
+TEST_F(
+    FrameChannelsTest,
+    ResultRetriesOnlyOnceOnOverflow
+)
 {
     capacity_override = 1;
     InferenceResultChannel channel;
@@ -156,8 +172,7 @@ TEST_F(FrameChannelsTest, ResultRetriesOnlyOnceOnOverflow)
     const message_channel::DrainResult uninitialized = channel.DrainLatest(&active);
     EXPECT_EQ(uninitialized.error.Code(), common::ErrorCode::kNotInitialized);
     EXPECT_FALSE(uninitialized.updated);
-    EXPECT_EQ(channel.PublishLatest(active).Code(),
-              common::ErrorCode::kNotInitialized);
+    EXPECT_EQ(channel.PublishLatest(active).Code(), common::ErrorCode::kNotInitialized);
     EXPECT_EQ(send_calls, 0U);
     ASSERT_TRUE(channel.Create().Ok());
     active.person_valid = true;
@@ -168,12 +183,10 @@ TEST_F(FrameChannelsTest, ResultRetriesOnlyOnceOnOverflow)
     send_failures.push_back(E_TMOUT);
     send_failures.push_back(E_TMOUT);
     const auto calls_before = send_calls;
-    EXPECT_EQ(channel.PublishLatest(active).Code(),
-              common::ErrorCode::kBufferOverflow);
+    EXPECT_EQ(channel.PublishLatest(active).Code(), common::ErrorCode::kBufferOverflow);
     EXPECT_EQ(send_calls - calls_before, 2U);
     const message_channel::DrainResult invalid = channel.DrainLatest(nullptr);
-    EXPECT_EQ(invalid.error.Code(),
-              common::ErrorCode::kInvalidArgument);
+    EXPECT_EQ(invalid.error.Code(), common::ErrorCode::kInvalidArgument);
     EXPECT_FALSE(invalid.updated);
     inference::BoxSet received{};
     EXPECT_EQ(channel.DrainLatest(&received).error.Code(), common::ErrorCode::kNoFrame);
@@ -187,7 +200,10 @@ TEST_F(FrameChannelsTest, ResultRetriesOnlyOnceOnOverflow)
     EXPECT_EQ(received.model_sequence, 3U);
 }
 
-TEST_F(FrameChannelsTest, ConsecutiveFullResultsKeepNewest)
+TEST_F(
+    FrameChannelsTest,
+    ConsecutiveFullResultsKeepNewest
+)
 {
     capacity_override = 1;
     InferenceResultChannel channel;
@@ -204,7 +220,10 @@ TEST_F(FrameChannelsTest, ConsecutiveFullResultsKeepNewest)
     EXPECT_EQ(active.model_sequence, 3U);
 }
 
-TEST_F(FrameChannelsTest, DrainLatestKeepsLastValidResult)
+TEST_F(
+    FrameChannelsTest,
+    DrainLatestKeepsLastValidResult
+)
 {
     InferenceResultChannel channel;
     ASSERT_TRUE(channel.Create().Ok());
@@ -237,7 +256,10 @@ TEST_F(FrameChannelsTest, DrainLatestKeepsLastValidResult)
     EXPECT_EQ(active.model_sequence, 4U);
 }
 
-TEST_F(FrameChannelsTest, DrainLatestReportsErrorsWithoutLosingUpdateState)
+TEST_F(
+    FrameChannelsTest,
+    DrainLatestReportsErrorsWithoutLosingUpdateState
+)
 {
     InferenceResultChannel channel;
     ASSERT_TRUE(channel.Create().Ok());
@@ -270,7 +292,10 @@ TEST_F(FrameChannelsTest, DrainLatestReportsErrorsWithoutLosingUpdateState)
     EXPECT_EQ(active.model_sequence, 3U);
 }
 
-TEST_F(FrameChannelsTest, FrameSendFailureReturnsTheInputLease)
+TEST_F(
+    FrameChannelsTest,
+    FrameSendFailureReturnsTheInputLease
+)
 {
     InferenceFrameChannel channel(memory);
     ASSERT_TRUE(channel.Create().Ok());
@@ -288,7 +313,10 @@ TEST_F(FrameChannelsTest, FrameSendFailureReturnsTheInputLease)
     EXPECT_TRUE(buffers.front().messages.empty());
 }
 
-TEST_F(FrameChannelsTest, FrameNonOverflowFailureReleasesOldestThenRetries)
+TEST_F(
+    FrameChannelsTest,
+    FrameNonOverflowFailureReleasesOldestThenRetries
+)
 {
     capacity_override = 1;
     InferenceFrameChannel channel(memory);
@@ -313,7 +341,10 @@ TEST_F(FrameChannelsTest, FrameNonOverflowFailureReleasesOldestThenRetries)
     EXPECT_TRUE(memory.ReleaseInferenceBuffer(received).Ok());
 }
 
-TEST_F(FrameChannelsTest, FrameReceiveFailureRetainsQueuedLease)
+TEST_F(
+    FrameChannelsTest,
+    FrameReceiveFailureRetainsQueuedLease
+)
 {
     capacity_override = 1;
     InferenceFrameChannel channel(memory);
@@ -338,13 +369,15 @@ TEST_F(FrameChannelsTest, FrameReceiveFailureRetainsQueuedLease)
     EXPECT_TRUE(memory.ReleaseInferenceBuffer(received).Ok());
 }
 
-TEST_F(FrameChannelsTest, ResultOwnsMaskAfterSourceIsReused)
+TEST_F(
+    FrameChannelsTest,
+    ResultOwnsMaskAfterSourceIsReused
+)
 {
     InferenceResultChannel channel;
     ASSERT_TRUE(channel.Create().Ok());
 
-    std::uint8_t source[inference::kSegmentationMaskWidth *
-                        inference::kSegmentationMaskHeight]{};
+    std::uint8_t source[inference::kSegmentationMaskWidth * inference::kSegmentationMaskHeight]{};
     source[0] = 1U;
     inference::BoxSet result{};
     result.segmentation_valid = true;
@@ -358,8 +391,9 @@ TEST_F(FrameChannelsTest, ResultOwnsMaskAfterSourceIsReused)
     inference::BoxSet displayed{};
     ASSERT_TRUE(channel.DrainLatest(&displayed).error.Ok());
     EXPECT_EQ(displayed.segmentation.mask.data()[0], 1U);
-    EXPECT_EQ(displayed.segmentation.mask.CopyFrom(source, sizeof(source) + 1U).Code(),
-              common::ErrorCode::kBufferOverflow);
+    EXPECT_EQ(
+        displayed.segmentation.mask.CopyFrom(source, sizeof(source) + 1U).Code(), common::ErrorCode::kBufferOverflow
+    );
     EXPECT_EQ(displayed.segmentation.mask.data()[0], 1U);
 }
 

@@ -27,8 +27,7 @@ TaskContext &GetTaskContext()
 
 [[noreturn]] void TaskContext::Halt(const char *message)
 {
-    UAI_LOG_TEXT(uai::ai::common::LogLevel::kError,
-                 reinterpret_cast<const UB *>(message));
+    UAI_LOG_TEXT(uai::ai::common::LogLevel::kError, reinterpret_cast<const UB *>(message));
     for (;;) {
         tk_dly_tsk(1000);
     }
@@ -36,8 +35,8 @@ TaskContext &GetTaskContext()
 
 bool TaskContext::IsBestEffort(common::ErrorCode code) const
 {
-    return code == common::ErrorCode::kNoFrame || code == common::ErrorCode::kNoBuffer ||
-           code == common::ErrorCode::kQueueFull;
+    return code == common::ErrorCode::kNoFrame || code == common::ErrorCode::kNoBuffer
+        || code == common::ErrorCode::kQueueFull;
 }
 
 std::uint32_t TaskContext::Now() const
@@ -78,8 +77,7 @@ common::Error TaskContext::InitializeDrivers()
     if (initialize_nor) {
         nor_status = nor.Initialize();
     } else {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "boot: NOR skipped: inference disabled\n"));
+        UAI_LOG_INFO(reinterpret_cast<const UB *>("boot: NOR skipped: inference disabled\n"));
     }
     external_nor_ready = nor_status == 0;
 
@@ -99,8 +97,7 @@ common::Error TaskContext::InitializeDrivers()
     uai::ai::npu::NpuDriver::KeepMemoryClocksOnSleep();
     lcd.KeepClocksOnSleep();
     camera.KeepClocksOnSleep();
-    return {common::ErrorCode::kOk, static_cast<std::uint32_t>(nor_status),
-            "task_context.initialize_drivers"};
+    return {common::ErrorCode::kOk, static_cast<std::uint32_t>(nor_status), "task_context.initialize_drivers"};
 }
 
 void TaskContext::ConfigureReferenceInterruptPriorities()
@@ -109,8 +106,7 @@ void TaskContext::ConfigureReferenceInterruptPriorities()
      * SysTick priority before it touches either external memory. */
     uint32_t preempt_priority = 0U;
     uint32_t sub_priority = 0U;
-    HAL_NVIC_GetPriority(SysTick_IRQn, HAL_NVIC_GetPriorityGrouping(),
-                         &preempt_priority, &sub_priority);
+    HAL_NVIC_GetPriority(SysTick_IRQn, HAL_NVIC_GetPriorityGrouping(), &preempt_priority, &sub_priority);
     for (IRQn_Type irq = PVD_PVM_IRQn; irq <= LTDC_UP_ERR_IRQn;
          irq = static_cast<IRQn_Type>(static_cast<int32_t>(irq) + 1)) {
         HAL_NVIC_SetPriority(irq, preempt_priority, sub_priority);
@@ -148,10 +144,8 @@ void TaskContext::CreateKernelObjects()
 
     T_CMBF inference_completion_queue_config = {};
     inference_completion_queue_config.mbfatr = TA_TFIFO;
-    inference_completion_queue_config.bufsz =
-        sizeof(inference_completion_queue_storage);
-    inference_completion_queue_config.maxmsz =
-        sizeof(npu_runtime::InferenceCompletion);
+    inference_completion_queue_config.bufsz = sizeof(inference_completion_queue_storage);
+    inference_completion_queue_config.maxmsz = sizeof(npu_runtime::InferenceCompletion);
     inference_completion_queue_config.bufptr = inference_completion_queue_storage;
     inference_completion_queue = tk_cre_mbf(&inference_completion_queue_config);
     if (inference_completion_queue < E_OK) {
@@ -160,14 +154,10 @@ void TaskContext::CreateKernelObjects()
 
     T_CMBF inference_postprocess_done_queue_config = {};
     inference_postprocess_done_queue_config.mbfatr = TA_TFIFO;
-    inference_postprocess_done_queue_config.bufsz =
-        sizeof(inference_postprocess_done_queue_storage);
-    inference_postprocess_done_queue_config.maxmsz =
-        sizeof(InferencePostprocessDoneMessage);
-    inference_postprocess_done_queue_config.bufptr =
-        inference_postprocess_done_queue_storage;
-    inference_postprocess_done_queue =
-        tk_cre_mbf(&inference_postprocess_done_queue_config);
+    inference_postprocess_done_queue_config.bufsz = sizeof(inference_postprocess_done_queue_storage);
+    inference_postprocess_done_queue_config.maxmsz = sizeof(InferencePostprocessDoneMessage);
+    inference_postprocess_done_queue_config.bufptr = inference_postprocess_done_queue_storage;
+    inference_postprocess_done_queue = tk_cre_mbf(&inference_postprocess_done_queue_config);
     if (inference_postprocess_done_queue < E_OK) {
         Halt("ai: postprocess done queue create failed\n");
     }
@@ -175,14 +165,12 @@ void TaskContext::CreateKernelObjects()
 
 void TaskContext::StartApplicationTask(FP entry)
 {
-    StartTask(entry, initialization_task_stack, kInitializationTaskStackSize,
-              5, "application_initialize");
+    StartTask(entry, initialization_task_stack, kInitializationTaskStackSize, 5, "application_initialize");
 }
 
 void TaskContext::StartCameraTask(FP entry)
 {
-    StartTask(entry, camera_task_stack, kCameraTaskStackSize, 5,
-              "camera_render");
+    StartTask(entry, camera_task_stack, kCameraTaskStackSize, 5, "camera_render");
 }
 
 void TaskContext::StartInferenceTask(FP entry)
@@ -192,8 +180,7 @@ void TaskContext::StartInferenceTask(FP entry)
      * of waiting behind a display composition period.  The task blocks while
      * the NPU is running, so the camera task still owns the CPU between IRQs.
      */
-    StartTask(entry, inference_task_stack, kInferenceTaskStackSize, 4,
-              "inference");
+    StartTask(entry, inference_task_stack, kInferenceTaskStackSize, 4, "inference");
 }
 
 void TaskContext::StartInferencePostprocessTask(FP entry)
@@ -201,12 +188,16 @@ void TaskContext::StartInferencePostprocessTask(FP entry)
     /* Result conversion is CPU work.  Keep it below the camera and NPU-owner
      * tasks so it cannot delay the next NPU submission when a completion and
      * a camera event become ready together. */
-    StartTask(entry, inference_postprocess_task_stack,
-              kInferencePostprocessTaskStackSize, 6, "inference_postprocess");
+    StartTask(entry, inference_postprocess_task_stack, kInferencePostprocessTaskStackSize, 6, "inference_postprocess");
 }
 
-void TaskContext::StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
-                            const char *name)
+void TaskContext::StartTask(
+    FP entry,
+    INT *stack,
+    SZ stack_size,
+    PRI priority,
+    const char *name
+)
 {
     T_CTSK task = {};
     task.tskatr = TA_HLNG | TA_USERBUF;
@@ -216,16 +207,20 @@ void TaskContext::StartTask(FP entry, INT *stack, SZ stack_size, PRI priority,
     task.bufptr = stack;
     const ID task_id = tk_cre_tsk(&task);
     if (task_id < E_OK) {
-        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                          "error: component=task_context operation=create_%s code=%x detail=0\n"),
-                      name, static_cast<unsigned int>(task_id));
+        UAI_LOG_ERROR(
+            reinterpret_cast<const UB *>("error: component=task_context operation=create_%s code=%x detail=0\n"),
+            name,
+            static_cast<unsigned int>(task_id)
+        );
         Halt("ai: task create failed\n");
     }
     const ER error = tk_sta_tsk(task_id, 0);
     if (error != E_OK) {
-        UAI_LOG_ERROR(reinterpret_cast<const UB *>(
-                          "error: component=task_context operation=start_%s code=%x detail=0\n"),
-                      name, static_cast<unsigned int>(error));
+        UAI_LOG_ERROR(
+            reinterpret_cast<const UB *>("error: component=task_context operation=start_%s code=%x detail=0\n"),
+            name,
+            static_cast<unsigned int>(error)
+        );
         Halt("ai: task start failed\n");
     }
 }
@@ -245,8 +240,7 @@ bool TaskContext::DrainLatestBoxes(memory_allocator::BoxSet *active)
         }
         if (size == static_cast<INT>(sizeof(message))) {
             /* Keep the current display until the next inference result. */
-            if (message.boxes.person_valid || message.boxes.face_valid ||
-                message.boxes.segmentation_valid) {
+            if (message.boxes.person_valid || message.boxes.face_valid || message.boxes.segmentation_valid) {
                 *active = message.boxes;
                 received = true;
             }
@@ -254,18 +248,18 @@ bool TaskContext::DrainLatestBoxes(memory_allocator::BoxSet *active)
     }
 
     if (received && diagnostics.display_trace) {
-        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                          "lcd: box source=ai sequence=%u capture=%u count=%u\n"),
-                      static_cast<unsigned int>(active->model_sequence),
-                      static_cast<unsigned int>(active->capture_sequence),
-                      static_cast<unsigned int>(active->person.count +
-                                                 active->face.count));
-        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                          "lcd: boxes person=%u face=%u mask_px=%u\n"),
-                      static_cast<unsigned int>(active->person.count),
-                      static_cast<unsigned int>(active->face.count),
-                      static_cast<unsigned int>(
-                          active->segmentation.mask_foreground_pixels));
+        UAI_LOG_DEBUG(
+            reinterpret_cast<const UB *>("lcd: box source=ai sequence=%u capture=%u count=%u\n"),
+            static_cast<unsigned int>(active->model_sequence),
+            static_cast<unsigned int>(active->capture_sequence),
+            static_cast<unsigned int>(active->person.count + active->face.count)
+        );
+        UAI_LOG_DEBUG(
+            reinterpret_cast<const UB *>("lcd: boxes person=%u face=%u mask_px=%u\n"),
+            static_cast<unsigned int>(active->person.count),
+            static_cast<unsigned int>(active->face.count),
+            static_cast<unsigned int>(active->segmentation.mask_foreground_pixels)
+        );
     }
     return received;
 }
@@ -275,8 +269,7 @@ void TaskContext::SendLatestBoxes(const memory_allocator::BoxSet &boxes)
     BoxMessage message{};
     message.boxes = boxes;
     for (;;) {
-        const ER error = tk_snd_mbf(box_queue, &message, sizeof(message),
-                                    TMO_POL);
+        const ER error = tk_snd_mbf(box_queue, &message, sizeof(message), TMO_POL);
         if (error == E_OK) {
             return;
         }
@@ -292,8 +285,7 @@ void TaskContext::SendInferenceFrame(const memory_allocator::InferenceFrame &fra
     InferenceMessage message{};
     message.frame = frame;
     for (;;) {
-        const ER error = tk_snd_mbf(frame_queue, &message, sizeof(message),
-                                    TMO_POL);
+        const ER error = tk_snd_mbf(frame_queue, &message, sizeof(message), TMO_POL);
         if (error == E_OK) {
             return;
         }
@@ -305,8 +297,7 @@ void TaskContext::SendInferenceFrame(const memory_allocator::InferenceFrame &fra
         const INT size = tk_rcv_mbf(frame_queue, &discarded, TMO_POL);
         if (size == static_cast<INT>(sizeof(discarded))) {
             ++inference_metrics.frame_queue_drop_count;
-            const common::Error status =
-                memory.ReleaseInferenceBuffer(discarded.frame);
+            const common::Error status = memory.ReleaseInferenceBuffer(discarded.frame);
             LogStatus("memory", status);
             continue;
         }
@@ -314,20 +305,19 @@ void TaskContext::SendInferenceFrame(const memory_allocator::InferenceFrame &fra
         ++inference_metrics.frame_queue_drop_count;
         const common::Error status = memory.ReleaseInferenceBuffer(frame);
         LogStatus("memory", status);
-        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                          "ai: frame dropped reason=queue_full sequence=%u\n"),
-                      static_cast<unsigned int>(frame.capture_sequence));
+        UAI_LOG_DEBUG(
+            reinterpret_cast<const UB *>("ai: frame dropped reason=queue_full sequence=%u\n"),
+            static_cast<unsigned int>(frame.capture_sequence)
+        );
         return;
     }
 }
 
-void TaskContext::SendInferencePostprocessDone(
-    const memory_allocator::InferenceFrame &frame)
+void TaskContext::SendInferencePostprocessDone(const memory_allocator::InferenceFrame &frame)
 {
     InferencePostprocessDoneMessage message{};
     message.frame = frame;
-    const ER error = tk_snd_mbf(inference_postprocess_done_queue, &message,
-                                sizeof(message), TMO_POL);
+    const ER error = tk_snd_mbf(inference_postprocess_done_queue, &message, sizeof(message), TMO_POL);
     if (error != E_OK) {
         const common::Error status = memory.ReleaseInferenceBuffer(frame);
         LogStatus("memory", status);

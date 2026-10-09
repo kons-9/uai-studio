@@ -32,8 +32,7 @@ void ApplicationInitializeTask::Run()
     HAL_ResumeTick();
     context.ConfigureReferenceInterruptPriorities();
     context.app_stage = 1U;
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "boot: external memory init begin\n"));
+    UAI_LOG_INFO(reinterpret_cast<const UB *>("boot: external memory init begin\n"));
 
     const common::Error driver_status = context.InitializeDrivers();
     if (!driver_status.Ok()) {
@@ -47,9 +46,10 @@ void ApplicationInitializeTask::Run()
      * timeouts used by the BSP continue to work. */
     if constexpr (kInferenceMode == InferenceMode::kNpu) {
         if (!context.external_nor_ready) {
-            UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                             "ai: external NOR unavailable status=%d; inference disabled\n"),
-                         static_cast<int>(driver_status.detail));
+            UAI_LOG_WARN(
+                reinterpret_cast<const UB *>("ai: external NOR unavailable status=%d; inference disabled\n"),
+                static_cast<int>(driver_status.detail)
+            );
         }
     }
     context.app_stage = 2U;
@@ -57,28 +57,28 @@ void ApplicationInitializeTask::Run()
     context.app_stage = 4U;
     if (context.diagnostics.register_dump) {
         DumpPeripheralRegisters("after_access");
-        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                          "boot: npu cache init=%x enable=%x invalidate=%x cr1=%x sr=%x\n"),
-                      g_npu_cache_init_status, g_npu_cache_enable_status,
-                      g_npu_cache_invalidate_status, g_npu_cache_cr1,
-                      g_npu_cache_sr);
+        UAI_LOG_DEBUG(
+            reinterpret_cast<const UB *>("boot: npu cache init=%x enable=%x invalidate=%x cr1=%x sr=%x\n"),
+            g_npu_cache_init_status,
+            g_npu_cache_enable_status,
+            g_npu_cache_invalidate_status,
+            g_npu_cache_cr1,
+            g_npu_cache_sr
+        );
     }
-    UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                     "boot: external memory init result=ok detail=0\n"));
+    UAI_LOG_INFO(reinterpret_cast<const UB *>("boot: external memory init result=ok detail=0\n"));
     if (context.external_nor_ready) {
-        const volatile std::uint32_t *model_data =
-            reinterpret_cast<const volatile std::uint32_t *>(kModelDataAddress);
-        UAI_LOG_DEBUG(reinterpret_cast<const UB *>(
-                          "boot: model data @%s=%x,%x,%x,%x\n"),
-                      reinterpret_cast<const UB *>(
-                          const_cast<char *>(kModelDataAddressName)),
-                      static_cast<unsigned int>(model_data[0]),
-                      static_cast<unsigned int>(model_data[1]),
-                      static_cast<unsigned int>(model_data[2]),
-                      static_cast<unsigned int>(model_data[3]));
+        const volatile std::uint32_t *model_data = reinterpret_cast<const volatile std::uint32_t *>(kModelDataAddress);
+        UAI_LOG_DEBUG(
+            reinterpret_cast<const UB *>("boot: model data @%s=%x,%x,%x,%x\n"),
+            reinterpret_cast<const UB *>(const_cast<char *>(kModelDataAddressName)),
+            static_cast<unsigned int>(model_data[0]),
+            static_cast<unsigned int>(model_data[1]),
+            static_cast<unsigned int>(model_data[2]),
+            static_cast<unsigned int>(model_data[3])
+        );
     } else {
-        UAI_LOG_WARN(reinterpret_cast<const UB *>(
-                         "boot: model data read skipped; NOR is not mapped\n"));
+        UAI_LOG_WARN(reinterpret_cast<const UB *>("boot: model data read skipped; NOR is not mapped\n"));
     }
     (void)tk_set_flg(context.external_memory_ready, kExternalMemoryReady);
 
@@ -90,11 +90,9 @@ void ApplicationInitializeTask::Run()
     if constexpr (kInferenceMode == InferenceMode::kNpu) {
         context.StartInferenceTask(reinterpret_cast<FP>(InferenceTask::Entry));
     } else if constexpr (kInferenceMode == InferenceMode::kCopyOnly) {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: copy-only snapshot mode; NPU task disabled\n"));
+        UAI_LOG_INFO(reinterpret_cast<const UB *>("ai: copy-only snapshot mode; NPU task disabled\n"));
     } else {
-        UAI_LOG_INFO(reinterpret_cast<const UB *>(
-                         "ai: inference task disabled for camera/CSI isolation\n"));
+        UAI_LOG_INFO(reinterpret_cast<const UB *>("ai: inference task disabled for camera/CSI isolation\n"));
     }
     context.app_stage = 6U;
 

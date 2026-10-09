@@ -13,11 +13,15 @@ namespace {
 constexpr std::uintptr_t kMainPsramAddress = 0x91000000U;
 constexpr std::uintptr_t kAncillaryPsramAddress = 0x91100000U;
 #else
-alignas(64) std::uint8_t g_main_pipe_frame_buffer[kFrameBytes]
-    __attribute__((section(".camera_frame_buffer"), used));
+alignas(64) std::uint8_t g_main_pipe_frame_buffer[kFrameBytes] __attribute__((
+    section(".camera_frame_buffer"),
+    used
+));
 #if PIPE2_PIPE_DUAL
-alignas(64) std::uint8_t g_ancillary_pipe_frame_buffer[kFrameBytes]
-    __attribute__((section(".camera_frame_buffer"), used));
+alignas(64) std::uint8_t g_ancillary_pipe_frame_buffer[kFrameBytes] __attribute__((
+    section(".camera_frame_buffer"),
+    used
+));
 #endif
 #endif
 

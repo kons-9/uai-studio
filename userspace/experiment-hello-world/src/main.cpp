@@ -13,7 +13,7 @@ extern "C" {
 /* µT-Kernelが名前 usermain をC ABIで検索して呼ぶエントリーポイント。 */
 extern "C" INT usermain(void)
 {
-    tm_putstring((UB*)"Hello from uai-studio / STM32N6570-DK\n");
+    tm_putstring((UB *)"Hello from uai-studio / STM32N6570-DK\n");
 
     for (;;) {
         tk_dly_tsk(1000);

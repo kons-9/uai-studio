@@ -11,8 +11,15 @@ struct Services {
     bool *controls_locked = nullptr;
 };
 
-std::size_t Register(const Services &services, console::Command *commands, std::size_t capacity);
-void Tick(std::uint32_t milliseconds, std::uint32_t sequence);
+std::size_t Register(
+    const Services &services,
+    console::Command *commands,
+    std::size_t capacity
+);
+void Tick(
+    std::uint32_t milliseconds,
+    std::uint32_t sequence
+);
 const char *CurrentScenarioAction();
 
 }

@@ -14,7 +14,10 @@ struct OwnedBuffer {
     static_assert(std::is_trivially_copyable_v<Type>);
     std::array<Type, Capacity> bytes{};
 
-    Error CopyFrom(const Type *source, std::size_t length)
+    Error CopyFrom(
+        const Type *source,
+        std::size_t length
+    )
     {
         if (length > Capacity) {
             return {ErrorCode::kBufferOverflow};

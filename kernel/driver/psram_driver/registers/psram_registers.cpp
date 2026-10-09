@@ -8,8 +8,7 @@ namespace uai::ai::psram::registers {
 
 bool PsramRegisterLayer::Initialize()
 {
-    return BSP_XSPI_RAM_Init(0U) == BSP_ERROR_NONE &&
-           BSP_XSPI_RAM_EnableMemoryMappedMode(0U) == BSP_ERROR_NONE;
+    return BSP_XSPI_RAM_Init(0U) == BSP_ERROR_NONE && BSP_XSPI_RAM_EnableMemoryMappedMode(0U) == BSP_ERROR_NONE;
 }
 
 } // namespace uai::ai::psram::registers

@@ -5,7 +5,10 @@
 namespace uai::ai::buffer {
 namespace {
 
-TEST(LeasePoolTest, TokensDistinguishLeasesOfTheSameSlot)
+TEST(
+    LeasePoolTest,
+    TokensDistinguishLeasesOfTheSameSlot
+)
 {
     LeasePool<2U> pool;
     pool[0].buffer = {0x1000U, 64U, 0U, Region::kDisplay};

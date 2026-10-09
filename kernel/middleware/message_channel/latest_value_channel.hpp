@@ -27,10 +27,12 @@ public:
     common::Error SendReplacingOldestOnce(const Message &message)
     {
         const common::Error status = channel_.TrySend(message);
-        if (status.Code() != common::ErrorCode::kBufferOverflow) return status;
+        if (status.Code() != common::ErrorCode::kBufferOverflow)
+            return status;
         Message discarded{};
         const common::Error receive_status = channel_.TryReceive(&discarded);
-        if (!receive_status.Ok() && !Drained(receive_status)) return receive_status;
+        if (!receive_status.Ok() && !Drained(receive_status))
+            return receive_status;
         return channel_.TrySend(message);
     }
 
@@ -38,12 +40,16 @@ public:
      * Depth + 1 times so other producers cannot starve this caller. Returns
      * the last send or receive error; the caller still owns message. */
     template <typename OnDiscard>
-    common::Error SendReplacingOldest(const Message &message, OnDiscard on_discard)
+    common::Error SendReplacingOldest(
+        const Message &message,
+        OnDiscard on_discard
+    )
     {
         common::Error send_status{};
         for (std::size_t attempt = 0U; attempt <= Depth; ++attempt) {
             send_status = channel_.TrySend(message);
-            if (send_status.Ok()) return {};
+            if (send_status.Ok())
+                return {};
             Message discarded{};
             const common::Error receive_status = channel_.TryReceive(&discarded);
             if (receive_status.Ok()) {
@@ -61,14 +67,19 @@ public:
      * receive error. updated reports whether *latest was written, including
      * when a later receive fails. */
     template <typename Accept>
-    DrainResult DrainLatest(Message *latest, Accept accept)
+    DrainResult DrainLatest(
+        Message *latest,
+        Accept accept
+    )
     {
-        if (latest == nullptr) return {{common::ErrorCode::kInvalidArgument}, false};
+        if (latest == nullptr)
+            return {{common::ErrorCode::kInvalidArgument}, false};
         Message message{};
         DrainResult result{{common::ErrorCode::kNoFrame}, false};
         for (std::size_t count = 0U; count <= Depth; ++count) {
             const common::Error status = channel_.TryReceive(&message);
-            if (Drained(status)) return result;
+            if (Drained(status))
+                return result;
             if (!status.Ok()) {
                 result.error = status;
                 return result;
@@ -84,10 +95,7 @@ public:
 
 private:
     /* A consumer emptied the queue between our calls; not a failure. */
-    static bool Drained(common::Error status)
-    {
-        return status.Code() == common::ErrorCode::kNoFrame;
-    }
+    static bool Drained(common::Error status) { return status.Code() == common::ErrorCode::kNoFrame; }
 
     MessageChannel<Message, Depth, Backend> channel_;
 };

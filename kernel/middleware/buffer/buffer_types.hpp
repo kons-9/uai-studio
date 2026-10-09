@@ -30,12 +30,17 @@ struct Buffer {
 
     explicit operator bool() const { return address != 0U && size != 0U; }
 
-    friend bool operator==(const Buffer &lhs, const Buffer &rhs)
+    friend bool operator==(
+        const Buffer &lhs,
+        const Buffer &rhs
+    )
     {
-        return lhs.address == rhs.address && lhs.size == rhs.size &&
-               lhs.index == rhs.index && lhs.region == rhs.region;
+        return lhs.address == rhs.address && lhs.size == rhs.size && lhs.index == rhs.index && lhs.region == rhs.region;
     }
-    friend bool operator!=(const Buffer &lhs, const Buffer &rhs)
+    friend bool operator!=(
+        const Buffer &lhs,
+        const Buffer &rhs
+    )
     {
         return !(lhs == rhs);
     }

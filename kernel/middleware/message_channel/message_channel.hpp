@@ -30,22 +30,18 @@ public:
     common::Error Create() { return backend_.Create(); }
     bool created() const { return backend_.created(); }
 
-    common::Error TrySend(const Message &message)
-    {
-        return backend_.Send(message, false);
-    }
-    common::Error Send(const Message &message)
-    {
-        return backend_.Send(message, true);
-    }
+    common::Error TrySend(const Message &message) { return backend_.Send(message, false); }
+    common::Error Send(const Message &message) { return backend_.Send(message, true); }
     common::Error TryReceive(Message *message)
     {
-        if (message == nullptr) return {common::ErrorCode::kInvalidArgument};
+        if (message == nullptr)
+            return {common::ErrorCode::kInvalidArgument};
         return backend_.Receive(message, false);
     }
     common::Error Receive(Message *message)
     {
-        if (message == nullptr) return {common::ErrorCode::kInvalidArgument};
+        if (message == nullptr)
+            return {common::ErrorCode::kInvalidArgument};
         return backend_.Receive(message, true);
     }
 

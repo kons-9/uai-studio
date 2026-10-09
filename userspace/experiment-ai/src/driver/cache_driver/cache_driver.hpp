@@ -9,12 +9,9 @@ namespace uai::ai::cache {
 class CacheDriver final {
 public:
     common::Error Initialize();
-    common::Error PrepareForDmaWrite(
-        const memory_allocator::Buffer &buffer) const;
-    common::Error PrepareForCpuRead(
-        const memory_allocator::Buffer &buffer) const;
-    common::Error PrepareForPeripheralRead(
-        const memory_allocator::Buffer &buffer) const;
+    common::Error PrepareForDmaWrite(const memory_allocator::Buffer &buffer) const;
+    common::Error PrepareForCpuRead(const memory_allocator::Buffer &buffer) const;
+    common::Error PrepareForPeripheralRead(const memory_allocator::Buffer &buffer) const;
     void KeepClocksOnSleep() const;
 
 private:

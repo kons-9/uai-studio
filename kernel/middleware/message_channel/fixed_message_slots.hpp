@@ -12,16 +12,13 @@ template <typename Message, std::size_t Depth>
 class FixedMessageSlots final {
     static_assert(std::is_trivially_copyable_v<Message>);
     static_assert(Depth > 0U);
-    static_assert(sizeof(Message) <=
-                  static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()));
+    static_assert(sizeof(Message) <= static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()));
 
     static constexpr std::size_t kHeaderBytes = sizeof(std::int32_t);
     static constexpr std::size_t kSlotBytes =
-        kHeaderBytes + (sizeof(Message) + kHeaderBytes - 1U) /
-                           kHeaderBytes * kHeaderBytes;
+        kHeaderBytes + (sizeof(Message) + kHeaderBytes - 1U) / kHeaderBytes * kHeaderBytes;
     static_assert(Depth <= std::numeric_limits<std::size_t>::max() / kSlotBytes);
-    static_assert(Depth * kSlotBytes <=
-                  static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()));
+    static_assert(Depth * kSlotBytes <= static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()));
 
 public:
     FixedMessageSlots() = default;
@@ -35,7 +32,9 @@ public:
     void *data() { return storage_.data(); }
 
 private:
-    alignas(8) std::array<std::byte, size_bytes()> storage_{};
+    alignas(8) std::array<
+        std::byte,
+        size_bytes()> storage_{};
 };
 
 } // namespace uai::ai::message_channel
