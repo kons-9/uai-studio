@@ -1,0 +1,30 @@
+{
+  "runtime_version": 1201,
+  "kind": 3,
+  "input": {
+    "type": "int8",
+    "layout": "nchw",
+    "shape": [
+      1,
+      3,
+      320,
+      320
+    ],
+    "scale": 0.00777685595676303,
+    "zero": 0
+  },
+  "outputs": [
+    {
+      "type": "int8",
+      "layout": "nchw",
+      "shape": [
+        1,
+        2,
+        320,
+        320
+      ],
+      "scale": 0.192028611898422,
+      "zero": 0
+    }
+  ]
+}

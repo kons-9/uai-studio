@@ -1,0 +1,54 @@
+{
+  "runtime_version": 1201,
+  "kind": 1,
+  "input": {
+    "type": "uint8",
+    "layout": "nhwc",
+    "shape": [
+      1,
+      480,
+      480,
+      3
+    ],
+    "scale": 0.00392156885936856,
+    "zero": 0
+  },
+  "outputs": [
+    {
+      "type": "float32",
+      "layout": "nhwc",
+      "shape": [
+        1,
+        15,
+        15,
+        18
+      ],
+      "scale": 1.0,
+      "zero": 0
+    },
+    {
+      "type": "float32",
+      "layout": "nhwc",
+      "shape": [
+        1,
+        60,
+        60,
+        18
+      ],
+      "scale": 1.0,
+      "zero": 0
+    },
+    {
+      "type": "float32",
+      "layout": "nhwc",
+      "shape": [
+        1,
+        30,
+        30,
+        18
+      ],
+      "scale": 1.0,
+      "zero": 0
+    }
+  ]
+}

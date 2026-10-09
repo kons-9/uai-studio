@@ -2,9 +2,9 @@
 
 ## 状態と目的
 
-マニフェスト生成/C++読取り、期待値/CRC検証、隔離PSRAMスロットへの転送、非同期NPU実行、画像入力、出力テンソル取得を実装している。既定は転送fixtureでNPU無効。`EXPERIMENT_MODEL_NPU=ON EXPERIMENT_MODEL_MULTI=ON`では、このexperiment内で生成したperson/face/segの実行コードを一度ビルドし、起動後にHeader・重み・blobを切り替える。単一入力と最大8出力に対応する。kernel/driver・middlewareや別userspaceの実装には依存しない。
+マニフェスト生成/C++読取り、期待値/CRC検証、隔離PSRAMスロットへの転送、非同期NPU実行、画像入力、出力テンソル取得を実装している。既定は`models/generated/`にあるsegmentationモデルを使うNPU有効の単一モデル構成。`EXPERIMENT_MODEL_MULTI=ON`では、このexperiment内で生成したperson/face/segの実行コードを一度ビルドし、起動後にHeader・重み・blobを切り替える。単一入力と最大8出力に対応する。kernel/driver・middlewareや別userspaceの実装には依存しない。
 
-従来の単一モデル版ではSTM32N6570-DKでRAM起動、Pipe1/2開始、PSRAM直接書き込み、manifest/CRC、ゼロ入力の出力CRC `956690df`を確認済み。今回追加したv2 Header・3モデル切り替え・画像前処理・結果転送はホストテスト確認済みだが、この実装環境にはSTEdgeAI/ARMツールチェーンと実モデル生成物がなく、NPU有効ビルドと実機動作は未確認。relocatable API対応も未確認で、未知のモデルコードを再ビルドなしで実行できる方式ではない。
+単一モデル構成ではSTM32N6570-DKでRAM起動、Pipe1/2開始、PSRAM直接書き込み、manifest/CRC、ゼロ入力の出力CRC `956690df`を確認済み。3モデル切り替え・画像前処理・結果転送はホストテスト済み。relocatable API対応は未確認で、未知のモデルコードを再ビルドなしで実行する方式ではない。
 
 ## 実装済みと実行方法
 
@@ -17,7 +17,7 @@ python3 userspace/experiment-model-load/tool/manifest.py pack --help
 python3 userspace/experiment-model-load/tool/manifest.py verify --help
 ```
 
-NPU無効時にモデルマニフェストを指定しないビルドでは、[tool/fixture.py](tool/fixture.py)が小さなweights/blobを作る。3モデル版はweights 8 MiB、blob 2 MiB、入力2 MiB、出力全体4 MiB以内。従来の単一モデル版は入出力各512 KiB以内。
+`EXPERIMENT_MODEL_NPU=OFF`でモデルマニフェストを指定しないビルドでは、[tool/fixture.py](tool/fixture.py)が小さなweights/blobを作る。転送だけを試すfixtureモードとして使う。3モデル版はweights 8 MiB、blob 2 MiB、入力2 MiB、出力全体4 MiB以内。単一モデル版は入出力各512 KiB以内。
 
 [tool/manifest.py](tool/manifest.py)のpackには重み/blobのファイル、配置アドレス、予約領域、ランタイム版、モデル種別、入出力バイト数を明示する。予約領域外・セグメント重複・アドレスオーバーフロー・入力ファイルへの上書きを拒否する。packはローカルファイル生成だけで、デバイスへ書き込まない。verifyもローカルファイルとのサイズ/CRC照合のみ。
 
@@ -39,7 +39,7 @@ NPU無効時にモデルマニフェストを指定しないビルドでは、[t
 
 ツールは`tool/`内に置き、host_app統一入口へは接続しない。重みはPSRAM `0x91200000`から8 MiB、blobは`0x91a00000`から2 MiB。以前のblobアドレスから変更したため、モデルとファームウェアは再生成・再ビルドする。転送はPSRAM初期化とPipe開始後に行う。`model adopt`はD-cacheをinvalidateし、Headerと全CRCを検証してから公開する。`verified`は推論成功を意味しない。
 
-既定のfixtureを実機で確認するには、UARTを先に開く端末Aで次を起動する。アップローダがUARTを排他的に保持し、起動ログ、Pipe1/2開始行、アップロード後の`model stat`を表示する:
+既定の単一モデルを実機で動かすには、UARTを先に開く端末Aで次を起動する。アップローダがUARTを排他的に保持し、起動ログとPipe1/2開始行を確認してから、ST-LinkでPSRAMへ重み/blobを書き、CRC検証とゼロ入力推論を実行する:
 
 ```sh
 UART_DEVICE=/dev/ttyACM0 make -C userspace/experiment-model-load model-upload MODEL_WAIT_READY=ON
@@ -51,7 +51,7 @@ UART_DEVICE=/dev/ttyACM0 make -C userspace/experiment-model-load model-upload MO
 make -C userspace/experiment-model-load ram-run
 ```
 
-アップロード完了後、端末Aに`MODEL state=verified`と`npu=unavailable`が出る。UART出力の監視を終えるにはCtrl-Cを押す。`make monitor`や別のUARTツールを同時に起動しない。ボードのシリアル名が異なる場合は`UART_DEVICE`を実際のVCPへ合わせる。
+端末Aに`MODEL state=verified`と`MODEL RESULT npu=done output_crc=...`が出ればロードと推論の完了。UART監視を終えるにはCtrl-Cを押す。`make monitor`や別のUARTツールを同時に起動しない。ボードのシリアル名が異なる場合は`UART_DEVICE`を実際のVCPへ合わせる。
 
 ## 三モデルのHeaderと転送
 
@@ -102,7 +102,7 @@ make -C userspace/experiment-model-load model-generate \
 	MODEL_NAME=face MODEL_SOURCE=/path/face.tflite MODEL_DESCRIPTOR=/path/face.json
 make -C userspace/experiment-model-load model-generate \
 	MODEL_NAME=seg MODEL_SOURCE=/path/seg.onnx MODEL_DESCRIPTOR=/path/seg.json
-make -C userspace/experiment-model-load model-package EXPERIMENT_MODEL_NPU=ON
+make -C userspace/experiment-model-load model-package EXPERIMENT_MODEL_NPU=ON EXPERIMENT_MODEL_MULTI=ON
 ```
 
 STEdgeAIは`MODEL_STEDGEAI`、STランタイムは`STEDGEAI_LIB_DIR`で指定する。3モデルは同じSTランタイム版を使う。生成物は`models/person/`、`models/face/`、`models/seg/`に置き、他userspaceの生成物を参照しない。3モデルのblobはoverlayで同じ実行アドレスへリンクし、ファームウェアbinから除外する。OBJECTのblobにリンク再配置がある場合はパッケージ化を拒否する。
@@ -110,20 +110,20 @@ STEdgeAIは`MODEL_STEDGEAI`、STランタイムは`STEDGEAI_LIB_DIR`で指定す
 最初の起動は、端末AでUARTを先に開く:
 
 ```sh
-make -C userspace/experiment-model-load model-upload EXPERIMENT_MODEL_NPU=ON \
+make -C userspace/experiment-model-load model-upload EXPERIMENT_MODEL_NPU=ON EXPERIMENT_MODEL_MULTI=ON \
 	MODEL_NAME=person MODEL_IMAGE=/path/image.jpg MODEL_RESULT_DIR=/path/results/person \
 	UART_DEVICE=/dev/ttyACM0 MODEL_WAIT_READY=ON \
 	MODEL_PYTHON=/path/venv/bin/python STM32_PROGRAMMER_CLI=/path/STM32_Programmer_CLI
 ```
 
-UART待機後、端末Bで `make -C userspace/experiment-model-load ram-run EXPERIMENT_MODEL_NPU=ON` を実行する。STランタイムの設定は両端末で同じにする。
+UART待機後、端末Bで `make -C userspace/experiment-model-load ram-run EXPERIMENT_MODEL_NPU=ON EXPERIMENT_MODEL_MULTI=ON` を実行する。STランタイムの設定は両端末で同じにする。
 
 ### 起動済みボードへの再ロード
 
 監視をCtrl-Cで閉じ、他のUARTモニターを止めてから実行する。`MODEL_WAIT_READY`の既定はOFFで、起動ログを再度要求しない。
 
 ```sh
-make -C userspace/experiment-model-load model-upload EXPERIMENT_MODEL_NPU=ON \
+make -C userspace/experiment-model-load model-upload EXPERIMENT_MODEL_NPU=ON EXPERIMENT_MODEL_MULTI=ON \
 	MODEL_NAME=face MODEL_IMAGE=/path/face-image.jpg MODEL_RESULT_DIR=/path/results/face \
 	UART_DEVICE=/dev/ttyACM0 MODEL_PYTHON=/path/venv/bin/python \
 	STM32_PROGRAMMER_CLI=/path/STM32_Programmer_CLI
@@ -149,9 +149,9 @@ person/faceのNMS、YOLOX/BlazeFaceのアンカー復元、ランドマーク変
 
 カメラはSRAMバッファのまま使う。固定PSRAMカメラプロファイルは入力と衝突するため3モデル版では拒否する。画像入力はホストからの固定画像/テンソルであり、カメラの連続DMAから直接推論する取得・解放処理はまだ接続していない。
 
-## 従来の単一モデル版
+## 単一モデル版（既定）
 
-以下は`EXPERIMENT_MODEL_MULTI=OFF`を指定して使う従来経路。3モデル版の入力・結果転送とは別で、ゼロ入力の疎通確認用。
+既定は`EXPERIMENT_MODEL_MULTI=OFF`で、ここに記載する単一モデル経路を使う。3モデル版の入力・結果転送とは別で、ゼロ入力の疎通確認用。
 
 STEdgeAIのST AI C APIで生成できる単一入力・単一出力モデルを用意する。weights 8 MiB、blob 2 MiB以内、入力と出力は各512 KiB以内。[tool/model.py](tool/model.py)はローカルの[model.mpool](config/model.mpool)を使い、PSRAMとSRAM5/6へNPU作業領域を予約する。カメラのSRAM3/4やアプリのSRAM1/2を生成ツールに割り当てない。
 
