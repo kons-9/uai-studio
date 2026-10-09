@@ -78,7 +78,7 @@ make -C userspace/experiment-camera-control monitor
 make -C userspace/experiment-camera-control ram-run
 ```
 
-カメラ開始後、約3分で次の32段階を一巡する。各段階のBEGINをUARTに表示し、露出・WB・反転・cropなどの見た目を数秒ずつ観察できるようにしている。
+カメラ開始後、約1分で次の32段階を一巡する。実行中のaction名を画面左上にも表示する。各段階の状態確認を約1秒、FPS測定を2秒、最後の連続動作確認を10秒に短縮した。BEGINログと設定読戻し、両Pipeの進行、FPS許容差の確認は維持する。visual=requiredのため、表示の明るさ・色・向き・画角は引き続き別途目視確認する。
 
 | 段階 | 内容 | 自動で確認すること |
 | --- | --- | --- |
@@ -90,7 +90,7 @@ make -C userspace/experiment-camera-control ram-run
 | invalid-input | FPS 12、反転値2、幅0のcrop、露出99us | 拒否され、直前の設定が変わらない |
 | stop、restart | 停止後に再開 | 停止中の両カウンタ停止、設定保持、両Pipe再開 |
 | recovery-1/2 | 復旧を2回 | 設定保持、両Pipe再開 |
-| stability | 60秒連続動作 | 途中の片側停止、処理失敗、意図しない復旧がない |
+| stability | 10秒連続動作 | 途中の片側停止、処理失敗、意図しない復旧がない |
 | restore | 開始前の設定へ復元 | AE・EV・露出/ゲイン・測光領域・WBとFPS/反転/cropの復元、両Pipe進行 |
 
 PASSはAPI成功だけではない。要求値を保持した状態と読戻しを照合し、手動露出は100us、ゲインは300mdBの量子化許容差を使う。AE中の露出/ゲインとAWB中の色温度は変動するため固定値では比較しない。各Pipeが1.5秒進まない場合、カメラ/表示処理のエラー、予期しない復旧、監視間隔の1.5秒超過はFAILになる。設定APIの操作に5秒を超えた場合は、返却後にFAILとする。HAL内部の無期限待ちやCPUフォルトを強制中断する仕組みではない。

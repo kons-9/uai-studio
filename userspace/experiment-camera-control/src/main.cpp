@@ -3,12 +3,15 @@
 #include "extension.hpp"
 #include "rx_queue.hpp"
 #include "driver/display_driver.hpp"
+#include "driver/frame_buffer.hpp"
+#include "middleware/ui/canvas.hpp"
 
 #include <tk/tkernel.h>
 
 extern "C" {
 #include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
+#include "stm32n6570_discovery_lcd.h"
 void tm_com_init(void);
 extern volatile unsigned int camera_pipe2_pipe1_vsync_count;
 extern volatile unsigned int camera_pipe2_pipe2_frame_count;
@@ -31,6 +34,40 @@ void Write(void *, const char *text, std::size_t size)
 }
 
 const experiment::console::Writer output{nullptr, Write};
+
+void DrawScenarioAction(const char *action)
+{
+    if (action == nullptr) { return; }
+
+    char label[40];
+    std::snprintf(label, sizeof(label), "CAMTEST: %s", action);
+    constexpr std::uint16_t x = 8;
+    constexpr std::uint16_t y = 8;
+    constexpr std::uint16_t padding = 8;
+    constexpr std::uint8_t scale = 2;
+    const auto text_width = uai::ai::ui::TextWidth(label, scale);
+    const auto box_width = static_cast<std::uint16_t>(text_width + padding * 2U);
+    constexpr std::uint16_t box_height = 30;
+
+    auto *frame = reinterpret_cast<std::uint16_t *>(
+        hlcd_ltdc.LayerCfg[0].FBStartAdress);
+    uai::ai::ui::Canvas canvas(
+        frame, static_cast<std::uint16_t>(uai::camera_pipe2::driver::kDisplayWidth),
+        static_cast<std::uint16_t>(uai::camera_pipe2::driver::kFrameHeight));
+    canvas.FillRect({x, y, box_width, box_height}, uai::ai::ui::Rgb565(8, 16, 24));
+    canvas.DrawText(x + padding, y + 7U, label, scale, uai::ai::ui::Rgb565(255, 240, 96));
+
+    const auto address = reinterpret_cast<std::uintptr_t>(frame);
+    const auto pitch = uai::camera_pipe2::driver::kDisplayWidth * sizeof(std::uint16_t);
+    const auto first = address + static_cast<std::uintptr_t>(y) * pitch + x * sizeof(std::uint16_t);
+    const auto last = address + static_cast<std::uintptr_t>(y + box_height - 1U) * pitch +
+                      static_cast<std::uintptr_t>(x + box_width) * sizeof(std::uint16_t);
+    constexpr std::uintptr_t cache_line = 32U;
+    const auto aligned_first = first & ~(cache_line - 1U);
+    const auto aligned_last = (last + cache_line - 1U) & ~(cache_line - 1U);
+    SCB_CleanDCache_by_Addr(reinterpret_cast<std::uint32_t *>(aligned_first),
+                            static_cast<std::int32_t>(aligned_last - aligned_first));
+}
 
 struct ConsoleCamera {
     experiment::camera::Runtime *runtime;
@@ -140,6 +177,7 @@ void CameraTask(INT, void *)
             output.Write("display: processing failed\n");
         }
         experiment::Tick(now, last_frame);
+        DrawScenarioAction(experiment::CurrentScenarioAction());
         for (unsigned budget = 0; budget < 128; ++budget) {
             char character = 0;
             bool receive_error = false;

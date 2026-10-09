@@ -71,6 +71,7 @@ public:
     bool Active() const { return active_; }
     unsigned Passed() const { return passed_; }
     unsigned Failed() const { return failed_; }
+    const char *CurrentAction() const { return active_ ? steps_[stage_].name : nullptr; }
 
     void Tick()
     {
@@ -81,7 +82,7 @@ public:
         if (runtime_.Recoveries() != recoveries_) { Fail("unexpected-recovery"); return; }
         if (runtime_.Running() != (step.action != Action::kStop)) { Fail("capture-state"); return; }
         if (!measuring_) {
-            if (now - entered_ < 500) { return; }
+            if (now - entered_ < kWarmupMs) { return; }
             baseline_ = frames_();
             latest_ = baseline_;
             measurement_ = now;
@@ -137,44 +138,52 @@ public:
     }
 
 private:
+    // Keep the scenario responsive while allowing enough frames to check state
+    // changes. FPS checks use a longer window so their tolerance stays useful.
+    inline static constexpr std::uint32_t kWarmupMs = 250;
+    inline static constexpr std::uint32_t kCheckMs = 1000;
+    inline static constexpr std::uint32_t kFpsCheckMs = 2000;
+    inline static constexpr std::uint32_t kShortCheckMs = 500;
+    inline static constexpr std::uint32_t kStabilityCheckMs = 10000;
+
     enum class Action {
         kObserve, kManual, kExposure, kWhiteBalance, kAutoExposure, kCompensation,
         kStatistics, kFps, kFlip, kCrop, kInvalid, kStop, kStart, kRecover, kRestore
     };
     struct Step { const char *name; Action action; std::uint32_t duration_ms; std::int32_t value; };
     inline static constexpr Step steps_[] = {
-        {"baseline", Action::kObserve, 2000, 0},
-        {"manual", Action::kManual, 3000, 0},
-        {"exposure-1000", Action::kExposure, 3000, 1000},
-        {"wb-auto", Action::kWhiteBalance, 3000, 0},
-        {"wb-2810", Action::kWhiteBalance, 3000, 2810},
-        {"exposure-4000", Action::kExposure, 3000, 4000},
-        {"wb-4015", Action::kWhiteBalance, 3000, 4015},
-        {"exposure-12000", Action::kExposure, 3000, 12000},
-        {"wb-6650", Action::kWhiteBalance, 3000, 6650},
-        {"exposure-28000", Action::kExposure, 3000, 28000},
-        {"ae-on", Action::kAutoExposure, 3000, 0},
-        {"ev-minus", Action::kCompensation, 3000, -2},
-        {"ev-plus", Action::kCompensation, 3000, 2},
-        {"statistics-center", Action::kStatistics, 3000, 0},
-        {"manual-fixed", Action::kManual, 2000, 0},
-        {"fps-10", Action::kFps, 4000, 10},
-        {"fps-15", Action::kFps, 4000, 15},
-        {"fps-20", Action::kFps, 4000, 20},
-        {"fps-25", Action::kFps, 4000, 25},
-        {"fps-30", Action::kFps, 4000, 30},
-        {"flip-horizontal", Action::kFlip, 3000, 1},
-        {"flip-vertical", Action::kFlip, 3000, 2},
-        {"flip-both", Action::kFlip, 3000, 3},
-        {"flip-normal", Action::kFlip, 3000, 0},
-        {"crop", Action::kCrop, 3000, 0},
-        {"invalid-input", Action::kInvalid, 2000, 0},
-        {"stop", Action::kStop, 1000, 0},
-        {"restart", Action::kStart, 2000, 0},
-        {"recovery-1", Action::kRecover, 2000, 0},
-        {"recovery-2", Action::kRecover, 2000, 0},
-        {"stability", Action::kObserve, 60000, 0},
-        {"restore", Action::kRestore, 2000, 0},
+        {"baseline", Action::kObserve, kCheckMs, 0},
+        {"manual", Action::kManual, kCheckMs, 0},
+        {"exposure-1000", Action::kExposure, kCheckMs, 1000},
+        {"wb-auto", Action::kWhiteBalance, kCheckMs, 0},
+        {"wb-2810", Action::kWhiteBalance, kCheckMs, 2810},
+        {"exposure-4000", Action::kExposure, kCheckMs, 4000},
+        {"wb-4015", Action::kWhiteBalance, kCheckMs, 4015},
+        {"exposure-12000", Action::kExposure, kCheckMs, 12000},
+        {"wb-6650", Action::kWhiteBalance, kCheckMs, 6650},
+        {"exposure-28000", Action::kExposure, kCheckMs, 28000},
+        {"ae-on", Action::kAutoExposure, kCheckMs, 0},
+        {"ev-minus", Action::kCompensation, kCheckMs, -2},
+        {"ev-plus", Action::kCompensation, kCheckMs, 2},
+        {"statistics-center", Action::kStatistics, kCheckMs, 0},
+        {"manual-fixed", Action::kManual, kCheckMs, 0},
+        {"fps-10", Action::kFps, kFpsCheckMs, 10},
+        {"fps-15", Action::kFps, kFpsCheckMs, 15},
+        {"fps-20", Action::kFps, kFpsCheckMs, 20},
+        {"fps-25", Action::kFps, kFpsCheckMs, 25},
+        {"fps-30", Action::kFps, kFpsCheckMs, 30},
+        {"flip-horizontal", Action::kFlip, kCheckMs, 1},
+        {"flip-vertical", Action::kFlip, kCheckMs, 2},
+        {"flip-both", Action::kFlip, kCheckMs, 3},
+        {"flip-normal", Action::kFlip, kCheckMs, 0},
+        {"crop", Action::kCrop, kCheckMs, 0},
+        {"invalid-input", Action::kInvalid, kShortCheckMs, 0},
+        {"stop", Action::kStop, kShortCheckMs, 0},
+        {"restart", Action::kStart, kCheckMs, 0},
+        {"recovery-1", Action::kRecover, kCheckMs, 0},
+        {"recovery-2", Action::kRecover, kCheckMs, 0},
+        {"stability", Action::kObserve, kStabilityCheckMs, 0},
+        {"restore", Action::kRestore, kShortCheckMs, 0},
     };
 
     console::Status RestoreOriginal()

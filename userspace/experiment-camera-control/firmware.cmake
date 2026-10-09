@@ -31,6 +31,7 @@ set_source_files_properties("${CAMERA_BSP}" PROPERTIES COMPILE_DEFINITIONS
 add_executable(${TARGET_NAME}
     "${EXPERIMENT_RUNTIME}/src/main.cpp" "${EXPERIMENT_RUNTIME}/src/isp_camera.cpp"
     "${EXPERIMENT_RUNTIME}/src/bsp_device.cpp" "${EXPERIMENT_RUNTIME}/src/frame_events.c"
+    "${PROJECT_SOURCE_DIR}/kernel/middleware/ui/canvas.cpp"
     ${EXPERIMENT_EXTENSION}
     "${BASE}/src/driver/camera_driver.cpp"
     "${BASE}/src/driver/display_driver.cpp"
@@ -70,6 +71,7 @@ target_sources(${TARGET_NAME} PRIVATE
 
 target_include_directories(${TARGET_NAME} PRIVATE
     src "${EXPERIMENT_RUNTIME}/src" "${BASE}/src" "${BASE}/src/driver/board/include"
+    "${PROJECT_SOURCE_DIR}/kernel"
     "${EXPERIMENT_RUNTIME}/../experiment-ai/config"
     "${BSP}" "${COMPONENTS}/Common" "${COMPONENTS}/aps256xx"
     "${COMPONENTS}/mx66uw1g45g" "${COMPONENTS}/imx335" "${COMPONENTS}/rk050hr18"

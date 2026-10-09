@@ -82,6 +82,11 @@ std::size_t Register(const Services &provided, console::Command *commands, std::
     return 2;
 }
 
+const char *CurrentScenarioAction()
+{
+    return scenario ? scenario->CurrentAction() : nullptr;
+}
+
 void Tick(std::uint32_t milliseconds, std::uint32_t sequence)
 {
     if (autostart) {
