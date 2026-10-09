@@ -14,6 +14,9 @@ def generate(header):
 
 if __name__ == "__main__":
     try:
-        pathlib.Path(sys.argv[2]).write_text(generate(pathlib.Path(sys.argv[1]).read_bytes()))
+        output = pathlib.Path(sys.argv[2])
+        contents = generate(pathlib.Path(sys.argv[1]).read_bytes())
+        if not output.exists() or output.read_text() != contents:
+            output.write_text(contents)
     except (ValueError, OSError) as error:
         sys.exit(str(error))

@@ -2,17 +2,20 @@
 
 ## 状態と目的
 
-マニフェスト生成/C++読取り、期待値/CRC検証、隔離PSRAMスロットへの順序付き転送、UARTアップローダとホストテストを実装済み。NPU登録・推論・relocatable対応には実際の生成モデルとランタイムAPIが必要で未接続。今回、合成マニフェストを使ったARMビルドとHAL/IRQリンク監査は通過した。実データでのビルドと実機確認は未完了。kernel/driver・middlewareには依存しない。
+マニフェスト生成/C++読取り、期待値/CRC検証、隔離PSRAMスロットへの順序付き転送、UARTアップローダとホストテストを実装済み。既定で小さな転送fixtureを作り、firmwareをビルドして実機上のUART→PSRAM転送とCRC照合を試せる。fixtureはNPUモデルではないため、NPU登録・推論・relocatable対応は未接続。kernel/driver・middlewareには依存しない。
 
 ## 実装済みと実行方法
 
 ```sh
+make -C userspace/experiment-model-load model-fixture
 cmake -S userspace/experiment-model-load -B build/experiment-model-load-host
 cmake --build build/experiment-model-load-host
 ctest --test-dir build/experiment-model-load-host --output-on-failure
 python3 userspace/experiment-model-load/manifest.py pack --help
 python3 userspace/experiment-model-load/manifest.py verify --help
 ```
+
+モデルマニフェストを指定しない実機ビルドでは、fixture.pyが小さなweightsとblobをbuildディレクトリへ作り、そこから期待マニフェストを生成する。実際の生成モデルを使う場合は`EXPERIMENT_MODEL_MANIFEST`を指定し、weights/blobとも各64KiB以内であること。
 
 [manifest.py](manifest.py)のpackには重み/blobのファイル、配置アドレス、予約領域、ランタイム版、モデル種別、入出力バイト数を明示する。予約領域外・セグメント重複・アドレスオーバーフロー・入力ファイルへの上書きを拒否する。packはローカルファイル生成だけで、デバイスへ書き込まない。verifyもローカルファイルとのサイズ/CRC照合のみ。
 
@@ -32,7 +35,21 @@ python3 userspace/experiment-model-load/manifest.py verify --help
 | tests/ | 形式のencode/decode、境界・オーバーフロー、サイズ・バージョン・CRC・テンソル整合 |
 | 実験記録 | 書き込み計画、モデル識別子、ELF/map、UART、入力/出力CRC、所要時間 |
 
-pack / verifyと[upload.py](upload.py)は実験内に置き、host_app統一入口へは接続しない。実機ビルド時は`EXPERIMENT_MODEL_MANIFEST`に期待マニフェストを指定し、weightsは0x91010000、blobは0x91020000の別々の64KiB専用スロットに収める。UARTを先に開き、別端末で起動した後、アップローダに`--uart --manifest --weights --blob`を指定する。`model stat`の`verified`はCRC検証済みを意味し、NPU実行可能を意味しない（`npu=unavailable`）。
+pack / verifyと[upload.py](upload.py)は実験内に置き、host_app統一入口へは接続しない。weightsは0x91010000、blobは0x91020000の別々の64KiB専用スロットへ転送する。`model stat`の`verified`はCRC検証済みを意味し、NPU実行可能を意味しない（`npu=unavailable`）。
+
+既定のfixtureを実機で確認するには、UARTを先に開く端末Aで次を起動する。アップローダがUARTを排他的に保持し、起動ログ、Pipe1/2開始行、アップロード後の`model stat`を表示する:
+
+```sh
+UART_DEVICE=/dev/ttyACM0 make -C userspace/experiment-model-load model-upload
+```
+
+端末AがUARTを待っている状態で、端末Bから起動する:
+
+```sh
+make -C userspace/experiment-model-load ram-run
+```
+
+アップロード完了後、端末Aに`MODEL state=verified`と`npu=unavailable`が出る。UART出力の監視を終えるにはCtrl-Cを押す。`make monitor`や別のUARTツールを同時に起動しない。ボードのシリアル名が異なる場合は`UART_DEVICE`を実際のVCPへ合わせる。
 
 ## pre-kernel等への接続要件（今は変更しない）
 
@@ -54,7 +71,7 @@ pack / verifyと[upload.py](upload.py)は実験内に置き、host_app統一入�
 
 ## 利用者が実施するテスト
 
-実装者がホストテスト、書込み範囲、リンク結果、起動とPipe1/2を確認してから実施する。UARTを先に開き、別端末で`make -C userspace/experiment-model-load ram-run`を実行する。
+実装者がホストテスト、書込み範囲、リンク結果、起動とPipe1/2を確認してから実施する。UARTを先に`model-upload`で開き、別端末で`make -C userspace/experiment-model-load ram-run`を実行する。
 
 | 操作・準備 | 合格条件・記録 |
 | --- | --- |

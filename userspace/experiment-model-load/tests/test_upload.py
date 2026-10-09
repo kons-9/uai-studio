@@ -19,6 +19,8 @@ class FakePort:
     def readline(self, timeout):
         if self.reject and self.reject in self.commands[-1]:
             return "> ERR invalid-argument"
+        if self.commands[-1] == "model stat":
+            return "MODEL state=verified weights=65 blob=11 npu=unavailable"
         return "> MODEL OK abort" if self.commands[-1] == "model abort" else "> MODEL OK"
 
 
@@ -29,7 +31,7 @@ class UploadTests(unittest.TestCase):
                                   0x91020000, len(blob), zlib.crc32(blob))
         port = FakePort()
         upload.upload(port, value.encode(), weights, blob, 1)
-        self.assertEqual(port.commands[-1], "model commit")
+        self.assertEqual(port.commands[-2:], ["model commit", "model stat"])
         self.assertEqual([command.split()[3] for command in port.commands if command.startswith("model chunk weights")], ["0", "32", "64"])
         failed = FakePort("model chunk blob")
         with self.assertRaises(ValueError):
