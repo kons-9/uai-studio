@@ -1,0 +1,23 @@
+{
+  "schema_version": 2,
+  "screen": {"width": 800, "height": 480},
+  "namespace": "uai::ai::hwtest_layout",
+  "screens": [{
+    "id": "main",
+    "background": "camera",
+    "widgets": [
+      {"type": "label", "id": "title", "text": "HW TEST", "x": 8, "y": 8, "width": 180, "height": 24, "style": {"text_scale": 2, "fill": "#101414", "text": "#FFFFFF"}},
+      {"type": "label", "id": "summary", "text": "P0 F0 T0", "x": 192, "y": 8, "width": 200, "height": 24, "style": {"text_scale": 2, "fill": "#101414", "text": "#50DC98"}},
+      {"type": "label", "id": "selection", "text": "ALL QUICK", "x": 8, "y": 40, "width": 328, "height": 40, "style": {"text_scale": 2, "fill": "#252B2B"}},
+      {"type": "label", "id": "selection_hint", "text": "SWIPE LIST TO SELECT - TAP RUN", "x": 408, "y": 40, "width": 384, "height": 40, "style": {"text_scale": 2, "fill": "#252B2B", "text": "#FFFFFF"}},
+      {"type": "button", "id": "run", "label": "RUN", "on_tap": "OnRun", "x": 344, "y": 40, "width": 48, "height": 40, "style": {"fill": "#185C3C", "pressed_fill": "#287C50", "text_scale": 2, "border_width": 0}},
+      {"type": "label", "id": "status", "text": "STARTING", "x": 8, "y": 88, "width": 384, "height": 24, "style": {"text_scale": 2, "fill": "#101414", "text": "#F0CC60"}},
+      {"type": "button", "id": "log_up", "label": "", "shape": "triangle_up", "on_tap": "OnLogUp", "x": 8, "y": 432, "width": 40, "height": 40, "style": {"fill": "#A8BCBC", "border_width": 0}},
+      {"type": "button", "id": "log_down", "label": "", "shape": "triangle_down", "on_tap": "OnLogDown", "x": 56, "y": 432, "width": 40, "height": 40, "style": {"fill": "#A8BCBC", "border_width": 0}},
+      {"type": "button", "id": "stop", "label": "STOP", "on_tap": "OnStop", "x": 104, "y": 432, "width": 80, "height": 40, "style": {"fill": "#803830", "pressed_fill": "#A85040", "text_scale": 2, "border_width": 0}},
+      {"type": "button", "id": "pipe1", "label": "P1", "on_tap": "OnPipe1", "x": 192, "y": 432, "width": 56, "height": 40, "style": {"fill": "#252B2B", "checked_fill": "#185C3C", "text_scale": 2, "border_width": 0}},
+      {"type": "button", "id": "pipe2", "label": "P2", "on_tap": "OnPipe2", "x": 256, "y": 432, "width": 56, "height": 40, "style": {"fill": "#252B2B", "checked_fill": "#185C3C", "text_scale": 2, "border_width": 0}},
+      {"type": "button", "id": "compare", "label": "DUAL", "on_tap": "OnCompare", "x": 320, "y": 432, "width": 72, "height": 40, "style": {"fill": "#252B2B", "checked_fill": "#185C3C", "text_scale": 2, "border_width": 0}}
+    ]
+  }]
+}

@@ -1,0 +1,9 @@
+{
+  "semantics": {
+    "task": "semantic_segmentation",
+    "input_domain": "unknown",
+    "outputs": [{"id": "output0", "meaning": "unknown"}],
+    "labels": []
+  },
+  "decoder": {"id": "raw", "version": 1, "bindings": {}, "parameters": {}, "result_schema": "raw_tensors/v1"}
+}

@@ -90,7 +90,7 @@ UART_BAUD = 115200
 | `host_app` | PCで動かすトレース解析とメモリ配置生成ツール（[host_app/README.md](host_app/README.md)） |
 | `docs` | 開発ガイド（ハードウェアの前提とツールの取得、カーネル、ドライバー、ミドルウェア） |
 
-カメラ・LCD・タッチ・DMA2DなどのHW確認は、[experiment-hw-test](userspace/experiment-hw-test/README.md)を使います。起動時は短縮版の`all`、長時間のカメラ・制御・DMA2D負荷確認は`all-stress`、タッチ位置の対話確認は`hwtest run touch`で実行します。
+共有middlewareとdriverを使うHW確認は、[userspace/hw-test/README.md](userspace/hw-test/README.md)を使います。HAL/BSPベースの独立版[experiment-hw-test](userspace/experiment-hw-test/README.md)も維持しています。両アプリとも起動時は短縮版の`all`、長時間のカメラ・制御・DMA2D負荷確認は`all-stress`、タッチ位置の対話確認は`hwtest run touch`で実行します。
 
 ## セットアップ、ビルド、RAM実行
 

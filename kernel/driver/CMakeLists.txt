@@ -10,6 +10,7 @@ set(UAI_DRIVER_SOURCES
     board/register_diagnostics.cpp
     board/interrupt_priority.cpp
     cache_driver/cache_driver.cpp
+    dma2d_driver/dma2d_driver.cpp
     camera_driver/board_driver/stm32n6570_discovery_camera.c
     camera_driver/camera_diagnostics.cpp
     camera_driver/camera_driver.cpp
@@ -26,11 +27,27 @@ set(UAI_DRIVER_SOURCES
     psram_driver/registers/psram_registers.cpp
     rif_driver/rif_driver.cpp
     touch_driver/touch_driver.cpp)
+    if(APP_TARGET STREQUAL "hw-test")
+        list(FILTER UAI_DRIVER_SOURCES EXCLUDE REGEX "^npu_driver/")
+    endif()
 list(TRANSFORM UAI_DRIVER_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 list(APPEND UAI_DRIVER_SOURCES
     "${AI_BSP_ROOT}/stm32n6570_discovery_ts.c"
     "${AI_COMPONENT_ROOT}/gt911/gt911.c"
     "${AI_COMPONENT_ROOT}/gt911/gt911_reg.c")
+
+set(_generated_dma2d_source
+    "${CUBEMX_OUTPUT_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dma2d.c")
+set(_generated_hal_config "${CUBEMX_OUTPUT_DIR}/FSBL/Core/Inc/stm32n6xx_hal_conf.h")
+set(_generated_dma2d_enabled OFF)
+if(EXISTS "${_generated_hal_config}")
+    file(STRINGS "${_generated_hal_config}" _generated_dma2d_enabled
+        REGEX "^#define[ \t]+HAL_DMA2D_MODULE_ENABLED")
+endif()
+if(NOT _generated_dma2d_enabled OR NOT EXISTS "${_generated_dma2d_source}")
+    list(APPEND UAI_DRIVER_SOURCES
+        "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dma2d.c")
+endif()
 
 set(AI_CAMERA_BSP_SOURCE
     "${CMAKE_CURRENT_SOURCE_DIR}/camera_driver/board_driver/stm32n6570_discovery_camera.c")

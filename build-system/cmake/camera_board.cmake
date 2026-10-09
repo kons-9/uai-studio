@@ -2,8 +2,10 @@ set(UAI_CAMERA_BOARD_APP "")
 set(UAI_CAMERA_BOARD_INCLUDE_DIR "")
 set(_uai_camera_board_apps
     experiment-model-load
+    model-loader
     experiment-ui-control
-    experiment-hw-test)
+    experiment-hw-test
+    hw-test)
 
 if(APP_TARGET IN_LIST _uai_camera_board_apps)
     set(UAI_CAMERA_BOARD_APP "${APP_TARGET}")

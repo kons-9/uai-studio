@@ -10,6 +10,7 @@ TOOLS = {
     "memory-layout": ("host_app.auto_static_memory_layout.cli", "Memory Layout"),
     "ai-model-monitor": ("host_app.ai_model_monitor.ai_model_monitor", "AI Model Monitor"),
     "cpu-task-monitor": ("host_app.cpu_task_monitor.cpu_task_monitor", "CPU Task Monitor"),
+    "model-loader": ("userspace.model-loader.tool.cli", "Model Loader"),
     "feature-constraints": ("userspace.experiment-ui-control.tool.feature_constraints.cli", "Feature Constraints"),
 }
 

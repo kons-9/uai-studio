@@ -109,6 +109,59 @@ for (;;) {
 
 表示バッファの確保と受け渡しは内部で`MemoryManager`を使います。
 
+## DMA2D
+
+[dma2d_driver.hpp](../kernel/driver/dma2d_driver/dma2d_driver.hpp)の`dma2d::Dma2dManagement`はDMA2Dの同期転送を担当します。hw-testで使用している処理を共有driverへ追加したもので、experimentは引き続き独立したローカル実装を使用します。既存のLCD合成やResize APIは変更していません。
+
+初期化はカーネル起動後、HALのtick、キャッシュ、メモリのRIF設定を整えた後に行います。`Initialize()`はDMA2Dのsecure/privileged属性、CID、通常・sleep時クロックを設定します。
+
+| メソッド | 内容 |
+| --- | --- |
+| `Initialize()` | 所有権管理とDMA2Dのアクセス権・クロックを初期化 |
+| `Transfer(request, timeout_ms = 100)` | 所有権を取得し、転送完了または停止まで保持。戻り値は`common::Error` |
+| `Run(request, timeout_ms)` | `Transfer()`の成功を`bool`で返す、middleware検証器用のI/F |
+| `Acquire(&accessor, timeout)` | 複数操作にわたって所有権を保持 |
+| `KeepClocksOnSleep()` | sleep時クロックを維持 |
+| `Dma2dDriver::ValidateRequest(request, timeout_ms)` | HALやキャッシュへ触れずに要求を検査 |
+
+`Request`は[image_processing](middleware/image_processing.md)の型を使用します。RGB565/RGB888のコピー・相互変換・塗りつぶし・ブレンドをサポートし、resizeは拒否します。
+
+```cpp
+#include "driver/dma2d_driver/dma2d_driver.hpp"
+
+namespace graphics = uai::ai::image_processing;
+
+alignas(32) static std::uint8_t pixels[64];
+graphics::Request request{};
+request.operation = graphics::Operation::kFill;
+request.color = 0x12ab34;
+request.destination = {pixels, sizeof(pixels), 8, 2, 24, graphics::Format::kRgb888};
+
+auto &dma = uai::ai::dma2d::Dma2dManagement::Instance();
+const auto initialization = dma.Initialize();
+if (initialization.Ok() || initialization.Code() == uai::ai::common::ErrorCode::kAlreadyInitialized) {
+    const auto status = dma.Transfer(request, 100);
+    status.LogStatus("dma2d");
+}
+```
+
+- バッファ先頭と容量は32byte境界、アドレス範囲は32bit内、容量は`INT32_MAX`以下にします。strideはバイト単位で、画素サイズの倍数を指定します。行末paddingは転送しません。
+- 幅・行末offsetは14bit、高さは16bitに制限します。容量不足、重複、不正stride、未対応形式、24bitを超えるfill色、unalignedなバッファ、範囲外timeoutはHAL操作前に`kInvalidArgument`を返します。alphaは`uint8_t`の全範囲を使用できます。
+- 入力・背景をclean、出力をclean/invalidateしてから開始し、停止または完了後に出力をinvalidateします。キャッシュ操作とバリアはdriverが行うため、通常の転送では呼び出し側に追加のキャッシュ操作は不要です。
+- timeoutは1〜1000msです。簡易`Transfer()`のmutex待ちとHALの完了待ちは、それぞれこの時間を上限にします。abortにはHAL固有の上限があるため、関数全体の厳密な実時間上限ではありません。
+- 初期化・layer設定の失敗時はDMA2Dをresetします。開始・完了待ちの失敗時はabortし、abortにも失敗した場合はresetします。DMAがバッファへアクセスしなくなってから所有権を解放します。途中失敗時の出力内容は保証しません。
+- 入出力の寿命と排他は呼び出し側の責任です。LCDやカメラが使用中のバッファを変更したり、同じDMA2DをBSP/HALから直接並行操作したりしないでください。
+
+`Dma2dManagement::Run()`はmiddlewareの`Verification::Run()`からそのまま呼び出せます。検証器自身のバッファは約25KiBなので静的領域等へ配置します。driver側でキャッシュ操作するため、検証器の追加cache hookは通常不要です。
+
+```sh
+cmake -S kernel/middleware/tests -B build/middleware-tests
+cmake --build build/middleware-tests --target dma2d_driver_test image_processing_test
+ctest --test-dir build/middleware-tests -R '^(dma2d_driver_test|image_processing_test)$' --output-on-failure
+```
+
+driverのホストテストはHAL fixtureで25ケースの設定・拒否、所有権、キャッシュ順序、timeout・abort/reset・再利用を確認します。実DMAの画素結果や実機キャッシュ整合を証明するものではありません。
+
 ## タッチ
 
 `touch::TouchManagement`はSTM32N6570-DKのGT911タッチコントローラをI2C2で読みます。割り込みは使わず、タスクからポーリングします。

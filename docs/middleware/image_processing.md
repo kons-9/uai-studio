@@ -58,7 +58,7 @@ for (const auto &test : graphics::kVerificationCases) {
 }
 ```
 
-- `device.Run(const Request &, uint32_t timeout_ms)`は100msの上限で転送を完了させ、成功時に`true`を返す同期バックエンドです。失敗・拒否で戻る際にも、転送を停止してバッファへのアクセスを終了させてください。
+- `device.Run(const Request &, uint32_t timeout_ms)`は転送を同期実行し、成功時に`true`を返すバックエンドです。検証器はtimeoutに100msを指定します。所有権待ちや停止処理を含む関数全体の実時間上限はバックエンドの仕様に従います。失敗・拒否で戻る際にも、転送を停止してバッファへのアクセスを終了させてください。
 - `clock()`は32bitサイクルカウンタ等を返します。`cycles`は転送呼出し前後の差で、32bit wrapを扱います。時間への換算は呼び出し側が行います。
 - `VerificationCache`の`prepare(address, bytes)`と`inspect(address, bytes)`は任意のキャッシュ操作フックです。転送前後に入力・背景・出力の3バッファ全体へ適用します。実機ではバリアも含めたclean/invalidateを実装してください。
 - 期待画素と全ガード・padding・未使用領域を照合し、入力と背景が保持されていることも確認します。中間alphaのブレンドだけはRGB888で各成分1、RGB565で8までの誤差を許容し、それ以外は完全一致を要求します。
@@ -66,6 +66,8 @@ for (const auto &test : graphics::kVerificationCases) {
 - 検証器は32byte境界に整列した4バッファを内包し、約25KiBを使用します。小さいタスクスタック上へ置かず、静的領域等に配置してください。同じ検証器を複数タスクから同時に実行しないでください。
 
 このmiddlewareはクロック・RIF・HAL初期化やIRQ・カメラの開始を行いません。ホストテストは演算と検証器を確認するもので、実DMA転送・キャッシュ整合・周辺機器の健全性の証明ではありません。それらは独立した[experiment-hw-test](../../userspace/experiment-hw-test/README.md)で確認します。
+
+共有アプリでは[dma2d driver](../driver.md#dma2d)の`Dma2dManagement::Instance()`を`device`として渡せます。driverの初期化は検証前に行います。driver自身がキャッシュ操作と転送停止を担当するため、通常は検証器のcache hookを省略できます。
 
 ## テスト
 

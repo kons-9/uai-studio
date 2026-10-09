@@ -1,0 +1,19 @@
+/* Local configuration for the STM32N6570-DK Octo-SPI PSRAM driver. */
+#pragma once
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "stm32n6xx_hal.h"
+
+#define CONF_HSPI_DS APS256XX_MR0_DS_HALF
+#define CONF_HSPI_PASR APS256XX_MR4_PASR_FULL
+#define CONF_HSPI_RF APS256XX_MR4_RF_4X
+
+#define DEFAULT_READ_LATENCY_CODE APS256XX_READ_LATENCY_5
+#define DEFAULT_WRITE_LATENCY_CODE APS256XX_WRITE_LATENCY_5
+
+#ifdef __cplusplus
+}
+#endif

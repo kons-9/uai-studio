@@ -6,12 +6,12 @@ cmake_minimum_required(VERSION 3.16)
 set(APP_TARGET "experiment-hello-world" CACHE STRING "Userspace application to build")
 set_property(CACHE APP_TARGET PROPERTY STRINGS
     experiment-hello-world experiment-ai ai-app
-    mini-ai-app experiment-model-load
-    experiment-ui-control experiment-hw-test)
+    mini-ai-app experiment-model-load model-loader
+    experiment-ui-control experiment-hw-test hw-test)
 
 # Applications built on the kernel middleware and drivers. They generate the
 # memory contract that the kernel components include.
-set(UAI_KERNEL_APPS ai-app mini-ai-app)
+set(UAI_KERNEL_APPS ai-app mini-ai-app hw-test)
 include("${CMAKE_CURRENT_SOURCE_DIR}/build-system/cmake/camera_board.cmake")
 
 option(CMAKE_EXPORT_COMPILE_COMMANDS

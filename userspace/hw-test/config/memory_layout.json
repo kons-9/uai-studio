@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "cpp_namespace": "uai::ai::static_memory_layout",
+  "symbol_prefix": "hwtest",
+  "header_guard": "UAI_HWTEST_STATIC_MEMORY_LAYOUT_HPP",
+  "raw_header_guard": "UAI_HWTEST_STATIC_MEMORY_LAYOUT_RAW_HPP",
+  "memory_regions": [
+    {"name": "HWTEST_SHARED", "attributes": "rwx", "origin": "0x91010000", "length": "0x00FF0000"}
+  ],
+  "allocator_policy": {
+    "alignment": 32,
+    "capture_count": 2,
+    "display_count": 2,
+    "inference_count": 3,
+    "inference_source_count": 3
+  },
+  "derived": {"inference_output_bytes": []},
+  "allocations": [
+    {"name": "thread_monitor", "key": "kThreadMonitor", "memory": "HWTEST_SHARED", "section": "hwtest_thread_monitor", "size": "0x8000", "alignment": 32},
+    {"name": "cpu_task_monitor", "key": "kCpuTaskMonitor", "memory": "HWTEST_SHARED", "section": "hwtest_cpu_task_monitor", "size": "0x80000", "alignment": 32},
+    {"name": "capture0", "key": "kCapture0", "memory": "HWTEST_SHARED", "section": "hwtest_capture", "size": "0x100000", "alignment": 32},
+    {"name": "capture1", "key": "kCapture1", "memory": "HWTEST_SHARED", "section": "hwtest_capture", "size": "0x100000", "alignment": 32},
+    {"name": "display0", "key": "kDisplay0", "memory": "HWTEST_SHARED", "section": "hwtest_display", "size": "0x100000", "alignment": 32},
+    {"name": "display1", "key": "kDisplay1", "memory": "HWTEST_SHARED", "section": "hwtest_display", "size": "0x100000", "alignment": 32},
+    {"name": "inference0", "key": "kInference0", "memory": "HWTEST_SHARED", "section": "hwtest_inference", "size": "0x100000", "alignment": 32},
+    {"name": "inference1", "key": "kInference1", "memory": "HWTEST_SHARED", "section": "hwtest_inference", "size": "0x100000", "alignment": 32},
+    {"name": "inference2", "key": "kInference2", "memory": "HWTEST_SHARED", "section": "hwtest_inference", "size": "0x100000", "alignment": 32},
+    {"name": "inference_scratch", "key": "kInferenceScratch", "memory": "HWTEST_SHARED", "section": "hwtest_inference_scratch", "size": "0x100000", "alignment": 32},
+    {"name": "inference_source0", "key": "kInferenceSource0", "memory": "HWTEST_SHARED", "section": "hwtest_inference_source", "size": "0xB0000", "alignment": 32},
+    {"name": "inference_source1", "key": "kInferenceSource1", "memory": "HWTEST_SHARED", "section": "hwtest_inference_source", "size": "0xB0000", "alignment": 32},
+    {"name": "inference_source2", "key": "kInferenceSource2", "memory": "HWTEST_SHARED", "section": "hwtest_inference_source", "size": "0xB0000", "alignment": 32},
+    {"name": "raw_dump", "key": "kRawDump", "memory": "HWTEST_SHARED", "section": "hwtest_raw_dump", "size": "0x400000", "alignment": 32},
+    {"name": "pipe2_drop", "key": "kPipe2Drop", "memory": "HWTEST_SHARED", "section": "hwtest_pipe2_drop", "size": "0x100000", "alignment": 32}
+  ]
+}

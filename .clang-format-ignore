@@ -1,3 +1,4 @@
 **/third_party/**
 **/build/**
 kernel/utkernel/**
+userspace/hw-test/src/ui/ui_layout.hpp

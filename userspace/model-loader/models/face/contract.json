@@ -1,0 +1,62 @@
+{
+  "runtime_version": 1201,
+  "kind": 2,
+  "input": {
+    "type": "float32",
+    "layout": "nhwc",
+    "shape": [
+      1,
+      128,
+      128,
+      3
+    ],
+    "scale": 1.0,
+    "zero": 0
+  },
+  "outputs": [
+    {
+      "type": "float32",
+      "layout": "nhwc",
+      "shape": [
+        512,
+        16,
+        1
+      ],
+      "scale": 1.0,
+      "zero": 0
+    },
+    {
+      "type": "float32",
+      "layout": "nhwc",
+      "shape": [
+        512,
+        1,
+        1
+      ],
+      "scale": 1.0,
+      "zero": 0
+    },
+    {
+      "type": "float32",
+      "layout": "nhwc",
+      "shape": [
+        384,
+        1,
+        1
+      ],
+      "scale": 1.0,
+      "zero": 0
+    },
+    {
+      "type": "float32",
+      "layout": "nhwc",
+      "shape": [
+        384,
+        16,
+        1
+      ],
+      "scale": 1.0,
+      "zero": 0
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "semantics": {
+    "task": "face_detection",
+    "input_domain": "unknown",
+    "outputs": [
+      {"id": "output0", "meaning": "unknown"},
+      {"id": "output1", "meaning": "unknown"},
+      {"id": "output2", "meaning": "unknown"},
+      {"id": "output3", "meaning": "unknown"}
+    ],
+    "labels": []
+  },
+  "decoder": {"id": "raw", "version": 1, "bindings": {}, "parameters": {}, "result_schema": "raw_tensors/v1"}
+}

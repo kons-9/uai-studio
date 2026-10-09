@@ -22,6 +22,7 @@ Thumbs.db
 # CMake build tree
 /build/
 /build-ai-app*/
+/build-hw-test/
 /build-experiment-*/
 /build-sample-*/
 
