@@ -1,0 +1,36 @@
+{
+  "params": {
+    "param": [
+      { "paramname": "max_onchip_sram_size", "value": "896", "magnitude": "KBYTES" }
+    ]
+  },
+  "memory": {
+    "mem_file_prefix": "atonbuf",
+    "cacheinfo": [
+      {
+        "nlines": 512, "linesize": 64, "associativity": 8, "bypass_enable": 1,
+        "prop": { "rights": "ACC_WRITE", "throughput": "MID", "latency": "MID", "byteWidth": 8, "freqRatio": 2.50 }
+      }
+    ],
+    "mempools": [
+      {
+        "fname": "AXISRAM5", "name": "npuRAM5", "fformat": "FORMAT_RAW",
+        "prop": { "rights": "ACC_WRITE", "throughput": "HIGH", "latency": "LOW", "byteWidth": 8, "freqRatio": 1.25 },
+        "offset": { "value": "0x342e0000", "magnitude": "BYTES" },
+        "size": { "value": "448", "magnitude": "KBYTES" }
+      },
+      {
+        "fname": "AXISRAM6", "name": "npuRAM6", "fformat": "FORMAT_RAW",
+        "prop": { "rights": "ACC_WRITE", "throughput": "HIGH", "latency": "LOW", "byteWidth": 8, "freqRatio": 1.25 },
+        "offset": { "value": "0x34350000", "magnitude": "BYTES" },
+        "size": { "value": "448", "magnitude": "KBYTES" }
+      },
+      {
+        "fname": "weights", "name": "psramWeights", "fformat": "FORMAT_RAW",
+        "prop": { "rights": "ACC_READ", "throughput": "MID", "latency": "HIGH", "byteWidth": 2, "freqRatio": 5.00, "cacheable": "CACHEABLE_ON", "constants_preferred": "true" },
+        "offset": { "value": "0x91010000", "magnitude": "BYTES" },
+        "size": { "value": "64", "magnitude": "KBYTES" }
+      }
+    ]
+  }
+}

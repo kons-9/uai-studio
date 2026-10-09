@@ -5,6 +5,7 @@ import sys
 import time
 
 from manifest import decode, verify
+from expected import generate as expected_header
 
 from uart import Uart
 
@@ -49,7 +50,8 @@ def send(port, command, deadline):
         line = clean_line(port.readline(remaining))
         if line == command or line in ("", ">"):
             continue
-        if line == "MODEL OK" or (command == "model abort" and line == "MODEL OK abort"):
+        acknowledgements = {"model abort": "MODEL OK abort", "model run": "MODEL OK running"}
+        if line == "MODEL OK" or line == acknowledgements.get(command):
             return
         if line.startswith("ERR ") or line.startswith("MODEL ERROR"):
             raise ValueError("device rejected command: " + line)
@@ -100,6 +102,46 @@ def upload(port, header, weights, blob, timeout):
     if fields.get("state") != "verified" or fields.get("weights") != str(len(weights)) or fields.get("blob") != str(len(blob)):
         raise ValueError("device did not verify the uploaded payload: " + status)
     print("UART:", status, flush=True)
+    return fields
+
+
+def run_model(port, timeout, expected_crc=None):
+    deadline = time.monotonic() + timeout
+    try:
+        send(port, "model run", deadline)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("model execution timeout")
+            line = clean_line(port.readline(remaining))
+            report(line)
+            if line.startswith("ERR ") or line.startswith("MODEL ERROR"):
+                raise ValueError("device execution failed: " + line)
+            if not line.startswith("MODEL RESULT "):
+                continue
+            fields = dict(re.findall(r"(\w+)=([^ ]+)", line))
+            if fields.get("npu") != "done" or not re.fullmatch(r"[0-9a-fA-F]{8}", fields.get("output_crc", "")):
+                raise ValueError("model execution did not complete: " + line)
+            crc = int(fields["output_crc"], 16)
+            if expected_crc is not None and crc != expected_crc:
+                raise ValueError(f"output CRC mismatch: expected {expected_crc:08x}, got {crc:08x}")
+            return crc
+    except (OSError, TimeoutError, ValueError):
+        try:
+            send(port, "model abort", time.monotonic() + min(timeout, 1))
+        except (OSError, TimeoutError, ValueError):
+            pass
+        raise
+
+
+def read_payload(manifest_path, weights_path, blob_path):
+    header = manifest_path.read_bytes()
+    weights = weights_path.read_bytes()
+    blob = blob_path.read_bytes()
+    expected_header(header)
+    if not verify(decode(header), weights, blob):
+        raise ValueError("payload does not match manifest")
+    return header, weights, blob
 
 
 def main():
@@ -111,21 +153,28 @@ def main():
     parser.add_argument("--blob", type=pathlib.Path, required=True)
     parser.add_argument("--timeout", type=float, default=120)
     parser.add_argument("--wait-ready", action="store_true")
+    parser.add_argument("--run", action="store_true", help="run the generated model with zero-filled input after upload")
+    parser.add_argument("--expected-output-crc", type=lambda value: int(value, 0),
+                        help="require this output CRC (for example, the NOR baseline CRC)")
     parser.add_argument("--monitor-after-upload", action="store_true",
                         help="keep the UART open and print device output until Ctrl-C")
     arguments = parser.parse_args()
     if not 0 < arguments.timeout < float("inf"):
         parser.error("timeout must be positive and finite")
+    if arguments.expected_output_crc is not None and (not arguments.run or not 0 <= arguments.expected_output_crc <= 0xffffffff):
+        parser.error("expected-output-crc requires --run and must be a uint32")
     try:
-        header = arguments.manifest.read_bytes()
-        weights = arguments.weights.read_bytes()
-        blob = arguments.blob.read_bytes()
+        header, weights, blob = read_payload(arguments.manifest, arguments.weights, arguments.blob)
         with Uart(arguments.uart, arguments.baud) as port:
             if arguments.wait_ready:
                 wait_ready(port, arguments.timeout)
-            upload(port, header, weights, blob, arguments.timeout)
+            status = upload(port, header, weights, blob, arguments.timeout)
+            if arguments.run:
+                if status.get("npu") == "unavailable":
+                    raise ValueError("firmware has no NPU backend; build with EXPERIMENT_MODEL_NPU=ON")
+                run_model(port, arguments.timeout, arguments.expected_output_crc)
             if arguments.monitor_after_upload:
-                print("MODEL VERIFIED on device (NPU not registered); monitoring UART, Ctrl-C to stop.", flush=True)
+                print("MODEL VERIFIED on device; monitoring UART, Ctrl-C to stop.", flush=True)
                 while True:
                     try:
                         report(clean_line(port.readline(1.0)))
@@ -133,7 +182,7 @@ def main():
                         continue
     except (OSError, TimeoutError, ValueError) as error:
         parser.exit(1, str(error) + "\n")
-    print("MODEL VERIFIED on device (NPU not registered)")
+    print("MODEL VERIFIED on device")
 
 
 if __name__ == "__main__":

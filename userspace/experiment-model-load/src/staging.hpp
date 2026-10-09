@@ -25,6 +25,9 @@ public:
         std::size_t size
     )
     {
+        if (in_use_) {
+            return false;
+        }
         Cancel();
         Manifest candidate{};
         if (!Decode(header, size, candidate) || !Matches(candidate, expected_) || !Accept(weights_, candidate.weights)
@@ -75,16 +78,42 @@ public:
         return true;
     }
 
-    void Cancel()
+    bool Cancel()
     {
+        if (in_use_) {
+            return false;
+        }
         receiving_ = false;
         ready_ = false;
         weights_offset_ = 0;
         blob_offset_ = 0;
         pending_ = {};
+        return true;
     }
     bool Ready() const { return ready_; }
     bool Receiving() const { return receiving_; }
+    bool InUse() const { return in_use_; }
+    bool Reverify()
+    {
+        if (!ready_ || in_use_) {
+            return false;
+        }
+        if (!Verify(weights_.data, pending_.weights.bytes, pending_.weights)
+            || !Verify(blob_.data, pending_.blob.bytes, pending_.blob)) {
+            Cancel();
+            return false;
+        }
+        return true;
+    }
+    bool Acquire()
+    {
+        if (!ready_ || in_use_) {
+            return false;
+        }
+        in_use_ = true;
+        return true;
+    }
+    void Release() { in_use_ = false; }
     std::uint32_t Received(bool is_blob) const { return is_blob ? blob_offset_ : weights_offset_; }
     const Manifest *Verified() const { return ready_ ? &pending_ : nullptr; }
     void BeforePublish(
@@ -123,7 +152,7 @@ private:
     Slot weights_, blob_;
     Manifest expected_{}, pending_{};
     std::uint32_t weights_offset_ = 0, blob_offset_ = 0;
-    bool receiving_ = false, ready_ = false;
+    bool receiving_ = false, ready_ = false, in_use_ = false;
     void *context_ = nullptr;
     bool (*publish_)(
         void *,

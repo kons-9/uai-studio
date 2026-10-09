@@ -41,6 +41,7 @@ int main()
     store(44, expected.blob.crc);
     store(48, experiment::model::Crc32(header.data(), 48));
     experiment::model::Staging stage({0x91000000, 16, region.data()}, {0x91000020, 16, region.data() + 32}, expected);
+    Require(!stage.Acquire());
     Require(stage.Begin(header.data(), header.size()));
     Require(!stage.Chunk(false, 1, weights.data(), 1) && stage.Received(false) == 0);
     Require(!stage.Receiving() && !stage.Chunk(false, 0, weights.data(), 2));
@@ -60,6 +61,12 @@ int main()
     Require(stage.Chunk(false, 0, weights.data(), 4));
     Require(stage.Chunk(true, 0, blob.data(), 3));
     Require(stage.Complete() && stage.Verified() && stage.Verified()->kind == 1);
+    Require(stage.Acquire() && stage.InUse() && !stage.Acquire());
+    Require(!stage.Begin(header.data(), header.size()) && !stage.Cancel());
+    Require(stage.Ready() && stage.Verified()->kind == 1);
+    Require(!stage.Chunk(false, 0, weights.data(), 4) && !stage.Complete() && stage.Ready());
+    stage.Release();
+    Require(!stage.InUse() && stage.Ready());
     auto corrupted = header;
     corrupted[12] = 2;
     Require(!stage.Begin(corrupted.data(), corrupted.size()) && !stage.Ready());

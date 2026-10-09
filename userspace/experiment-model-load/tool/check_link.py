@@ -16,15 +16,18 @@ EXPECTED = {
 }
 
 
-def audit(symbols, map_text):
+def audit(symbols, map_text, npu=False):
+    expected = dict(EXPECTED)
+    if npu:
+        expected.update(NPU0_IRQHandler="npu_model.c", experiment_npu_start="npu_model.c")
     definitions = {}
     for line in symbols.splitlines():
         fields = line.split()
-        if len(fields) == 3 and fields[2] in EXPECTED:
+        if len(fields) == 3 and fields[2] in expected:
             if fields[2] in definitions:
                 raise ValueError("multiple definitions: " + fields[2])
             definitions[fields[2]] = (int(fields[0], 16), fields[1])
-    for symbol, source in EXPECTED.items():
+    for symbol, source in expected.items():
         address, binding = definitions.get(symbol, (0, "missing"))
         if binding != "T" or address == 0:
             raise ValueError(f"{symbol}: expected strong text symbol, got {binding}")
@@ -33,17 +36,32 @@ def audit(symbols, map_text):
         if len(objects) != 1 or not objects[0].endswith((source + ".obj", source + ".o")):
             raise ValueError(f"{symbol}: unexpected or missing map origin: {objects}")
 
+def audit_slots(symbols):
+    addresses = {}
+    for line in symbols.splitlines():
+        fields = line.split()
+        if len(fields) == 3:
+            addresses[fields[2]] = int(fields[0], 16)
+    for name, base, capacity in (("weights", 0x91010000, 0x10000), ("blob", 0x91020000, 0x10000),
+                                 ("scratch", 0x342e0000, 0xe0000)):
+        start = addresses.get(f"__experiment_{name}_start__")
+        end = addresses.get(f"__experiment_{name}_end__")
+        if start != base or end is None or not base < end <= base + capacity:
+            raise ValueError(f"{name}: missing or invalid reserved slot: {start}, {end}")
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--elf", type=pathlib.Path, required=True)
     parser.add_argument("--map", type=pathlib.Path, required=True)
     parser.add_argument("--nm", default="arm-none-eabi-nm")
+    parser.add_argument("--npu", action="store_true")
     arguments = parser.parse_args()
     try:
         symbols = subprocess.run([arguments.nm, "--defined-only", str(arguments.elf)], check=True,
                                  capture_output=True, text=True).stdout
-        audit(symbols, arguments.map.read_text())
+        audit(symbols, arguments.map.read_text(), arguments.npu)
+        audit_slots(symbols)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, str(error) + "\n")
     print("PASS: HAL overrides and IRQ handlers have the expected strong definitions and source objects")

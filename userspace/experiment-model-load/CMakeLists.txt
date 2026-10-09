@@ -1,14 +1,19 @@
 cmake_minimum_required(VERSION 3.16)
 if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 	find_package(Python3 COMPONENTS Interpreter REQUIRED)
-	if(EXPERIMENT_MODEL_MANIFEST)
+	option(EXPERIMENT_MODEL_NPU "Run an experiment-local generated PSRAM model" OFF)
+	if(EXPERIMENT_MODEL_NPU)
+		if(EXPERIMENT_MODEL_MANIFEST)
+			message(FATAL_ERROR "NPU mode builds its own manifest from the local generated model; unset EXPERIMENT_MODEL_MANIFEST.")
+		endif()
+	elseif(EXPERIMENT_MODEL_MANIFEST)
 		get_filename_component(EXPERIMENT_MODEL_MANIFEST "${EXPERIMENT_MODEL_MANIFEST}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
 		if(NOT EXISTS "${EXPERIMENT_MODEL_MANIFEST}")
 			message(FATAL_ERROR "EXPERIMENT_MODEL_MANIFEST does not exist: ${EXPERIMENT_MODEL_MANIFEST}")
 		endif()
 	else()
 		set(_model_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/model-load-fixture")
-		execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/fixture.py"
+		execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tool/fixture.py"
 			--output-dir "${_model_fixture_dir}"
 			RESULT_VARIABLE fixture_result ERROR_VARIABLE fixture_error)
 		if(NOT fixture_result EQUAL 0)
@@ -18,11 +23,15 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 	endif()
 	set(EXPERIMENT_EXTENSION "${CMAKE_CURRENT_SOURCE_DIR}/src/firmware.cpp")
 	include("${CMAKE_CURRENT_LIST_DIR}/firmware.cmake")
-	execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/expected.py"
-		"${EXPERIMENT_MODEL_MANIFEST}" "${CMAKE_CURRENT_BINARY_DIR}/model_expected.hpp"
-		RESULT_VARIABLE expected_result ERROR_VARIABLE expected_error)
-	if(NOT expected_result EQUAL 0)
-		message(FATAL_ERROR "Invalid model expectation: ${expected_error}")
+	if(EXPERIMENT_MODEL_NPU)
+		include("${CMAKE_CURRENT_LIST_DIR}/npu.cmake")
+	else()
+		execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tool/expected.py"
+			"${EXPERIMENT_MODEL_MANIFEST}" "${CMAKE_CURRENT_BINARY_DIR}/model_expected.hpp"
+			RESULT_VARIABLE expected_result ERROR_VARIABLE expected_error)
+		if(NOT expected_result EQUAL 0)
+			message(FATAL_ERROR "Invalid model expectation: ${expected_error}")
+		endif()
 	endif()
 	target_include_directories(${TARGET_NAME} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 	target_link_options(${TARGET_NAME} BEFORE PRIVATE "-T${CMAKE_CURRENT_SOURCE_DIR}/slots.ld")

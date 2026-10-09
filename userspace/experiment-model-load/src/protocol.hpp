@@ -1,5 +1,5 @@
 #pragma once
-#include "staging.hpp"
+#include "execution.hpp"
 #include "shell.hpp"
 #include "camera_control.hpp"
 #include <cstdio>
@@ -11,6 +11,7 @@ struct Session {
     std::uint32_t (*clock)();
     std::uint32_t last_input = 0;
     std::uint32_t timeout_ms = 10000;
+    Execution *execution = nullptr;
 };
 
 inline bool
@@ -62,28 +63,65 @@ inline console::Status Command(
         stage.Cancel();
     }
     if (count == 2 && std::strcmp(arguments[1], "stat") == 0) {
-        char line[112];
+        char line[192];
         std::snprintf(
             line,
             sizeof(line),
-            "MODEL state=%s weights=%lu blob=%lu npu=unavailable\n",
+            "MODEL state=%s weights=%lu blob=%lu npu=%s output_crc=%08lx elapsed_ms=%lu\n",
             stage.Ready()           ? "verified"
                 : stage.Receiving() ? "receiving"
                                     : "empty",
             static_cast<unsigned long>(stage.Received(false)),
-            static_cast<unsigned long>(stage.Received(true))
+            static_cast<unsigned long>(stage.Received(true)),
+            session.execution ? session.execution->Name() : "unavailable",
+            static_cast<unsigned long>(session.execution ? session.execution->Crc() : 0),
+            static_cast<unsigned long>(session.execution ? session.execution->Elapsed() : 0)
         );
         writer.Write(line);
         return console::Status::kOk;
     }
     if (count == 2 && std::strcmp(arguments[1], "abort") == 0) {
-        stage.Cancel();
+        if (session.execution && !session.execution->Reset()) {
+            return console::Status::kHardware;
+        }
+        if (!stage.Cancel()) {
+            return console::Status::kInvalidState;
+        }
         writer.Write("MODEL OK abort\n");
+        return console::Status::kOk;
+    }
+    if (count == 2 && std::strcmp(arguments[1], "verify") == 0) {
+        if (!stage.Ready() || stage.InUse()) {
+            return console::Status::kInvalidState;
+        }
+        if (!stage.Reverify()) {
+            if (session.execution) {
+                session.execution->Reset();
+            }
+            return console::Status::kHardware;
+        }
+        writer.Write("MODEL OK verified\n");
+        return console::Status::kOk;
+    }
+    if (count == 2 && std::strcmp(arguments[1], "run") == 0) {
+        if (!session.execution || !stage.Ready() || stage.InUse()) {
+            return console::Status::kInvalidState;
+        }
+        if (!session.execution->Run(session.clock())) {
+            return console::Status::kHardware;
+        }
+        writer.Write("MODEL OK running\n");
         return console::Status::kOk;
     }
     std::uint8_t bytes[52]{};
     std::size_t length = 0;
     if (count == 3 && std::strcmp(arguments[1], "begin") == 0) {
+        if (stage.InUse()) {
+            return console::Status::kInvalidState;
+        }
+        if (session.execution && !session.execution->Reset()) {
+            return console::Status::kHardware;
+        }
         if (!Hex(arguments[2], bytes, sizeof(bytes), length) || length != kManifestBytes
             || !stage.Begin(bytes, length)) {
             return console::Status::kInvalidArgument;
