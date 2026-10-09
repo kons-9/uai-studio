@@ -12,8 +12,6 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 	target_sources(${TARGET_NAME} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/features_generated.hpp"
 		"${COMPONENTS}/gt911/gt911.c" "${COMPONENTS}/gt911/gt911_reg.c")
 	target_include_directories(${TARGET_NAME} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" "${COMPONENTS}/gt911")
-	target_link_options(${TARGET_NAME} BEFORE PRIVATE "-T${CMAKE_CURRENT_SOURCE_DIR}/panel.ld")
-	set_property(TARGET ${TARGET_NAME} APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/panel.ld")
 	return()
 endif()
 project(experiment_ui_control_tests LANGUAGES CXX)

@@ -20,11 +20,20 @@ enum class TransactionStatus {
     kRolledBack,
     kFaulted
 };
+enum class FailureReason {
+    kNone,
+    kConstraint,
+    kHardware,
+    kFaulted
+};
 struct RenderTaskState {
     int pressed = -1;
     bool error = false, faulted = false;
     std::uint32_t updates = 0;
     TransactionStatus transaction = TransactionStatus::kIdle;
+    FailureReason failure = FailureReason::kNone;
+    int failed_action = -1;
+    features::State rejected_state{};
 };
 
 class Backend {
@@ -43,9 +52,13 @@ public:
     )
     {
         if (render_.faulted) {
+            render_.failure = FailureReason::kFaulted;
+            render_.transaction = TransactionStatus::kFaulted;
             return false;
         }
         render_.error = false;
+        render_.failure = FailureReason::kNone;
+        render_.failed_action = -1;
         render_.transaction = TransactionStatus::kRejected;
         if (!actions || count == 0) {
             return false;
@@ -53,6 +66,9 @@ public:
         auto next = state_;
         for (std::size_t index = 0; index < count; ++index) {
             if (!features::Apply(next, actions[index])) {
+                render_.failure = FailureReason::kConstraint;
+                render_.failed_action = static_cast<int>(actions[index]);
+                render_.rejected_state = next;
                 return false;
             }
         }
@@ -60,11 +76,14 @@ public:
             render_.error = true;
             render_.faulted = !backend_.Apply(state_);
             render_.transaction = render_.faulted ? TransactionStatus::kFaulted : TransactionStatus::kRolledBack;
+            render_.failure = render_.faulted ? FailureReason::kFaulted : FailureReason::kHardware;
             return false;
         }
         state_ = next;
         ++render_.updates;
         render_.transaction = TransactionStatus::kCommitted;
+        render_.failure = FailureReason::kNone;
+        render_.failed_action = -1;
         return true;
     }
     bool Recover()
@@ -73,11 +92,15 @@ public:
             return true;
         }
         if (!backend_.Apply(state_)) {
+            render_.failure = FailureReason::kFaulted;
+            render_.transaction = TransactionStatus::kFaulted;
             return false;
         }
         render_.faulted = false;
         render_.error = false;
         render_.transaction = TransactionStatus::kIdle;
+        render_.failure = FailureReason::kNone;
+        render_.failed_action = -1;
         return true;
     }
     bool Publish(

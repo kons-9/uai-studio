@@ -14,12 +14,14 @@ namespace uai::camera_pipe2::driver {
 
 namespace {
 
-/*
- * Keep the two camera buffers independent, but feed the LCD through one
- * full-width framebuffer.  This avoids relying on LTDC layer 1's window
- * address/pitch behavior while preserving the two-pipe side-by-side view.
- */
+/* Keep one LTDC scanout buffer: the selected camera fills the left half and
+ * the experiment UI fills the right half. This avoids depending on LTDC
+ * layer 1 window and external-memory fetch behavior for the UI. */
 alignas(64) std::uint8_t g_display_frame_buffer[kDisplayFrameBytes];
+std::uint16_t *g_ui_panel_buffer = nullptr;
+bool g_display_pipe2 = false;
+bool g_result_visible = false;
+std::uint32_t g_result_x = 0U, g_result_y = 0U, g_result_width = 0U, g_result_height = 0U;
 #if defined(EXPERIMENT_GPU_VISUAL)
 bool g_visual_overlay_preserved = false;
 constexpr std::size_t kStatusLabelWidth = 432U;
@@ -83,48 +85,65 @@ void ComposeVisualRow(
 void ComposeDisplayFrame()
 {
     auto *destination = g_display_frame_buffer;
-    auto *main_source = MainPipeFrameBuffer();
-
-    SCB_InvalidateDCache_by_Addr(main_source, static_cast<std::int32_t>(kFrameBytes));
-#if PIPE2_PIPE_DUAL
-    auto *ancillary_source = AncillaryPipeFrameBuffer();
-    SCB_InvalidateDCache_by_Addr(ancillary_source, static_cast<std::int32_t>(kFrameBytes));
-#endif
+    auto *camera_source = g_display_pipe2 ? AncillaryPipeFrameBuffer() : MainPipeFrameBuffer();
+    SCB_InvalidateDCache_by_Addr(camera_source, static_cast<std::int32_t>(kFrameBytes));
 
     for (std::size_t y = 0U; y < kFrameHeight; ++y) {
         const auto source_offset = y * kFrameBytesPerLine;
         const auto destination_offset = y * kDisplayBytesPerLine;
 #if PIPE2_PIPE_DUAL
-        auto *ancillary_row = ancillary_source + source_offset;
+        std::memcpy(destination + destination_offset, camera_source + source_offset, kFrameBytesPerLine);
+        auto *panel_row = destination + destination_offset + kFrameBytesPerLine;
+        if (g_ui_panel_buffer != nullptr) {
+            std::memcpy(
+                panel_row,
+                g_ui_panel_buffer + y * kFrameWidth,
+                kFrameBytesPerLine
+            );
+        } else {
+            std::memset(panel_row, 0, kFrameBytesPerLine);
+        }
 #else
-        auto *ancillary_row = static_cast<std::uint8_t *>(nullptr);
-#endif
 #if defined(EXPERIMENT_GPU_VISUAL)
         if (g_visual_overlay_preserved) {
             ComposeVisualRow(
                 destination + destination_offset,
-                main_source + source_offset,
-                ancillary_row,
+                camera_source + source_offset,
+                nullptr,
                 y
             );
         } else {
             CopyDisplaySegment(
                 destination + destination_offset,
-                main_source + source_offset,
-                ancillary_row,
+                camera_source + source_offset,
+                nullptr,
                 0U,
                 kDisplayWidth
             );
         }
 #else
-        std::memcpy(destination + destination_offset, main_source + source_offset, kFrameBytesPerLine);
-#if PIPE2_PIPE_DUAL
-        std::memcpy(
-            destination + destination_offset + kFrameBytesPerLine, ancillary_source + source_offset, kFrameBytesPerLine
-        );
+        std::memcpy(destination + destination_offset, camera_source + source_offset, kFrameBytesPerLine);
 #endif
 #endif
     }
+
+#if PIPE2_PIPE_DUAL
+    if (g_result_visible && g_result_width != 0U && g_result_height != 0U
+        && g_result_x < kFrameWidth && g_result_width <= kFrameWidth - g_result_x
+        && g_result_y < kFrameHeight && g_result_height <= kFrameHeight - g_result_y) {
+        auto *display_pixels = reinterpret_cast<std::uint16_t *>(destination);
+        const auto right = g_result_x + g_result_width - 1U;
+        const auto bottom = g_result_y + g_result_height - 1U;
+        for (std::uint32_t x = g_result_x; x <= right; ++x) {
+            display_pixels[g_result_y * kDisplayWidth + x] = 0xffffU;
+            display_pixels[bottom * kDisplayWidth + x] = 0xffffU;
+        }
+        for (std::uint32_t y = g_result_y; y <= bottom; ++y) {
+            display_pixels[y * kDisplayWidth + g_result_x] = 0xffffU;
+            display_pixels[y * kDisplayWidth + right] = 0xffffU;
+        }
+    }
+#endif
 
     SCB_CleanDCache_by_Addr(g_display_frame_buffer, static_cast<std::int32_t>(kDisplayFrameBytes));
 }
@@ -138,6 +157,42 @@ void SetVisualOverlayPreserved(bool preserve)
 #else
     (void)preserve;
 #endif
+}
+
+bool SetDisplayPipe2(bool pipe2)
+{
+#if PIPE2_PIPE_DUAL
+    g_display_pipe2 = pipe2;
+    return true;
+#else
+    return !pipe2;
+#endif
+}
+
+bool SetUiPanelBuffer(std::uint16_t *pixels)
+{
+#if PIPE2_PIPE_DUAL
+    g_ui_panel_buffer = pixels;
+    return pixels != nullptr;
+#else
+    (void)pixels;
+    return false;
+#endif
+}
+
+void SetResultOverlay(
+    bool visible,
+    std::uint32_t x,
+    std::uint32_t y,
+    std::uint32_t width,
+    std::uint32_t height
+)
+{
+    g_result_visible = visible;
+    g_result_x = x;
+    g_result_y = y;
+    g_result_width = width;
+    g_result_height = height;
 }
 
 DriverStatus DisplayDriver::Initialize()
