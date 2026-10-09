@@ -10,4 +10,5 @@
 #define HAL_TIM_MODULE_ENABLED
 #define HAL_LTDC_MODULE_ENABLED
 #define HAL_DCMIPP_MODULE_ENABLED
+#define HAL_CACHEAXI_MODULE_ENABLED
 #include_next "stm32n6xx_hal_conf.h"

@@ -51,7 +51,37 @@ if(NOT _generated_dma2d_enabled OR NOT EXISTS "${_generated_dma2d_source}")
 endif()
 
 if(APP_TARGET STREQUAL "hw-test")
-    foreach(module dcmipp rng hash crc crc_ex rif dma dma_ex rtc rtc_ex tim tim_ex ltdc)
+    set(STEDGEAI_LIB_DIR "" CACHE PATH
+        "STEdgeAI runtime root containing Inc/, Npu/, and Lib/")
+    if(NOT STEDGEAI_LIB_DIR AND DEFINED ENV{STEDGEAI_LIB_DIR})
+        set(STEDGEAI_LIB_DIR "$ENV{STEDGEAI_LIB_DIR}" CACHE PATH
+            "STEdgeAI runtime root containing Inc/, Npu/, and Lib/" FORCE)
+    endif()
+    if(NOT STEDGEAI_LIB_DIR)
+        file(GLOB _hwtest_stedgeai_candidates LIST_DIRECTORIES true
+            "/opt/ST/STEdgeAI/*/Middlewares/ST/AI")
+        foreach(_hwtest_candidate IN LISTS _hwtest_stedgeai_candidates)
+            if(EXISTS "${_hwtest_candidate}/Npu/Devices/STM32N6xx/npu_cache.h"
+               AND EXISTS "${_hwtest_candidate}/Npu/Devices/STM32N6xx/npu_cache.c")
+                set(STEDGEAI_LIB_DIR "${_hwtest_candidate}" CACHE PATH
+                    "STEdgeAI runtime root containing Inc/, Npu/, and Lib/" FORCE)
+                break()
+            endif()
+        endforeach()
+    endif()
+    set(_hwtest_npu_cache_dir "${STEDGEAI_LIB_DIR}/Npu/Devices/STM32N6xx")
+    if(NOT STEDGEAI_LIB_DIR OR NOT EXISTS "${_hwtest_npu_cache_dir}/npu_cache.h"
+       OR NOT EXISTS "${_hwtest_npu_cache_dir}/npu_cache.c")
+        message(FATAL_ERROR
+            "hw-test requires STEdgeAI NPU cache sources. Install STEdgeAI and configure "
+            "with -DSTEDGEAI_LIB_DIR=/path/to/Middlewares/ST/AI (containing "
+            "Npu/Devices/STM32N6xx/npu_cache.h and npu_cache.c).")
+    endif()
+    list(APPEND UAI_DRIVER_SOURCES "${_hwtest_npu_cache_dir}/npu_cache.c")
+    set_source_files_properties("${_hwtest_npu_cache_dir}/npu_cache.c" PROPERTIES
+        COMPILE_DEFINITIONS
+        "NPU_CACHE_EXTERNAL_HAL_MSP;HAL_CACHEAXI_MspInit=hwtest_STEDGEAI_HAL_CACHEAXI_MspInit;HAL_CACHEAXI_MspDeInit=hwtest_STEDGEAI_HAL_CACHEAXI_MspDeInit")
+    foreach(module dcmipp rng hash crc crc_ex rif dma dma_ex rtc rtc_ex tim tim_ex ltdc cacheaxi)
         string(REGEX REPLACE "_ex$" "" _base_module "${module}")
         string(TOUPPER "${_base_module}" _base_module)
         set(_module_enabled OFF)
@@ -80,6 +110,10 @@ add_library(uai::drivers ALIAS uai-drivers)
 if(APP_TARGET STREQUAL "hw-test")
     target_include_directories(uai-drivers BEFORE PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/peripheral_driver/include")
+    target_include_directories(uai-drivers PRIVATE
+        "${STEDGEAI_LIB_DIR}/Inc"
+        "${STEDGEAI_LIB_DIR}/Npu/ll_aton"
+        "${_hwtest_npu_cache_dir}")
 endif()
 
 target_include_directories(uai-drivers

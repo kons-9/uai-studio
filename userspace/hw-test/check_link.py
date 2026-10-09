@@ -22,6 +22,7 @@ SHARED = (
     ("PeripheralDriver4Copy", "peripheral_driver.cpp"),
     ("NorDriver4Read", "nor_driver.cpp"),
     ("ReadDisplayState", "lcd_registers.cpp"),
+    ("CacheDriver15CleanInvalidate", "cache_driver.cpp"),
     ("2ui6Canvas8FillRect", "canvas.cpp"),
 )
 
@@ -37,6 +38,8 @@ def audit(symbols, map_text):
         expected[matches[0]] = source
     for line in symbols.splitlines():
         fields = line.split()
+        if len(fields) == 3 and fields[2] == "npu_cache_enable":
+            expected[fields[2]] = "npu_cache.c"
         if len(fields) == 3 and fields[2] in expected:
             if fields[2] in definitions:
                 raise ValueError("multiple definitions: " + fields[2])
@@ -52,7 +55,7 @@ def audit(symbols, map_text):
         ):
             raise ValueError(f"{symbol}: unexpected or missing map origin: {objects}")
         shared_source = source in {shared_source for _, shared_source in SHARED}
-        kernel_symbol = symbol in ("HAL_GetTick", "HAL_Delay", "BSP_XSPI_NOR_Init", "BSP_XSPI_RAM_Init")
+        kernel_symbol = symbol in ("HAL_GetTick", "HAL_Delay", "BSP_XSPI_NOR_Init", "BSP_XSPI_RAM_Init", "npu_cache_enable")
         if (shared_source or kernel_symbol) and "kernel/" not in objects[0]:
             raise ValueError(f"{symbol}: implementation must come from kernel: {objects[0]}")
 

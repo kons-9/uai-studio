@@ -2,9 +2,11 @@
 
 ## 状態と目的
 
-STM32N6570-DKのHWを検査するアプリ。[experiment-hw-test](../experiment-hw-test/README.md)と同じ17試験、カメラ制御、LCD画面、UARTコマンドを持ち、共有middlewareとDMA2D driverを使う。AI推論・モデル生成・STEdgeAIランタイムは不要。
+STM32N6570-DKのHWを検査するアプリ。[experiment-hw-test](../experiment-hw-test/README.md)と同じ17試験、カメラ制御、LCD画面、UARTコマンドを持ち、共有middlewareとDMA2D driverを使う。AI推論・モデル生成は不要だが、共有CacheDriverが使うNPUキャッシュ実装のためSTEdgeAIを必要とする。
 
 `uai::middleware`のUIと画像演算・転送検証器、`uai::drivers`の周辺機器・メモリ・LCD・DMA2D driverを使用する。`src/tests`はHAL/BSP/CMSISやレジスタへ直接アクセスしない。クロック・RIF・初期化・キャッシュ同期・停止・deinitはkernel側のAPIへ集約する。カメラ・ISP・GT911の試験fixture、UART処理、IOC、ボード設定は本アプリ内に保持し、他userspaceの実装を参照しない。元experimentは変更せず独立した構成を維持する。
+
+STEdgeAIの`Npu/Devices/STM32N6xx/npu_cache.h`と`npu_cache.c`を使用する。ヘッダーのインクルード先・キャッシュ実装・CACHEAXI HALの登録はkernel側で行い、AIモデルやNeural-ART実行ランタイム全体はリンクしない。
 
 LCD表示の初期化確認に続いて、RNG、HASH、CRC、GPDMA、HPDMA、RTC、TIM、SRAM、PSRAM、NOR、DMA2Dと、カメラ両Pipe・ISP制御・DMA2D詳細・GT911読取りを実行する。未実装項目をSKIPで登録することはしない。外部機器の試験は選択時にstatic_assertでコンパイルを止める。実装済みと実機検証済みは区別する。
 
@@ -98,6 +100,8 @@ fixtureと実行本体を整備した段階でstatic_assertを外し、同じRun
 
 ARMツールチェーン、STM32CubeN6、CubeMX、CubeProgrammerとST-LINK/VCPの接続を用意する。ホスト固有設定は[local.mk.example](../../build-system/host-config/local.mk.example)を参照。[本アプリのIOC](config/stm32n6570-dk-fullsecure.ioc)とローカルのボード設定を使用する。ビルド先は`build-hw-test`。共有コンポーネント用ヘッダーと予約領域はビルド時に生成する。NPU driverはこのアプリのビルドから除外する。
 
+`STEDGEAI_LIB_DIR`にはai-appと同じ`Middlewares/ST/AI`ディレクトリを指定する。Make変数、同名の環境変数、CMakeの`-DSTEDGEAI_LIB_DIR=...`で設定できる。未指定の場合は`/opt/ST/STEdgeAI/*/Middlewares/ST/AI`から検出する。`npu_cache.h`または`npu_cache.c`が不足するとCMakeの設定時に停止する。
+
 ```sh
 make -C userspace/hw-test generate
 make -C userspace/hw-test build
@@ -137,18 +141,9 @@ python3 userspace/hw-test/runner.py --uart /dev/ttyACM0 \
 
 `--wait-ready`を指定すると起動時に選んだ自動実行セットの結果をそのまま収集し、shellへコマンドを送らない。起動行（`camera: pipe1=started pipe2=started`を含む）は`logs/startup.log`へ保存する。通常モードでは`hwtest all`または`--test all-stress`、`--test <name>`をshellへ送る。ランナは実機のHWTEST結果だけを集計し、結果欠落・重複・SUMMARY不一致・通信断は不成功とする。終了値は0=PASSあり/FAILなし、1=FAILあり、2=入力不完全等。`total`も結果行数と照合する。
 
-## ホスト検証
+## リンク監査
 
-```sh
-cmake -S kernel/middleware/tests -B build/middleware-tests
-cmake --build build/middleware-tests --target hw_test image_processing_test dma2d_driver_test peripheral_driver_test ui_test
-ctest --test-dir build/middleware-tests -R '^(hw_test|image_processing_test|dma2d_driver_test|peripheral_driver_test|ui_test)$' --output-on-failure
-python3 -m unittest discover -s userspace/hw-test/tests -p 'test_*.py' -v
-```
-
-ホストでは試験登録、共有UI描画、共有画像検証器、25ケースと60秒負荷シナリオの進行、メモリ契約、ビルド登録、リンク監査を検査する。実装済み試験のHALなし構文チェックと低レイヤ依存監査、周辺driverのHALスタブ付きテストも実行する。実機のPASSやキャッシュ整合を証明するものではない。
-
-最終ELFのビルド後は[check_link.py](check_link.py)がHAL／IRQのstrong実装に加え、UI・DMA2D・周辺driver・NOR・表示状態APIとHAL時刻処理がkernelオブジェクトから配置されたことをnmとリンクマップで確認する。
+最終ELFのビルド後は[check_link.py](check_link.py)がHAL／IRQのstrong実装に加え、UI・DMA2D・周辺driver・NOR・表示状態API・キャッシュ同期とHAL時刻処理がkernelオブジェクトから配置されたことをnmとリンクマップで確認する。`npu_cache_enable`が最終ELFに残る場合もkernelターゲットのSTEdgeAI実装から配置されたことを検査する。
 
 ## 安全条件と確認範囲
 
