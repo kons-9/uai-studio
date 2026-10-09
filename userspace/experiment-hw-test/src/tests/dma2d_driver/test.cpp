@@ -1,8 +1,10 @@
 #include "tests/board.hpp"
 
+#include <cstdio>
+
 namespace experiment::hwtest::tests::dma2d_driver {
 
-Result Run(const Context &)
+Result Run(const Context &context)
 {
     alignas(32) static std::uint32_t source[80];
     alignas(32) static std::uint32_t destination[80];
@@ -30,7 +32,30 @@ Result Run(const Context &)
     handle.LayerCfg[1].InputAlpha = 0xff;
     Result result{Outcome::kFail, "dma2d-initialization"};
     if (HAL_DMA2D_Init(&handle) == HAL_OK && HAL_DMA2D_ConfigLayer(&handle, 1) == HAL_OK) {
-        if (HAL_DMA2D_Start(
+        const auto control = DMA2D->CR;
+        const auto output_format = DMA2D->OPFCCR;
+        char line[128];
+        std::snprintf(
+            line,
+            sizeof(line),
+            "TRACE dma2d regs cr=%08lx opf=%08lx fgpf=%08lx",
+            static_cast<unsigned long>(control),
+            static_cast<unsigned long>(output_format),
+            static_cast<unsigned long>(DMA2D->FGPFCCR)
+        );
+        context.Trace(line);
+        if ((control & DMA2D_CR_MODE) != DMA2D_M2M
+            || (output_format & DMA2D_OPFCCR_CM) != DMA2D_OUTPUT_ARGB8888) {
+            static char detail[64];
+            std::snprintf(
+                detail,
+                sizeof(detail),
+                "dma2d-config cr=%08lx opf=%08lx",
+                static_cast<unsigned long>(control),
+                static_cast<unsigned long>(output_format)
+            );
+            result = {Outcome::kFail, detail};
+        } else if (HAL_DMA2D_Start(
                 &handle,
                 static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(source + 8)),
                 static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(destination + 8)),
@@ -41,15 +66,31 @@ Result Run(const Context &)
             HAL_DMA2D_Abort(&handle);
             result = {Outcome::kFail, "dma2d-transfer-or-timeout"};
         } else {
-            SCB_InvalidateDCache_by_Addr(source, sizeof(source));
-            SCB_InvalidateDCache_by_Addr(destination, sizeof(destination));
-            result = {Outcome::kPass, "dma-copy-cache-and-guards"};
-            for (std::size_t index = 0; index < 80; ++index) {
-                const auto original = 0xff000000U | (0x010307U * static_cast<std::uint32_t>(index));
-                const auto expected = index >= 8 && index < 72 ? original : 0x55aa55aa;
-                if (source[index] != original || destination[index] != expected) {
-                    result = {Outcome::kFail, "dma2d-data-or-guard-mismatch"};
-                    break;
+            const auto final_cr = DMA2D->CR;
+            const auto final_isr = DMA2D->ISR;
+            if ((final_cr & DMA2D_CR_START) != 0U
+                || (final_isr & (DMA2D_FLAG_CAE | DMA2D_FLAG_CE | DMA2D_FLAG_TE)) != 0U
+                || handle.ErrorCode != HAL_DMA2D_ERROR_NONE) {
+                std::snprintf(
+                    line,
+                    sizeof(line),
+                    "dma2d-status cr=%08lx isr=%08lx err=%08lx",
+                    static_cast<unsigned long>(final_cr),
+                    static_cast<unsigned long>(final_isr),
+                    static_cast<unsigned long>(handle.ErrorCode)
+                );
+                result = {Outcome::kFail, line};
+            } else {
+                SCB_InvalidateDCache_by_Addr(source, sizeof(source));
+                SCB_InvalidateDCache_by_Addr(destination, sizeof(destination));
+                result = {Outcome::kPass, "register-config-and-dma-copy-cache-guards"};
+                for (std::size_t index = 0; index < 80; ++index) {
+                    const auto original = 0xff000000U | (0x010307U * static_cast<std::uint32_t>(index));
+                    const auto expected = index >= 8 && index < 72 ? original : 0x55aa55aa;
+                    if (source[index] != original || destination[index] != expected) {
+                        result = {Outcome::kFail, "dma2d-data-or-guard-mismatch"};
+                        break;
+                    }
                 }
             }
         }

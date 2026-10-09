@@ -1,5 +1,7 @@
 #include "tests/board.hpp"
 
+#include <cstdio>
+
 namespace experiment::hwtest::tests::rtc_driver {
 
 Result Run(const Context &context)
@@ -40,22 +42,52 @@ Result Run(const Context &context)
     date.Date = 1;
     date.WeekDay = RTC_WEEKDAY_WEDNESDAY;
     Result result{Outcome::kFail, "rtc-initialization-or-calendar-write"};
-    if (HAL_RTC_Init(&handle) == HAL_OK && HAL_RTC_SetDate(&handle, &date, RTC_FORMAT_BIN) == HAL_OK
-        && HAL_RTC_SetTime(&handle, &time, RTC_FORMAT_BIN) == HAL_OK) {
-        result = {Outcome::kFail, "rtc-midnight-rollover-timeout"};
-        const auto begin = context.clock();
-        while (!context.Expired(begin, 2500)) {
-            if (HAL_RTC_GetTime(&handle, &time, RTC_FORMAT_BIN) != HAL_OK
-                || HAL_RTC_GetDate(&handle, &date, RTC_FORMAT_BIN) != HAL_OK) {
-                result = {Outcome::kFail, "rtc-calendar-read"};
-                break;
+    if (HAL_RTC_Init(&handle) == HAL_OK) {
+        const auto prer = RTC->PRER;
+        const auto control = RTC->CR;
+        const auto status = RTC->ICSR;
+        const auto prer_mask = RTC_PRER_PREDIV_A | RTC_PRER_PREDIV_S;
+        const auto expected_prer = (handle.Init.AsynchPrediv << RTC_PRER_PREDIV_A_Pos)
+                                   | (handle.Init.SynchPrediv << RTC_PRER_PREDIV_S_Pos);
+        char trace[128];
+        std::snprintf(
+            trace,
+            sizeof(trace),
+            "TRACE rtc regs prer=%08lx cr=%08lx icsr=%08lx",
+            static_cast<unsigned long>(prer),
+            static_cast<unsigned long>(control),
+            static_cast<unsigned long>(status)
+        );
+        context.Trace(trace);
+        if ((prer & prer_mask) != expected_prer || (control & RTC_CR_FMT) != 0U || (status & RTC_ICSR_INITF) != 0U) {
+            static char detail[104];
+            std::snprintf(
+                detail,
+                sizeof(detail),
+                "rtc-reg prer=%08lx exp=%08lx cr=%08lx icsr=%08lx",
+                static_cast<unsigned long>(prer & prer_mask),
+                static_cast<unsigned long>(expected_prer),
+                static_cast<unsigned long>(control),
+                static_cast<unsigned long>(status)
+            );
+            result = {Outcome::kFail, detail};
+        } else if (HAL_RTC_SetDate(&handle, &date, RTC_FORMAT_BIN) == HAL_OK
+                   && HAL_RTC_SetTime(&handle, &time, RTC_FORMAT_BIN) == HAL_OK) {
+            result = {Outcome::kFail, "rtc-midnight-rollover-timeout"};
+            const auto begin = context.clock();
+            while (!context.Expired(begin, 2500)) {
+                if (HAL_RTC_GetTime(&handle, &time, RTC_FORMAT_BIN) != HAL_OK
+                    || HAL_RTC_GetDate(&handle, &date, RTC_FORMAT_BIN) != HAL_OK) {
+                    result = {Outcome::kFail, "rtc-calendar-read"};
+                    break;
+                }
+                if (time.Hours == 0 && time.Minutes == 0 && time.Seconds <= 1 && date.Year == 25
+                    && date.Month == RTC_MONTH_JANUARY && date.Date == 2 && date.WeekDay == RTC_WEEKDAY_THURSDAY) {
+                    result = {Outcome::kPass, "lsi-calendar-midnight-date-rollover"};
+                    break;
+                }
+                context.wait(10);
             }
-            if (time.Hours == 0 && time.Minutes == 0 && time.Seconds <= 1 && date.Year == 25
-                && date.Month == RTC_MONTH_JANUARY && date.Date == 2 && date.WeekDay == RTC_WEEKDAY_THURSDAY) {
-                result = {Outcome::kPass, "lsi-calendar-midnight-date-rollover"};
-                break;
-            }
-            context.wait(10);
         }
     }
     if (HAL_RTC_DeInit(&handle) != HAL_OK) {

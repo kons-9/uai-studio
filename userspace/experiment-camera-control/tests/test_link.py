@@ -9,14 +9,14 @@ import check_link
 
 
 class LinkTests(unittest.TestCase):
-    def test_make_uses_camera_ioc_with_host_config_template(self):
+    def test_make_uses_local_ioc_with_host_config_template(self):
         root = pathlib.Path(__file__).resolve().parents[3]
         result = subprocess.run([
             "make", "-n", "-C", str(root / "userspace/experiment-camera-control"),
             "generate", "configure", f"CONFIG_FILE={root / 'build-system/host-config/local.mk.example'}",
         ], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn(f'CUBEMX_IOC="{root}/userspace/experiment-camera-lcd/config/stm32n6570-dk-fullsecure.ioc"', result.stdout)
+        self.assertIn(f'CUBEMX_IOC="{root}/userspace/experiment-camera-control/config/stm32n6570-dk-fullsecure.ioc"', result.stdout)
         self.assertIn(f'CUBEMX_OUTPUT_DIR="{root}/build-experiment-camera-control/cubemx"', result.stdout)
         self.assertIn('-DAPP_TARGET="experiment-camera-control"', result.stdout)
         self.assertIn('-DEXPERIMENT_PREKERNEL_READY=ON', result.stdout)
@@ -36,7 +36,7 @@ class LinkTests(unittest.TestCase):
                 'endforeach()\n'
                 f'include("{root.as_posix()}/build-system/cmake/camera_board.cmake")\n'
                 f'include("{root.as_posix()}/build-system/cmake/stm32_cli.cmake")\n'
-                'if(NOT CUBEMX_IOC STREQUAL "${CMAKE_SOURCE_DIR}/userspace/experiment-camera-lcd/config/stm32n6570-dk-fullsecure.ioc")\n'
+                'if(NOT CUBEMX_IOC STREQUAL "${CMAKE_SOURCE_DIR}/userspace/experiment-camera-control/config/stm32n6570-dk-fullsecure.ioc")\n'
                 '  message(FATAL_ERROR "wrong CubeMX input")\n'
                 'endif()\n'
                 'if(NOT CUBEMX_OUTPUT_DIR STREQUAL "${CMAKE_BINARY_DIR}/cubemx")\n'
@@ -46,7 +46,7 @@ class LinkTests(unittest.TestCase):
                 '  message(FATAL_ERROR "wrong RAM image")\n'
                 'endif()\n'
                 'if(NOT STM32_RAM_ADDRESS STREQUAL "0x34000400" OR NOT STM32_RAM_ENTRY STREQUAL "0x34000800" OR NOT STM32_RAM_STACK STREQUAL "0x34200000")\n'
-                '  message(FATAL_ERROR "RAM launch settings do not match camera-pipe2")\n'
+                '  message(FATAL_ERROR "RAM launch settings do not match this experiment")\n'
                 'endif()\n', encoding="utf-8")
             result = subprocess.run(["cmake", "-P", str(script)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -57,10 +57,12 @@ class LinkTests(unittest.TestCase):
             "experiment-camera-lcd": "experiment-camera-lcd",
             "experiment-camera-pipe2": "experiment-camera-pipe2",
             "experiment-camera-lcd-touch": "experiment-camera-lcd-touch",
-            "experiment-camera-control": "experiment-camera-pipe2",
+            "experiment-camera-control": "experiment-camera-control",
             "ai-app": "",
             "experiment-hw-test": "",
-            "experiment-gpu": "experiment-camera-pipe2",
+            "experiment-gpu": "experiment-gpu",
+            "experiment-model-load": "experiment-model-load",
+            "experiment-ui-control": "experiment-ui-control",
         }
         with tempfile.TemporaryDirectory() as temporary:
             script = pathlib.Path(temporary) / "profile.cmake"

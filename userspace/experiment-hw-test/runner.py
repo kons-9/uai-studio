@@ -69,13 +69,31 @@ def collect(port, name, timeout, record):
             return parse(lines)
 
 
-def live_runs(port, name, repeat, timeout, log_dir):
+def collect_autorun(port, timeout, record):
+    deadline = time.monotonic() + timeout
+    lines = []
+    while True:
+        line = port.readline(max(0, deadline - time.monotonic()))
+        record.write(line + "\n")
+        record.flush()
+        if line.strip().startswith("ERR "):
+            raise ValueError("device rejected startup run: " + line)
+        lines.append(line)
+        if line.strip().startswith("HWTEST SUMMARY "):
+            return parse(lines)
+
+
+def live_runs(port, name, repeat, timeout, log_dir, autorun_first=False):
     results = []
     log_dir.mkdir(parents=True, exist_ok=True)
     for iteration in range(1, repeat + 1):
         with (log_dir / f"run-{iteration:03d}.log").open("x") as record:
             try:
-                current = collect(port, name, timeout, record)
+                current = (
+                    collect_autorun(port, timeout, record)
+                    if iteration == 1 and autorun_first
+                    else collect(port, name, timeout, record)
+                )
             except (OSError, ValueError, TimeoutError) as error:
                 current = [("transport", "FAIL", str(error))]
                 results.extend((f"run{iteration}-{case}", status, detail) for case, status, detail in current)
@@ -95,7 +113,11 @@ def main():
     parser.add_argument("--timeout", type=float, default=30)
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--log-dir", type=pathlib.Path)
-    parser.add_argument("--wait-ready", action="store_true")
+    parser.add_argument(
+        "--wait-ready",
+        action="store_true",
+        help="wait for HWTEST READY and collect the startup all run without sending a shell command",
+    )
     arguments = parser.parse_args()
     if arguments.timeout <= 0 or not arguments.timeout < float("inf") or arguments.repeat < 1:
         parser.error("timeout must be positive and finite; repeat must be positive")
@@ -110,7 +132,14 @@ def main():
                     deadline = time.monotonic() + arguments.timeout
                     while "HWTEST READY" not in port.readline(max(0, deadline - time.monotonic())):
                         pass
-                results = live_runs(port, arguments.test, arguments.repeat, arguments.timeout, arguments.log_dir)
+                results = live_runs(
+                    port,
+                    arguments.test,
+                    arguments.repeat,
+                    arguments.timeout,
+                    arguments.log_dir,
+                    autorun_first=arguments.wait_ready and arguments.test == "all",
+                )
         else:
             text = arguments.log.read_text() if arguments.log else sys.stdin.read()
             results = parse(text.splitlines())

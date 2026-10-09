@@ -32,17 +32,9 @@ endif()
 if(NOT CUBEMX_IOC)
     set(_uai_default_ioc
         "${CMAKE_SOURCE_DIR}/userspace/${APP_TARGET}/config/stm32n6570-dk-fullsecure.ioc")
-    # experiment-camera-pipe2 intentionally reuses experiment-camera-lcd's
-    # CubeMX peripheral/startup setup;
-    # its dual-pipe configuration is applied by the application at runtime.
     if(APP_TARGET IN_LIST UAI_KERNEL_APPS)
         set(_uai_default_ioc
             "${CMAKE_SOURCE_DIR}/userspace/${APP_TARGET}/config/stm32n6570-dk-${APP_TARGET}.ioc")
-    endif()
-    if(NOT EXISTS "${_uai_default_ioc}" AND
-         UAI_CAMERA_BOARD_APP STREQUAL "experiment-camera-pipe2")
-        set(_uai_default_ioc
-            "${CMAKE_SOURCE_DIR}/userspace/experiment-camera-lcd/config/stm32n6570-dk-fullsecure.ioc")
     endif()
     set(CUBEMX_IOC "${_uai_default_ioc}"
         CACHE FILEPATH "CubeMX IOC input file" FORCE)

@@ -109,16 +109,6 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  /* Keep the launch entry away from the normal code range so the first fetch
-   * cannot be satisfied by an instruction-cache line from the old image. */
-  /* Leave growth room after .rodata before the cache-sanitizing launch entry. */
-  .text.uai_ram_entry 0x34052000 :
-  {
-    . = ALIGN(4);
-    KEEP(*(.text.uai_ram_entry))
-    . = ALIGN(4);
-  } >APP
-
   .network_blobs_person :
   {
     . = ALIGN(64);
@@ -224,6 +214,16 @@ SECTIONS
     __sample_ai_thread_monitor_start__ = .;
     . = . + 0x00020000;
     __sample_ai_thread_monitor_end__ = .;
+  } >APP
+
+  /* Keep the launch entry outside the image's code, data, and monitor areas
+   * so its first fetch cannot use an instruction-cache line from the old
+   * image. */
+  .text.uai_ram_entry 0x340FE000 :
+  {
+    . = ALIGN(4);
+    KEEP(*(.text.uai_ram_entry))
+    . = ALIGN(4);
   } >APP
 
   __end = .;

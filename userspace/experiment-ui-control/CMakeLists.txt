@@ -3,7 +3,7 @@ set(FEATURE_CONSTRAINTS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(FEATURE_CONSTRAINTS_CLI "${FEATURE_CONSTRAINTS_ROOT}/tool/feature_constraints/cli.py")
 if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 	set(EXPERIMENT_EXTENSION "${CMAKE_CURRENT_SOURCE_DIR}/src/firmware.cpp")
-	include(../experiment-camera-control/firmware.cmake)
+	include("${CMAKE_CURRENT_LIST_DIR}/firmware.cmake")
 	add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/features_generated.hpp"
 		COMMAND ${Python3_EXECUTABLE} -m tool.feature_constraints generate
 			"${CMAKE_CURRENT_SOURCE_DIR}/config/features.json" --output "${CMAKE_CURRENT_BINARY_DIR}/features_generated.hpp"
@@ -25,7 +25,7 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/features_generated.hpp"
 	DEPENDS "${FEATURE_CONSTRAINTS_CLI}" config/features.json
 	WORKING_DIRECTORY "${FEATURE_CONSTRAINTS_ROOT}" VERBATIM)
 add_executable(app_state_test tests/app_state_test.cpp "${CMAKE_CURRENT_BINARY_DIR}/features_generated.hpp")
-target_include_directories(app_state_test PRIVATE src ../experiment-camera-control/src "${CMAKE_CURRENT_BINARY_DIR}")
+target_include_directories(app_state_test PRIVATE src src/camera_runtime "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_features(app_state_test PRIVATE cxx_std_17)
 target_compile_options(app_state_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME app_state COMMAND app_state_test)

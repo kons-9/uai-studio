@@ -124,7 +124,7 @@ target_include_directories(experiment-camera-pipe2.elf PRIVATE
     "${CAMERA_PIPE2_SRC_DIR}/driver/board/include"
     "${CAMERA_PIPE2_ROOT}/config"
     "${CAMERA_PIPE2_BSP_ROOT}"
-    "${CMAKE_SOURCE_DIR}/userspace/experiment-ai/config"
+    "${CAMERA_PIPE2_ROOT}/config"
     "${CAMERA_PIPE2_COMPONENT_ROOT}/Common"
     "${CAMERA_PIPE2_COMPONENT_ROOT}/aps256xx"
     "${CAMERA_PIPE2_COMPONENT_ROOT}/mx66uw1g45g"

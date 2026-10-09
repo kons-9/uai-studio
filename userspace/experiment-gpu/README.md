@@ -11,7 +11,7 @@ make -C userspace/experiment-gpu test
 make -C userspace/experiment-gpu generate
 ```
 
-先にUARTを開き、そのまま別端末でRAMへ書き込む。専用の`build-experiment-gpu`と既存のcamera-pipe2ボード設定を使い、カメラ制御の自動シナリオはリンクしない。ホスト固有のCubeMX/CubeN6、ツールチェーン、ST-LINK設定は[設定例](../../build-system/host-config/local.mk.example)を参照する。
+先にUARTを開き、そのまま別端末でRAMへ書き込む。専用の`build-experiment-gpu`とこのexperiment内のボード設定・runtimeコピーを使い、カメラ制御の自動シナリオはリンクしない。ホスト固有のCubeMX/CubeN6、ツールチェーン、ST-LINK設定は[設定例](../../build-system/host-config/local.mk.example)を参照する。
 
 ```sh
 make -C userspace/experiment-gpu monitor

@@ -18,6 +18,14 @@ struct Result {
 struct Context {
     std::uint32_t (*clock)();
     void (*wait)(std::uint32_t);
+    void (*trace)(const char *);
+
+    void Trace(const char *line) const
+    {
+        if (trace) {
+            trace(line);
+        }
+    }
 
     bool Expired(
         std::uint32_t begin,
@@ -69,7 +77,8 @@ Run(const Case *cases,
     const char *selection,
     bool allow_destructive,
     Output output,
-    const Context &context)
+    const Context &context,
+    Output progress = {nullptr, nullptr})
 {
     Summary summary;
     bool matched = false;
@@ -106,10 +115,24 @@ Run(const Case *cases,
             continue;
         }
         matched = true;
+        if (progress.write) {
+            char line[64];
+            std::snprintf(line, sizeof(line), "HWTEST %s START\n", test.name);
+            progress.write(progress.context, line);
+        }
         const auto begin = context.clock();
         Result result = test.run(context);
-        if (context.clock() - begin > test.timeout_ms) {
-            result = {Outcome::kFail, "deadline-exceeded"};
+        const auto elapsed = context.clock() - begin;
+        char timeout_detail[128]{};
+        if (elapsed > test.timeout_ms) {
+            std::snprintf(
+                timeout_detail,
+                sizeof(timeout_detail),
+                "deadline-exceeded elapsed_ms=%lu cause=%.80s",
+                static_cast<unsigned long>(elapsed),
+                result.detail ? result.detail : "unknown"
+            );
+            result = {Outcome::kFail, timeout_detail};
         }
         const char *status = "FAIL";
         switch (result.outcome) {
@@ -121,7 +144,7 @@ Run(const Case *cases,
             ++summary.failed;
             break;
         }
-        char detail[96]{};
+        char detail[128]{};
         if (result.detail) {
             for (std::size_t offset = 0; offset + 1 < sizeof(detail) && result.detail[offset]; ++offset) {
                 const auto character = static_cast<unsigned char>(result.detail[offset]);

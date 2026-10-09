@@ -45,5 +45,5 @@ report each button action and the sampled display coordinates.
 
 The two display pages are reserved at `0x34030000` and `0x34100000`. The 32 KiB camera task stack
 is at `0x341C0000`, separate from both display pages and the camera capture frame in SRAM3/4. The
-CubeMX clock and external-memory setup comes from the same board configuration used by
-`experiment-hello-world`.
+CubeMX clock and external-memory setup comes from this experiment's local
+`config/stm32n6570-dk-fullsecure.ioc`.

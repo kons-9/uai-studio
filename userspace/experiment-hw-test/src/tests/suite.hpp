@@ -7,6 +7,9 @@ namespace experiment::hwtest::tests {
 extern const Case cases[];
 extern const std::size_t case_count;
 
+namespace display_driver {
+Result Run(const Context &);
+}
 namespace rng_driver {
 Result Run(const Context &);
 }

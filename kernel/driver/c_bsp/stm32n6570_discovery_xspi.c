@@ -1373,6 +1373,10 @@ int32_t BSP_XSPI_RAM_EnableMemoryMappedMode(uint32_t Instance)
     } else {
         if (APS256XX_EnableMemoryMappedMode(&hxspi_ram[Instance], 7, 7, 1, 0) != APS256XX_OK) {
             ret = BSP_ERROR_PERIPH_FAILURE;
+        } else {
+            /* Keep the software state in sync with the controller, as the NOR
+             * path does. DeInit and DisableMemoryMappedMode rely on this. */
+            XSPI_Ram_Ctx[Instance].IsInitialized = XSPI_ACCESS_MMP;
         }
     }
 

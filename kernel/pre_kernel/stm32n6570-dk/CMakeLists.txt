@@ -82,13 +82,9 @@ target_include_directories(stm32n6570_dk
 )
 
 if(NOT UAI_CAMERA_BOARD_APP)
-    set(_ai_board_config_app experiment-ai)
-    if(APP_TARGET IN_LIST UAI_KERNEL_APPS)
-        set(_ai_board_config_app "${APP_TARGET}")
-    endif()
     target_include_directories(stm32n6570_dk PUBLIC
-        "${CMAKE_SOURCE_DIR}/userspace/${_ai_board_config_app}/src/board"
-        "${CMAKE_SOURCE_DIR}/userspace/${_ai_board_config_app}/config")
+        "${CMAKE_SOURCE_DIR}/userspace/${APP_TARGET}/src/board"
+        "${CMAKE_SOURCE_DIR}/userspace/${APP_TARGET}/config")
 endif()
 
 target_compile_definitions(stm32n6570_dk PRIVATE

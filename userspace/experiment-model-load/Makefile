@@ -1,1 +1,1 @@
-include ../experiment-camera-control/experiment.mk
+include $(dir $(lastword $(MAKEFILE_LIST)))experiment.mk

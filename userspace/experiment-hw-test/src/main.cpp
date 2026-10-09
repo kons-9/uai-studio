@@ -1,5 +1,8 @@
 #include "commands.hpp"
+#include "display_log.hpp"
 #include "tests/suite.hpp"
+#include <cstdint>
+#include <cstring>
 #include <tk/tkernel.h>
 
 extern "C" {
@@ -8,9 +11,47 @@ extern "C" {
 void tm_com_init(void);
 }
 
+#if defined(HWTEST_AUTORUN_TEST)
+extern "C" {
+struct alignas(32) HwtestDiagnosticLog {
+    volatile std::uint32_t size;
+    std::uint32_t header_padding[7];
+    volatile char bytes[16U * 1024U];
+};
+
+HwtestDiagnosticLog hwtest_diagnostic_log{};
+}
+#endif
+
 namespace {
 
 alignas(8) INT task_stack[16 * 1024 / sizeof(INT)];
+
+void CaptureDiagnostic(const char *text, std::size_t size)
+{
+#if defined(HWTEST_AUTORUN_TEST)
+    std::uint32_t offset = hwtest_diagnostic_log.size;
+    const std::size_t capacity = sizeof(hwtest_diagnostic_log.bytes);
+    for (std::size_t index = 0; index < size && offset < capacity; ++index, ++offset) {
+        hwtest_diagnostic_log.bytes[offset] = text[index];
+    }
+    hwtest_diagnostic_log.size = offset;
+#else
+    (void)text;
+    (void)size;
+#endif
+}
+
+void FlushDiagnostic()
+{
+#if defined(HWTEST_AUTORUN_TEST)
+    SCB_CleanDCache_by_Addr(
+        reinterpret_cast<std::uint32_t *>(&hwtest_diagnostic_log),
+        static_cast<std::int32_t>(sizeof(hwtest_diagnostic_log))
+    );
+    __DSB();
+#endif
+}
 
 void Write(
     void *,
@@ -18,28 +59,50 @@ void Write(
     std::size_t size
 )
 {
+    UINT interrupt_mask;
+    DI(interrupt_mask);
+    CaptureDiagnostic(text, size);
     for (std::size_t index = 0; index < size; ++index) {
         tm_putchar(static_cast<unsigned char>(text[index]));
     }
+    EI(interrupt_mask);
 }
 
 const experiment::console::Writer output{nullptr, Write};
+
+void Trace(const char *line)
+{
+    Write(nullptr, line, std::strlen(line));
+    Write(nullptr, "\n", 1);
+}
 
 void TestTask(
     INT,
     void *
 )
 {
+    (void)experiment::hwtest::display_log::Initialize();
     experiment::hwtest::Registry registry{
-        experiment::hwtest::tests::cases, experiment::hwtest::tests::case_count, {HAL_GetTick, [](std::uint32_t delay) {
-                                                                                      tk_dly_tsk(delay);
-                                                                                  }}
+        experiment::hwtest::tests::cases,
+        experiment::hwtest::tests::case_count,
+        {HAL_GetTick, [](std::uint32_t delay) { tk_dly_tsk(delay); }, Trace}
     };
     const experiment::console::Command commands[] = {
         {"hwtest", "hwtest list|all|run <name> [allow-destructive]", experiment::hwtest::Execute, &registry}
     };
     experiment::console::Shell shell(commands, sizeof(commands) / sizeof(commands[0]), output);
     output.Write("HWTEST READY\n> ");
+    FlushDiagnostic();
+#if defined(HWTEST_AUTORUN_TEST)
+    if (std::strcmp(HWTEST_AUTORUN_TEST, "all") == 0) {
+        const char *const auto_run_arguments[] = {"hwtest", "all"};
+        (void)experiment::hwtest::Execute(&registry, 2, auto_run_arguments, output);
+    } else {
+        const char *const auto_run_arguments[] = {"hwtest", "run", HWTEST_AUTORUN_TEST};
+        (void)experiment::hwtest::Execute(&registry, 3, auto_run_arguments, output);
+    }
+    FlushDiagnostic();
+#endif
     bool discard_line = false;
     for (;;) {
         if ((USART1->ISR & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE | USART_ISR_PE)) != 0) {
@@ -56,6 +119,9 @@ void TestTask(
                 }
             } else {
                 shell.Feed(character);
+                if (character == '\r' || character == '\n') {
+                    FlushDiagnostic();
+                }
             }
         } else {
             tk_dly_tsk(1);

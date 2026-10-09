@@ -1,6 +1,6 @@
 # experiment-ai
 
-NPUドライバーや推論ランタイムを実装する際に使った実験用ディレクトリです。person、segmentation、faceの3モデルを1つのNPUタスクで順番に推論します。ドライバーやメモリ管理を`kernel/`ではなく`src/`内に持ち、推論は`src/npu_runtime`（`NpuRuntime`、`Scheduler`、`InferenceDispatcher`）で実行します。開発はai-appで行ってください。
+NPUドライバーや推論ランタイムの実験用ディレクトリです。person、segmentation、faceの3モデルを1つのNPUタスクで順番に推論します。ドライバーやメモリ管理を`kernel/`ではなくこのディレクトリの`src/`内に持ち、推論は`src/npu_runtime`（`NpuRuntime`、`Scheduler`、`InferenceDispatcher`）で実行します。
 
 ## ビルドと実行
 
@@ -13,7 +13,7 @@ make -C userspace/experiment-ai ai-load
 make -C userspace/experiment-ai ram-run
 ```
 
-ビルド先は`build-experiment-ai/`です。モデルのアドレスと生成方法はai-appと同じで、[models/README.md](models/README.md)を参照してください。
+ビルド先は`build-experiment-ai/`です。モデルの生成方法と配置先は[このexperimentのmodels/README.md](models/README.md)に記載しています。
 
 ## ai-appとの違い
 

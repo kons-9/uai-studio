@@ -26,11 +26,11 @@ int NorRegisterLayer::Initialize()
     nor_init.TransferRate = BSP_XSPI_NOR_DTR_TRANSFER;
 
     const int32_t status = BSP_XSPI_NOR_Init(0U, &nor_init);
-    char message[160];
+    char message[256];
     (void)std::snprintf(
         message,
         sizeof(message),
-        "boot: nor bsp init=%ld stage=%ld reset=%ld/%ld err=%lx sr=%lx cr=%lx iom=%lx\r\n",
+        "boot: nor bsp init=%ld stage=%ld reset=%ld/%ld err=%lx sr=%lx cr=%lx iom=%lx diag=%lu/%lu d_err=%lx d_sr=%lx d_ccr=%lx\r\n",
         static_cast<long>(status),
         static_cast<long>(uai_nor_bsp_stage),
         static_cast<long>(uai_nor_reset_stage),
@@ -38,7 +38,12 @@ int NorRegisterLayer::Initialize()
         static_cast<unsigned long>(uai_nor_reset_hal_error),
         static_cast<unsigned long>(uai_nor_reset_sr),
         static_cast<unsigned long>(uai_nor_reset_cr),
-        static_cast<unsigned long>(XSPIM->CR)
+        static_cast<unsigned long>(XSPIM->CR),
+        static_cast<unsigned long>(uai_nor_diag_code),
+        static_cast<unsigned long>(uai_nor_diag_stage),
+        static_cast<unsigned long>(uai_nor_diag_hal_error),
+        static_cast<unsigned long>(uai_nor_diag_sr),
+        static_cast<unsigned long>(uai_nor_diag_ccr)
     );
     DebugPrint(message);
     return status == BSP_ERROR_NONE ? 0 : -1;

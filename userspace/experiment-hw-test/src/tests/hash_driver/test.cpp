@@ -1,8 +1,10 @@
 #include "tests/board.hpp"
 
+#include <cstdio>
+
 namespace experiment::hwtest::tests::hash_driver {
 
-Result Run(const Context &)
+Result Run(const Context &context)
 {
     alignas(4) static constexpr std::uint8_t short_input[4] = {'a', 'b', 'c', 0};
     alignas(4) static constexpr std::uint8_t block_input[60] =
@@ -24,14 +26,38 @@ Result Run(const Context &)
     alignas(4) std::uint8_t digest[32]{};
     Result result{Outcome::kFail, "hash-initialization"};
     if (HAL_HASH_Init(&handle) == HAL_OK) {
-        if (HAL_HASH_Start(&handle, short_input, 3, digest, 100) != HAL_OK
+        const auto control = HASH->CR;
+        char trace[64];
+        std::snprintf(trace, sizeof(trace), "TRACE hash regs cr=%08lx", static_cast<unsigned long>(control));
+        context.Trace(trace);
+        constexpr std::uint32_t kHashConfigMask = HASH_CR_ALGO | HASH_CR_DATATYPE;
+        constexpr std::uint32_t kHashExpected = HASH_ALGOSELECTION_SHA256 | HASH_BYTE_SWAP;
+        if ((control & kHashConfigMask) != kHashExpected) {
+            static char detail[64];
+            std::snprintf(detail, sizeof(detail), "hash-config cr=%08lx", static_cast<unsigned long>(control));
+            result = {Outcome::kFail, detail};
+        } else if (HAL_HASH_Start(&handle, short_input, 3, digest, 100) != HAL_OK
             || std::memcmp(digest, short_digest, sizeof(digest)) != 0) {
             result = {Outcome::kFail, "sha256-short-vector"};
         } else if (HAL_HASH_Start(&handle, block_input, 56, digest, 100) != HAL_OK
                    || std::memcmp(digest, block_digest, sizeof(digest)) != 0) {
             result = {Outcome::kFail, "sha256-block-padding-vector"};
         } else {
-            result = {Outcome::kPass, "sha256-two-known-answer-vectors"};
+            const auto final_control = HASH->CR;
+            const auto status = HASH->SR;
+            if ((final_control & kHashConfigMask) != kHashExpected || (status & HASH_SR_BUSY) != 0U) {
+                static char detail[72];
+                std::snprintf(
+                    detail,
+                    sizeof(detail),
+                    "hash-status cr=%08lx sr=%08lx",
+                    static_cast<unsigned long>(final_control),
+                    static_cast<unsigned long>(status)
+                );
+                result = {Outcome::kFail, detail};
+            } else {
+                result = {Outcome::kPass, "sha256-config-and-two-known-answer-vectors"};
+            }
         }
     }
     if (HAL_HASH_DeInit(&handle) != HAL_OK) {

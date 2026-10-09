@@ -4,9 +4,11 @@
 
 STM32N6570-DKのHWを直接検査する実機専用アプリ。既存experimentで動かしているHWだけでなく、未実験の内蔵周辺機器も試験対象として登録する。ドライバの単体試験ではなく、HAL／BSPを直接呼び、クロック・ピン・転送・キャッシュ・IRQ等の実HWの動作を確認する。
 
-`kernel/driver`、`uai::drivers`、他experimentのdriver実装には依存しない。μT-Kernelとpre-kernelをリンクし、camera-controlから再利用するのはOS/HALに依存しないshellヘッダーだけ。ホスト実行ファイル、HALモック、CTest、ホスト向け`make test`は置かない。
+`kernel/driver`、`uai::drivers`、他experimentの実装には依存しない。μT-Kernelとpre-kernelをリンクし、試験用のBSP設定、UART処理、driver補助コードはこのexperiment内に置く。ホスト実行ファイル、HALモック、CTest、ホスト向け`make test`は置かない。
 
-主対象は未実験HW。RNG、HASH、CRC、GPDMA、HPDMA、RTC、TIMの実行本体を追加し、SRAM、PSRAM、NOR、DMA2Dと合わせて11試験を登録している。未実装項目をSKIPで登録することはしない。外部機器の試験は選択時にstatic_assertでコンパイルを止める。実装済みと実機検証済みは区別する。
+主対象は未実験HW。LCD表示の初期化確認に続いて、RNG、HASH、CRC、GPDMA、HPDMA、RTC、TIM、SRAM、PSRAM、NOR、DMA2Dを実行する。未実装項目をSKIPで登録することはしない。外部機器の試験は選択時にstatic_assertでコンパイルを止める。実装済みと実機検証済みは区別する。
+
+起動時は登録済みの全試験を自動実行する。UART shellからの入力を待つ必要はない。ビルド時に`HWTEST_AUTORUN_TEST`を指定すると、自動実行する試験を個別に選択できる。
 
 ## 配置と依存
 
@@ -15,6 +17,7 @@ STM32N6570-DKのHWを直接検査する実機専用アプリ。既存experiment�
 | [src/main.cpp](src/main.cpp) | T-Monitor UART、試験タスク、shellの実機入口 |
 | [src/commands.hpp](src/commands.hpp) | `hwtest list / run / all`。listに目的と実行時間上限を表示 |
 | [src/hwtest.hpp](src/hwtest.hpp) | 共通I/F、登録検査、実行、PASS/FAIL、SUMMARY出力 |
+| [src/display_log.cpp](src/display_log.cpp) | LCDへ試験の開始・終了行を表示し、画面下端で自動スクロール |
 | [src/tests/suite.cpp](src/tests/suite.cpp) | 実装済み試験だけの登録表、目的、タイムアウト |
 | [src/tests/suite.hpp](src/tests/suite.hpp) | 各`<hardware>_driver::Run`の宣言 |
 | [src/tests/board.hpp](src/tests/board.hpp) | HALと試験対象のRIF設定 |
@@ -103,16 +106,16 @@ hwtest run dma2d
 hwtest all
 ```
 
-結果は`HWTEST <name> PASS|FAIL <詳細>`。既存UART収集形式との互換性のため、末尾は`HWTEST SUMMARY pass=<n> fail=<n> skip=0`を維持する。このファームウェアはSKIPを出さない。登録されている11試験だけを`all`で実行する。将来破壊的試験を追加した場合、許可のない`all`/`run`は実行前に拒否し、個別に`hwtest run <name> allow-destructive`で許可する。
+結果は`HWTEST <name> PASS|FAIL <詳細>`。LCDには各試験の開始と終了だけを表示し、UARTには従来の結果形式だけを出力する。行が表示領域を越えると古い行を上へ送り、自動でスクロールする。既存UART収集形式との互換性のため、末尾は`HWTEST SUMMARY pass=<n> fail=<n> skip=0`を維持する。このファームウェアはSKIPを出さない。登録されている試験を`all`で実行する。将来破壊的試験を追加した場合、許可のない`all`/`run`は実行前に拒否し、個別に`hwtest run <name> allow-destructive`で許可する。
 
 自動収集を使う場合はmonitorを閉じ、代わりにUARTランナを先に起動する。
 
 ```sh
 python3 userspace/experiment-hw-test/runner.py --uart /dev/ttyACM0 \
-	--junit result.xml --log-dir logs --wait-ready --repeat 10
+	--junit result.xml --log-dir logs --wait-ready
 ```
 
-ランナは実機のHWTEST結果だけを集計し、結果欠落・重複・SUMMARY不一致・通信断は不成功とする。終了値は0=PASSあり/FAILなし、1=FAILあり、2=入力不完全等。旧ログのSKIP形式も読めるが、新ファームウェアからは出力しない。
+`--wait-ready`を指定すると起動時の自動`all`の結果をそのまま収集し、shellへコマンドを送らない。通常モードでは`hwtest all`または`--test <name>`をshellへ送る。ランナは実機のHWTEST結果だけを集計し、結果欠落・重複・SUMMARY不一致・通信断は不成功とする。終了値は0=PASSあり/FAILなし、1=FAILあり、2=入力不完全等。旧ログのSKIP形式も読めるが、新ファームウェアからは出力しない。
 
 ## 安全条件と確認範囲
 
@@ -125,4 +128,4 @@ python3 userspace/experiment-hw-test/runner.py --uart /dev/ttyACM0 \
 - カメラ試験は登録していない。従来のcamera-controlの起動ログを、このアプリの検証結果として流用しない。
 - 試験後はUARTを先に開いて通常ai-appへ戻し、`camera: pipe1=started pipe2=started`と推論を確認する。この全体確認を省略しない。
 
-今回の環境では一時領域へARMコンパイラと公式HAL/CMSIS/BSPを展開し、11試験・登録表・実機入口のARMオブジェクト生成を確認した。これは生成済みCubeMX構成との最終リンクや実機動作の確認ではない。UART準備はST-LINK VCP未検出で停止したため、実機への書込み、各HWの合否、ai-app復帰後のPipe1/2は未確認。
+実機確認はUARTを先に開き、RAM実行で各試験の結果とLCD表示を確認する。その後`ai-app`をRAM実行し、UARTの`camera: pipe1=started pipe2=started`でPipe1/2の復帰を確認する。

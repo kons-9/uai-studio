@@ -5,7 +5,6 @@ import time
 
 from manifest import decode, verify
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "experiment-hw-test"))
 from uart import Uart
 
 

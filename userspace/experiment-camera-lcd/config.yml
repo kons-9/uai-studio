@@ -3,8 +3,8 @@
 `experiment-camera-lcd` initializes the DK display and the on-board IMX335 camera, then
 continuously sends the camera's 800x480 RGB565 frames to the LCD layer.
 
-The startup and external-memory initialization are inherited from the working
-`experiment-hello-world` CubeMX project. The camera and LCD peripherals are initialized by the
+The startup and external-memory initialization are generated from this experiment's local
+`config/stm32n6570-dk-fullsecure.ioc`. The camera and LCD peripherals are initialized by the
 official STM32N6570-DK BSP from the STM32CubeN6 package.
 
 Build with:
@@ -18,7 +18,7 @@ make -C userspace/experiment-camera-lcd \
 
 The runtime path is:
 
-1. FSBL setup from the same CubeMX configuration used by `experiment-hello-world`.
+1. FSBL setup from this experiment's CubeMX configuration.
 2. SRAM3/4/5/6 clock and power enable for the media buffers.
 3. µT-Kernel-backed HAL tick/delay functions for BSP initialization.
 4. LTDC layer 0 setup by `BSP_LCD_Init()`.
@@ -28,6 +28,5 @@ The runtime path is:
 8. Completed frames are switched into LTDC during vertical blanking.
 9. `BSP_CAMERA_BackgroundProcess()` from the µT-Kernel task loop.
 
-See `OUTSIDE_CHANGES.md` for the small root-level build integration changes
-that are required because the existing project originally exposed only
-`experiment-hello-world` as an application target.
+See `OUTSIDE_CHANGES.md` for the root-level build integration and the local
+driver ownership boundary.

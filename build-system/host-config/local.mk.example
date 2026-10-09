@@ -11,7 +11,7 @@ STM32_PROGRAM_PORT ?= swd
 
 # STM32N6570-DK RAM image layout.
 STM32_RAM_ADDRESS ?= 0x34000400
-STM32_RAM_ENTRY ?= $(if $(filter ai-app mini-ai-app,$(APP_TARGET)),0x34060001,$(if $(filter experiment-ai,$(APP_TARGET)),0x34052001,0x34000800))
+STM32_RAM_ENTRY ?= $(if $(filter ai-app mini-ai-app,$(APP_TARGET)),0x34060001,$(if $(filter experiment-ai,$(APP_TARGET)),0x340FE001,0x34000800))
 STM32_RAM_STACK ?= $(if $(filter ai-app mini-ai-app experiment-ai,$(APP_TARGET)),0x34100000,0x34200000)
 STM32_RAM_XPSR ?= 0x01000000
 
@@ -30,14 +30,12 @@ else ifeq ($(APP_TARGET),ai-app)
 CUBEMX_IOC ?= userspace/ai-app/config/stm32n6570-dk-ai-app.ioc
 else ifeq ($(APP_TARGET),mini-ai-app)
 CUBEMX_IOC ?= userspace/mini-ai-app/config/stm32n6570-dk-mini-ai-app.ioc
-else ifneq ($(filter experiment-camera-pipe2 experiment-camera-control experiment-gpu,$(APP_TARGET)),)
-CUBEMX_IOC ?= userspace/experiment-camera-lcd/config/stm32n6570-dk-fullsecure.ioc
 else
 CUBEMX_IOC ?= userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc
 endif
 CUBEMX_OUTPUT_DIR ?= $(BUILD_DIR)/cubemx
 
-# STM32CubeN6 package root, required by experiment-camera-lcd and
-# experiment-camera-pipe2 camera/display drivers.
+# STM32CubeN6 package root, required by experiments that compile the camera,
+# display, touch, DMA2D, or external-memory BSP sources.
 # Example:
 # STM32CUBE_N6_DIR ?= /opt/STM32Cube/Repository/STM32Cube_FW_N6_V1.3.0

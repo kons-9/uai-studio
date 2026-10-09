@@ -1,20 +1,21 @@
-set(_experiment_pre_kernel_default OFF)
-if((APP_TARGET STREQUAL "experiment-camera-control" OR APP_TARGET STREQUAL "experiment-gpu") AND
-   UAI_CAMERA_BOARD_APP STREQUAL "experiment-camera-pipe2")
-    set(_experiment_pre_kernel_default ON)
-endif()
+set(EXPERIMENT_RUNTIME "${CMAKE_CURRENT_LIST_DIR}")
+set(_experiment_pre_kernel_default ON)
 option(EXPERIMENT_PREKERNEL_READY "Enable integrated camera board configuration" ${_experiment_pre_kernel_default})
 if(NOT EXPERIMENT_PREKERNEL_READY)
-    message(FATAL_ERROR "pre-kernel integration is deferred. See experiment-camera-control/README.md. Host tests can be built with cmake -S userspace/experiment-camera-control.")
+    message(FATAL_ERROR "pre-kernel integration is disabled for ${APP_TARGET}.")
 endif()
-if(NOT UAI_CAMERA_BOARD_APP STREQUAL "experiment-camera-pipe2")
-    message(FATAL_ERROR "${APP_TARGET} has no integrated camera-pipe2 board profile")
+if(NOT UAI_CAMERA_BOARD_APP STREQUAL "${APP_TARGET}")
+    message(FATAL_ERROR "${APP_TARGET} must use its own camera board profile")
 endif()
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-set(EXPERIMENT_RUNTIME "${CMAKE_CURRENT_LIST_DIR}")
-set(BASE "${EXPERIMENT_RUNTIME}/../experiment-camera-pipe2")
+if(APP_TARGET STREQUAL "experiment-camera-control")
+    set(CAMERA_RUNTIME_SRC "${EXPERIMENT_RUNTIME}/src")
+else()
+    set(CAMERA_RUNTIME_SRC "${EXPERIMENT_RUNTIME}/src/camera_runtime")
+endif()
+set(CAMERA_DRIVER_DIR "${CAMERA_RUNTIME_SRC}/driver")
 set(CUBE "${STM32CUBE_N6_DIR}")
 set(BSP "${CUBE}/Drivers/BSP/STM32N6570-DK")
 set(COMPONENTS "${CUBE}/Drivers/BSP/Components")
@@ -24,21 +25,21 @@ set(TARGET_NAME ${APP_TARGET}.elf)
 if(NOT EXPERIMENT_EXTENSION)
     set(EXPERIMENT_EXTENSION "${EXPERIMENT_RUNTIME}/src/extension.cpp")
 endif()
-set(CAMERA_BSP "${BASE}/src/driver/board/stm32n6570_discovery_camera.c")
+set(CAMERA_BSP "${CAMERA_DRIVER_DIR}/board/stm32n6570_discovery_camera.c")
 set_source_files_properties("${CAMERA_BSP}" PROPERTIES COMPILE_DEFINITIONS
     "HAL_DCMIPP_PIPE_VsyncEventCallback=camera_pipe2_bsp_HAL_DCMIPP_PIPE_VsyncEventCallback;HAL_DCMIPP_PIPE_FrameEventCallback=camera_pipe2_bsp_HAL_DCMIPP_PIPE_FrameEventCallback")
 
 add_executable(${TARGET_NAME}
-    "${EXPERIMENT_RUNTIME}/src/main.cpp" "${EXPERIMENT_RUNTIME}/src/isp_camera.cpp"
-    "${EXPERIMENT_RUNTIME}/src/bsp_device.cpp" "${EXPERIMENT_RUNTIME}/src/frame_events.c"
-    "${PROJECT_SOURCE_DIR}/kernel/middleware/ui/canvas.cpp"
+    "${CAMERA_RUNTIME_SRC}/main.cpp" "${CAMERA_RUNTIME_SRC}/isp_camera.cpp"
+    "${CAMERA_RUNTIME_SRC}/bsp_device.cpp" "${CAMERA_RUNTIME_SRC}/frame_events.c"
+    "${CAMERA_RUNTIME_SRC}/middleware/ui/canvas.cpp"
     ${EXPERIMENT_EXTENSION}
-    "${BASE}/src/driver/camera_driver.cpp"
-    "${BASE}/src/driver/display_driver.cpp"
-    "${BASE}/src/driver/frame_buffer.cpp"
-    "${BASE}/src/driver/board/hal_time.c"
-    "${BASE}/src/driver/board/dcmipp_callbacks.c"
-    "${BASE}/src/driver/board/irq_handlers.c"
+    "${CAMERA_DRIVER_DIR}/camera_driver.cpp"
+    "${CAMERA_DRIVER_DIR}/display_driver.cpp"
+    "${CAMERA_DRIVER_DIR}/frame_buffer.cpp"
+    "${CAMERA_DRIVER_DIR}/board/hal_time.c"
+    "${CAMERA_DRIVER_DIR}/board/dcmipp_callbacks.c"
+    "${CAMERA_DRIVER_DIR}/board/irq_handlers.c"
     "${CAMERA_BSP}"
     "${BSP}/stm32n6570_discovery_bus.c"
     "${BSP}/stm32n6570_discovery_xspi.c"
@@ -47,11 +48,11 @@ add_executable(${TARGET_NAME}
     "${COMPONENTS}/mx66uw1g45g/mx66uw1g45g.c"
     "${COMPONENTS}/imx335/imx335.c"
     "${COMPONENTS}/imx335/imx335_reg.c"
-    "${BASE}/src/driver/board/isp_core.c"
+    "${CAMERA_DRIVER_DIR}/board/isp_core.c"
     "${ISP}/isp/Src/isp_algo.c"
     "${ISP}/isp/Src/isp_services.c")
 
-set_source_files_properties("${BASE}/src/driver/board/dcmipp_callbacks.c" PROPERTIES COMPILE_DEFINITIONS
+set_source_files_properties("${CAMERA_DRIVER_DIR}/board/dcmipp_callbacks.c" PROPERTIES COMPILE_DEFINITIONS
     "HAL_DCMIPP_PIPE_VsyncEventCallback=experiment_original_vsync;HAL_DCMIPP_PIPE_FrameEventCallback=experiment_original_frame")
 
 get_target_property(BOARD_SOURCES stm32n6570_dk SOURCES)
@@ -70,9 +71,8 @@ target_sources(${TARGET_NAME} PRIVATE
     "${HAL}/Src/stm32n6xx_hal_i2c_ex.c")
 
 target_include_directories(${TARGET_NAME} PRIVATE
-    src "${EXPERIMENT_RUNTIME}/src" "${BASE}/src" "${BASE}/src/driver/board/include"
-    "${PROJECT_SOURCE_DIR}/kernel"
-    "${EXPERIMENT_RUNTIME}/../experiment-ai/config"
+    "${EXPERIMENT_RUNTIME}/src" "${CAMERA_RUNTIME_SRC}" "${CAMERA_DRIVER_DIR}/board/include"
+    "${EXPERIMENT_RUNTIME}/config"
     "${BSP}" "${COMPONENTS}/Common" "${COMPONENTS}/aps256xx"
     "${COMPONENTS}/mx66uw1g45g" "${COMPONENTS}/imx335" "${COMPONENTS}/rk050hr18"
     "${ISP}/isp/Inc" "${ISP}/evision/Inc" "${HAL}/Inc"
@@ -86,7 +86,11 @@ if(APP_TARGET STREQUAL "experiment-gpu")
 endif()
 target_link_libraries(${TARGET_NAME} PRIVATE uai::utkernel uai::stm32n6570_dk
     "${ISP}/evision/Lib/libn6-evision-awb_gcc.a" "${ISP}/evision/Lib/libn6-evision-st-ae_gcc.a" m)
-set(LINKER_SCRIPT "${BASE}/experiment-camera-pipe2-ram.ld")
+if(APP_TARGET STREQUAL "experiment-camera-control")
+    set(LINKER_SCRIPT "${EXPERIMENT_RUNTIME}/experiment-camera-control-ram.ld")
+else()
+    set(LINKER_SCRIPT "${EXPERIMENT_RUNTIME}/camera-runtime-ram.ld")
+endif()
 target_link_options(${TARGET_NAME} PRIVATE "-T${LINKER_SCRIPT}" -Wl,-u,uai_ram_entry
     "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.map" -Wl,--print-memory-usage)
 set_target_properties(${TARGET_NAME} PROPERTIES LINK_DEPENDS "${LINKER_SCRIPT}")

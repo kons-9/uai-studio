@@ -1,4 +1,4 @@
-include ../experiment-camera-control/experiment.mk
+include $(dir $(lastword $(MAKEFILE_LIST)))experiment.mk
 
 UI_TOOL_PORT ?= 8767
 .PHONY: ui-tool

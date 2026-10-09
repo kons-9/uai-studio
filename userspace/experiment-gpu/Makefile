@@ -1,2 +1,1 @@
-EXPERIMENT_PREKERNEL_READY ?= ON
-include ../experiment-camera-control/experiment.mk
+include $(dir $(lastword $(MAKEFILE_LIST)))experiment.mk

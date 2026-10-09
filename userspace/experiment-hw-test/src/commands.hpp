@@ -2,6 +2,7 @@
 
 #include "hwtest.hpp"
 #include "shell.hpp"
+#include "display_log.hpp"
 
 namespace experiment::hwtest {
 
@@ -58,8 +59,13 @@ inline console::Status Execute(
         {&destination,
          [](void *target, const char *line) {
              static_cast<console::Writer *>(target)->Write(line);
+             display_log::Write(line);
          }},
-        registry.context);
+        registry.context,
+        {nullptr,
+         [](void *, const char *line) {
+             display_log::Write(line);
+         }});
     return console::Status::kOk;
 }
 

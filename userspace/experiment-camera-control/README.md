@@ -2,11 +2,11 @@
 
 ## 状態と目的
 
-実験内のカメラ制御・shell・実機エントリ・ビルド定義と、独立ホストテストを実装済み。camera-controlのpre-kernel接続は追加済みで、ファームウェア構成は既定で有効。ARMビルド、最終ELFのリンク監査、書き込み・実機確認は未完了であり、動作確認済みとは扱わない。
+実験内のカメラ制御・shell・実機エントリ・ビルド定義と、独立ホストテストを実装済み。ARMビルドと最終ELFのHAL/IRQリンク監査は通過した。書き込み・実機確認は未完了であり、動作確認済みとは扱わない。
 
-対象は[01: カメラ制御](../../tmp/plans/01-camera-control.md)、[02: AI露出](../../tmp/plans/02-ai-driven-exposure.md)、[07: shell](../../tmp/plans/07-shell.md)、[08: 統一ホストI/F](../../tmp/plans/08-host-app-interface.md)。既存experiment-camera-pipe2のBSP/HAL・表示・カメラを読み取り専用で再利用する。初版は左右400x480のRGB565、SRAMバッファ、stockセンサ設定。ai-appの800x480表示 / 480x480推論入力とは異なり、NPUはまだ接続しない。
+対象は[01: カメラ制御](../../tmp/plans/01-camera-control.md)、[02: AI露出](../../tmp/plans/02-ai-driven-exposure.md)、[07: shell](../../tmp/plans/07-shell.md)、[08: 統一ホストI/F](../../tmp/plans/08-host-app-interface.md)。このexperimentはカメラ、表示、ボード用driverを`src/driver/`に、BSP設定とCubeMX IOCを`config/`に持つ。初版は左右400x480のRGB565、SRAMバッファ、stockセンサ設定。NPUはまだ接続しない。
 
-kernel/driver・kernel/middlewareには依存しない。実機側の依存は既存experimentと同じμT-Kernel、pre-kernel、STM32Cube BSP/HAL/ISPだけ。エラー型も実験内のconsole::Statusを使用する。
+`kernel/driver`・`kernel/middleware`には依存しない。基盤依存はμT-Kernel、pre-kernel、STM32Cube BSP/HAL/ISP。エラー型も実験内の`console::Status`を使用する。
 
 ## 実装済みと実行方法
 
@@ -24,7 +24,7 @@ make -C userspace/experiment-camera-control test
 - [main.cpp](src/main.cpp): 同じカメラ所有タスクでProcessとコマンドを適用。USART1受信IRQとフレーム通知で起床し、フレーム停滞時に復旧を試みる。
 - [scenario.hpp](src/scenario.hpp): 起動時に一巡する32段階の自動試験。両Pipeの進行、読戻し、実測FPS、停止再開・復旧・不正入力を検証し、最後に開始前の設定へ戻す。
 - [check_link.py](check_link.py): 最終ELFとmapのHAL/IRQ採用元を検査し、ファームウェアのリンク後に自動実行する。
-- [console.py](console.py): 全実験で共通のUARTシェル操作入口。HW試験のUART transportを再利用し、1ポートから順にコマンドを送る。
+- [console.py](console.py): UARTシェル操作入口。UART transportもこのexperiment内に置き、1ポートから順にコマンドを送る。
 
 UART起動ログも受け取る場合は、書き込み前に別端末で開いて待つ:
 
@@ -125,14 +125,14 @@ pre-kernelとビルド設定はcamera-controlの接続に必要な範囲だけ�
 
 ## pre-kernelへの接続と実機準備
 
-2026-10-08に[ボード選択](../../build-system/cmake/camera_board.cmake)を追加し、[ルートCMake](../../CMakeLists.txt)と[pre-kernel CMake](../../kernel/pre_kernel/stm32n6570-dk/CMakeLists.txt)から同じ設定を参照するようにした。APP_TARGETはexperiment-camera-controlのまま、experiment-camera-pipe2のボード設定だけを再利用する。
+2026-10-08に[ボード選択](../../build-system/cmake/camera_board.cmake)を追加した。APP_TARGETとボード設定はexperiment-camera-control自身を選び、pre-kernelとアプリは同じローカル設定を使う。
 
 | 接続点 | 接続内容と残る確認 |
 | --- | --- |
 | アプリ選択 | UAI_KERNEL_APPSには追加しない。共有middleware / driverターゲットはリンクしない |
 | クロックとメモリ権限 | UAI_CAMERA_LCD_CLOCKSを有効化し、既存のPLL設定、AXISRAM3/4、DCMIPP/LTDCのRIF設定を適用する。実機での動作は未確認 |
 | HAL・ボード設定 | utkernelにはpipe2のboard/includeとCMSIS、secure-state定義を適用。pre-kernelは既存カメラ実験と同じHALヘッダ選択とボード設定分岐を使う |
-| CubeMX生成物 | 既存LCDのIOCを使用し、出力はbuild-experiment-camera-control/cubemxへ分離する。生成されたMSP、割り込み、スタートアップはARMビルド後に確認する |
+| CubeMX生成物 | ローカルの`config/stm32n6570-dk-fullsecure.ioc`を使用し、出力はbuild-experiment-camera-control/cubemxへ分離する。生成されたMSP、割り込み、スタートアップはARMビルド後に確認する |
 | メモリ配置とRAM実行 | pipe2のSRAMリンカスクリプトとframe_bufferを再利用。ロード先0x34000400、実行先0x34000800、MSP 0x34200000を選択する |
 | HALソース | pre-kernelの既存ソースと重複しないよう不足モジュールのみ追加する。実際のSDKのヘッダ・実装の版と最終リンク結果を確認する |
 | IRQ・コールバック | USART1受信IRQとDCMIPP/CSIの処理は実行ファイルへ直接リンクする。リンク後にcheck_link.pyで採用元を監査する |
@@ -175,7 +175,7 @@ UARTのcamera: pipe1=started pipe2=startedを確認後、help、cam stat、frame
 ライブラリ化した際に意図した関数ではなくHAL側の関数が採用された、という利用者からの注意事項がある。過去の事象の原因は未確定だが、次の条件を必ず検査する。
 
 - HALのweak定義で参照が解決すると、static archive内の上書き用strong定義を含むオブジェクトが抽出されないことがある。「strongなら必ず勝つ」と考えない。
-- [既存ドライバのCMake](../../kernel/driver/CMakeLists.txt)はhal_time.cとdcmipp_callbacks.cをOBJECTターゲットに分けている。このパターンに従い、必要な上書きオブジェクトを最終ELFへ直接含める。OBJECTを作っただけで安心せず、最終リンクコマンドも確認する。
+- hal_time.cとdcmipp_callbacks.cはアプリ内のソースとして最終ELFへ直接含める。最終リンクコマンドとmapで採用元も確認する。
 - HAL本体、BSP、アプリの各定義を調べ、割り込みハンドラ・コールバック・時刻関数それぞれの採用元を一つに決める。C++実装ではCリンケージとシグネチャも確認する。
 - カメラBSPのVsync/Frameコールバックはcamera_pipe2_bsp_付きの名前へ変更している。実験でも名前変更と転送先の整合を確認し、単に重複定義を隠さない。
 - ライブラリ順の変更だけ、全ライブラリへの--whole-archive、--allow-multiple-definitionを解決策にしない。既存のstrong定義が二つある場合は、リンクするソースの選択を直す。

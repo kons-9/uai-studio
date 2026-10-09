@@ -2,7 +2,7 @@
 
 ## 状態と目的
 
-マニフェスト生成/C++読取り、期待値/CRC検証、隔離PSRAMスロットへの順序付き転送、UARTアップローダとホストテストを実装済み。NPU登録・推論・relocatable対応には実際の生成モデルとランタイムAPIが必要で未接続。ARMビルドと実機確認も未完了。kernel/driver・middlewareには依存しない。
+マニフェスト生成/C++読取り、期待値/CRC検証、隔離PSRAMスロットへの順序付き転送、UARTアップローダとホストテストを実装済み。NPU登録・推論・relocatable対応には実際の生成モデルとランタイムAPIが必要で未接続。今回、合成マニフェストを使ったARMビルドとHAL/IRQリンク監査は通過した。実データでのビルドと実機確認は未完了。kernel/driver・middlewareには依存しない。
 
 ## 実装済みと実行方法
 
@@ -36,7 +36,7 @@ pack / verifyと[upload.py](upload.py)は実験内に置き、host_app統一入�
 
 ## pre-kernel等への接続要件（今は変更しない）
 
-- [共通接続要件とHALリンク検査](../experiment-camera-control/README.md)に従い、XSPI初期化、PSRAM/NORのマッピング、キャッシュ、RIF、NPUクロック/IRQを確認する。
+- このexperiment内の`src/camera_runtime/`と`config/`を使う。実機ではXSPI初期化、PSRAM/NORのマッピング、キャッシュ、RIF、NPUクロック/IRQを確認する。HAL/BSPの採用元はこのexperimentのmapと`check_link.py`で監査する。
 - PSRAMへの転送は初期化完了後に行う。ロード後のram-runや再初期化で内容が失われない起動順を検証する。単に転送アドレスをNORから変えるだけでは成立しない。
 - ステージング領域は実験の生成メモリ配置で予約する。フレームバッファ・NPU作業領域・コードと重ならないことを生成時とロード時に検査する。
 - 重み参照先が生成コード/blobに固定される場合、PSRAM用に再生成する。ロード先だけを書き換えて代用しない。
@@ -54,7 +54,7 @@ pack / verifyと[upload.py](upload.py)は実験内に置き、host_app統一入�
 
 ## 利用者が実施するテスト
 
-実装者がホストテスト、書込み範囲、リンク結果、起動とPipe1/2を確認してから実施する。[共通手順](../experiment-camera-control/README.md)に従ってUARTを先に準備する。
+実装者がホストテスト、書込み範囲、リンク結果、起動とPipe1/2を確認してから実施する。UARTを先に開き、別端末で`make -C userspace/experiment-model-load ram-run`を実行する。
 
 | 操作・準備 | 合格条件・記録 |
 | --- | --- |
