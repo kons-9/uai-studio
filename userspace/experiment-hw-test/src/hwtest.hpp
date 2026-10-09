@@ -19,6 +19,9 @@ struct Context {
     std::uint32_t (*clock)();
     void (*wait)(std::uint32_t);
     void (*trace)(const char *);
+    bool (*cancelled)() = nullptr;
+
+    bool Cancelled() const { return cancelled && cancelled(); }
 
     void Trace(const char *line) const
     {
@@ -41,6 +44,7 @@ struct Case {
     bool destructive;
     std::uint32_t timeout_ms;
     const char *purpose;
+    bool interactive = false;
 };
 struct Summary {
     unsigned passed = 0, failed = 0;
@@ -100,7 +104,7 @@ Run(const Case *cases,
                 return {0, 1};
             }
         }
-        if ((!selection || std::strcmp(selection, cases[index].name) == 0) && cases[index].destructive
+        if (((!selection && !cases[index].interactive) || (selection && std::strcmp(selection, cases[index].name) == 0)) && cases[index].destructive
             && !allow_destructive) {
             output.write(
                 output.context,
@@ -111,10 +115,18 @@ Run(const Case *cases,
     }
     for (std::size_t index = 0; index < count; ++index) {
         const auto &test = cases[index];
+        if (!selection && test.interactive) {
+            continue;
+        }
         if (selection && std::strcmp(selection, test.name) != 0) {
             continue;
         }
         matched = true;
+        if (context.Cancelled()) {
+            output.write(output.context, "HWTEST selection FAIL cancelled\n");
+            ++summary.failed;
+            break;
+        }
         if (progress.write) {
             char line[64];
             std::snprintf(line, sizeof(line), "HWTEST %s START\n", test.name);
@@ -122,6 +134,9 @@ Run(const Case *cases,
         }
         const auto begin = context.clock();
         Result result = test.run(context);
+        if (context.Cancelled()) {
+            result = {Outcome::kFail, "cancelled"};
+        }
         const auto elapsed = context.clock() - begin;
         char timeout_detail[128]{};
         if (elapsed > test.timeout_ms) {
@@ -154,6 +169,9 @@ Run(const Case *cases,
         char line[192];
         std::snprintf(line, sizeof(line), "HWTEST %s %s %s\n", test.name, status, detail);
         output.write(output.context, line);
+        if (context.Cancelled()) {
+            break;
+        }
     }
     if (!matched) {
         output.write(output.context, "HWTEST selection FAIL no-matching-test\n");

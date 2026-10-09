@@ -1,31 +1,21 @@
 #pragma once
 
-#include <stdint.h>
-
 #include "stm32n6xx_hal.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-extern uint16_t experiment_hwtest_display_framebuffer[];
-
-#ifdef __cplusplus
-}
-#endif
 
 #define USE_COM_LOG 0U
 #define USE_BSP_COM_FEATURE 0U
+
 #define USE_FT5336_TS_CTRL 0U
 #define USE_GT911_TS_CTRL 1U
 #define USE_TS_GESTURE 0U
 #define USE_TS_MULTI_TOUCH 0U
 #define TS_TOUCH_NBR 1U
 
-#define LCD_LAYER_0_ADDRESS ((uintptr_t)experiment_hwtest_display_framebuffer)
-#define LCD_LAYER_1_ADDRESS ((uintptr_t)experiment_hwtest_display_framebuffer)
+#define LCD_LAYER_0_ADDRESS 0x34080000U
+#define LCD_LAYER_1_ADDRESS 0x340C0000U
 
 #define DEFAULT_AUDIO_IN_BUFFER_SIZE 2048U
+
 #define BSP_CAMERA_ISP_DEFAULT_WHITE_BALANCE 255U
 #define BSP_CAMERA_ISP_DEFAULT_EXPOSURE 128U
 #define BSP_CAMERA_ISP_DEFAULT_CONTRAST 130U

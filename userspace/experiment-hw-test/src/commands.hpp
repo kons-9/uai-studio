@@ -27,10 +27,11 @@ inline console::Status Execute(
             std::snprintf(
                 line,
                 sizeof(line),
-                "HWTEST CASE %s timeout_ms=%lu destructive=%u\n",
+                "HWTEST CASE %s timeout_ms=%lu destructive=%u interactive=%u\n",
                 test.name,
                 static_cast<unsigned long>(test.timeout_ms),
-                static_cast<unsigned>(test.destructive)
+                static_cast<unsigned>(test.destructive),
+                static_cast<unsigned>(test.interactive)
             );
             writer.Write(line);
             writer.Write("  verifies: ");

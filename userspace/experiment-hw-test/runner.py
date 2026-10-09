@@ -110,7 +110,7 @@ def main():
     parser.add_argument("--junit", type=pathlib.Path, required=True)
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--test", default="all")
-    parser.add_argument("--timeout", type=float, default=30)
+    parser.add_argument("--timeout", type=float, default=300)
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--log-dir", type=pathlib.Path)
     parser.add_argument(

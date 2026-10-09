@@ -10,9 +10,27 @@ if(HWTEST_AUTORUN_TEST STREQUAL "")
 endif()
 set(BSP "${STM32CUBE_N6_DIR}/Drivers/BSP/STM32N6570-DK")
 set(COMPONENTS "${STM32CUBE_N6_DIR}/Drivers/BSP/Components")
+set(ISP "${STM32CUBE_N6_DIR}/Middlewares/ST/STM32_ISP_Library")
+set(CAMERA_RUNTIME "${CMAKE_CURRENT_SOURCE_DIR}/src/camera_runtime")
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+if(NOT UAI_CAMERA_BOARD_APP STREQUAL APP_TARGET)
+    message(FATAL_ERROR "hw-test requires its own integrated camera board profile")
+endif()
 add_executable(${TARGET_NAME}
     src/main.cpp
-    src/display_log.cpp
+    src/integration.cpp
+    src/ui/display.cpp
+    src/middleware/ui/canvas.cpp
+    src/middleware/ui/widget.cpp
+    src/camera_runtime/bsp_device.cpp
+    src/camera_runtime/isp_camera.cpp
+    src/camera_runtime/frame_events.c
+    src/camera_runtime/driver/camera_driver.cpp
+    src/camera_runtime/driver/frame_buffer.cpp
+    src/camera_runtime/driver/board/stm32n6570_discovery_camera.c
+    src/camera_runtime/driver/board/dcmipp_callbacks.c
+    src/camera_runtime/driver/board/irq_handlers.c
+    src/camera_runtime/driver/board/isp_core.c
     src/tests/suite.cpp
     src/tests/display_driver/test.cpp
     src/tests/rng_driver/test.cpp
@@ -26,15 +44,25 @@ add_executable(${TARGET_NAME}
     src/tests/psram_driver/test.cpp
     src/tests/nor_driver/test.cpp
     src/tests/dma2d_driver/test.cpp
+    src/tests/dma2d_driver/suite.cpp
     src/driver/board/hal_time.c
     src/driver/c_bsp/stm32n6570_discovery_xspi.c
     "${BSP}/stm32n6570_discovery_lcd.c"
+    "${BSP}/stm32n6570_discovery_bus.c"
+    "${COMPONENTS}/imx335/imx335.c"
+    "${COMPONENTS}/imx335/imx335_reg.c"
+    "${COMPONENTS}/gt911/gt911.c"
+    "${COMPONENTS}/gt911/gt911_reg.c"
+    "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c.c"
+    "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c_ex.c"
+    "${ISP}/isp/Src/isp_algo.c"
+    "${ISP}/isp/Src/isp_services.c"
     "${COMPONENTS}/aps256xx/aps256xx.c"
     "${COMPONENTS}/mx66uw1g45g/mx66uw1g45g.c"
     "${STM32CUBE_N6_DIR}/Utilities/Fonts/font12.c")
 
 set(_generated_hal_config "${CUBEMX_OUTPUT_DIR}/FSBL/Core/Inc/stm32n6xx_hal_conf.h")
-foreach(module dma2d rng hash crc crc_ex rif dma dma_ex rtc rtc_ex tim tim_ex ltdc)
+foreach(module dcmipp dma2d rng hash crc crc_ex rif dma dma_ex rtc rtc_ex tim tim_ex ltdc)
     string(REGEX REPLACE "_ex$" "" _base_module "${module}")
     string(TOUPPER "${_base_module}" _base_module)
     set(_module_enabled OFF)
@@ -71,21 +99,32 @@ endif()
 
 target_include_directories(${TARGET_NAME} BEFORE PRIVATE
     config
+    "${CAMERA_RUNTIME}/driver/board/include"
     "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Inc")
 target_include_directories(${TARGET_NAME} PRIVATE
     src
+    "${CAMERA_RUNTIME}"
     "${BSP}" "${COMPONENTS}/Common"
     "${COMPONENTS}/aps256xx" "${COMPONENTS}/mx66uw1g45g"
-    "${COMPONENTS}/rk050hr18" "${STM32CUBE_N6_DIR}/Utilities/Fonts")
+    "${COMPONENTS}/rk050hr18" "${COMPONENTS}/imx335" "${COMPONENTS}/gt911"
+    "${ISP}/isp/Inc" "${ISP}/evision/Inc" "${STM32CUBE_N6_DIR}/Utilities/Fonts")
 target_compile_definitions(${TARGET_NAME} PRIVATE
     STM32N6570_DK STM32N6570_DK_DEVELOPMENT_MODE USE_HAL_DRIVER
     STM32N657xx USE_FULL_LL_DRIVER CPU_IN_SECURE_STATE)
+target_compile_definitions(${TARGET_NAME} PRIVATE
+    PIPE2_PIPE_DUAL=1 PIPE2_IMX335_MIPI891=0 PIPE2_BUFFER_PSRAM=0
+    PIPE2_CROP_NATIVE=0 PIPE2_CROP_INTEGER4=0 PIPE2_IMX335_TEST_PATTERN_MODE=-1)
+set_source_files_properties(src/camera_runtime/driver/board/stm32n6570_discovery_camera.c PROPERTIES COMPILE_DEFINITIONS
+    "HAL_DCMIPP_PIPE_VsyncEventCallback=camera_pipe2_bsp_HAL_DCMIPP_PIPE_VsyncEventCallback;HAL_DCMIPP_PIPE_FrameEventCallback=camera_pipe2_bsp_HAL_DCMIPP_PIPE_FrameEventCallback")
+set_source_files_properties(src/camera_runtime/driver/board/dcmipp_callbacks.c PROPERTIES COMPILE_DEFINITIONS
+    "HAL_DCMIPP_PIPE_VsyncEventCallback=experiment_original_vsync;HAL_DCMIPP_PIPE_FrameEventCallback=experiment_original_frame")
 if(NOT HWTEST_AUTORUN_TEST STREQUAL "")
     target_compile_definitions(${TARGET_NAME} PRIVATE HWTEST_AUTORUN_TEST="${HWTEST_AUTORUN_TEST}")
 endif()
-target_link_libraries(${TARGET_NAME} PRIVATE uai::utkernel uai::stm32n6570_dk)
+target_link_libraries(${TARGET_NAME} PRIVATE uai::utkernel uai::stm32n6570_dk
+    "${ISP}/evision/Lib/libn6-evision-awb_gcc.a" "${ISP}/evision/Lib/libn6-evision-st-ae_gcc.a" m)
 
-set(_linker_script "${UAI_STM32N6570_DK_LINKER_SCRIPT}")
+set(_linker_script "${CMAKE_CURRENT_SOURCE_DIR}/camera-runtime-ram.ld")
 set(_scratch_script "${CMAKE_CURRENT_SOURCE_DIR}/scratch.ld")
 target_link_options(${TARGET_NAME} PRIVATE
     "-T${_scratch_script}" "-T${_linker_script}" -Wl,-u,uai_ram_entry
@@ -99,6 +138,8 @@ target_link_options(${TARGET_NAME} PRIVATE
     "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.map" -Wl,--print-memory-usage)
 set_target_properties(${TARGET_NAME} PROPERTIES LINK_DEPENDS "${_linker_script};${_scratch_script}")
 add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/check_link.py"
+        --elf "$<TARGET_FILE:${TARGET_NAME}>" --map "${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.map" --nm "${CMAKE_NM}"
     COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:${TARGET_NAME}>" "${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.bin"
     COMMAND ${CMAKE_SIZE} "$<TARGET_FILE:${TARGET_NAME}>" VERBATIM)
 add_custom_target(${APP_TARGET} DEPENDS ${TARGET_NAME})
