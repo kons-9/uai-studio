@@ -1,6 +1,9 @@
+#ifndef EXPERIMENT_MODEL_MULTI
 #define ECBLOB_CONST_SECTION __attribute__((section(".model_command_blob")))
 #include "network.c"
 #include "stai_network.c"
+#endif
+#include "stai.h"
 #include "stai_ext.h"
 #include "stm32n6xx_hal.h"
 #include "stm32n6xx_hal_rif.h"
@@ -10,6 +13,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#ifndef EXPERIMENT_MODEL_MULTI
 #if STAI_NETWORK_IN_NUM != 1 || STAI_NETWORK_OUT_NUM != 1
 #error "experiment-model-load requires one input and one output"
 #endif
@@ -24,9 +28,29 @@ _Static_assert(STAI_NETWORK_OUT_1_SIZE_BYTES == EXPERIMENT_MODEL_OUTPUT_BYTES, "
 STAI_NETWORK_CONTEXT_DECLARE(model_context, STAI_NETWORK_CONTEXT_SIZE)
 static uint8_t input[(STAI_NETWORK_IN_1_SIZE_BYTES + 31U) & ~31U] __attribute__((aligned(32)));
 static uint8_t output[(STAI_NETWORK_OUT_1_SIZE_BYTES + 31U) & ~31U] __attribute__((aligned(32)));
+#endif
 static bool runtime_initialized;
 static bool model_initialized;
 static bool completed;
+static volatile uint32_t irq_count;
+static uint32_t irq_seen;
+extern void model_load_NPU0_IRQHandler(void);
+
+void NPU0_IRQHandler(void)
+{
+    model_load_NPU0_IRQHandler();
+    ++irq_count;
+}
+
+bool experiment_npu_event(void)
+{
+    const uint32_t current = irq_count;
+    if (current == irq_seen) {
+        return false;
+    }
+    irq_seen = current;
+    return true;
+}
 
 static void configure_npu_security(void)
 {
@@ -107,7 +131,12 @@ bool experiment_npu_stop(void)
     }
     bool stopped = true;
     if (model_initialized) {
+#ifdef EXPERIMENT_MODEL_MULTI
+        extern bool experiment_multi_deinit(void);
+        stopped = experiment_multi_deinit();
+#else
         stopped = success(stai_network_deinit(model_context));
+#endif
     }
     if (runtime_initialized) {
         stopped = success(stai_runtime_deinit()) && stopped;
@@ -121,10 +150,9 @@ bool experiment_npu_stop(void)
     return stopped;
 }
 
-bool experiment_npu_start(uint32_t input_bytes, uint32_t output_bytes)
+bool experiment_npu_prepare(void)
 {
-    if (runtime_initialized || model_initialized
-        || input_bytes != STAI_NETWORK_IN_1_SIZE_BYTES || output_bytes != STAI_NETWORK_OUT_1_SIZE_BYTES) {
+    if (runtime_initialized || model_initialized) {
         return false;
     }
     __HAL_RCC_NPU_CLK_ENABLE();
@@ -153,6 +181,10 @@ bool experiment_npu_start(uint32_t input_bytes, uint32_t output_bytes)
     RAMCFG_SRAM5_AXI->CR &= ~RAMCFG_CR_SRAMSD;
     RAMCFG_SRAM6_AXI->CR &= ~RAMCFG_CR_SRAMSD;
     MEMSYSCTL->MSCR |= MEMSYSCTL_MSCR_DCACTIVE_Msk | MEMSYSCTL_MSCR_ICACTIVE_Msk;
+    __HAL_RCC_CACHEAXI_CLK_ENABLE();
+    __HAL_RCC_CACHEAXI_CLK_SLEEP_ENABLE();
+    __HAL_RCC_CACHEAXI_FORCE_RESET();
+    __HAL_RCC_CACHEAXI_RELEASE_RESET();
     npu_cache_enable();
     RAMCFG_HandleTypeDef ram = {0};
     ram.Instance = RAMCFG_SRAM5_AXI;
@@ -161,10 +193,25 @@ bool experiment_npu_start(uint32_t input_bytes, uint32_t output_bytes)
     HAL_RAMCFG_EnableAXISRAM(&ram);
     HAL_NVIC_SetPriority(NPU0_IRQn, 8, 0);
     HAL_NVIC_ClearPendingIRQ(NPU0_IRQn);
+    irq_seen = irq_count;
+    irq_seen = irq_count;
     completed = false;
     runtime_initialized = true;
     const stai_return_code runtime_status = stai_runtime_init();
     if (!success(runtime_status)) {
+        return false;
+    }
+    return true;
+}
+
+void experiment_npu_registered(void) { model_initialized = true; }
+void experiment_npu_completed(void) { completed = true; }
+
+#ifndef EXPERIMENT_MODEL_MULTI
+bool experiment_npu_start(uint32_t input_bytes, uint32_t output_bytes)
+{
+    if (input_bytes != STAI_NETWORK_IN_1_SIZE_BYTES || output_bytes != STAI_NETWORK_OUT_1_SIZE_BYTES
+        || !experiment_npu_prepare()) {
         return false;
     }
     model_initialized = true;
@@ -225,3 +272,4 @@ const uint8_t *experiment_npu_output(size_t *bytes)
     *bytes = STAI_NETWORK_OUT_1_SIZE_BYTES;
     return output;
 }
+#endif

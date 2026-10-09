@@ -3,7 +3,9 @@ import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 import time
+import zlib
 
 from manifest import decode, verify
 from expected import generate as expected_header
@@ -94,13 +96,23 @@ def synchronize_prompt(port, timeout):
         report(clean_line(line))
 
 
+def send_header(port, header, command, deadline):
+    decode(header)
+    if header[4] == 1:
+        send(port, command + " " + header.hex(), deadline)
+        return
+    for offset in range(0, len(header), 64):
+        send(port, f"model header {offset} {header[offset:offset + 64].hex()}", deadline)
+    send(port, command, deadline)
+
+
 def upload(port, header, weights, blob, timeout):
     manifest = decode(header)
     if not verify(manifest, weights, blob):
         raise ValueError("payload does not match manifest")
     deadline = time.monotonic() + timeout
-    send(port, "model begin " + header.hex(), deadline)
     try:
+        send_header(port, header, "model begin", deadline)
         for name, data in (("weights", weights), ("blob", blob)):
             next_progress = 64 * 1024
             for offset in range(0, len(data), UPLOAD_CHUNK_BYTES):
@@ -125,13 +137,16 @@ def upload(port, header, weights, blob, timeout):
     return fields
 
 
-def load_memory(programmer, serial, weights_path, blob_path, timeout):
+def load_memory(programmer, serial, weights_path, blob_path, timeout, input_path=None):
     connection = "port=swd mode=HOTPLUG"
     if serial:
         connection += " sn=" + serial
     command = [programmer, "-c", connection,
                "-d", str(weights_path), hex(WEIGHTS_ADDRESS), "-v",
-               "-d", str(blob_path), hex(BLOB_ADDRESS), "-v", "-run"]
+               "-d", str(blob_path), hex(BLOB_ADDRESS), "-v"]
+    if input_path:
+        command += ["-d", str(input_path), "0x91000000", "-v"]
+    command += ["-run"]
     print("ST-Link: loading model binaries directly into PSRAM", flush=True)
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
@@ -144,7 +159,7 @@ def load_memory(programmer, serial, weights_path, blob_path, timeout):
         raise ValueError("ST-Link direct PSRAM load failed" + (": " + detail if detail else ""))
 
 
-def run_model(port, timeout, expected_crc=None):
+def run_model(port, timeout, expected_crc=None, kind=None):
     deadline = time.monotonic() + timeout
     try:
         send(port, "model run", deadline)
@@ -162,6 +177,8 @@ def run_model(port, timeout, expected_crc=None):
             if fields.get("npu") != "done" or not re.fullmatch(r"[0-9a-fA-F]{8}", fields.get("output_crc", "")):
                 raise ValueError("model execution did not complete: " + line)
             crc = int(fields["output_crc"], 16)
+            if kind is not None and fields.get("kind") != str(kind):
+                raise ValueError("result model kind mismatch")
             if expected_crc is not None and crc != expected_crc:
                 raise ValueError(f"output CRC mismatch: expected {expected_crc:08x}, got {crc:08x}")
             return crc
@@ -171,6 +188,46 @@ def run_model(port, timeout, expected_crc=None):
         except (OSError, TimeoutError, ValueError):
             pass
         raise
+
+
+def upload_input(port, data, timeout, direct=False):
+    deadline = time.monotonic() + timeout
+    crc = zlib.crc32(data)
+    send(port, f"model input {'adopt' if direct else 'begin'} {len(data)} {crc:08x}", deadline)
+    if direct:
+        return
+    for offset in range(0, len(data), UPLOAD_CHUNK_BYTES):
+        send(port, f"model input chunk {offset} {data[offset:offset + UPLOAD_CHUNK_BYTES].hex()}", deadline)
+    send(port, "model input commit", deadline)
+
+
+def read_result(port, bytes_count, expected_crc, timeout):
+    deadline = time.monotonic() + timeout
+    result = bytearray()
+    while len(result) < bytes_count:
+        offset = len(result)
+        count = min(64, bytes_count - offset)
+        command = f"model result {offset} {count}"
+        port.write((command + "\r").encode("ascii"), max(0.001, deadline - time.monotonic()))
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("result transfer timeout")
+            line = clean_line(port.readline(remaining))
+            if line.startswith("ERR ") or line.startswith("MODEL ERROR"):
+                raise ValueError("result transfer failed: " + line)
+            if line.startswith("MODEL DATA "):
+                fields = line.split()
+                if len(fields) != 4 or fields[2] != str(offset):
+                    raise ValueError("unexpected result offset")
+                chunk = bytes.fromhex(fields[3])
+                if len(chunk) != count:
+                    raise ValueError("unexpected result size")
+                result.extend(chunk)
+                break
+    if zlib.crc32(result) != expected_crc:
+        raise ValueError("result payload CRC mismatch")
+    return bytes(result)
 
 
 def read_payload(manifest_path, weights_path, blob_path):
@@ -197,7 +254,12 @@ def main():
     parser.add_argument("--startup-timeout", type=float, default=60,
                         help="deadline for firmware and camera startup (default: 60)")
     parser.add_argument("--wait-ready", action="store_true")
-    parser.add_argument("--run", action="store_true", help="run the generated model with zero-filled input after upload")
+    parser.add_argument("--run", action="store_true", help="run the loaded model after upload")
+    inputs = parser.add_mutually_exclusive_group()
+    inputs.add_argument("--input", type=pathlib.Path, help="prepared input tensor binary")
+    inputs.add_argument("--image", type=pathlib.Path, help="image to preprocess according to the v2 Header")
+    inputs.add_argument("--input-zeros", action="store_true", help="explicit zero-filled tensor for a smoke test")
+    parser.add_argument("--result-dir", type=pathlib.Path, help="save raw outputs, Header, JSON and NumPy tensors")
     parser.add_argument("--expected-output-crc", type=lambda value: int(value, 0),
                         help="require this output CRC (for example, the NOR baseline CRC)")
     parser.add_argument("--monitor-after-upload", action="store_true",
@@ -207,17 +269,47 @@ def main():
         parser.error("timeouts must be positive and finite")
     if arguments.expected_output_crc is not None and (not arguments.run or not 0 <= arguments.expected_output_crc <= 0xffffffff):
         parser.error("expected-output-crc requires --run and must be a uint32")
+    if arguments.result_dir and not arguments.run:
+        parser.error("result-dir requires --run")
     try:
         header, weights, blob = read_payload(arguments.manifest, arguments.weights, arguments.blob)
+        model = decode(header)
+        if arguments.result_dir and model.input is None:
+            raise ValueError("result-dir requires a v2 output descriptor")
+        input_data = None
+        image_metadata = None
+        if arguments.input or arguments.image or arguments.input_zeros:
+            if model.input is None:
+                raise ValueError("image/input transfer requires a v2 model Header")
+            if arguments.image:
+                from tensor_io import prepare_image
+                input_data, image_metadata = prepare_image(arguments.image, model)
+            else:
+                input_data = arguments.input.read_bytes() if arguments.input else bytes(model.input_bytes)
+            if len(input_data) != model.input_bytes:
+                raise ValueError("input tensor size does not match Header")
+        if arguments.run and model.input is not None and input_data is None:
+            raise ValueError("v2 inference requires --image, --input or explicit --input-zeros")
+        with tempfile.TemporaryDirectory(prefix="model-input-") as temporary:
+            input_path = pathlib.Path(temporary) / "input.bin"
+            if input_data is not None:
+                input_path.write_bytes(input_data)
+            execute(arguments, header, weights, blob, model, input_data, input_path, image_metadata)
+    except (OSError, TimeoutError, ValueError, ImportError) as error:
+        parser.exit(1, str(error) + "\n")
+    print("MODEL VERIFIED on device")
+
+
+def execute(arguments, header, weights, blob, model, input_data, input_path, image_metadata=None):
         with Uart(arguments.uart, arguments.baud) as port:
             if arguments.wait_ready:
                 wait_ready(port, arguments.startup_timeout)
             if arguments.direct_programmer:
                 send(port, "model abort", time.monotonic() + arguments.timeout)
                 load_memory(arguments.direct_programmer, arguments.stlink_serial,
-                            arguments.weights, arguments.blob, arguments.timeout)
+                            arguments.weights, arguments.blob, arguments.timeout, input_path if input_data is not None else None)
                 synchronize_prompt(port, arguments.startup_timeout)
-                send(port, "model adopt " + header.hex(), time.monotonic() + arguments.timeout)
+                send_header(port, header, "model adopt", time.monotonic() + arguments.timeout)
                 status = read_status(port, time.monotonic() + arguments.timeout)
                 status_fields = dict(re.findall(r"(\w+)=([^ ]+)", status))
                 if status_fields.get("state") != "verified" or status_fields.get("weights") != str(len(weights)) \
@@ -226,10 +318,18 @@ def main():
                 print("UART:", status, flush=True)
             else:
                 status_fields = upload(port, header, weights, blob, arguments.timeout)
+            if input_data is not None:
+                upload_input(port, input_data, arguments.timeout, bool(arguments.direct_programmer))
             if arguments.run:
                 if status_fields.get("npu") == "unavailable":
                     raise ValueError("firmware has no NPU backend; build with EXPERIMENT_MODEL_NPU=ON")
-                run_model(port, arguments.timeout, arguments.expected_output_crc)
+                crc = run_model(port, arguments.timeout, arguments.expected_output_crc, model.kind if model.input else None)
+                if model.input:
+                    from tensor_io import save_result
+                    data = read_result(port, model.output_bytes, crc, arguments.timeout)
+                    destination = arguments.result_dir or arguments.manifest.parent / "results"
+                    save_result(destination, header, model, data, crc, image_metadata)
+                    print("RESULT saved:", destination, flush=True)
             if arguments.monitor_after_upload:
                 print("MODEL VERIFIED on device; monitoring UART, Ctrl-C to stop.", flush=True)
                 while True:
@@ -237,9 +337,6 @@ def main():
                         report(clean_line(port.readline(1.0)))
                     except TimeoutError:
                         continue
-    except (OSError, TimeoutError, ValueError) as error:
-        parser.exit(1, str(error) + "\n")
-    print("MODEL VERIFIED on device")
 
 
 if __name__ == "__main__":

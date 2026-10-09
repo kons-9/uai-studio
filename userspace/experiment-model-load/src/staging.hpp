@@ -30,7 +30,7 @@ public:
         }
         Cancel();
         Manifest candidate{};
-        if (!Decode(header, size, candidate) || !Matches(candidate, expected_) || !Accept(weights_, candidate.weights)
+        if (!Decode(header, size, candidate) || !Compatible(candidate) || !Accept(weights_, candidate.weights)
             || !Accept(blob_, candidate.blob) || Overlap(weights_, blob_)) {
             return false;
         }
@@ -88,7 +88,7 @@ public:
         }
         Cancel();
         Manifest candidate{};
-        if (!Decode(header, size, candidate) || !Matches(candidate, expected_) || !Accept(weights_, candidate.weights)
+        if (!Decode(header, size, candidate) || !Compatible(candidate) || !Accept(weights_, candidate.weights)
             || !Accept(blob_, candidate.blob) || Overlap(weights_, blob_)) {
             return false;
         }
@@ -152,6 +152,11 @@ public:
     void Release() { in_use_ = false; }
     std::uint32_t Received(bool is_blob) const { return is_blob ? blob_offset_ : weights_offset_; }
     const Manifest *Verified() const { return ready_ ? &pending_ : nullptr; }
+    void Catalog(const Manifest *models, std::size_t count)
+    {
+        catalog_ = models;
+        catalog_count_ = count;
+    }
     void BeforePublish(
         void *context,
         bool (*publish)(
@@ -182,6 +187,18 @@ public:
     }
 
 private:
+    bool Compatible(const Manifest &candidate) const
+    {
+        if (!catalog_) {
+            return Matches(candidate, expected_);
+        }
+        for (std::size_t index = 0; index < catalog_count_; ++index) {
+            if (Matches(candidate, catalog_[index])) {
+                return true;
+            }
+        }
+        return false;
+    }
     static bool Accept(
         Slot slot,
         Segment segment
@@ -201,6 +218,8 @@ private:
     }
     Slot weights_, blob_;
     Manifest expected_{}, pending_{};
+    const Manifest *catalog_ = nullptr;
+    std::size_t catalog_count_ = 0;
     std::uint32_t weights_offset_ = 0, blob_offset_ = 0;
     bool receiving_ = false, ready_ = false, in_use_ = false;
     void *context_ = nullptr;

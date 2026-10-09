@@ -1,6 +1,7 @@
 import argparse
 import dataclasses
 import json
+import math
 import pathlib
 import struct
 import zlib
@@ -8,6 +9,59 @@ import zlib
 PREFIX = struct.Struct("<4sHH10I")
 CRC = struct.Struct("<I")
 SIZE = PREFIX.size + CRC.size
+FIELDS = ("runtime_version", "kind", "input_bytes", "output_bytes", "weights_address", "weights_bytes", "weights_crc",
+          "blob_address", "blob_bytes", "blob_crc")
+TENSOR = struct.Struct("<4B5Ifi2I")
+TYPES = {"uint8": 1, "int8": 2, "float32": 3, "int16": 4, "uint16": 5, "float16": 6, "int32": 7}
+LAYOUTS = {"raw": 0, "nhwc": 1, "nchw": 2}
+
+
+@dataclasses.dataclass(frozen=True)
+class Tensor:
+    type: int
+    layout: int
+    shape: tuple
+    bytes: int
+    scale: float = 1.0
+    zero: int = 0
+    offset: int = 0
+    role: int = 0
+
+    def validate(self):
+        widths = (0, 1, 1, 4, 2, 2, 2, 4)
+        if type(self.type) is not int or self.type not in range(1, 8) or type(self.layout) is not int or self.layout not in range(3):
+            raise ValueError("invalid tensor type/layout")
+        if not 1 <= len(self.shape) <= 4 or any(type(axis) is not int or not 0 < axis <= 0xffffffff for axis in self.shape):
+            raise ValueError("invalid tensor shape")
+        size = widths[self.type]
+        for axis in self.shape:
+            size *= axis
+        if type(self.bytes) is not int or size != self.bytes or size > 0xffffffff or type(self.offset) is not int or not 0 <= self.offset <= 0xffffffff or self.offset % 32:
+            raise ValueError("tensor size/offset mismatch")
+        if not math.isfinite(self.scale) or self.scale <= 0 or type(self.role) is not int or not 0 <= self.role <= 255:
+            raise ValueError("invalid tensor scale/role")
+        limits = {1: (0, 255), 2: (-128, 127), 3: (0, 0), 4: (-32768, 32767), 5: (0, 65535), 6: (0, 0), 7: (-2147483648, 2147483647)}
+        if type(self.zero) is not int or not limits[self.type][0] <= self.zero <= limits[self.type][1]:
+            raise ValueError("invalid tensor zero point")
+
+    def encode(self):
+        self.validate()
+        return TENSOR.pack(self.type, self.layout, len(self.shape), self.role,
+                           *(self.shape + (0,) * (4 - len(self.shape))), self.bytes,
+                           self.scale, self.zero, self.offset, 0)
+
+    @classmethod
+    def from_dict(cls, value):
+        fields = dict(value)
+        fields["type"] = TYPES.get(fields["type"], fields["type"])
+        fields["layout"] = LAYOUTS.get(fields.get("layout", "raw"), fields.get("layout", 0))
+        fields["shape"] = tuple(fields["shape"])
+        if "bytes" not in fields:
+            size = (0, 1, 1, 4, 2, 2, 2, 4)[fields["type"]]
+            for axis in fields["shape"]:
+                size *= axis
+            fields["bytes"] = size
+        return cls(**fields)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -22,9 +76,17 @@ class Manifest:
     blob_address: int
     blob_bytes: int
     blob_crc: int
+    tag: int = 0
+    input: Tensor = None
+    outputs: tuple = ()
+    preprocessing: int = 0
+    color: int = 0
+    padding: int = 0
+    mean: tuple = (0.0, 0.0, 0.0)
+    divisor: tuple = (1.0, 1.0, 1.0)
 
     def validate(self):
-        if any(type(value) is not int or not 0 <= value <= 0xffffffff for value in dataclasses.astuple(self)):
+        if any(type(getattr(self, field)) is not int or not 0 <= getattr(self, field) <= 0xffffffff for field in FIELDS):
             raise ValueError("manifest fields must be uint32")
         if not all((self.runtime_version, self.kind, self.input_bytes, self.output_bytes, self.weights_bytes, self.blob_bytes)):
             raise ValueError("version, kind, tensor sizes and segment sizes must be nonzero")
@@ -33,20 +95,64 @@ class Manifest:
             raise ValueError("segment address overflow")
         if self.weights_address < self.blob_address + self.blob_bytes and self.blob_address < self.weights_address + self.weights_bytes:
             raise ValueError("segments overlap")
+        if self.input is not None:
+            if type(self.tag) is not int or not 0 < self.tag <= 0xffffffff or not 1 <= len(self.outputs) <= 8:
+                raise ValueError("v2 requires code tag and 1..8 output tensors")
+            if self.preprocessing not in range(3) or self.color not in range(4) or type(self.padding) is not int or self.padding not in range(256):
+                raise ValueError("invalid preprocessing/color")
+            if len(self.mean) != 3 or len(self.divisor) != 3 or any(not math.isfinite(value) for value in self.mean + self.divisor) or any(value <= 0 for value in self.divisor):
+                raise ValueError("invalid normalization")
+            self.input.validate()
+            if self.input.offset or self.input.bytes != self.input_bytes:
+                raise ValueError("input descriptor mismatch")
+            end = 0
+            for tensor in self.outputs:
+                tensor.validate()
+                if tensor.offset < end:
+                    raise ValueError("output tensors overlap")
+                end = tensor.offset + tensor.bytes
+            if end != self.output_bytes:
+                raise ValueError("output descriptor mismatch")
+            if self.preprocessing and (len(self.input.shape) != 4 or self.input.shape[0] != 1
+                                       or self.input.layout == 0 or self.color == 0
+                                       or self.input.shape[3 if self.input.layout == 1 else 1] != (1 if self.color == 3 else 3)):
+                raise ValueError("image preprocessing requires batch-one image tensor")
+        elif self.tag or self.outputs:
+            raise ValueError("v2 requires input descriptor")
 
     def encode(self):
         self.validate()
-        prefix = PREFIX.pack(b"UAIM", 1, SIZE, *dataclasses.astuple(self))
+        descriptors = b""
+        if self.input is not None:
+            descriptors = struct.pack("<I4BI6f", self.tag, 1, len(self.outputs), self.preprocessing, self.color, self.padding,
+                                      *self.mean, *self.divisor) + self.input.encode() + b"".join(tensor.encode() for tensor in self.outputs)
+        prefix = PREFIX.pack(b"UAIM", 2 if descriptors else 1, SIZE + len(descriptors), *(getattr(self, field) for field in FIELDS)) + descriptors
         return prefix + CRC.pack(zlib.crc32(prefix))
 
 
 def decode(data):
-    if len(data) != SIZE:
+    if not SIZE <= len(data) <= 448:
         raise ValueError("invalid manifest size")
-    magic, version, size, *fields = PREFIX.unpack(data[:-4])
-    if (magic, version, size) != (b"UAIM", 1, SIZE) or CRC.unpack(data[-4:])[0] != zlib.crc32(data[:-4]):
+    magic, version, size, *fields = PREFIX.unpack(data[:48])
+    if magic != b"UAIM" or version not in (1, 2) or size != len(data) or CRC.unpack(data[-4:])[0] != zlib.crc32(data[:-4]):
         raise ValueError("invalid manifest header or checksum")
     manifest = Manifest(*fields)
+    if version == 1 and size != SIZE:
+        raise ValueError("invalid v1 header size")
+    if version == 2:
+        if size < 168:
+            raise ValueError("truncated tensor header")
+        tag, inputs, outputs, preprocessing, color, padding, *normalization = struct.unpack("<I4BI6f", data[48:84])
+        if inputs != 1 or not 1 <= outputs <= 8 or padding > 255 or size != 88 + (inputs + outputs) * TENSOR.size:
+            raise ValueError("invalid tensor header counts")
+        tensors = []
+        for offset in range(84, size - 4, TENSOR.size):
+            dtype, layout, rank, role, *values = TENSOR.unpack(data[offset:offset + TENSOR.size])
+            if rank not in range(1, 5) or any(values[rank:4]) or values[-1]:
+                raise ValueError("invalid tensor descriptor")
+            tensors.append(Tensor(dtype, layout, tuple(values[:rank]), *values[4:8], role=role))
+        manifest = dataclasses.replace(manifest, tag=tag, input=tensors[0], outputs=tuple(tensors[1:]),
+                                       preprocessing=preprocessing, color=color, padding=padding, mean=tuple(normalization[:3]), divisor=tuple(normalization[3:]))
     manifest.validate()
     return manifest
 

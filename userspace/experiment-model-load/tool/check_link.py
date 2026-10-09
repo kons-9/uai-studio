@@ -18,10 +18,11 @@ EXPECTED = {
 }
 
 
-def audit(symbols, map_text, npu=False):
+def audit(symbols, map_text, npu=False, multi=False):
     expected = dict(EXPECTED)
     if npu:
-        expected.update(NPU0_IRQHandler="ll_aton_runtime.c", experiment_npu_start="npu_model.c")
+        expected.update(NPU0_IRQHandler="npu_model.c", model_load_NPU0_IRQHandler="ll_aton_runtime.c")
+        expected["experiment_npu_prepare" if multi else "experiment_npu_start"] = "npu_model.c"
     definitions = {}
     for line in symbols.splitlines():
         fields = line.split()
@@ -60,11 +61,12 @@ def main():
     parser.add_argument("--map", type=pathlib.Path, required=True)
     parser.add_argument("--nm", default="arm-none-eabi-nm")
     parser.add_argument("--npu", action="store_true")
+    parser.add_argument("--multi", action="store_true")
     arguments = parser.parse_args()
     try:
         symbols = subprocess.run([arguments.nm, "--defined-only", str(arguments.elf)], check=True,
                                  capture_output=True, text=True).stdout
-        audit(symbols, arguments.map.read_text(), arguments.npu)
+        audit(symbols, arguments.map.read_text(), arguments.npu, arguments.multi)
         audit_slots(symbols)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, str(error) + "\n")

@@ -77,4 +77,16 @@ int main()
     Require(!stage.Complete() && !stage.Ready());
     experiment::model::Staging overlap({0x91000000, 16, region.data()}, {0x91000020, 16, region.data() + 4}, expected);
     Require(!overlap.Begin(header.data(), header.size()));
+    auto second = expected;
+    second.kind = 2;
+    const experiment::model::Manifest catalog[] = {expected, second};
+    stage.Catalog(catalog, 2);
+    store(12, 2);
+    store(48, experiment::model::Crc32(header.data(), 48));
+    Require(stage.Begin(header.data(), header.size()));
+    Require(stage.Chunk(false, 0, weights.data(), 4) && stage.Chunk(true, 0, blob.data(), 3));
+    Require(stage.Complete() && stage.Verified()->kind == 2);
+    store(12, 3);
+    store(48, experiment::model::Crc32(header.data(), 48));
+    Require(!stage.Begin(header.data(), header.size()));
 }

@@ -13,7 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tool"))
 import manifest
 import model
 import check_link
-from layout import BLOB_ADDRESS, WEIGHTS_ADDRESS
+from layout import BLOB_ADDRESS, BLOB_CAPACITY, WEIGHTS_ADDRESS, WEIGHTS_CAPACITY
 
 
 class ManifestTests(unittest.TestCase):
@@ -38,6 +38,31 @@ class ManifestTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 dataclasses.replace(self.value, **changes).encode()
 
+    def test_tensor_header(self):
+        inputs = manifest.Tensor(1, 1, (1, 8, 8, 3), 192, 0.5, 128)
+        outputs = (manifest.Tensor(2, 0, (4,), 4, 0.25, -3), manifest.Tensor(3, 0, (4,), 16, offset=32))
+        value = dataclasses.replace(self.value, tag=123, input=inputs, outputs=outputs, output_bytes=48,
+                                    preprocessing=2, color=1)
+        header = value.encode()
+        self.assertEqual(len(header), 208)
+        self.assertEqual(manifest.decode(header), value)
+        executable = os.environ.get("MANIFEST_PROBE")
+        if executable:
+            with tempfile.TemporaryDirectory() as temporary:
+                path = pathlib.Path(temporary) / "header.bin"
+                path.write_bytes(header)
+                decoded = subprocess.run([executable, "--header", str(path)], check=True, capture_output=True, text=True)
+                self.assertEqual(decoded.stdout.strip(), "123 1 192 2 48")
+                damaged = bytearray(header)
+                damaged[120] = 1
+                damaged[-4:] = manifest.CRC.pack(zlib.crc32(damaged[:-4]))
+                path.write_bytes(damaged)
+                self.assertNotEqual(subprocess.run([executable, "--header", str(path)], capture_output=True).returncode, 0)
+        for changes in ({"tag": 0}, {"outputs": (dataclasses.replace(outputs[0], bytes=5),)},
+                        {"divisor": (0, 1, 1)}, {"input": dataclasses.replace(inputs, zero=300)}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                dataclasses.replace(value, **changes).encode()
+
     def test_generated_package(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
@@ -55,26 +80,52 @@ class ManifestTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 model.package(generated, self.blob, generated)
             with self.assertRaises(ValueError):
-                model.package(generated, bytes(0x40001), output)
+                model.package(generated, bytes(BLOB_CAPACITY + 1), output)
             for changes in ({"input_bytes": 0x80001}, {"output_bytes": True}, {"kind": 0}, {"extra": 1}):
                 (generated / "contract.json").write_text(json.dumps({**contract, **changes}))
                 with self.subTest(changes=changes), self.assertRaises(ValueError):
                     model.package(generated, self.blob, output)
 
+    def test_three_model_catalog(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            packages = []
+            for name, kind in model.KINDS.items():
+                generated = root / name
+                generated.mkdir()
+                (generated / "contract.json").write_text(json.dumps({"runtime_version": 1201, "kind": kind,
+                    "input": {"type": "uint8", "layout": "nhwc", "shape": [1, 8, 8, 3]},
+                    "outputs": [{"type": "int8", "shape": [4]}, {"type": "float32", "shape": [4]}],
+                    "preprocessing": 2, "color": 1}))
+                (generated / "network.c").write_text(name)
+                (generated / "weights.bin").write_bytes(self.weights)
+                packaged = root / (name + "-package")
+                value = model.package(generated, self.blob, packaged)
+                self.assertEqual(value.kind, kind)
+                self.assertEqual(value.output_bytes, 48)
+                self.assertEqual(value.outputs[1].offset, 32)
+                self.assertTrue(value.tag)
+                packages.append(packaged)
+            target = root / "catalog.hpp"
+            subprocess.run([sys.executable, str(model.ROOT / "tool/model.py"), "catalog", "--packages",
+                            *(str(path) for path in packages), "--output", str(target)], check=True)
+            self.assertIn("catalog_count = 3", target.read_text())
+
     def test_npu_memory_pools(self):
         pools = json.loads((model.ROOT / "config" / "model.mpool").read_text())["memory"]["mempools"]
         self.assertEqual([int(pool["offset"]["value"], 0) for pool in pools],
                          [0x342e0000, 0x34350000, WEIGHTS_ADDRESS, 0x90400000])
-        self.assertEqual([int(pool["size"]["value"]) * 1024 for pool in pools],
-                         [0x70000, 0x70000, 0x140000, 0x800000])
+        multipliers = {"BYTES": 1, "KBYTES": 1024, "MBYTES": 1024 * 1024}
+        self.assertEqual([int(pool["size"]["value"]) * multipliers[pool["size"]["magnitude"]] for pool in pools],
+                 [0x70000, 0x70000, WEIGHTS_CAPACITY, 0x800000])
 
     def test_slot_linker_script(self):
         if not all(shutil.which(tool) for tool in ("cc", "ld", "nm")):
             self.skipTest("native linker tools are unavailable")
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
-            for blob_bytes, succeeds in ((0x40000, True), (0x40001, False)):
-                source = f'''unsigned char weights[0x140000] __attribute__((section(".experiment_weights")));
+            for blob_bytes, succeeds in ((BLOB_CAPACITY, True), (BLOB_CAPACITY + 1, False)):
+                source = f'''unsigned char weights[{WEIGHTS_CAPACITY}] __attribute__((section(".experiment_weights")));
 unsigned char blob[{blob_bytes}] __attribute__((section(".experiment_blob")));
 void Reset_Handler(void) {{}}
 '''
@@ -114,8 +165,78 @@ void Reset_Handler(void) {{}}
                     self.assertNotEqual(packed.returncode, 0)
                     self.assertIn("link relocations", packed.stderr)
 
+    def test_three_blob_overlay(self):
+        if not all(shutil.which(tool) for tool in ("cc", "ld", "nm")):
+            self.skipTest("native linker tools are unavailable")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            source = f'void Reset_Handler(void) {{}}\nunsigned char weights[{WEIGHTS_CAPACITY}] __attribute__((section(".experiment_weights")));\n'
+            for name in model.KINDS:
+                source += f'const unsigned char {name}[64] __attribute__((section(".model_blob_{name}"))) = {{1}};\n'
+            subprocess.run(["cc", "-fno-asynchronous-unwind-tables", "-c", "-x", "c", "-", "-o", str(root / "models.o")],
+                           input=source, text=True, check=True, capture_output=True)
+            linked = subprocess.run(["ld", "-T", str(model.ROOT / "models.ld"), "-T", str(model.ROOT / "slots.ld"),
+                                     "-T", str(model.ROOT / "camera-runtime-ram.ld"), str(root / "models.o"),
+                                     "-o", str(root / "models.elf")], capture_output=True, text=True)
+            self.assertEqual(linked.returncode, 0, linked.stderr)
+            symbols = subprocess.run(["nm", str(root / "models.elf")], check=True, capture_output=True, text=True).stdout
+            for name in model.KINDS:
+                self.assertRegex(symbols, rf"(?m)^0*{BLOB_ADDRESS:x} [A-Z] {name}$")
+
+    def test_three_model_cmake(self):
+        if not shutil.which("cmake"):
+            self.skipTest("CMake is unavailable")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            sdk = root / "vendor"
+            for name, kind in model.KINDS.items():
+                generated = root / "models" / name
+                generated.mkdir(parents=True)
+                (generated / "contract.json").write_text(json.dumps({"runtime_version": 1201, "kind": kind,
+                    "input": {"type": "uint8", "layout": "nhwc", "shape": [1, 2, 2, 3]},
+                    "outputs": [{"type": "int8", "shape": [4]}, {"type": "float32", "shape": [4]}]}))
+                for filename in ("network.c", "network_ecblobs.h", "stai_network.c", "stai_network.h", "weights.bin", "model_symbols.h"):
+                    (generated / filename).write_text("")
+            (root / "src").mkdir()
+            for filename in ("npu_model.c", "npu_multi.cpp", "network_api.c"):
+                shutil.copyfile(model.ROOT / "src" / filename, root / "src" / filename)
+            shutil.copyfile(model.ROOT / "models.ld", root / "models.ld")
+            (root / "tool").mkdir()
+            for path in (model.ROOT / "tool").glob("*.py"):
+                shutil.copyfile(path, root / "tool" / path.name)
+            paths = ["Lib/GCC/ARMCortexM55/NetworkRuntime1201_CM55_GCC.a", "Src/stm32n6xx_hal_ramcfg.c",
+                     "Npu/Devices/STM32N6xx/npu_cache.c", "Npu/Devices/STM32N6xx/mcu_cache.c"]
+            paths += [f"Npu/ll_aton/{name}.c" for name in ("ecloader", "ll_aton", "ll_aton_cipher", "ll_aton_dbgtrc",
+                      "ll_aton_lib", "ll_aton_lib_sw_operators", "ll_aton_runtime", "ll_aton_stai_internal",
+                      "ll_aton_util", "ll_sw_float", "ll_sw_integer")]
+            for name in paths:
+                path = sdk / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("")
+            (root / "dummy.c").write_text("int main(void) { return 0; }\n")
+            (root / "CMakeLists.txt").write_text(f'''cmake_minimum_required(VERSION 3.16)
+project(model_graph LANGUAGES C CXX)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(TARGET_NAME model_check)
+add_executable(model_check dummy.c)
+target_include_directories(model_check PRIVATE src)
+target_compile_definitions(model_check PRIVATE GRAPH_TEST=1)
+add_library(stm32n6570_dk INTERFACE)
+set(EXPERIMENT_MODEL_MULTI ON)
+set(STEDGEAI_LIB_DIR "{sdk}")
+set(HAL "{sdk}")
+set(CUBE "{sdk}")
+include("{model.ROOT / 'npu.cmake'}")
+''')
+            checked = subprocess.run(["cmake", "-S", str(root), "-B", str(root / "build")], capture_output=True, text=True)
+            self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+            text = (root / "build/CMakeFiles/model_check.dir/build.make").read_text()
+            self.assertIn("experiment_model_face", text)
+            self.assertIn("experiment_model_seg", text)
+
     def test_strong_npu_link_audit(self):
-        expected = {**check_link.EXPECTED, "NPU0_IRQHandler": "npu_model.c", "experiment_npu_start": "npu_model.c"}
+        expected = {**check_link.EXPECTED, "NPU0_IRQHandler": "npu_model.c", "experiment_npu_start": "npu_model.c",
+                "model_load_NPU0_IRQHandler": "ll_aton_runtime.c"}
         symbols, placements = [], []
         for index, (symbol, source) in enumerate(expected.items()):
             address = 0x34001000 + index * 32
