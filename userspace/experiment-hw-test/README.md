@@ -8,14 +8,14 @@ STM32N6570-DKのHWを直接検査する実機専用アプリ。既存experiment�
 
 主対象は未実験HW。LCD表示の初期化確認に続いて、RNG、HASH、CRC、GPDMA、HPDMA、RTC、TIM、SRAM、PSRAM、NOR、DMA2Dを実行する。未実装項目をSKIPで登録することはしない。外部機器の試験は選択時にstatic_assertでコンパイルを止める。実装済みと実機検証済みは区別する。
 
-起動時は登録済みの全試験を自動実行する。UART shellからの入力を待つ必要はない。ビルド時に`HWTEST_AUTORUN_TEST`を指定すると、自動実行する試験を個別に選択できる。
+起動時は短縮版の`all`を自動実行する。UART shellからの入力を待つ必要はない。ビルド時に`HWTEST_AUTORUN_TEST=all-stress`を指定すると、長時間試験も含めて自動実行できる。個別の試験名も指定できる。
 
 ## 配置と依存
 
 | ファイル | 責務 |
 | --- | --- |
 | [src/main.cpp](src/main.cpp) | T-Monitor UART、試験タスク、shellの実機入口 |
-| [src/commands.hpp](src/commands.hpp) | `hwtest list / run / all`。listに目的と実行時間上限を表示 |
+| [src/commands.hpp](src/commands.hpp) | `hwtest list / run / all / all-stress`。listに目的・実行時間上限・負荷試験区分を表示 |
 | [src/hwtest.hpp](src/hwtest.hpp) | 共通I/F、登録検査、実行、PASS/FAIL、SUMMARY出力 |
 | [src/display_log.cpp](src/display_log.cpp) | LCDへ試験の開始・終了行を表示し、画面下端で自動スクロール |
 | [src/tests/suite.cpp](src/tests/suite.cpp) | 実装済み試験だけの登録表、目的、タイムアウト |
@@ -25,6 +25,12 @@ STM32N6570-DKのHWを直接検査する実機専用アプリ。既存experiment�
 | [config/stm32n6xx_hal_conf.h](config/stm32n6xx_hal_conf.h) | 生成HAL設定へ試験対象モジュールを追加 |
 | [scratch.ld](scratch.ld) | PSRAMの`0x91000000`から4KiBを試験専用に予約 |
 | [runner.py](runner.py)、[uart.py](uart.py) | 実機UART結果の収集とJUnit変換。ホスト上でHW試験を実行するものではない |
+
+## 試験セット
+
+`hwtest all`は短時間の起動確認用で、通常の周辺機器・メモリ試験と`touch-read`を実行する。60秒のカメラ連続動作、32段階のカメラ制御、60秒のDMA2D同時負荷試験は含めない。長時間の負荷を含めて確認する場合は`hwtest all-stress`を実行する。両セットとも手動操作が必要な`touch`試験は含めず、個別に実行する。
+
+LCD左側の試験一覧は上下スワイプでスクロールでき、行をタップして選択できる。右側の結果ログも上下スワイプでスクロールできる。見出しに登録済みの総試験数、開始前の`P/F/T`に選択した試験数を表示する。複数シナリオを持つ試験は一覧の試験名の横に`n/n`を表示する。`RUN`で選択した試験または試験セットを開始する。新しい実行を始めると、前回のログを消して今回の結果を表示する。
 
 試験本体は`src/tests/<hardware>_driver/test.cpp`へ置く。ディレクトリ名のdriverは対象を表すもので、共有driverへの依存や製品用driverの実装ではない。HAL／BSPと試験専用領域を使い、アプリ側のdriverを経由しない。driver、middleware、共有pre-kernelを変更しない。
 
@@ -38,7 +44,7 @@ Result Run(const Context &context);
 }
 ```
 
-`Context`は`clock()`によるミリ秒時刻、`wait(milliseconds)`、wrapを考慮した`Expired(begin, timeout)`を提供する。`Result`は`Outcome::kPass`または`Outcome::kFail`とUART出力用の詳細文字列を返す。試験側がクロック・RIF・HAL初期化、有限時間の検査、停止・deinitを担当する。対象資源はこの専用アプリが占有し、通常アプリと同時に実行しない。
+`Context`は`clock()`によるミリ秒時刻、`wait(milliseconds)`、wrapを考慮した`Expired(begin, timeout)`、シナリオ進捗の`Progress(current, total)`を提供する。`Result`は`Outcome::kPass`または`Outcome::kFail`とUART出力用の詳細文字列を返す。試験側がクロック・RIF・HAL初期化、有限時間の検査、停止・deinitを担当する。対象資源はこの専用アプリが占有し、通常アプリと同時に実行しない。
 
 ランナは実行関数・目的・時間上限の欠落や重複登録を拒否する。破壊的試験の許可不足は実行前のFAILであり、SKIPにはしない。同期処理のため、時間上限の事後確認だけでハングを中断することはできない。
 
@@ -56,6 +62,9 @@ Result Run(const Context &context);
 | psram | 各パターンをXSPI1の専用領域へ書き、cache clean/invalidate後も全バイト一致 | 本体実装済み |
 | nor-read | XSPI2の先頭256バイトを2回読み、一致。消去・書込みは行わない | 本体実装済み |
 | dma2d | 8×8 ARGB8888実転送、全guardと入力保持、D-cache整合 | 本体実装済み |
+| camera-pipes | Pipe1/2のフレーム進行を60秒監視 | 負荷試験（`all-stress`） |
+| camera-control | 32段階のISP・geometry・停止／再開／復旧検査 | 負荷試験（`all-stress`） |
+| dma2d-suite | 25種の画素・guard・cache検査と60秒のカメラ/LCD同時負荷 | 負荷試験（`all-stress`） |
 
 GPDMA/HPDMAの現在の対象は内部SRAMであり、PSRAM転送、リンクリスト、実割り込み経路の検査はまだ含まない。RNG検査はエラーと固定出力の検出であり、統計的な乱数品質の証明ではない。RTCは通常アプリの時刻を保存・復元する試験ではなく、専用アプリのカレンダーを書き換える。
 
@@ -104,18 +113,19 @@ hwtest run psram
 hwtest run nor-read
 hwtest run dma2d
 hwtest all
+hwtest all-stress
 ```
 
-結果は`HWTEST <name> PASS|FAIL <詳細>`。LCDには各試験の開始と終了だけを表示し、UARTには従来の結果形式だけを出力する。行が表示領域を越えると古い行を上へ送り、自動でスクロールする。既存UART収集形式との互換性のため、末尾は`HWTEST SUMMARY pass=<n> fail=<n> skip=0`を維持する。このファームウェアはSKIPを出さない。登録されている試験を`all`で実行する。将来破壊的試験を追加した場合、許可のない`all`/`run`は実行前に拒否し、個別に`hwtest run <name> allow-destructive`で許可する。
+結果は`HWTEST <name> PASS|FAIL <詳細>`。末尾の`HWTEST SUMMARY pass=<n> fail=<n> total=<n> skip=0`には実行数を表示する。このファームウェアはSKIPを出さない。`all`は短縮セット、`all-stress`は長時間試験を含むセット。将来破壊的試験を追加した場合、許可のないセット実行や`run`は実行前に拒否し、個別に`hwtest run <name> allow-destructive`で許可する。
 
 自動収集を使う場合はmonitorを閉じ、代わりにUARTランナを先に起動する。
 
 ```sh
 python3 userspace/experiment-hw-test/runner.py --uart /dev/ttyACM0 \
-	--junit result.xml --log-dir logs --wait-ready
+	--junit result.xml --log-dir logs --wait-ready --timeout 600
 ```
 
-`--wait-ready`を指定すると起動時の自動`all`の結果をそのまま収集し、shellへコマンドを送らない。通常モードでは`hwtest all`または`--test <name>`をshellへ送る。ランナは実機のHWTEST結果だけを集計し、結果欠落・重複・SUMMARY不一致・通信断は不成功とする。終了値は0=PASSあり/FAILなし、1=FAILあり、2=入力不完全等。旧ログのSKIP形式も読めるが、新ファームウェアからは出力しない。
+`--wait-ready`を指定すると起動時に選んだ自動実行セットの結果をそのまま収集し、shellへコマンドを送らない。起動行（`camera: pipe1=started pipe2=started`を含む）は`logs/startup.log`へ保存する。通常モードでは`hwtest all`または`--test all-stress`、`--test <name>`をshellへ送る。ランナは実機のHWTEST結果だけを集計し、結果欠落・重複・SUMMARY不一致・通信断は不成功とする。終了値は0=PASSあり/FAILなし、1=FAILあり、2=入力不完全等。`total`も結果行数と照合する。
 
 ## 安全条件と確認範囲
 
@@ -125,7 +135,7 @@ python3 userspace/experiment-hw-test/runner.py --uart /dev/ttyACM0 \
 - 同期実行の時間上限は戻り時にも確認するが、ハングを中断するものではない。各HAL処理・待機に個別の有限タイムアウトを持たせる。
 - SD/USBの書込みには試験専用媒体を用意する。watchdogのreset試験には再起動を跨ぐマーカーとホスト収集の設計が必要。
 - OTP/fuseへの書込みや、復帰処理のないRIF/ECCフォルト注入は実行しない。
-- カメラ試験は登録していない。従来のcamera-controlの起動ログを、このアプリの検証結果として流用しない。
+- camera-pipes / camera-control / dma2d-suiteは`all-stress`でのみ実行する。起動ログだけを試験結果として流用しない。
 - 試験後はUARTを先に開いて通常ai-appへ戻し、`camera: pipe1=started pipe2=started`と推論を確認する。この全体確認を省略しない。
 
 実機確認はUARTを先に開き、RAM実行で各試験の結果とLCD表示を確認する。その後`ai-app`をRAM実行し、UARTの`camera: pipe1=started pipe2=started`でPipe1/2の復帰を確認する。

@@ -71,7 +71,8 @@ inline Result CheckDmaCopy(DMA_Channel_TypeDef *channel, const Context &context)
         } else {
             result = {Outcome::kPass, "register-config-and-seven-copy-lengths-guards-cache"};
             static constexpr std::size_t lengths[] = {1, 3, 31, 32, 33, 255, 256};
-            for (const auto length : lengths) {
+            for (std::size_t scenario = 0; scenario < sizeof(lengths) / sizeof(lengths[0]); ++scenario) {
+                const auto length = lengths[scenario];
                 const std::size_t offset = length == 256 ? 32 : 33;
                 for (std::size_t index = 0; index < sizeof(source); ++index) {
                     source[index] = static_cast<std::uint8_t>((index * 37U) ^ 0xa5U);
@@ -115,6 +116,8 @@ inline Result CheckDmaCopy(DMA_Channel_TypeDef *channel, const Context &context)
                 if (result.outcome == Outcome::kFail) {
                     break;
                 }
+                context.Progress(static_cast<unsigned>(scenario + 1),
+                                 static_cast<unsigned>(sizeof(lengths) / sizeof(lengths[0])));
             }
         }
     }

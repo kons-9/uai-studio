@@ -26,16 +26,22 @@ public:
         if (std::sscanf(text, "HWTEST %48s %7s", name, outcome) == 2) {
             if (std::strcmp(outcome, "START") == 0) {
                 std::snprintf(status_, sizeof(status_), "%s", name);
+                progress_name_[0] = '\0';
+                progress_current_ = progress_total_ = 0;
             } else if (std::strcmp(outcome, "PASS") == 0) {
                 ++passed_;
+                if (!expected_total_set_) { ++total_; }
             } else if (std::strcmp(outcome, "FAIL") == 0) {
                 ++failed_;
+                if (!expected_total_set_) { ++total_; }
             }
         }
-        unsigned passed = 0, failed = 0;
-        if (std::sscanf(text, "HWTEST SUMMARY pass=%u fail=%u", &passed, &failed) == 2) {
+        unsigned passed = 0, failed = 0, total = 0;
+        if (std::sscanf(text, "HWTEST SUMMARY pass=%u fail=%u total=%u", &passed, &failed, &total) == 3) {
             passed_ = passed;
             failed_ = failed;
+            total_ = total;
+            expected_total_set_ = true;
             std::snprintf(status_, sizeof(status_), "COMPLETE");
         }
         const bool is_fail = std::strstr(text, " FAIL") != nullptr;
@@ -59,11 +65,30 @@ public:
         }
     }
 
-    void Begin()
+    void Begin(unsigned expected_total = 0)
     {
         passed_ = failed_ = 0;
-        offset_ = 0;
+        total_ = expected_total;
+        expected_total_set_ = expected_total != 0;
+        for (auto &line : lines_) {
+            line = {};
+        }
+        head_ = column_ = offset_ = 0;
+        count_ = 1;
+        progress_name_[0] = '\0';
+        progress_current_ = progress_total_ = 0;
         std::snprintf(status_, sizeof(status_), "RUNNING");
+    }
+
+    void Progress(const char *name, unsigned current, unsigned total)
+    {
+        if (!name || total == 0) {
+            return;
+        }
+        std::snprintf(progress_name_, sizeof(progress_name_), "%s", name);
+        progress_current_ = current;
+        progress_total_ = total;
+        std::snprintf(status_, sizeof(status_), "%s %u/%u", name, current, total);
     }
 
     void Scroll(bool older)
@@ -89,7 +114,11 @@ public:
 
     unsigned Passed() const { return passed_; }
     unsigned Failed() const { return failed_; }
+    unsigned Total() const { return total_; }
     const char *Status() const { return status_; }
+    const char *ProgressName() const { return progress_name_; }
+    unsigned ProgressCurrent() const { return progress_current_; }
+    unsigned ProgressTotal() const { return progress_total_; }
 
 private:
     void Advance()
@@ -107,8 +136,11 @@ private:
 
     Line lines_[kCapacity]{};
     std::size_t head_ = 0, column_ = 0, count_ = 1, offset_ = 0;
-    unsigned passed_ = 0, failed_ = 0;
+    unsigned passed_ = 0, failed_ = 0, total_ = 0;
+    bool expected_total_set_ = false;
     char status_[49] = "STARTING";
+    char progress_name_[49]{};
+    unsigned progress_current_ = 0, progress_total_ = 0;
 };
 
 }

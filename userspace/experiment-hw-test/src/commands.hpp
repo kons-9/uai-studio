@@ -27,11 +27,12 @@ inline console::Status Execute(
             std::snprintf(
                 line,
                 sizeof(line),
-                "HWTEST CASE %s timeout_ms=%lu destructive=%u interactive=%u\n",
+                "HWTEST CASE %s timeout_ms=%lu destructive=%u interactive=%u stress=%u\n",
                 test.name,
                 static_cast<unsigned long>(test.timeout_ms),
                 static_cast<unsigned>(test.destructive),
-                static_cast<unsigned>(test.interactive)
+                static_cast<unsigned>(test.interactive),
+                static_cast<unsigned>(test.stress)
             );
             writer.Write(line);
             writer.Write("  verifies: ");
@@ -42,7 +43,9 @@ inline console::Status Execute(
     }
     const char *selection = nullptr;
     bool destructive = false;
-    if (count == 2 && std::strcmp(arguments[1], "all") == 0) {
+    if (count == 2 && (std::strcmp(arguments[1], "all") == 0
+                       || std::strcmp(arguments[1], "all-stress") == 0)) {
+        selection = arguments[1];
     } else if ((count == 3 || count == 4) && std::strcmp(arguments[1], "run") == 0) {
         selection = arguments[2];
         if (!ValidName(selection) || (count == 4 && std::strcmp(arguments[3], "allow-destructive") != 0)) {

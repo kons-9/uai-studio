@@ -130,9 +130,11 @@ void PollTouch(std::uint32_t now)
             std::snprintf(line, sizeof(line), "TRACE touch target=%u PASS press-release\n", touch_target + 1);
             output.Write(line);
             if (++touch_target == 5) {
+                display_log::Progress("touch", 5, 5);
                 Finish({Outcome::kPass, "five-targets-press-release visual=required"});
             } else {
                 display_log::Target(touch_target);
+                display_log::Progress("touch", touch_target, 5);
             }
         }
         if (touch_test && (touch_errors.load() != touch_error_baseline || now - touch_begin >= 60000)) {
@@ -186,6 +188,7 @@ void Service()
             previous_touch = touch.active;
             pressed_target = false;
             display_log::Target(0);
+            display_log::Progress("touch", 0, 5);
         }
     }
     if (abort_requested.load() && (camera_test || touch_test)) {
@@ -210,6 +213,9 @@ void Service()
     }
     if (camera_test) {
         scenario.Tick();
+        const auto completed = scenario.Passed() + scenario.Failed();
+        const auto total = camera::Scenario::StepCount();
+        display_log::Progress("camera-control", completed < total ? completed : total, total);
         if (!scenario.Active()) {
             std::snprintf(owner_detail, sizeof(owner_detail), "stages_pass=%u stages_fail=%u readback=driver-state visual=required", scenario.Passed(), scenario.Failed());
             Finish({scenario.Passed() == 32 && scenario.Failed() == 0 ? Outcome::kPass : Outcome::kFail, owner_detail});
@@ -231,6 +237,7 @@ uai::ai::ui::TouchPoint Touch() { return touch; }
 
 Result CameraPipes(const Context &context)
 {
+    context.Progress(0, 1);
     const auto baseline = Observe();
     if (!baseline.running || !display_log::Ready()) {
         return {Outcome::kFail, "camera-not-running"};
@@ -255,6 +262,7 @@ Result CameraPipes(const Context &context)
     }
     static char detail[128];
     std::snprintf(detail, sizeof(detail), "pipe1=%lu pipe2=%lu elapsed_ms=60000 visual=required", static_cast<unsigned long>(previous.pipe1 - baseline.pipe1), static_cast<unsigned long>(previous.pipe2 - baseline.pipe2));
+    context.Progress(1, 1);
     return {Outcome::kPass, detail};
 }
 

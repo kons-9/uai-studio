@@ -9,6 +9,13 @@
 #include <cstring>
 #include <tk/tkernel.h>
 
+/* The Cube ISP algorithms call printf from camera frame callbacks. Those
+ * uncoordinated diagnostics corrupt the machine-readable hwtest UART stream. */
+extern "C" int printf(const char *, ...)
+{
+    return 0;
+}
+
 extern "C" {
 #include <tm/tmonitor.h>
 #include "stm32n6xx_hal.h"
@@ -37,6 +44,20 @@ experiment::console::RxQueue received;
 char requested_test[49] = "all";
 bool allow_destructive = false;
 std::size_t selected_test = 0;
+
+const char *SelectedName(std::size_t index)
+{
+    if (index == 0) { return "all"; }
+    if (index == 1) { return "all-stress"; }
+    return experiment::hwtest::tests::cases[index - 2].name;
+}
+
+const char *SelectedLabel(std::size_t index)
+{
+    if (index == 0) { return "ALL QUICK"; }
+    if (index == 1) { return "ALL-STRESS"; }
+    return experiment::hwtest::tests::cases[index - 2].name;
+}
 
 void CaptureDiagnostic(const char *text, std::size_t size)
 {
@@ -99,7 +120,7 @@ void OwnerWrite(void *, const char *text, std::size_t size)
 }
 
 experiment::console::Status Submit(void *, int count, const char *const *arguments,
-                                   const experiment::console::Writer &writer)
+                                    const experiment::console::Writer &writer)
 {
     using namespace experiment;
     if (count == 2 && std::strcmp(arguments[1], "list") == 0) {
@@ -112,7 +133,8 @@ experiment::console::Status Submit(void *, int count, const char *const *argumen
         cancelled.store(true);
         return console::Status::kOk;
     }
-    const bool all = count == 2 && std::strcmp(arguments[1], "all") == 0;
+    const bool all = count == 2 && (std::strcmp(arguments[1], "all") == 0
+                                    || std::strcmp(arguments[1], "all-stress") == 0);
     const bool single = (count == 3 || count == 4) && std::strcmp(arguments[1], "run") == 0
         && hwtest::ValidName(arguments[2]);
     if ((!all && !single) || (count == 4 && std::strcmp(arguments[3], "allow-destructive") != 0)) {
@@ -120,7 +142,7 @@ experiment::console::Status Submit(void *, int count, const char *const *argumen
     }
     if (active.exchange(true)) { return console::Status::kInvalidState; }
     cancelled.store(false);
-    std::snprintf(requested_test, sizeof(requested_test), "%s", all ? "all" : arguments[2]);
+    std::snprintf(requested_test, sizeof(requested_test), "%s", all ? arguments[1] : arguments[2]);
     allow_destructive = count == 4;
     tk_set_flg(worker_events, 1);
     return console::Status::kOk;
@@ -161,14 +183,20 @@ void TestTask(
     experiment::hwtest::Registry registry{
         experiment::hwtest::tests::cases,
         experiment::hwtest::tests::case_count,
-        {HAL_GetTick, [](std::uint32_t delay) { tk_dly_tsk(delay); }, Trace, [] { return cancelled.load(); }}
+        {HAL_GetTick, [](std::uint32_t delay) { tk_dly_tsk(delay); }, Trace,
+         [] { return cancelled.load(); },
+         [](const char *name, unsigned current, unsigned total) {
+             experiment::hwtest::display_log::Progress(name, current, total);
+         }}
     };
     for (;;) {
         UINT pattern = 0;
         tk_wai_flg(worker_events, 1, TWF_ORW | TWF_BITCLR, &pattern, TMO_FEVR);
-        experiment::hwtest::display_log::Begin();
-        if (std::strcmp(requested_test, "all") == 0) {
-            const char *arguments[] = {"hwtest", "all"};
+        const auto expected_total = experiment::hwtest::CountSelected(
+            experiment::hwtest::tests::cases, experiment::hwtest::tests::case_count, requested_test);
+        experiment::hwtest::display_log::Begin(expected_total);
+        if (std::strcmp(requested_test, "all") == 0 || std::strcmp(requested_test, "all-stress") == 0) {
+            const char *arguments[] = {"hwtest", requested_test};
             experiment::hwtest::Execute(&registry, 2, arguments, output);
         } else {
             const char *arguments[] = {"hwtest", "run", requested_test, "allow-destructive"};
@@ -184,7 +212,7 @@ void UiTask(INT, void *)
     using namespace experiment;
     hwtest::integrated::Initialize({nullptr, OwnerWrite});
     const console::Command commands[] = {
-        {"hwtest", "hwtest list|all|run <name> [allow-destructive]|stop", Submit, nullptr},
+        {"hwtest", "hwtest list|all|all-stress|run <name> [allow-destructive]|stop", Submit, nullptr},
         {"cam", "cam stat|ae|ev|manual|area|wb|wb-list", Control, nullptr},
         {"capture", "capture start|stop|recover|fps|flip|crop", Capture, nullptr},
         {"frames", "frames", Frames, nullptr}
@@ -196,10 +224,14 @@ void UiTask(INT, void *)
     SET_BIT(USART1->CR3, USART_CR3_EIE);
     output.Write("HWTEST READY\n> ");
 #if defined(HWTEST_AUTORUN_TEST)
-    const char *arguments[] = {"hwtest", "run", HWTEST_AUTORUN_TEST};
-    const char *all_arguments[] = {"hwtest", "all"};
-    if (std::strcmp(HWTEST_AUTORUN_TEST, "all") == 0) { Submit(nullptr, 2, all_arguments, output); }
-    else { Submit(nullptr, 3, arguments, output); }
+    const char *group_arguments[] = {"hwtest", HWTEST_AUTORUN_TEST};
+    const char *test_arguments[] = {"hwtest", "run", HWTEST_AUTORUN_TEST};
+    if (std::strcmp(HWTEST_AUTORUN_TEST, "all") == 0
+        || std::strcmp(HWTEST_AUTORUN_TEST, "all-stress") == 0) {
+        Submit(nullptr, 2, group_arguments, output);
+    } else {
+        Submit(nullptr, 3, test_arguments, output);
+    }
 #endif
     for (;;) {
         hwtest::integrated::Service();
@@ -208,24 +240,24 @@ void UiTask(INT, void *)
         const auto action = hwtest::display_log::Process(
             reinterpret_cast<const std::uint16_t *>(uai::camera_pipe2::driver::MainPipeFrameBuffer()),
             reinterpret_cast<const std::uint16_t *>(uai::camera_pipe2::driver::AncillaryPipeFrameBuffer()),
-            hwtest::integrated::Touch(), observation.pipe1, observation.pipe2);
+            hwtest::integrated::Touch(), observation.pipe1, observation.pipe2,
+            selected_test, hwtest::tests::case_count + 2);
         if (display_was_ready && !hwtest::display_log::Ready()) {
             hwtest::integrated::DisplayFailure();
             output.Write("display: processing failed\n");
         }
-        if (action == hwtest::display_log::Action::kPrevious) {
-            selected_test = selected_test == 0 ? hwtest::tests::case_count : selected_test - 1;
-        } else if (action == hwtest::display_log::Action::kNext) {
-            selected_test = (selected_test + 1) % (hwtest::tests::case_count + 1);
-        } else if (action == hwtest::display_log::Action::kRun) {
-            const char *arguments[] = {"hwtest", "run", selected_test == 0 ? "all" : hwtest::tests::cases[selected_test - 1].name};
-            const char *all_arguments[] = {"hwtest", "all"};
-            const auto status = selected_test == 0 ? Submit(nullptr, 2, all_arguments, output) : Submit(nullptr, 3, arguments, output);
+        if (action.kind == hwtest::display_log::ActionKind::kSelect) {
+            selected_test = action.selection;
+        } else if (action.kind == hwtest::display_log::ActionKind::kRun) {
+            const char *arguments[] = {"hwtest", "run", SelectedName(selected_test)};
+            const char *group_arguments[] = {"hwtest", SelectedName(selected_test)};
+            const auto status = selected_test < 2 ? Submit(nullptr, 2, group_arguments, output)
+                                                  : Submit(nullptr, 3, arguments, output);
             if (status != console::Status::kOk) { OwnerWrite(nullptr, "HWTEST BUSY\n", 12); }
-        } else if (action == hwtest::display_log::Action::kStop) {
+        } else if (action.kind == hwtest::display_log::ActionKind::kStop) {
             cancelled.store(true);
         }
-        hwtest::display_log::Selection(selected_test == 0 ? "ALL" : hwtest::tests::cases[selected_test - 1].name);
+        hwtest::display_log::Selection(SelectedLabel(selected_test));
         for (unsigned budget = 0; budget < 128; ++budget) {
             char character = 0;
             bool error = false;

@@ -27,9 +27,9 @@
 #endif
 #include <math.h>
 #include <inttypes.h>
-#include <tm/tmonitor.h>
-
-#define ISP_PIPE2_TRACE(message) tm_putstring((UB *)(message))
+/* Keep BSP diagnostics off the test UART. The hwtest runner parses complete
+ * result lines, and direct T-Monitor writes bypass its serialized writer. */
+#define ISP_PIPE2_TRACE(message) ((void)0)
 
 /* Private types -------------------------------------------------------------*/
 /* Private constants ---------------------------------------------------------*/
@@ -660,18 +660,7 @@ uint32_t ISP_GetDumpFrameId(ISP_HandleTypeDef *hIsp)
   */
 void ISP_OutputMeta(ISP_HandleTypeDef *hIsp)
 {
-    extern ISP_MetaTypeDef Meta;
-
-    if (Meta.outputEnable) {
-        printf(
-            "Meta[%" PRIu32 "]: L = %" PRIu16 ", TG = %" PRIu32 ", G = %" PRIu32 ", E = %" PRIu32 ", CT = %" PRIu32
-            "\r\n",
-            hIsp->MainPipe_FrameCount,
-            Meta.averageL,
-            Meta.exposureTarget,
-            Meta.gain,
-            Meta.exposure,
-            Meta.colorTemp
-        );
-    }
+    /* This callback runs from the camera VSYNC interrupt. The diagnostic
+     * printf bypasses the serialized hwtest UART writer and corrupts results. */
+    (void)hIsp;
 }

@@ -17,7 +17,7 @@ def parse(lines):
         line = line.strip()
         if not line.startswith("HWTEST "):
             continue
-        totals = re.fullmatch(r"HWTEST SUMMARY pass=(\d+) fail=(\d+) skip=(\d+)", line)
+        totals = re.fullmatch(r"HWTEST SUMMARY pass=(\d+) fail=(\d+) total=(\d+) skip=(\d+)", line)
         if totals:
             if summary is not None:
                 raise ValueError("duplicate summary")
@@ -34,7 +34,7 @@ def parse(lines):
     if not results or summary is None:
         raise ValueError("incomplete run: results and SUMMARY required")
     counts = collections.Counter(status for _, status, _ in results)
-    if summary != (counts["PASS"], counts["FAIL"], counts["SKIP"]):
+    if summary != (counts["PASS"], counts["FAIL"], len(results), counts["SKIP"]):
         raise ValueError("SUMMARY does not match results")
     return results
 
@@ -54,7 +54,7 @@ def junit(results):
 def collect(port, name, timeout, record):
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", name):
         raise ValueError("invalid test name")
-    command = "hwtest all" if name == "all" else "hwtest run " + name
+    command = "hwtest " + name if name in ("all", "all-stress") else "hwtest run " + name
     port.write((command + "\r").encode("ascii"), timeout)
     deadline = time.monotonic() + timeout
     lines = []
@@ -99,6 +99,9 @@ def live_runs(port, name, repeat, timeout, log_dir, autorun_first=False):
                 results.extend((f"run{iteration}-{case}", status, detail) for case, status, detail in current)
                 break
         results.extend((f"run{iteration}-{case}", status, detail) for case, status, detail in current)
+        if iteration < repeat:
+            # Let the device finish its post-summary cleanup before accepting another command.
+            time.sleep(0.15)
     return results
 
 
@@ -110,7 +113,7 @@ def main():
     parser.add_argument("--junit", type=pathlib.Path, required=True)
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--test", default="all")
-    parser.add_argument("--timeout", type=float, default=300)
+    parser.add_argument("--timeout", type=float, default=600)
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--log-dir", type=pathlib.Path)
     parser.add_argument(
@@ -129,16 +132,22 @@ def main():
         if arguments.uart:
             with Uart(arguments.uart, arguments.baud) as port:
                 if arguments.wait_ready:
+                    arguments.log_dir.mkdir(parents=True, exist_ok=True)
                     deadline = time.monotonic() + arguments.timeout
-                    while "HWTEST READY" not in port.readline(max(0, deadline - time.monotonic())):
-                        pass
+                    with (arguments.log_dir / "startup.log").open("x") as startup:
+                        while True:
+                            line = port.readline(max(0, deadline - time.monotonic()))
+                            startup.write(line + "\n")
+                            startup.flush()
+                            if "HWTEST READY" in line:
+                                break
                 results = live_runs(
                     port,
                     arguments.test,
                     arguments.repeat,
                     arguments.timeout,
                     arguments.log_dir,
-                    autorun_first=arguments.wait_ready and arguments.test == "all",
+                    autorun_first=arguments.wait_ready and arguments.test in ("all", "all-stress"),
                 )
         else:
             text = arguments.log.read_text() if arguments.log else sys.stdin.read()

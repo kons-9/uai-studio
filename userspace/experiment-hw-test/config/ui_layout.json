@@ -7,10 +7,9 @@
     "background": "camera",
     "widgets": [
       {"type": "label", "id": "title", "text": "HW TEST", "x": 8, "y": 8, "width": 180, "height": 24, "style": {"text_scale": 2, "fill": "#101414", "text": "#FFFFFF"}},
-      {"type": "label", "id": "summary", "text": "PASS 0  FAIL 0", "x": 192, "y": 8, "width": 200, "height": 24, "style": {"text_scale": 2, "fill": "#101414", "text": "#50DC98"}},
-      {"type": "label", "id": "selection", "text": "ALL", "x": 56, "y": 40, "width": 232, "height": 40, "style": {"text_scale": 2, "fill": "#252B2B"}},
-      {"type": "button", "id": "previous", "label": "", "shape": "triangle_left", "on_tap": "OnPrevious", "x": 8, "y": 40, "width": 40, "height": 40, "style": {"fill": "#50DC98", "border_width": 0}},
-      {"type": "button", "id": "next", "label": "", "shape": "triangle_right", "on_tap": "OnNext", "x": 296, "y": 40, "width": 40, "height": 40, "style": {"fill": "#50DC98", "border_width": 0}},
+      {"type": "label", "id": "summary", "text": "P0 F0 T0", "x": 192, "y": 8, "width": 200, "height": 24, "style": {"text_scale": 2, "fill": "#101414", "text": "#50DC98"}},
+      {"type": "label", "id": "selection", "text": "ALL QUICK", "x": 8, "y": 40, "width": 328, "height": 40, "style": {"text_scale": 2, "fill": "#252B2B"}},
+      {"type": "label", "id": "selection_hint", "text": "SWIPE LIST TO SELECT - TAP RUN", "x": 408, "y": 40, "width": 384, "height": 40, "style": {"text_scale": 2, "fill": "#252B2B", "text": "#FFFFFF"}},
       {"type": "button", "id": "run", "label": "RUN", "on_tap": "OnRun", "x": 344, "y": 40, "width": 48, "height": 40, "style": {"fill": "#185C3C", "pressed_fill": "#287C50", "text_scale": 2, "border_width": 0}},
       {"type": "label", "id": "status", "text": "STARTING", "x": 8, "y": 88, "width": 384, "height": 24, "style": {"text_scale": 2, "fill": "#101414", "text": "#F0CC60"}},
       {"type": "button", "id": "log_up", "label": "", "shape": "triangle_up", "on_tap": "OnLogUp", "x": 8, "y": 432, "width": 40, "height": 40, "style": {"fill": "#A8BCBC", "border_width": 0}},

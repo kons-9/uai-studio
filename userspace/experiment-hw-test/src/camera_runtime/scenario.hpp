@@ -96,6 +96,7 @@ public:
     bool Active() const { return active_; }
     unsigned Passed() const { return passed_; }
     unsigned Failed() const { return failed_; }
+    static constexpr unsigned StepCount() { return sizeof(steps_) / sizeof(steps_[0]); }
     const char *CurrentAction() const { return active_ ? steps_[stage_].name : nullptr; }
 
     void Tick()

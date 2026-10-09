@@ -19,51 +19,18 @@ enum class WidgetId : std::uint16_t {
     kTitle = 1U,
     kSummary = 2U,
     kSelection = 3U,
-    kPrevious = 4U,
-    kNext = 5U,
-    kRun = 6U,
-    kStatus = 7U,
-    kLogUp = 8U,
-    kLogDown = 9U,
-    kStop = 10U,
-    kPipe1 = 11U,
-    kPipe2 = 12U,
-    kCompare = 13U,
+    kSelectionHint = 4U,
+    kRun = 5U,
+    kStatus = 6U,
+    kLogUp = 7U,
+    kLogDown = 8U,
+    kStop = 9U,
+    kPipe1 = 10U,
+    kPipe2 = 11U,
+    kCompare = 12U,
 };
 
 inline constexpr ui::ButtonSpec kMainButtons[] = {
-    {
-        static_cast<std::uint16_t>(WidgetId::kPrevious),
-        {8U, 40U, 40U, 40U},
-        "",
-        {
-            ui::Rgb565(0x50U, 0xDCU, 0x98U),
-            ui::Rgb565(0x10U, 0x30U, 0x60U),
-            ui::Rgb565(0x00U, 0xA0U, 0x60U),
-            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
-            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
-            3U,
-            0U,
-        },
-        ui::Icon::kNone,
-        ui::Shape::kTriangleLeft,
-    },
-    {
-        static_cast<std::uint16_t>(WidgetId::kNext),
-        {296U, 40U, 40U, 40U},
-        "",
-        {
-            ui::Rgb565(0x50U, 0xDCU, 0x98U),
-            ui::Rgb565(0x10U, 0x30U, 0x60U),
-            ui::Rgb565(0x00U, 0xA0U, 0x60U),
-            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
-            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
-            3U,
-            0U,
-        },
-        ui::Icon::kNone,
-        ui::Shape::kTriangleRight,
-    },
     {
         static_cast<std::uint16_t>(WidgetId::kRun),
         {344U, 40U, 48U, 40U},
@@ -195,7 +162,7 @@ inline constexpr ui::LabelSpec kMainLabels[] = {
     {
         static_cast<std::uint16_t>(WidgetId::kSummary),
         {192U, 8U, 200U, 24U},
-        "PASS 0  FAIL 0",
+        "P0 F0 T0",
         {
             ui::Rgb565(0x50U, 0xDCU, 0x98U),
             ui::Rgb565(0x10U, 0x14U, 0x14U),
@@ -207,8 +174,21 @@ inline constexpr ui::LabelSpec kMainLabels[] = {
     },
     {
         static_cast<std::uint16_t>(WidgetId::kSelection),
-        {56U, 40U, 232U, 40U},
-        "ALL",
+        {8U, 40U, 328U, 40U},
+        "ALL QUICK",
+        {
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0x25U, 0x2BU, 0x2BU),
+            true,
+            2U,
+            ui::TextAlign::kLeft,
+            4U,
+        },
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kSelectionHint),
+        {408U, 40U, 384U, 40U},
+        "SWIPE LIST TO SELECT - TAP RUN",
         {
             ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
             ui::Rgb565(0x25U, 0x2BU, 0x2BU),
@@ -255,10 +235,8 @@ inline constexpr std::size_t kScreenCount =
  *   void OnCompare(const ui::Event &event);
  *   void OnLogDown(const ui::Event &event);
  *   void OnLogUp(const ui::Event &event);
- *   void OnNext(const ui::Event &event);
  *   void OnPipe1(const ui::Event &event);
  *   void OnPipe2(const ui::Event &event);
- *   void OnPrevious(const ui::Event &event);
  *   void OnRun(const ui::Event &event);
  *   void OnStop(const ui::Event &event);
  */
@@ -267,12 +245,6 @@ bool Dispatch(Handlers &handlers, const ui::Event &event)
 {
     if (event.type == ui::EventType::kTap) {
         switch (static_cast<WidgetId>(event.widget_id)) {
-        case WidgetId::kPrevious:
-            handlers.OnPrevious(event);
-            return true;
-        case WidgetId::kNext:
-            handlers.OnNext(event);
-            return true;
         case WidgetId::kRun:
             handlers.OnRun(event);
             return true;

@@ -8,6 +8,7 @@ namespace {
 class Backend final : public graphics::ScenarioBackend {
 public:
     explicit Backend(const Context &context) : context_(context) {}
+    void SetContext(const Context &context) { context_ = context; }
     graphics::Observation Observe() override
     {
         const auto observation = integrated::Observe();
@@ -21,12 +22,18 @@ public:
         };
         return verification_.Run(test, dma_, [] { return DWT->CYCCNT; }, cache);
     }
+    void Reset()
+    {
+        passed_ = failed_ = reported_ = 0;
+        transfers_ = 0;
+    }
     void Report(const char *name, const graphics::Result &result) override
     {
         char line[192];
         std::snprintf(line, sizeof(line), "TRACE dma2d case=%s %s cycles=%lu max_channel_error=%u corrupted_bytes=%u",
             name, result.passed ? "PASS" : "FAIL", static_cast<unsigned long>(result.cycles), result.maximum_error, result.corrupted_bytes);
         context_.Trace(line);
+        context_.Progress(++reported_, static_cast<unsigned>(graphics::kCaseCount + 1));
     }
     void Summary(unsigned passed, unsigned failed, std::uint32_t transfers) override
     {
@@ -34,11 +41,11 @@ public:
         failed_ = failed;
         transfers_ = transfers;
     }
-    unsigned passed_ = 0, failed_ = 0;
+    unsigned passed_ = 0, failed_ = 0, reported_ = 0;
     std::uint32_t transfers_ = 0;
 
 private:
-    const Context &context_;
+    Context context_;
     graphics::Dma2d dma_;
     graphics::Verification verification_;
 };
@@ -51,6 +58,8 @@ Result Dma2dSuite(const Context &context)
     }
     static char detail[128];
     static Backend backend(context);
+    backend.SetContext(context);
+    backend.Reset();
     graphics::Scenario scenario(backend);
     const auto begin = context.clock();
     scenario.Start(begin);

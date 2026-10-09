@@ -124,11 +124,10 @@
 #include "stm32n6570_discovery_bus.h"
 #include "isp_param_conf.h"
 #include <stdint.h>
-#include <tm/tmonitor.h>
-
-#define CAMERA_PIPE2_TRACE(message) tm_putstring((UB *)(message))
-#define CAMERA_PIPE2_TRACE_PTRS(message, a, b, c)                                                                      \
-    tm_printf((const UB *)(message), (uint32_t)(uintptr_t)(a), (uint32_t)(uintptr_t)(b), (uint32_t)(uintptr_t)(c))
+/* Keep BSP diagnostics off the test UART. The hwtest runner parses complete
+ * result lines, and direct T-Monitor writes bypass its serialized writer. */
+#define CAMERA_PIPE2_TRACE(message) ((void)0)
+#define CAMERA_PIPE2_TRACE_PTRS(message, a, b, c) ((void)0)
 /** @addtogroup BSP
   * @{
   */
@@ -1967,7 +1966,6 @@ static int32_t IMX335_Probe(
         CAMERA_PIPE2_TRACE("pipe2 IMX335_Probe: ReadID failed\n");
         return BSP_ERROR_COMPONENT_FAILURE;
     }
-    tm_printf((const UB *)"pipe2 IMX335_Probe: ReadID complete id=%08x\n", id);
 
     if (id != (uint32_t)IMX335_CHIP_ID) {
         return BSP_ERROR_UNKNOWN_COMPONENT;

@@ -1,6 +1,7 @@
 #include "display_log.hpp"
 #include "ui/log_buffer.hpp"
 #include "ui/ui_layout.hpp"
+#include "tests/suite.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -28,6 +29,34 @@ bool ready = false, pending = false, compare = false, touch_was_active = false;
 unsigned front = 0, selected_pipe = 0, target = 5;
 std::uint32_t pending_begin = 0;
 char selection[49] = "ALL";
+bool list_touch = false, list_moved = false, log_touch = false;
+std::uint16_t list_origin_y = 0, list_last_y = 0;
+int list_drag = 0, log_drag = 0;
+std::size_t first_choice = 0;
+constexpr int kChoiceLeft = 8, kChoiceRight = 320, kChoiceTop = 136;
+constexpr int kChoiceRowHeight = 16;
+constexpr std::size_t kChoiceVisible = 17;
+constexpr int kLogLeft = 336, kLogRight = 792, kLogTop = 132, kLogBottom = 417, kLogRowHeight = 15;
+
+const char *ChoiceName(std::size_t index)
+{
+    if (index == 0) { return "ALL QUICK"; }
+    if (index == 1) { return "ALL-STRESS"; }
+    return experiment::hwtest::tests::cases[index - 2].name;
+}
+
+void KeepChoiceVisible(std::size_t selected, std::size_t count)
+{
+    if (selected < first_choice) {
+        first_choice = selected;
+    } else if (selected >= first_choice + kChoiceVisible) {
+        first_choice = selected - kChoiceVisible + 1;
+    }
+    const auto limit = count > kChoiceVisible ? count - kChoiceVisible : 0;
+    if (first_choice > limit) {
+        first_choice = limit;
+    }
+}
 
 std::uint16_t *Page(unsigned index)
 {
@@ -40,11 +69,9 @@ std::uint16_t Id(layout::WidgetId id)
 }
 
 struct Handlers {
-    Action action = Action::kNone;
-    void OnPrevious(const ui::Event &) { action = Action::kPrevious; }
-    void OnNext(const ui::Event &) { action = Action::kNext; }
-    void OnRun(const ui::Event &) { action = Action::kRun; }
-    void OnStop(const ui::Event &) { action = Action::kStop; }
+    ActionKind action = ActionKind::kNone;
+    void OnRun(const ui::Event &) { action = ActionKind::kRun; }
+    void OnStop(const ui::Event &) { action = ActionKind::kStop; }
     void OnLogUp(const ui::Event &)
     {
         tk_loc_mtx(log_mutex, TMO_FEVR);
@@ -132,10 +159,10 @@ void Write(const char *text)
     tk_unl_mtx(log_mutex);
 }
 
-void Begin()
+void Begin(unsigned expected_total)
 {
     tk_loc_mtx(log_mutex, TMO_FEVR);
-    logs.Begin();
+    logs.Begin(expected_total);
     tk_unl_mtx(log_mutex);
 }
 
@@ -144,15 +171,25 @@ void Selection(const char *name)
     std::snprintf(selection, sizeof(selection), "%s", name);
 }
 
+void Progress(const char *name, unsigned current, unsigned total)
+{
+    tk_loc_mtx(log_mutex, TMO_FEVR);
+    logs.Progress(name, current, total);
+    tk_unl_mtx(log_mutex);
+}
+
 void Target(unsigned index) { target = index; }
 
 Action Process(const std::uint16_t *pipe1, const std::uint16_t *pipe2,
-               const ui::TouchPoint &touch, std::uint32_t first, std::uint32_t second)
+               const ui::TouchPoint &touch, std::uint32_t first, std::uint32_t second,
+               std::size_t selected, std::size_t choice_count)
 {
     if (!ready) {
-        return Action::kNone;
+        return {};
     }
+    KeepChoiceVisible(selected, choice_count);
     Handlers handlers;
+    const bool was_active = touch_was_active;
     if (compare) {
         if (touch_was_active && !touch.active) {
             compare = false;
@@ -161,13 +198,71 @@ Action Process(const std::uint16_t *pipe1, const std::uint16_t *pipe2,
     } else {
         layout::Dispatch(handlers, screen.Update(touch));
     }
+
+    Action action{handlers.action, selected};
+    if (!compare && action.kind == ActionKind::kNone) {
+        if (touch.active) {
+            if (!was_active) {
+                list_touch = touch.x >= kChoiceLeft && touch.x < kChoiceRight
+                    && touch.y >= kChoiceTop
+                    && touch.y < kChoiceTop + kChoiceRowHeight * kChoiceVisible;
+                log_touch = touch.x >= kLogLeft && touch.x < kLogRight
+                    && touch.y >= kLogTop && touch.y < kLogBottom;
+                list_moved = false;
+                list_drag = 0;
+                log_drag = 0;
+                list_origin_y = list_last_y = touch.y;
+            } else if (list_touch) {
+                list_drag += static_cast<int>(list_last_y) - static_cast<int>(touch.y);
+                list_last_y = touch.y;
+                const int steps = list_drag / kChoiceRowHeight;
+                if (steps != 0) {
+                    list_drag -= steps * kChoiceRowHeight;
+                    const auto candidate = static_cast<std::size_t>(std::clamp(
+                        static_cast<int>(selected) + steps, 0, static_cast<int>(choice_count - 1)));
+                    if (candidate != selected) {
+                        list_moved = true;
+                        KeepChoiceVisible(candidate, choice_count);
+                        action = {ActionKind::kSelect, candidate};
+                    }
+                }
+            } else if (log_touch) {
+                log_drag += static_cast<int>(list_last_y) - static_cast<int>(touch.y);
+                list_last_y = touch.y;
+                while (log_drag >= kLogRowHeight) {
+                    tk_loc_mtx(log_mutex, TMO_FEVR);
+                    logs.Scroll(true);
+                    tk_unl_mtx(log_mutex);
+                    log_drag -= kLogRowHeight;
+                }
+                while (log_drag <= -kLogRowHeight) {
+                    tk_loc_mtx(log_mutex, TMO_FEVR);
+                    logs.Scroll(false);
+                    tk_unl_mtx(log_mutex);
+                    log_drag += kLogRowHeight;
+                }
+            }
+        } else if (was_active && (list_touch || log_touch)) {
+            if (list_touch) {
+                if (!list_moved && list_origin_y >= kChoiceTop) {
+                    const auto row = static_cast<std::size_t>((list_origin_y - kChoiceTop) / kChoiceRowHeight);
+                    const auto candidate = first_choice + row;
+                    if (candidate < choice_count) {
+                        action = {ActionKind::kSelect, candidate};
+                    }
+                }
+            }
+            list_touch = false;
+            log_touch = false;
+        }
+    }
     touch_was_active = touch.active;
     if (pending) {
         if ((LTDC->SRCR & LTDC_SRCR_VBR) != 0) {
             if (HAL_GetTick() - pending_begin >= 1000) {
                 ready = false;
             }
-            return handlers.action;
+            return action;
         }
         front = 1 - front;
         pending = false;
@@ -182,10 +277,14 @@ Action Process(const std::uint16_t *pipe1, const std::uint16_t *pipe2,
         canvas.FillRect({0, 0, 800, 24}, 0);
     } else {
         LogBuffer::Line lines[LogBuffer::kVisible];
-        char summary[40]{}, status[49]{};
+        char summary[40]{}, status[49]{}, progress_name[49]{};
+        unsigned progress_current = 0, progress_total = 0;
         tk_loc_mtx(log_mutex, TMO_FEVR);
-        std::snprintf(summary, sizeof(summary), "PASS %u FAIL %u", logs.Passed(), logs.Failed());
+        std::snprintf(summary, sizeof(summary), "P%u F%u T%u", logs.Passed(), logs.Failed(), logs.Total());
         std::snprintf(status, sizeof(status), "%s", logs.Status());
+        std::snprintf(progress_name, sizeof(progress_name), "%s", logs.ProgressName());
+        progress_current = logs.ProgressCurrent();
+        progress_total = logs.ProgressTotal();
         for (std::size_t index = 0; index < LogBuffer::kVisible; ++index) {
             lines[index] = logs.Visible(index);
         }
@@ -196,8 +295,44 @@ Action Process(const std::uint16_t *pipe1, const std::uint16_t *pipe2,
         screen.Buttons().SetChecked(Id(layout::WidgetId::kPipe1), selected_pipe == 0);
         screen.Buttons().SetChecked(Id(layout::WidgetId::kPipe2), selected_pipe == 1);
         screen.Paint(canvas);
+
+        canvas.FillRect({8, 112, 312, 304}, ui::Rgb565(16, 20, 20));
+        char test_count[48];
+        std::snprintf(test_count, sizeof(test_count), "TESTS %u - SWIPE OR TAP",
+                      static_cast<unsigned>(experiment::hwtest::tests::case_count));
+        canvas.DrawText(12, 118, test_count, 1, ui::Rgb565(80, 220, 152));
+        for (std::size_t row = 0; row < kChoiceVisible; ++row) {
+            const auto index = first_choice + row;
+            if (index >= choice_count) { break; }
+            const int y = kChoiceTop + static_cast<int>(row) * kChoiceRowHeight;
+            if (index == selected) {
+                canvas.FillRect({8, static_cast<std::uint16_t>(y - 2), 304,
+                                 static_cast<std::uint16_t>(kChoiceRowHeight)}, ui::Rgb565(24, 92, 60));
+            }
+            char choice[64];
+            std::snprintf(choice, sizeof(choice), "%s", ChoiceName(index));
+            if (index >= 2 && progress_total != 0
+                && std::strcmp(progress_name, experiment::hwtest::tests::cases[index - 2].name) == 0) {
+                std::snprintf(choice, sizeof(choice), "%s %u/%u", progress_name, progress_current, progress_total);
+            }
+            canvas.DrawText(16, y, choice, 1,
+                index == selected ? 0xffff : ui::Rgb565(208, 220, 220));
+        }
+        canvas.FillRect({316, kChoiceTop, 4, kChoiceRowHeight * static_cast<int>(kChoiceVisible)},
+                        ui::Rgb565(48, 56, 56));
+        const auto choice_limit = choice_count > kChoiceVisible ? choice_count - kChoiceVisible : 0;
+        const int thumb_height = choice_count > kChoiceVisible
+            ? (kChoiceRowHeight * static_cast<int>(kChoiceVisible) * static_cast<int>(kChoiceVisible))
+                / static_cast<int>(choice_count)
+            : kChoiceRowHeight * static_cast<int>(kChoiceVisible);
+        const int thumb_travel = kChoiceRowHeight * static_cast<int>(kChoiceVisible) - thumb_height;
+        const int thumb_y = choice_limit == 0 ? kChoiceTop
+            : kChoiceTop + thumb_travel * static_cast<int>(first_choice) / static_cast<int>(choice_limit);
+        canvas.FillRect({316, static_cast<std::uint16_t>(thumb_y), 4,
+                         static_cast<std::uint16_t>(thumb_height)}, ui::Rgb565(80, 220, 152));
+        canvas.DrawText(336, 118, "RESULTS", 1, ui::Rgb565(80, 220, 152));
         for (std::size_t index = 0; index < LogBuffer::kVisible; ++index) {
-            canvas.DrawText(8, 120 + index * 16, lines[index].text, 1,
+            canvas.DrawText(336, 132 + index * 15, lines[index].text, 1,
                 lines[index].failed ? 0xf980 : lines[index].passed ? 0x56d3 : 0xffff);
         }
     }
@@ -226,11 +361,11 @@ Action Process(const std::uint16_t *pipe1, const std::uint16_t *pipe2,
     if (HAL_LTDC_SetAddress_NoReload(&hlcd_ltdc, static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(back)), LTDC_LAYER_1) != HAL_OK
         || HAL_LTDC_Reload(&hlcd_ltdc, LTDC_RELOAD_VERTICAL_BLANKING) != HAL_OK) {
         ready = false;
-        return handlers.action;
+        return action;
     }
     pending = true;
     pending_begin = HAL_GetTick();
-    return handlers.action;
+    return action;
 }
 
 }

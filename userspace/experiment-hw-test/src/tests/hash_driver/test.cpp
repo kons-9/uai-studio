@@ -39,24 +39,28 @@ Result Run(const Context &context)
         } else if (HAL_HASH_Start(&handle, short_input, 3, digest, 100) != HAL_OK
             || std::memcmp(digest, short_digest, sizeof(digest)) != 0) {
             result = {Outcome::kFail, "sha256-short-vector"};
-        } else if (HAL_HASH_Start(&handle, block_input, 56, digest, 100) != HAL_OK
-                   || std::memcmp(digest, block_digest, sizeof(digest)) != 0) {
-            result = {Outcome::kFail, "sha256-block-padding-vector"};
         } else {
-            const auto final_control = HASH->CR;
-            const auto status = HASH->SR;
-            if ((final_control & kHashConfigMask) != kHashExpected || (status & HASH_SR_BUSY) != 0U) {
-                static char detail[72];
-                std::snprintf(
-                    detail,
-                    sizeof(detail),
-                    "hash-status cr=%08lx sr=%08lx",
-                    static_cast<unsigned long>(final_control),
-                    static_cast<unsigned long>(status)
-                );
-                result = {Outcome::kFail, detail};
+            context.Progress(1, 2);
+            if (HAL_HASH_Start(&handle, block_input, 56, digest, 100) != HAL_OK
+                || std::memcmp(digest, block_digest, sizeof(digest)) != 0) {
+                result = {Outcome::kFail, "sha256-block-padding-vector"};
             } else {
-                result = {Outcome::kPass, "sha256-config-and-two-known-answer-vectors"};
+                context.Progress(2, 2);
+                const auto final_control = HASH->CR;
+                const auto status = HASH->SR;
+                if ((final_control & kHashConfigMask) != kHashExpected || (status & HASH_SR_BUSY) != 0U) {
+                    static char detail[72];
+                    std::snprintf(
+                        detail,
+                        sizeof(detail),
+                        "hash-status cr=%08lx sr=%08lx",
+                        static_cast<unsigned long>(final_control),
+                        static_cast<unsigned long>(status)
+                    );
+                    result = {Outcome::kFail, detail};
+                } else {
+                    result = {Outcome::kPass, "sha256-config-and-two-known-answer-vectors"};
+                }
             }
         }
     }

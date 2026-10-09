@@ -7,7 +7,6 @@ extern "C" {
 #include "isp_api.h"
 #include "stm32n6xx_hal.h"
 #include "stm32n6570_discovery_camera.h"
-#include <tm/tmonitor.h>
 
 extern void *Camera_CompObj;
 extern DCMIPP_HandleTypeDef hcamera_dcmipp;
@@ -176,9 +175,7 @@ DriverStatus CameraDriver::Initialize()
         return DriverStatus::kAlreadyInitialized;
     }
 
-    tm_putstring(reinterpret_cast<UB *>(const_cast<char *>("camera_pipe2: BSP camera init begin\n")));
     const int32_t camera_init_status = BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10);
-    tm_printf(reinterpret_cast<const UB *>("camera_pipe2: BSP camera init status=%d\n"), camera_init_status);
     if (camera_init_status != BSP_ERROR_NONE) {
         return DriverStatus::kHardwareFailure;
     }
@@ -190,14 +187,7 @@ DriverStatus CameraDriver::Initialize()
     if (sensor == nullptr) {
         return DriverStatus::kHardwareFailure;
     }
-    tm_printf(
-        reinterpret_cast<const UB *>("camera_pipe2: test pattern begin obj=%08x io=%08x ctx=%08x\n"),
-        static_cast<unsigned int>(reinterpret_cast<std::uintptr_t>(sensor)),
-        static_cast<unsigned int>(reinterpret_cast<std::uintptr_t>(sensor->IO.WriteReg)),
-        static_cast<unsigned int>(reinterpret_cast<std::uintptr_t>(sensor->Ctx.WriteReg))
-    );
     const int32_t pattern_status = IMX335_SetTestPattern(sensor, PIPE2_IMX335_TEST_PATTERN_MODE);
-    tm_printf(reinterpret_cast<const UB *>("camera_pipe2: test pattern status=%d\n"), pattern_status);
     if (pattern_status != IMX335_OK) {
         return DriverStatus::kHardwareFailure;
     }

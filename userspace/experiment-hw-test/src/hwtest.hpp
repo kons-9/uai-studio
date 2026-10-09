@@ -20,6 +20,8 @@ struct Context {
     void (*wait)(std::uint32_t);
     void (*trace)(const char *);
     bool (*cancelled)() = nullptr;
+    void (*progress)(const char *, unsigned, unsigned) = nullptr;
+    const char *test_name = nullptr;
 
     bool Cancelled() const { return cancelled && cancelled(); }
 
@@ -27,6 +29,13 @@ struct Context {
     {
         if (trace) {
             trace(line);
+        }
+    }
+
+    void Progress(unsigned current, unsigned total) const
+    {
+        if (progress && test_name) {
+            progress(test_name, current, total);
         }
     }
 
@@ -45,9 +54,10 @@ struct Case {
     std::uint32_t timeout_ms;
     const char *purpose;
     bool interactive = false;
+    bool stress = false;
 };
 struct Summary {
-    unsigned passed = 0, failed = 0;
+    unsigned passed = 0, failed = 0, total = 0;
 };
 struct Output {
     void *context;
@@ -75,6 +85,47 @@ inline bool ValidName(const char *name)
     return true;
 }
 
+inline void WriteSummary(Output output, const Summary &summary)
+{
+    char line[112];
+    std::snprintf(line, sizeof(line), "HWTEST SUMMARY pass=%u fail=%u total=%u skip=0\n",
+                  summary.passed, summary.failed, summary.total);
+    output.write(output.context, line);
+}
+
+inline Summary FailSelection(Output output, const char *reason)
+{
+    char line[128];
+    std::snprintf(line, sizeof(line), "HWTEST selection FAIL %s\n", reason);
+    output.write(output.context, line);
+    Summary summary{0, 1, 1};
+    WriteSummary(output, summary);
+    return summary;
+}
+
+inline bool Selected(const Case &test, const char *selection)
+{
+    if (!selection || std::strcmp(selection, "all") == 0) {
+        return !test.interactive && !test.stress;
+    }
+    if (std::strcmp(selection, "all-stress") == 0) {
+        return !test.interactive;
+    }
+    return std::strcmp(selection, test.name) == 0;
+}
+
+inline unsigned CountSelected(const Case *cases, std::size_t count, const char *selection)
+{
+    unsigned selected = 0;
+    for (std::size_t index = 0; index < count; ++index) {
+        if (Selected(cases[index], selection)) {
+            ++selected;
+        }
+    }
+    // Invalid or empty selections produce one failure result in Run().
+    return selected == 0 ? 1 : selected;
+}
+
 inline Summary
 Run(const Case *cases,
     std::size_t count,
@@ -87,44 +138,32 @@ Run(const Case *cases,
     Summary summary;
     bool matched = false;
     if (!context.clock || !context.wait) {
-        output.write(output.context, "HWTEST registry FAIL invalid-context\nHWTEST SUMMARY pass=0 fail=1 skip=0\n");
-        return {0, 1};
+        return FailSelection(output, "invalid-context");
     }
     for (std::size_t index = 0; index < count; ++index) {
         if (!ValidName(cases[index].name) || !cases[index].run || cases[index].timeout_ms == 0 || !cases[index].purpose
             || !*cases[index].purpose) {
-            output.write(output.context, "HWTEST registry FAIL invalid-case\nHWTEST SUMMARY pass=0 fail=1 skip=0\n");
-            return {0, 1};
+            return FailSelection(output, "invalid-case");
         }
         for (std::size_t previous = 0; previous < index; ++previous) {
             if (std::strcmp(cases[index].name, cases[previous].name) == 0) {
-                output.write(
-                    output.context, "HWTEST registry FAIL duplicate-case\nHWTEST SUMMARY pass=0 fail=1 skip=0\n"
-                );
-                return {0, 1};
+                return FailSelection(output, "duplicate-case");
             }
         }
-        if (((!selection && !cases[index].interactive) || (selection && std::strcmp(selection, cases[index].name) == 0)) && cases[index].destructive
-            && !allow_destructive) {
-            output.write(
-                output.context,
-                "HWTEST selection FAIL explicit-permission-required\nHWTEST SUMMARY pass=0 fail=1 skip=0\n"
-            );
-            return {0, 1};
+        if (Selected(cases[index], selection) && cases[index].destructive && !allow_destructive) {
+            return FailSelection(output, "explicit-permission-required");
         }
     }
     for (std::size_t index = 0; index < count; ++index) {
         const auto &test = cases[index];
-        if (!selection && test.interactive) {
-            continue;
-        }
-        if (selection && std::strcmp(selection, test.name) != 0) {
+        if (!Selected(test, selection)) {
             continue;
         }
         matched = true;
         if (context.Cancelled()) {
             output.write(output.context, "HWTEST selection FAIL cancelled\n");
             ++summary.failed;
+            ++summary.total;
             break;
         }
         if (progress.write) {
@@ -133,7 +172,10 @@ Run(const Case *cases,
             progress.write(progress.context, line);
         }
         const auto begin = context.clock();
-        Result result = test.run(context);
+        Context test_context = context;
+        test_context.test_name = test.name;
+        Result result = test.run(test_context);
+        ++summary.total;
         if (context.Cancelled()) {
             result = {Outcome::kFail, "cancelled"};
         }
@@ -176,10 +218,9 @@ Run(const Case *cases,
     if (!matched) {
         output.write(output.context, "HWTEST selection FAIL no-matching-test\n");
         ++summary.failed;
+        ++summary.total;
     }
-    char line[96];
-    std::snprintf(line, sizeof(line), "HWTEST SUMMARY pass=%u fail=%u skip=0\n", summary.passed, summary.failed);
-    output.write(output.context, line);
+    WriteSummary(output, summary);
     return summary;
 }
 
