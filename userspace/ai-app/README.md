@@ -28,11 +28,11 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 - モデルごとに最後の有効な結果を保持します。空の結果では期限を延長せず、最後の被写体から1秒後に次の候補または全画面へ戻ります。小さな領域変化は抑制します。
 - 設定と読み戻しは250ms間隔です。手動露出中は統計領域を操作せず、設定失敗とカメラ復旧後の設定消失は次回に再試行します。
 - LCD上端の2行目に制御対象・実測露出・ゲイン、またはエラーを表示します。要求領域と適用領域は別に保持し、要求値を実測値として表示しません。
-- 有効/無効は`src/task/task_config.hpp`の`kAiExposureControl`で選びます。既定は有効で、UIの枠表示ON/OFFとは独立です。手動のPI制御は追加していません。
+- `kAiExposureControl`はビルド時の機能ガードです。既定では有効で、設定画面の`AI EXPOSURE`ボタンから実行時にON/OFFを切り替えられます。OFFでは全画面AEに戻し、再ON時は古い推論結果を捨てます。枠表示ON/OFFとは独立です。手動のPI制御は追加していません。
 
 領域変更時はUARTに`exposure: source=... area=... exposure_us=... gain_mdB=... ae=...`を出します。sourceは0=全画面、1=顔、2=人物、3=前景です。
 
-ホスト確認は`cmake --build build/middleware-tests --target exposure_control_test frame_channels_test ui_layout_test`と対応するctestで行います。実機ではUARTを先に開き、起動とPipe1/2の開始に加え、領域変更・被写体消失時の全画面復帰・逆光での輝度改善・AWBへの影響・CPU時間と推論FPSを確認してください。ホストテストとARM構文チェックは実機確認を代替しません。
+ホスト確認は`cmake --build build/middleware-tests --target exposure_control_test frame_channels_test ui_layout_test`と対応するctestで行います。実機ではUARTを先に開き、起動とPipe1/2の開始に加え、UIからのON/OFF・領域変更・被写体消失時の全画面復帰・逆光での輝度改善・AWBへの影響・CPU時間と推論FPSを確認してください。未確認の判定基準は[VERIFICATION_CHECKLIST.md](VERIFICATION_CHECKLIST.md)にあります。ホストテストとARM構文チェックは実機確認を代替しません。
 
 ## モデル
 
@@ -56,7 +56,7 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | `src/task/application_initialize_task.hpp`、`src/task/camera_render_task.hpp`、`src/task/pipeline_task.hpp` | タスクごとに必要な依存を列挙するコンテキストとスタック。パイプラインのフレーム解放と結果選別 |
 | `src/task/task_config.hpp` | 動作モード、診断設定、キュー・スタックのサイズ |
 | `src/ui/ui_layout.hpp`、`src/ui/ui_layout_images.hpp` | 画面（ページ）と各ウィジェットの表、ロゴのRGB565ビットマップ。`config/ui_layout.json`と`config/ui/*.png`から[host_app/ui_designer](../../host_app/ui_designer/README.md)が生成（`make ui-layout`） |
-| `src/ui/app_ui.cpp` | 画面の実行時状態とハンドラ。画面遷移、モデルの有効/無効、枠表示と信頼度しきい値、ステータスラベルの更新 |
+| `src/ui/app_ui.cpp` | 画面の実行時状態とハンドラ。画面遷移、モデル・AI露出の有効/無効、枠表示と信頼度しきい値、ステータスラベルの更新 |
 | `src/task/model_control.hpp` | モデルマスクとパイプライン統計のインターフェース。`PipelineTask`が実装し、UIが参照 |
 | `kernel/middleware/foundation/error_code.hpp` | ログ・OS非依存のエラーコードとコード名 |
 | `kernel/middleware/foundation/error.hpp` | ログ・OS非依存のエラー構造体と判定。`LogStatus()`の実装は`error.cpp`に配置 |

@@ -71,6 +71,7 @@ void AppUi::Initialize()
     min_confidence_percent_ = Menu().Sliders().Value(Id(WidgetId::kMinConfidence));
     status_period_ms_ = static_cast<std::uint32_t>(Menu().Dials().Value(Id(WidgetId::kStatusPeriod)));
     Menu().Buttons().SetChecked(Id(WidgetId::kToggleBoxes), show_boxes_);
+    Menu().Buttons().SetChecked(Id(WidgetId::kAiExposure), ai_exposure_enabled_);
     SyncModelWidgets();
 }
 
@@ -147,6 +148,14 @@ void AppUi::OnToggleBoxesTap(const ui::Event &)
     ToggleBoxes();
 }
 
+void AppUi::OnAiExposureTap(const ui::Event &)
+{
+    ai_exposure_enabled_ = task::kAiExposureControl && !ai_exposure_enabled_;
+    Menu().Buttons().SetChecked(Id(WidgetId::kAiExposure), ai_exposure_enabled_);
+    last_stats_tick_ = 0U;
+    UAI_LOG_INFO("ui: ai exposure=%s\n", ai_exposure_enabled_ ? "on" : "off");
+}
+
 void AppUi::ToggleBoxes()
 {
     show_boxes_ = !show_boxes_;
@@ -214,7 +223,7 @@ void AppUi::UpdateStatus(
     }
     Main().Labels().SetText(Id(WidgetId::kStatus), status);
     if (exposure != nullptr) {
-        exposure_control::Controller::Format(*exposure, status, sizeof(status));
+        exposure_control::Controller::Format(*exposure, status, sizeof(status), ai_exposure_enabled_);
     } else {
         std::snprintf(status, sizeof(status), "AI AE OFF");
     }

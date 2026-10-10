@@ -21,9 +21,16 @@ public:
     template <typename Camera>
     common::Error Process(
         Camera &camera,
-        std::uint32_t now
+        std::uint32_t now,
+        bool enabled = true
     )
     {
+        if (enabled_ != enabled) {
+            enabled_ = enabled;
+            have_tick_ = false;
+            if (!enabled)
+                controller_ = Controller{};
+        }
         if (have_tick_ && now - last_tick_ < 250U)
             return {};
         have_tick_ = true;
@@ -46,6 +53,11 @@ public:
         mapping.vertical = geometry.vertical;
         controller_.Step(now, mapping);
         const auto &requested = controller_.DisplayValues().requested;
+        if (!enabled && !state.auto_exposure) {
+            status = camera.AutoExposure(true);
+            if (status.Ok())
+                status = camera.ReadState(&state);
+        }
         if (state.auto_exposure
             && (requested.x != state.statistics.x || requested.y != state.statistics.y
                 || requested.width != state.statistics.width || requested.height != state.statistics.height)) {
@@ -70,6 +82,7 @@ private:
     Controller controller_;
     std::uint32_t last_tick_ = 0;
     bool have_tick_ = false;
+    bool enabled_ = true;
 };
 
 }

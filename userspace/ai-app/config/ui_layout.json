@@ -74,6 +74,12 @@
                     "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}
         },
         {
+          "type": "button", "id": "ai_exposure", "label": "AI EXPOSURE", "shape": "rounded", "on_tap": "OnAiExposureTap",
+          "x": 24, "y": 240, "width": 352, "height": 48,
+          "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#008C78",
+                    "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}
+        },
+        {
           "type": "label", "id": "visualization_caption", "text": "VISUALIZATION",
           "x": 424, "y": 96, "width": 352, "height": 32,
           "style": {"text": "#FFFFFF", "fill": null, "text_scale": 3, "align": "left", "padding": 0}

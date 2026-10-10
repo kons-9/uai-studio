@@ -129,13 +129,17 @@ public:
     static void Format(
         const Values &values,
         char *text,
-        std::size_t capacity
+        std::size_t capacity,
+        bool enabled = true
     )
     {
         if (values.error_code != 0) {
             std::snprintf(text, capacity, "AE ERROR %u", static_cast<unsigned int>(values.error_code));
         } else if (!values.available) {
-            std::snprintf(text, capacity, "AE WAITING");
+            std::snprintf(text, capacity, "%s", enabled ? "AE WAITING" : "AI AE OFF");
+        } else if (!enabled) {
+            std::snprintf(text, capacity, "AI AE OFF %ldus %ldmdB",
+                static_cast<long>(values.exposure_us), static_cast<long>(values.gain_mdB));
         } else {
             const char *source = values.source == Source::kFace ? "FACE"
                 : values.source == Source::kPerson              ? "PERSON"

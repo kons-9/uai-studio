@@ -303,6 +303,37 @@ TEST(
     EXPECT_FALSE(ui.ShowBoxes());
 }
 
+TEST(AiAppUi, AiExposureToggleIsIndependentFromInferenceOverlay)
+{
+    FakeModels models;
+    uai::ai::app_ui::AppUi ui(models);
+    EXPECT_TRUE(ui.AiExposureEnabled());
+    Tap(ui, uai::ai::app_ui::WidgetId::kOpenMenu);
+    const auto sample = [&] {
+        const auto bounds = BoundsOf(uai::ai::app_ui::WidgetId::kAiExposure);
+        const auto pixels = PaintToPixels(ui);
+        return PixelAt(pixels, static_cast<std::uint16_t>(bounds.x + 6U), static_cast<std::uint16_t>(bounds.y + 6U));
+    };
+    EXPECT_EQ(sample(), ButtonOf(uai::ai::app_ui::WidgetId::kAiExposure).style.checked_fill);
+    Tap(ui, uai::ai::app_ui::WidgetId::kAiExposure);
+    EXPECT_FALSE(ui.AiExposureEnabled());
+    EXPECT_TRUE(ui.ShowBoxes());
+    EXPECT_EQ(sample(), ButtonOf(uai::ai::app_ui::WidgetId::kAiExposure).style.fill);
+    uai::ai::exposure_control::Values exposure{};
+    exposure.available = true;
+    exposure.auto_exposure = true;
+    exposure.exposure_us = 12000;
+    ui.UpdateStatus(1U, &exposure);
+    EXPECT_STREQ(ui.ExposureText(), "AI AE OFF 12000us 0mdB");
+    Tap(ui, uai::ai::app_ui::WidgetId::kToggleBoxes);
+    EXPECT_FALSE(ui.ShowBoxes());
+    EXPECT_FALSE(ui.AiExposureEnabled());
+    Tap(ui, uai::ai::app_ui::WidgetId::kAiExposure);
+    EXPECT_TRUE(ui.AiExposureEnabled());
+    ui.UpdateStatus(2U, &exposure);
+    EXPECT_STREQ(ui.ExposureText(), "AE FULL 12000us 0mdB");
+}
+
 TEST(
     AiAppUi,
     MenuNavigationAndSliders
@@ -418,6 +449,7 @@ TEST(
         std::int32_t last_value = 0;
         uai::ai::app_ui::ScreenId shown = uai::ai::app_ui::ScreenId::kMain;
         void OnToggleBoxesTap(const uai::ai::ui::Event &) { ++taps; }
+        void OnAiExposureTap(const uai::ai::ui::Event &) { ++taps; }
         void OnPersonTap(const uai::ai::ui::Event &) { ++taps; }
         void OnFaceTap(const uai::ai::ui::Event &) { ++taps; }
         void OnSegmentationTap(const uai::ai::ui::Event &) { ++taps; }
@@ -440,6 +472,10 @@ TEST(
     EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, tap));
     EXPECT_EQ(handlers.shown, uai::ai::app_ui::ScreenId::kMenu);
     EXPECT_EQ(handlers.taps, 0);
+
+    tap.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kAiExposure);
+    EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, tap));
+    EXPECT_EQ(handlers.taps, 1);
 
     uai::ai::ui::Event change{};
     change.type = uai::ai::ui::EventType::kChange;

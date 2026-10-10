@@ -174,6 +174,8 @@ TEST(
     char text[64]{};
     exposure_control::Controller::Format(controller.DisplayValues(), text, sizeof(text));
     EXPECT_STREQ(text, "AE FACE 12000us 3000mdB");
+    exposure_control::Controller::Format(controller.DisplayValues(), text, sizeof(text), false);
+    EXPECT_STREQ(text, "AI AE OFF 12000us 3000mdB");
     controller.Failed(7);
     exposure_control::Controller::Format(controller.DisplayValues(), text, sizeof(text));
     EXPECT_STREQ(text, "AE ERROR 7");
@@ -200,6 +202,11 @@ struct FakeCamera {
     common::Error GetGeometry(camera::Geometry *out)
     {
         *out = geometry;
+        return {};
+    }
+    common::Error AutoExposure(bool enabled)
+    {
+        state.auto_exposure = enabled;
         return {};
     }
     common::Error Statistics(camera::Rect rectangle)
@@ -248,5 +255,26 @@ TEST(
     camera.state.statistics = {0, 0, 2000, 1200};
     EXPECT_TRUE(runtime.Process(camera, 500).Ok());
     EXPECT_EQ(camera.writes, 2U);
+}
+
+TEST(ExposureRuntime, DisablingRestoresFullFrameAndForgetsOldResults)
+{
+    exposure_control::Runtime runtime;
+    FakeCamera camera;
+    runtime.Observe(Face(), 0);
+    ASSERT_TRUE(runtime.Process(camera, 0).Ok());
+    EXPECT_LT(camera.state.statistics.width, camera.state.sensor_width);
+
+    camera.state.auto_exposure = false;
+    ASSERT_TRUE(runtime.Process(camera, 1, false).Ok());
+    EXPECT_TRUE(camera.state.auto_exposure);
+    EXPECT_EQ(camera.state.statistics.width, camera.state.sensor_width);
+    EXPECT_EQ(runtime.DisplayValues().source, exposure_control::Source::kFullFrame);
+
+    ASSERT_TRUE(runtime.Process(camera, 2, true).Ok());
+    EXPECT_EQ(runtime.DisplayValues().source, exposure_control::Source::kFullFrame);
+    runtime.Observe(Face(2), 3);
+    ASSERT_TRUE(runtime.Process(camera, 252, true).Ok());
+    EXPECT_EQ(runtime.DisplayValues().source, exposure_control::Source::kFace);
 }
 }

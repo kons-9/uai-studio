@@ -396,6 +396,7 @@ void CameraRenderTask::Run(CameraRenderContext context)
     std::uint32_t next_inference = common::Task::Now() + kInferencePeriod;
 
     app_ui::AppUi screen_ui(context.pipeline_task);
+    bool previous_exposure_enabled = screen_ui.AiExposureEnabled();
     std::uint32_t next_touch_poll = common::Task::Now();
     UAI_LOG_INFO(
         "ui: touch=%s screens=%u\n",
@@ -490,14 +491,17 @@ void CameraRenderTask::Run(CameraRenderContext context)
 
             const std::uint32_t now = common::Task::Now();
             if constexpr (kAiExposureControl) {
-                const auto exposure_results =
-                    context.pipeline_task.ConsumeExposureResults([&](const inference::BoxSet &result) {
-                        exposure.Observe(result, now);
+                const bool ai_exposure_enabled = screen_ui.AiExposureEnabled();
+                const auto exposure_results = context.pipeline_task.ConsumeExposureResults(
+                    [&](const inference::BoxSet &result) {
+                        if (ai_exposure_enabled && previous_exposure_enabled)
+                            exposure.Observe(result, now);
                     });
+                previous_exposure_enabled = ai_exposure_enabled;
                 if (!exposure_results.error.Ok() && exposure_results.error.Code() != common::ErrorCode::kNoFrame)
                     exposure_results.error.LogStatus("exposure-results");
                 const auto previous_area = exposure.DisplayValues().applied;
-                const auto exposure_status = exposure.Process(context.camera, now);
+                const auto exposure_status = exposure.Process(context.camera, now, ai_exposure_enabled);
                 const auto &values = exposure.DisplayValues();
                 if (exposure_status.Ok() && values.available
                     && (previous_area.x != values.applied.x || previous_area.y != values.applied.y

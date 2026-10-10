@@ -8,6 +8,7 @@
 #include "middleware/ui/touch_point.hpp"
 #include "middleware/ui/widget.hpp"
 #include "task/model_control.hpp"
+#include "task/task_config.hpp"
 #include "ui/ui_layout.hpp"
 #include "exposure_control/controller.hpp"
 
@@ -51,6 +52,7 @@ public:
     inference::BoxSet VisibleBoxes(const inference::BoxSet &latest) const;
 
     bool ShowBoxes() const { return show_boxes_; }
+    bool AiExposureEnabled() const { return ai_exposure_enabled_; }
     std::int32_t MinConfidencePercent() const { return min_confidence_percent_; }
     const char *StatusText() const;
     const char *ExposureText() const
@@ -64,6 +66,7 @@ public:
     void OnFaceTap(const ui::Event &event);
     void OnSegmentationTap(const ui::Event &event);
     void OnToggleBoxesTap(const ui::Event &event);
+    void OnAiExposureTap(const ui::Event &event);
     void OnMinConfidenceChange(const ui::Event &event);
     void OnStatusPeriodChange(const ui::Event &event);
 
@@ -95,6 +98,7 @@ private:
     ui::Screen screens_[kScreenCount];
     std::size_t current_ = static_cast<std::size_t>(ScreenId::kMain);
     bool show_boxes_ = true;
+    bool ai_exposure_enabled_ = task::kAiExposureControl;
     std::int32_t min_confidence_percent_ = 0;
     std::uint32_t status_period_ms_ = 500U;
     task::PipelineStats last_stats_{};
