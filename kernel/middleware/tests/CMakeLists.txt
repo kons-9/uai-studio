@@ -49,6 +49,13 @@ add_subdirectory("${UAI_ROOT}/kernel/driver/lcd_driver/tests" lcd_driver)
 add_subdirectory("${UAI_ROOT}/kernel/driver/touch_driver/tests" touch_driver)
 add_subdirectory("${UAI_ROOT}/kernel/driver/peripheral_driver/tests" peripheral_driver)
 
+uai_add_host_test(exposure_control_test
+    "${UAI_ROOT}/userspace/ai-app/tests/exposure_control_test.cpp"
+)
+target_include_directories(exposure_control_test BEFORE PRIVATE
+    "${UAI_ROOT}/userspace/ai-app/src"
+)
+
 uai_add_host_test(frame_channels_test
     "${UAI_ROOT}/kernel/middleware/foundation/error.cpp"
     "${UAI_ROOT}/kernel/middleware/memory_manager/memory_manager.cpp"

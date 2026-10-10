@@ -16,6 +16,7 @@ inline constexpr std::uint32_t kInferencePeriod = 0U;
 /* GT911 state is read over I2C; 10 ms keeps taps responsive without adding
  * bus traffic on every 1 ms camera-task iteration. */
 inline constexpr std::uint32_t kTouchPollPeriod = 10U;
+inline constexpr bool kAiExposureControl = true;
 
 enum class InferenceMode : std::uint8_t {
     kDisabled,

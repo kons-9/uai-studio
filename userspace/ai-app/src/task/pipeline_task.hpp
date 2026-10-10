@@ -50,6 +50,16 @@ public:
 
     common::Error PublishLatest(const inference::BoxSet &boxes) { return channel_.SendReplacingOldestOnce(boxes); }
 
+    template <typename Consumer>
+    message_channel::DrainResult Consume(Consumer consumer)
+    {
+        inference::BoxSet latest{};
+        return channel_.DrainLatest(&latest, [&](const inference::BoxSet &boxes) {
+            consumer(boxes);
+            return true;
+        });
+    }
+
     message_channel::DrainResult DrainLatest(inference::BoxSet *active)
     {
         return channel_.DrainLatest(active, [](const inference::BoxSet &boxes) {
@@ -118,8 +128,15 @@ public:
     void StartNpu(middleware::cpu_task_monitor::CpuTaskMonitor &monitor);
     void StartPostprocess(middleware::cpu_task_monitor::CpuTaskMonitor &monitor);
     InferenceFrameChannel &InferenceFrames() { return inference_frames_; }
-    common::Error CreateResultQueue() { return results_.Create(); }
+    common::Error CreateResultQueue()
+    {
+        auto status = results_.Create();
+        return status.Ok() ? exposure_results_.Create() : status;
+    }
     common::Error PublishResult(const inference::BoxSet &boxes) { return results_.PublishLatest(boxes); }
+    common::Error PublishExposureResult(const inference::BoxSet &boxes) { return exposure_results_.PublishLatest(boxes); }
+    template <typename Consumer>
+    message_channel::DrainResult ConsumeExposureResults(Consumer consumer) { return exposure_results_.Consume(consumer); }
     message_channel::DrainResult TryGetLatestResult(inference::BoxSet *active) { return results_.DrainLatest(active); }
     void SetModelMask(std::uint8_t mask) override
     {
@@ -132,6 +149,7 @@ private:
     explicit PipelineTask(memory_manager::MemoryManager &memory) : inference_frames_(memory) {}
     InferenceFrameChannel inference_frames_;
     InferenceResultChannel results_;
+    InferenceResultChannel exposure_results_;
     std::atomic<std::uint8_t> model_mask_{kAllModelsMask};
     common::StableAlignedBytes<kPipelineTaskStackSize> frame_stack_;
     common::StableAlignedBytes<kPipelineTaskStackSize> preprocess_stack_;

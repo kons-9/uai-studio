@@ -20,6 +20,25 @@ struct FakeModels final : public uai::ai::task::ModelControl {
     uai::ai::task::PipelineStats Stats() const override { return stats; }
 };
 
+TEST(AppUiExposure, DisplaysControllerReadbackAndFailure)
+{
+    FakeModels models;
+    uai::ai::app_ui::AppUi ui(models);
+    uai::ai::exposure_control::Values values{};
+    values.source = uai::ai::exposure_control::Source::kFace;
+    values.available = true;
+    values.auto_exposure = true;
+    values.exposure_us = 12000;
+    values.gain_mdB = 3000;
+    ui.UpdateStatus(100, &values);
+    EXPECT_STREQ(ui.ExposureText(), "AE FACE 12000us 3000mdB");
+    values.error_code = 7;
+    ui.UpdateStatus(1000, &values);
+    EXPECT_STREQ(ui.ExposureText(), "AE ERROR 7");
+    ui.UpdateStatus(2000);
+    EXPECT_STREQ(ui.ExposureText(), "AI AE OFF");
+}
+
 uai::ai::ui::Rect BoundsOf(uai::ai::app_ui::WidgetId id)
 {
     const std::uint16_t wanted = static_cast<std::uint16_t>(id);
@@ -172,6 +191,7 @@ TEST(
     FakeModels models;
     uai::ai::app_ui::AppUi ui(models);
     const auto header = BoundsOf(uai::ai::app_ui::WidgetId::kStatus);
+    const auto exposure = BoundsOf(uai::ai::app_ui::WidgetId::kExposureStatus);
     const auto menu_button = BoundsOf(uai::ai::app_ui::WidgetId::kOpenMenu);
     const std::uint16_t camera_pixel = 0x07e0U;
     const auto pixels = PaintToPixels(ui, camera_pixel);
@@ -180,12 +200,13 @@ TEST(
     EXPECT_EQ(header.y, 0U);
     EXPECT_EQ(header.x + header.width, menu_button.x);
     EXPECT_EQ(menu_button.y, 0U);
-    EXPECT_EQ(menu_button.height, header.height);
+    EXPECT_EQ(exposure.y, header.height);
+    EXPECT_EQ(menu_button.height, header.height + exposure.height);
     EXPECT_EQ(menu_button.x + menu_button.width, uai::ai::app_ui::kScreenWidth);
     for (std::uint16_t column = 0U; column < uai::ai::app_ui::kScreenWidth; ++column) {
         EXPECT_EQ(PixelAt(pixels, column, 0U), 0x0000U);
     }
-    const auto camera_start = pixels.begin() + static_cast<std::size_t>(header.height) * uai::ai::app_ui::kScreenWidth;
+    const auto camera_start = pixels.begin() + static_cast<std::size_t>(menu_button.height) * uai::ai::app_ui::kScreenWidth;
     EXPECT_EQ(std::count(camera_start, pixels.end(), camera_pixel), pixels.end() - camera_start);
 
     for (const auto id :

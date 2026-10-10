@@ -74,7 +74,7 @@ Result Run(const Context &context);
 
 GPDMA/HPDMAの現在の対象は内部SRAMであり、PSRAM転送、リンクリスト、実割り込み経路の検査はまだ含まない。RNG検査はエラーと固定出力の検出であり、統計的な乱数品質の証明ではない。RTCは通常アプリの時刻を保存・復元する試験ではなく、専用アプリのカレンダーを書き換える。
 
-[04の棚卸し](../../tmp/plans/04-hardware-drivers.md)と[09のHW試験項目](../../tmp/plans/09-hw-unit-tests.md)を参考にするが、計画のdriver依存構成やホストテスト配置は採用しない。ADC、LPTIM、暗号、watchdog、JPEG/VENC等の実行本体は含まない。
+[HWの残作業](../../tmp/plans/03-hardware.md)と[hw-testの試験項目](../hw-test/README.md)を参考にするが、共有driver依存構成やホストテスト配置は採用しない。ADC、LPTIM、暗号、watchdog、JPEG/VENC等の実行本体は含まない。
 
 ## 外部機器のコンパイル拒否
 

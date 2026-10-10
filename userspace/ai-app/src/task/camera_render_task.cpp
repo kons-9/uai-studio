@@ -19,6 +19,7 @@
 #include "task/task_context.hpp"
 #include "ui/app_ui.hpp"
 #include "ui/ui_layout.hpp"
+#include "exposure_control/runtime.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
@@ -390,6 +391,8 @@ void CameraRenderTask::Run(CameraRenderContext context)
     );
 
     inference::BoxSet active_boxes = initial;
+    exposure_control::Runtime exposure;
+    std::uint32_t last_exposure_error_tick = 0;
     std::uint32_t next_inference = common::Task::Now() + kInferencePeriod;
 
     app_ui::AppUi screen_ui(context.pipeline_task);
@@ -486,7 +489,29 @@ void CameraRenderTask::Run(CameraRenderContext context)
             }
 
             const std::uint32_t now = common::Task::Now();
-            screen_ui.UpdateStatus(now);
+            if constexpr (kAiExposureControl) {
+                const auto exposure_results = context.pipeline_task.ConsumeExposureResults(
+                    [&](const inference::BoxSet &result) { exposure.Observe(result, now); });
+                if (!exposure_results.error.Ok() && exposure_results.error.Code() != common::ErrorCode::kNoFrame)
+                    exposure_results.error.LogStatus("exposure-results");
+                const auto previous_area = exposure.DisplayValues().applied;
+                const auto exposure_status = exposure.Process(context.camera, now);
+                const auto &values = exposure.DisplayValues();
+                if (exposure_status.Ok() && values.available && (previous_area.x != values.applied.x
+                    || previous_area.y != values.applied.y || previous_area.width != values.applied.width
+                    || previous_area.height != values.applied.height)) {
+                    UAI_LOG_INFO("exposure: source=%u area=%u/%u/%u/%u exposure_us=%d gain_mdB=%d ae=%u\n",
+                        static_cast<unsigned int>(values.source), static_cast<unsigned int>(values.applied.x),
+                        static_cast<unsigned int>(values.applied.y), static_cast<unsigned int>(values.applied.width),
+                        static_cast<unsigned int>(values.applied.height), static_cast<int>(values.exposure_us),
+                        static_cast<int>(values.gain_mdB), static_cast<unsigned int>(values.auto_exposure));
+                }
+                if (!exposure_status.Ok() && (last_exposure_error_tick == 0 || now - last_exposure_error_tick >= 1000)) {
+                    exposure_status.LogStatus("exposure");
+                    last_exposure_error_tick = now;
+                }
+            }
+            screen_ui.UpdateStatus(now, kAiExposureControl ? &exposure.DisplayValues() : nullptr);
             if (context.touch_ready && static_cast<std::int32_t>(now - next_touch_poll) >= 0) {
                 next_touch_poll = now + kTouchPollPeriod;
                 ui::TouchPoint sample{};

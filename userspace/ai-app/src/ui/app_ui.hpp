@@ -9,6 +9,7 @@
 #include "middleware/ui/widget.hpp"
 #include "task/model_control.hpp"
 #include "ui/ui_layout.hpp"
+#include "exposure_control/controller.hpp"
 
 namespace uai::ai::app_ui {
 
@@ -39,7 +40,7 @@ public:
     ui::Event HandleTouch(const ui::TouchPoint &sample);
 
     /* Refreshes the status labels at most once per StatusPeriod(). */
-    void UpdateStatus(std::uint32_t now_ms);
+    void UpdateStatus(std::uint32_t now_ms, const exposure_control::Values *exposure = nullptr);
     std::uint32_t StatusPeriod() const { return status_period_ms_; }
 
     /* Boxes to draw: hides disabled models, low-confidence boxes, and
@@ -49,6 +50,7 @@ public:
     bool ShowBoxes() const { return show_boxes_; }
     std::int32_t MinConfidencePercent() const { return min_confidence_percent_; }
     const char *StatusText() const;
+    const char *ExposureText() const { return Main().Labels().Text(static_cast<std::uint16_t>(WidgetId::kExposureStatus)); }
 
     /* Handlers bound in config/ui_layout.json. */
     void ShowScreen(ScreenId screen);

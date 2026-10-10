@@ -9,8 +9,13 @@
       "widgets": [
         {
           "type": "label", "id": "status", "text": "AI STARTING",
-          "x": 0, "y": 0, "width": 736, "height": 64,
-          "style": {"text": "#FFFFFF", "fill": "#000000", "text_scale": 2, "align": "left", "padding": 16}
+          "x": 0, "y": 0, "width": 736, "height": 32,
+          "style": {"text": "#FFFFFF", "fill": "#000000", "text_scale": 2, "align": "left", "padding": 4}
+        },
+        {
+          "type": "label", "id": "exposure_status", "text": "AE WAITING",
+          "x": 0, "y": 32, "width": 736, "height": 32,
+          "style": {"text": "#FFFFFF", "fill": "#000000", "text_scale": 2, "align": "left", "padding": 4}
         },
         {
           "type": "button", "id": "open_menu", "label": "", "icon": "menu", "navigate": "menu",

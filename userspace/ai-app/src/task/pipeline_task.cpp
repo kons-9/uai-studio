@@ -391,6 +391,7 @@ void PublishBoxes(
     application.last_capture_sequence = boxes.capture_sequence;
     const common::Error publish_status = task.pipeline_task.PublishResult(boxes);
     publish_status.LogStatus("results");
+    task.pipeline_task.PublishExposureResult(source).LogStatus("exposure-results");
     application.Report(task);
 }
 

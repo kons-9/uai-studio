@@ -165,7 +165,7 @@ void AppUi::OnStatusPeriodChange(const ui::Event &event)
     UAI_LOG_INFO("ui: status period=%u ms\n", static_cast<unsigned int>(status_period_ms_));
 }
 
-void AppUi::UpdateStatus(std::uint32_t now_ms)
+void AppUi::UpdateStatus(std::uint32_t now_ms, const exposure_control::Values *exposure)
 {
     if (last_stats_tick_ != 0U && now_ms - last_stats_tick_ < status_period_ms_) {
         return;
@@ -210,6 +210,12 @@ void AppUi::UpdateStatus(std::uint32_t now_ms)
         }
     }
     Main().Labels().SetText(Id(WidgetId::kStatus), status);
+    if (exposure != nullptr) {
+        exposure_control::Controller::Format(*exposure, status, sizeof(status));
+    } else {
+        std::snprintf(status, sizeof(status), "AI AE OFF");
+    }
+    Main().Labels().SetText(Id(WidgetId::kExposureStatus), status);
 
     last_stats_ = stats;
     last_stats_tick_ = now_ms;

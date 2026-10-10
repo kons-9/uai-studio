@@ -20,6 +20,20 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 - 推論の初期化に失敗してもカメラ表示は継続します。
 - 前処理、NPU、後処理の各タスクは`kernel/middleware/ai_runtime`のDispatcherを1つずつ持ちます。
 
+## 推論結果に応じた露出制御
+
+[src/exposure_control/controller.hpp](src/exposure_control/controller.hpp)が領域選択・履歴・座標変換と表示値の整形を担当し、[runtime.hpp](src/exposure_control/runtime.hpp)がカメラ設定の適用・読み戻しを担当します。`PipelineTask`は累積した表示用結果とは別に、今回の推論結果だけを専用キューへ送ります。`CameraRenderTask`が結果を消費し、同じタスクからカメラを操作します。
+
+- 顔、人物、segmentation前景の順に選び、顔・人物は最高信頼度の枠を1.5倍に拡張します。枠は800x480の表示座標、マスクは正方形入力の座標としてセンサ領域へ変換します。
+- モデルごとに最後の有効な結果を保持します。空の結果では期限を延長せず、最後の被写体から1秒後に次の候補または全画面へ戻ります。小さな領域変化は抑制します。
+- 設定と読み戻しは250ms間隔です。手動露出中は統計領域を操作せず、設定失敗とカメラ復旧後の設定消失は次回に再試行します。
+- LCD上端の2行目に制御対象・実測露出・ゲイン、またはエラーを表示します。要求領域と適用領域は別に保持し、要求値を実測値として表示しません。
+- 有効/無効は`src/task/task_config.hpp`の`kAiExposureControl`で選びます。既定は有効で、UIの枠表示ON/OFFとは独立です。手動のPI制御は追加していません。
+
+領域変更時はUARTに`exposure: source=... area=... exposure_us=... gain_mdB=... ae=...`を出します。sourceは0=全画面、1=顔、2=人物、3=前景です。
+
+ホスト確認は`cmake --build build/middleware-tests --target exposure_control_test frame_channels_test ui_layout_test`と対応するctestで行います。実機ではUARTを先に開き、起動とPipe1/2の開始に加え、領域変更・被写体消失時の全画面復帰・逆光での輝度改善・AWBへの影響・CPU時間と推論FPSを確認してください。ホストテストとARM構文チェックは実機確認を代替しません。
+
 ## モデル
 
 | モデル | 元モデル | 入力 | 重みのアドレス | command blobのアドレス |

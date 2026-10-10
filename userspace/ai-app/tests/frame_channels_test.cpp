@@ -161,6 +161,37 @@ TEST_F(
     EXPECT_EQ(active.model_sequence, 4U);
 }
 
+TEST_F(FrameChannelsTest, ExposureConsumerReceivesEachFreshModelAndEmptyResult)
+{
+    InferenceResultChannel channel;
+    ASSERT_TRUE(channel.Create().Ok());
+    inference::BoxSet face{};
+    face.capture_sequence = 1;
+    face.face_valid = true;
+    face.face.count = 1;
+    inference::BoxSet person{};
+    person.capture_sequence = 2;
+    person.person_valid = true;
+    inference::BoxSet empty{};
+    empty.capture_sequence = 3;
+    empty.face_valid = true;
+    ASSERT_TRUE(channel.PublishLatest(face).Ok());
+    ASSERT_TRUE(channel.PublishLatest(person).Ok());
+    ASSERT_TRUE(channel.PublishLatest(empty).Ok());
+    std::vector<std::uint32_t> sequences;
+    const auto drained = channel.Consume([&](const inference::BoxSet &result) {
+        sequences.push_back(result.capture_sequence);
+        if (result.capture_sequence == 2) {
+            EXPECT_FALSE(result.face_valid);
+        }
+        if (result.capture_sequence == 3) {
+            EXPECT_EQ(result.face.count, 0U);
+        }
+    });
+    EXPECT_TRUE(drained.error.Ok());
+    EXPECT_EQ(sequences, (std::vector<std::uint32_t>{1, 2, 3}));
+}
+
 TEST_F(
     FrameChannelsTest,
     ResultRetriesOnlyOnceOnOverflow

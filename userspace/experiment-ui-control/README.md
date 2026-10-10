@@ -85,7 +85,7 @@ ui stat
 
 [periodic.hpp](src/periodic.hpp)は時刻またはフレームsequenceを入力にする周期処理。skipは過去の期限を捨て、ちょうど現在の期限だけ実行する。latest-onlyは遅れても1回、catch-upは設定した上限まで実行し、超過は捨てて統計に加える。期限位相を維持する。入力間隔・遅延は2^31未満を前提とし、時刻とフレーム番号を同じインスタンスへ混在させない。runsは返した実行枠数であって、タスクの完了回数ではない。
 
-主対象は[06: 機能制約](../../tmp/plans/06-ui-feature-constraints.md)と、[05: UI結合](../../tmp/plans/05-ui-integration.md)の操作経路・適用失敗の扱い。[12: 周期処理](../../tmp/plans/12-frame-rate-scheduling.md)、[13: フレームと状態](../../tmp/plans/13-frame-state-structs.md)の結果保持・状態分類は付帯実験として残す。状態・UI・周期の変更を同時投入せず、一段ずつ比較する。
+主対象は[05: UI・機能制約の本番統合](../../tmp/plans/05-ui-integration.md)の操作経路・適用失敗の扱い。[12: フレーム処理・状態管理](../../tmp/plans/12-frame-rate-scheduling.md)の周期処理・結果保持・状態分類は付帯実験として残す。状態・UI・周期の変更を同時投入せず、一段ずつ比較する。
 
 既存middleware、ai-app、pre-kernel、共通ビルド設定は変更しない。既存UIには作業中の変更があるため、計画の「現状」をそのまま前提にせず、実装済み機能を確認して再利用する。既存のレイアウトや生成物を上書きしない。
 
