@@ -11,11 +11,7 @@ endif()
 set(BSP "${STM32CUBE_N6_DIR}/Drivers/BSP/STM32N6570-DK")
 set(COMPONENTS "${STM32CUBE_N6_DIR}/Drivers/BSP/Components")
 set(ISP "${STM32CUBE_N6_DIR}/Middlewares/ST/STM32_ISP_Library")
-set(CAMERA_RUNTIME "${CMAKE_CURRENT_SOURCE_DIR}/src/camera_runtime")
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
-if(NOT UAI_CAMERA_BOARD_APP STREQUAL APP_TARGET)
-    message(FATAL_ERROR "hw-test requires its own integrated camera board profile")
-endif()
 set(_memory_outputs
     "${UAI_GENERATED_INCLUDE_DIR}/middleware/memory/generated/static_memory_layout/key.hpp"
     "${UAI_GENERATED_INCLUDE_DIR}/middleware/memory/generated/static_memory_layout/raw.hpp"
@@ -32,22 +28,14 @@ add_custom_command(OUTPUT ${_memory_outputs}
         ${_memory_generator_sources}
     VERBATIM)
 add_custom_target(hw-test-memory-layout DEPENDS ${_memory_outputs})
-foreach(target uai-memory-layout uai-middleware uai-drivers uai-driver-overrides uai-driver-time-override)
+foreach(target uai-memory-layout uai-middleware uai-drivers uai-driver-overrides)
     add_dependencies(${target} hw-test-memory-layout)
 endforeach()
 add_executable(${TARGET_NAME}
     src/main.cpp
-    src/integration.cpp
+    src/tests/integration.cpp
     src/ui/display.cpp
-    src/camera_runtime/bsp_device.cpp
-    src/camera_runtime/isp_camera.cpp
-    src/camera_runtime/frame_events.c
-    src/camera_runtime/driver/camera_driver.cpp
-    src/camera_runtime/driver/frame_buffer.cpp
-    src/camera_runtime/driver/board/stm32n6570_discovery_camera.c
-    src/camera_runtime/driver/board/dcmipp_callbacks.c
-    src/camera_runtime/driver/board/irq_handlers.c
-    src/camera_runtime/driver/board/isp_core.c
+    src/tests/camera/buffers.cpp
     src/tests/suite.cpp
     src/tests/display_driver/test.cpp
     src/tests/rng_driver/test.cpp
@@ -62,19 +50,9 @@ add_executable(${TARGET_NAME}
     src/tests/nor_driver/test.cpp
     src/tests/dma2d_driver/test.cpp
     src/tests/dma2d_driver/suite.cpp
-    $<TARGET_OBJECTS:uai-driver-time-override>
-    "${BSP}/stm32n6570_discovery_lcd.c"
-    "${BSP}/stm32n6570_discovery_bus.c"
-    "${COMPONENTS}/imx335/imx335.c"
-    "${COMPONENTS}/imx335/imx335_reg.c"
-    "${COMPONENTS}/gt911/gt911.c"
-    "${COMPONENTS}/gt911/gt911_reg.c"
+    $<TARGET_OBJECTS:uai-driver-overrides>
     "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c.c"
     "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c_ex.c"
-    "${ISP}/isp/Src/isp_algo.c"
-    "${ISP}/isp/Src/isp_services.c"
-    "${COMPONENTS}/aps256xx/aps256xx.c"
-    "${COMPONENTS}/mx66uw1g45g/mx66uw1g45g.c"
     "${STM32CUBE_N6_DIR}/Utilities/Fonts/font12.c")
 
 foreach(selection SDMMC ETHERNET USB AUDIO EXTERNAL_INPUT)
@@ -98,11 +76,9 @@ endif()
 
 target_include_directories(${TARGET_NAME} BEFORE PRIVATE
     config
-    "${CAMERA_RUNTIME}/driver/board/include"
     "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Inc")
 target_include_directories(${TARGET_NAME} PRIVATE
     src
-    "${CAMERA_RUNTIME}"
     "${BSP}" "${COMPONENTS}/Common"
     "${COMPONENTS}/aps256xx" "${COMPONENTS}/mx66uw1g45g"
     "${COMPONENTS}/rk050hr18" "${COMPONENTS}/imx335" "${COMPONENTS}/gt911"
@@ -110,13 +86,6 @@ target_include_directories(${TARGET_NAME} PRIVATE
 target_compile_definitions(${TARGET_NAME} PRIVATE
     STM32N6570_DK STM32N6570_DK_DEVELOPMENT_MODE USE_HAL_DRIVER
     STM32N657xx USE_FULL_LL_DRIVER CPU_IN_SECURE_STATE)
-target_compile_definitions(${TARGET_NAME} PRIVATE
-    PIPE2_PIPE_DUAL=1 PIPE2_IMX335_MIPI891=0 PIPE2_BUFFER_PSRAM=0
-    PIPE2_CROP_NATIVE=0 PIPE2_CROP_INTEGER4=0 PIPE2_IMX335_TEST_PATTERN_MODE=-1)
-set_source_files_properties(src/camera_runtime/driver/board/stm32n6570_discovery_camera.c PROPERTIES COMPILE_DEFINITIONS
-    "HAL_DCMIPP_PIPE_VsyncEventCallback=camera_pipe2_bsp_HAL_DCMIPP_PIPE_VsyncEventCallback;HAL_DCMIPP_PIPE_FrameEventCallback=camera_pipe2_bsp_HAL_DCMIPP_PIPE_FrameEventCallback")
-set_source_files_properties(src/camera_runtime/driver/board/dcmipp_callbacks.c PROPERTIES COMPILE_DEFINITIONS
-    "HAL_DCMIPP_PIPE_VsyncEventCallback=experiment_original_vsync;HAL_DCMIPP_PIPE_FrameEventCallback=experiment_original_frame")
 if(NOT HWTEST_AUTORUN_TEST STREQUAL "")
     target_compile_definitions(${TARGET_NAME} PRIVATE HWTEST_AUTORUN_TEST="${HWTEST_AUTORUN_TEST}")
 endif()

@@ -1,7 +1,7 @@
 #include "suite.hpp"
-#include "integration.hpp"
+#include "tests/integration.hpp"
 
-namespace experiment::hwtest::tests {
+namespace uai::hwtest::tests {
 
 const Case cases[] = {
     {"display", display_driver::Run, false, 1000, "LTDC/LCD setup and RGB565 framebuffer readback"},

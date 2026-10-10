@@ -7,8 +7,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-extern uint8_t __sample_ai_display0_start__[];
-extern uint8_t __sample_ai_display1_start__[];
+extern uintptr_t uai_lcd_initial_framebuffer;
 #ifdef __cplusplus
 }
 #endif
@@ -16,13 +15,14 @@ extern uint8_t __sample_ai_display1_start__[];
 #define USE_COM_LOG 0U
 #define USE_BSP_COM_FEATURE 0U
 #define USE_FT5336_TS_CTRL 0U
+#define USE_GT911_TS_CTRL 1U
 #define USE_TS_GESTURE 0U
 #define USE_TS_MULTI_TOUCH 0U
 #define TS_TOUCH_NBR 1U
 #define BSP_TS_IT_PRIORITY 15U
 
-#define LCD_LAYER_0_ADDRESS ((uintptr_t)__sample_ai_display0_start__)
-#define LCD_LAYER_1_ADDRESS ((uintptr_t)__sample_ai_display1_start__)
+#define LCD_LAYER_0_ADDRESS uai_lcd_initial_framebuffer
+#define LCD_LAYER_1_ADDRESS uai_lcd_initial_framebuffer
 
 #define DEFAULT_AUDIO_IN_BUFFER_SIZE 2048U
 

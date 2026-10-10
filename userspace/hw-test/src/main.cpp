@@ -1,9 +1,11 @@
-#include "commands.hpp"
-#include "display_log.hpp"
+#include "tests/commands.hpp"
+#include "ui/display.hpp"
 #include "tests/suite.hpp"
-#include "integration.hpp"
-#include "camera_runtime/rx_queue.hpp"
-#include "camera_runtime/driver/frame_buffer.hpp"
+#include "tests/integration.hpp"
+#include "driver/console_driver/console_driver.hpp"
+#include "driver/board/time.hpp"
+#include "driver/cache_driver/cache_driver.hpp"
+#include "tests/camera/buffers.hpp"
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -20,9 +22,6 @@ extern "C" int printf(
 }
 
 extern "C" {
-#include <tm/tmonitor.h>
-#include "stm32n6xx_hal.h"
-void tm_com_init(void);
 volatile UW uai_systick_count;
 }
 
@@ -42,9 +41,8 @@ namespace {
 
 alignas(8) INT task_stack[16 * 1024 / sizeof(INT)];
 alignas(8) INT ui_stack[32 * 1024 / sizeof(INT)];
-ID worker_events = 0, ui_events = 0, uart_mutex = 0;
+ID worker_events = 0, ui_events = 0;
 std::atomic<bool> active{false}, cancelled{false};
-experiment::console::RxQueue received;
 char requested_test[49] = "all";
 bool allow_destructive = false;
 std::size_t selected_test = 0;
@@ -57,7 +55,7 @@ const char *SelectedName(std::size_t index)
     if (index == 1) {
         return "all-stress";
     }
-    return experiment::hwtest::tests::cases[index - 2].name;
+    return uai::hwtest::tests::cases[index - 2].name;
 }
 
 const char *SelectedLabel(std::size_t index)
@@ -68,7 +66,7 @@ const char *SelectedLabel(std::size_t index)
     if (index == 1) {
         return "ALL-STRESS";
     }
-    return experiment::hwtest::tests::cases[index - 2].name;
+    return uai::hwtest::tests::cases[index - 2].name;
 }
 
 void CaptureDiagnostic(
@@ -92,11 +90,7 @@ void CaptureDiagnostic(
 void FlushDiagnostic()
 {
 #if defined(HWTEST_AUTORUN_TEST)
-    SCB_CleanDCache_by_Addr(
-        reinterpret_cast<std::uint32_t *>(&hwtest_diagnostic_log),
-        static_cast<std::int32_t>(sizeof(hwtest_diagnostic_log))
-    );
-    __DSB();
+    (void)uai::ai::cache::CacheDriver::Clean(&hwtest_diagnostic_log, sizeof(hwtest_diagnostic_log));
 #endif
 }
 
@@ -106,26 +100,21 @@ void Write(
     std::size_t size
 )
 {
-    if (uart_mutex > 0) {
-        tk_loc_mtx(uart_mutex, TMO_FEVR);
-    }
+    uai::ai::console::ConsoleManagement::Accessor uart;
+    if (!uai::ai::console::ConsoleManagement::Instance().Acquire(&uart).Ok())
+        return;
     CaptureDiagnostic(text, size);
-    for (std::size_t index = 0; index < size; ++index) {
-        tm_putchar(static_cast<unsigned char>(text[index]));
-    }
-    if (uart_mutex > 0) {
-        tk_unl_mtx(uart_mutex);
-    }
+    (void)uart->Write(text, size, uart.Ownership());
 }
 
-const experiment::console::Writer output{nullptr, Write};
+const uai::hwtest::console::Writer output{nullptr, Write};
 
 void Trace(const char *line)
 {
     Write(nullptr, line, std::strlen(line));
     Write(nullptr, "\n", 1);
-    experiment::hwtest::display_log::Write(line);
-    experiment::hwtest::display_log::Write("\n");
+    uai::hwtest::display_log::Write(line);
+    uai::hwtest::display_log::Write("\n");
 }
 
 void OwnerWrite(
@@ -135,28 +124,28 @@ void OwnerWrite(
 )
 {
     Write(nullptr, text, size);
-    experiment::hwtest::display_log::Write(text);
+    uai::hwtest::display_log::Write(text);
 }
 
-experiment::console::Status Submit(
+uai::hwtest::console::Status Submit(
     void *,
     int count,
     const char *const *arguments,
-    const experiment::console::Writer &writer
+    const uai::hwtest::console::Writer &writer
 )
 {
-    using namespace experiment;
+    using namespace uai::hwtest;
     if (count == 2 && std::strcmp(arguments[1], "list") == 0) {
-        hwtest::Registry registry{
-            hwtest::tests::cases,
-            hwtest::tests::case_count,
-            {HAL_GetTick,
+        uai::hwtest::Registry registry{
+            uai::hwtest::tests::cases,
+            uai::hwtest::tests::case_count,
+            {uai::ai::driver::board::Milliseconds,
              [](std::uint32_t delay) {
                  tk_dly_tsk(delay);
              },
              Trace}
         };
-        return hwtest::Execute(&registry, count, arguments, writer);
+        return uai::hwtest::Execute(&registry, count, arguments, writer);
     }
     if (count == 2 && std::strcmp(arguments[1], "stop") == 0) {
         if (!active.load()) {
@@ -168,7 +157,7 @@ experiment::console::Status Submit(
     const bool all =
         count == 2 && (std::strcmp(arguments[1], "all") == 0 || std::strcmp(arguments[1], "all-stress") == 0);
     const bool single =
-        (count == 3 || count == 4) && std::strcmp(arguments[1], "run") == 0 && hwtest::ValidName(arguments[2]);
+        (count == 3 || count == 4) && std::strcmp(arguments[1], "run") == 0 && uai::hwtest::ValidName(arguments[2]);
     if ((!all && !single) || (count == 4 && std::strcmp(arguments[3], "allow-destructive") != 0)) {
         return console::Status::kInvalidArgument;
     }
@@ -182,45 +171,45 @@ experiment::console::Status Submit(
     return console::Status::kOk;
 }
 
-experiment::console::Status Control(
+uai::hwtest::console::Status Control(
     void *context,
     int count,
     const char *const *arguments,
-    const experiment::console::Writer &writer
+    const uai::hwtest::console::Writer &writer
 )
 {
     const bool read_only =
         count == 2 && (std::strcmp(arguments[1], "stat") == 0 || std::strcmp(arguments[1], "wb-list") == 0);
     if (active.load() && !read_only) {
-        return experiment::console::Status::kInvalidState;
+        return uai::hwtest::console::Status::kInvalidState;
     }
-    return experiment::hwtest::integrated::Control(context, count, arguments, writer);
+    return uai::hwtest::integrated::Control(context, count, arguments, writer);
 }
 
-experiment::console::Status Capture(
+uai::hwtest::console::Status Capture(
     void *context,
     int count,
     const char *const *arguments,
-    const experiment::console::Writer &writer
+    const uai::hwtest::console::Writer &writer
 )
 {
     if (active.load()) {
-        return experiment::console::Status::kInvalidState;
+        return uai::hwtest::console::Status::kInvalidState;
     }
-    return experiment::hwtest::integrated::Capture(context, count, arguments, writer);
+    return uai::hwtest::integrated::Capture(context, count, arguments, writer);
 }
 
-experiment::console::Status Frames(
+uai::hwtest::console::Status Frames(
     void *,
     int count,
     const char *const *,
-    const experiment::console::Writer &writer
+    const uai::hwtest::console::Writer &writer
 )
 {
     if (count != 1) {
-        return experiment::console::Status::kInvalidArgument;
+        return uai::hwtest::console::Status::kInvalidArgument;
     }
-    const auto state = experiment::hwtest::integrated::Observe();
+    const auto state = uai::hwtest::integrated::Observe();
     char line[128];
     std::snprintf(
         line,
@@ -233,7 +222,7 @@ experiment::console::Status Frames(
         unsigned(state.running)
     );
     writer.Write(line);
-    return experiment::console::Status::kOk;
+    return uai::hwtest::console::Status::kOk;
 }
 
 void TestTask(
@@ -241,10 +230,10 @@ void TestTask(
     void *
 )
 {
-    experiment::hwtest::Registry registry{
-        experiment::hwtest::tests::cases,
-        experiment::hwtest::tests::case_count,
-        {HAL_GetTick,
+    uai::hwtest::Registry registry{
+        uai::hwtest::tests::cases,
+        uai::hwtest::tests::case_count,
+        {uai::ai::driver::board::Milliseconds,
          [](std::uint32_t delay) {
              tk_dly_tsk(delay);
          },
@@ -253,22 +242,21 @@ void TestTask(
              return cancelled.load();
          },
          [](const char *name, unsigned current, unsigned total) {
-             experiment::hwtest::display_log::Progress(name, current, total);
+             uai::hwtest::display_log::Progress(name, current, total);
          }}
     };
     for (;;) {
         UINT pattern = 0;
         tk_wai_flg(worker_events, 1, TWF_ORW | TWF_BITCLR, &pattern, TMO_FEVR);
-        const auto expected_total = experiment::hwtest::CountSelected(
-            experiment::hwtest::tests::cases, experiment::hwtest::tests::case_count, requested_test
-        );
-        experiment::hwtest::display_log::Begin(expected_total);
+        const auto expected_total =
+            uai::hwtest::CountSelected(uai::hwtest::tests::cases, uai::hwtest::tests::case_count, requested_test);
+        uai::hwtest::display_log::Begin(expected_total);
         if (std::strcmp(requested_test, "all") == 0 || std::strcmp(requested_test, "all-stress") == 0) {
             const char *arguments[] = {"hwtest", requested_test};
-            experiment::hwtest::Execute(&registry, 2, arguments, output);
+            uai::hwtest::Execute(&registry, 2, arguments, output);
         } else {
             const char *arguments[] = {"hwtest", "run", requested_test, "allow-destructive"};
-            experiment::hwtest::Execute(&registry, allow_destructive ? 4 : 3, arguments, output);
+            uai::hwtest::Execute(&registry, allow_destructive ? 4 : 3, arguments, output);
         }
         FlushDiagnostic();
         active.store(false);
@@ -280,8 +268,8 @@ void UiTask(
     void *
 )
 {
-    using namespace experiment;
-    hwtest::integrated::Initialize({nullptr, OwnerWrite});
+    using namespace uai::hwtest;
+    uai::hwtest::integrated::Initialize({nullptr, OwnerWrite});
     const console::Command commands[] = {
         {"hwtest", "hwtest list|all|all-stress|run <name> [allow-destructive]|stop", Submit, nullptr},
         {"cam", "cam stat|ae|ev|manual|area|wb|wb-list", Control, nullptr},
@@ -289,10 +277,6 @@ void UiTask(
         {"frames", "frames", Frames, nullptr}
     };
     console::Shell shell(commands, sizeof(commands) / sizeof(commands[0]), output);
-    HAL_NVIC_SetPriority(USART1_IRQn, 14, 0);
-    HAL_NVIC_EnableIRQ(USART1_IRQn);
-    SET_BIT(USART1->CR1, USART_CR1_RXNEIE_RXFNEIE | USART_CR1_PEIE);
-    SET_BIT(USART1->CR3, USART_CR3_EIE);
     output.Write("HWTEST READY\n> ");
 #if defined(HWTEST_AUTORUN_TEST)
     const char *group_arguments[] = {"hwtest", HWTEST_AUTORUN_TEST};
@@ -304,25 +288,25 @@ void UiTask(
     }
 #endif
     for (;;) {
-        hwtest::integrated::Service();
-        const auto observation = hwtest::integrated::Observe();
-        const bool display_was_ready = hwtest::display_log::Ready();
-        const auto action = hwtest::display_log::Process(
-            reinterpret_cast<const std::uint16_t *>(uai::camera_pipe2::driver::MainPipeFrameBuffer()),
-            reinterpret_cast<const std::uint16_t *>(uai::camera_pipe2::driver::AncillaryPipeFrameBuffer()),
-            hwtest::integrated::Touch(),
+        uai::hwtest::integrated::Service();
+        const auto observation = uai::hwtest::integrated::Observe();
+        const bool display_was_ready = uai::hwtest::display_log::Ready();
+        const auto action = uai::hwtest::display_log::Process(
+            reinterpret_cast<const std::uint16_t *>(uai::hwtest::camera::MainPipeFrameBuffer()),
+            reinterpret_cast<const std::uint16_t *>(uai::hwtest::camera::AncillaryPipeFrameBuffer()),
+            uai::hwtest::integrated::Touch(),
             observation.pipe1,
             observation.pipe2,
             selected_test,
-            hwtest::tests::case_count + 2
+            uai::hwtest::tests::case_count + 2
         );
-        if (display_was_ready && !hwtest::display_log::Ready()) {
-            hwtest::integrated::DisplayFailure();
+        if (display_was_ready && !uai::hwtest::display_log::Ready()) {
+            uai::hwtest::integrated::DisplayFailure();
             output.Write("display: processing failed\n");
         }
-        if (action.kind == hwtest::display_log::ActionKind::kSelect) {
+        if (action.kind == uai::hwtest::display_log::ActionKind::kSelect) {
             selected_test = action.selection;
-        } else if (action.kind == hwtest::display_log::ActionKind::kRun) {
+        } else if (action.kind == uai::hwtest::display_log::ActionKind::kRun) {
             const char *arguments[] = {"hwtest", "run", SelectedName(selected_test)};
             const char *group_arguments[] = {"hwtest", SelectedName(selected_test)};
             const auto status =
@@ -330,17 +314,16 @@ void UiTask(
             if (status != console::Status::kOk) {
                 OwnerWrite(nullptr, "HWTEST BUSY\n", 12);
             }
-        } else if (action.kind == hwtest::display_log::ActionKind::kStop) {
+        } else if (action.kind == uai::hwtest::display_log::ActionKind::kStop) {
             cancelled.store(true);
         }
-        hwtest::display_log::Selection(SelectedLabel(selected_test));
+        uai::hwtest::display_log::Selection(SelectedLabel(selected_test));
         for (unsigned budget = 0; budget < 128; ++budget) {
-            char character = 0;
-            bool error = false;
-            if (!received.Pop(character, error)) {
+            uai::ai::console::Input input;
+            if (!uai::ai::console::ConsoleManagement::Instance().Read(&input).Ok()) {
                 break;
             }
-            shell.Feed(character, error);
+            shell.Feed(input.value, input.error);
         }
         UINT pattern = 0;
         tk_wai_flg(ui_events, 1, TWF_ORW | TWF_BITCLR, &pattern, 10);
@@ -349,64 +332,22 @@ void UiTask(
 
 }
 
-extern "C" void USART1_IRQHandler(void)
-{
-    for (unsigned budget = 0; budget < 64; ++budget) {
-        const auto flags = USART1->ISR;
-        if ((flags & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE | USART_ISR_PE)) != 0) {
-            USART1->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF | USART_ICR_PECF;
-            received.Error();
-            if ((flags & USART_ISR_RXNE_RXFNE) != 0) {
-                (void)USART1->RDR;
-            }
-            continue;
-        }
-        if ((flags & USART_ISR_RXNE_RXFNE) == 0) {
-            break;
-        }
-        received.Push(static_cast<char>(USART1->RDR & 0xffU));
-    }
-    tk_set_flg(ui_events, 1);
-}
-
-extern "C" void experiment_frame_wake(void)
-{
-    if (ui_events > 0) {
-        tk_set_flg(ui_events, 1);
-    }
-}
-
 extern "C" INT usermain(void)
 {
-    RCC_PeriphCLKInitTypeDef clock{};
-    clock.PeriphClockSelection = RCC_PERIPHCLK_USART1;
-    clock.Usart1ClockSelection = RCC_USART1CLKSOURCE_CLKP;
-    if (HAL_RCCEx_PeriphCLKConfig(&clock) != HAL_OK) {
-        return E_SYS;
-    }
-    __HAL_RCC_USART1_CLK_ENABLE();
-    __HAL_RCC_GPIOE_CLK_ENABLE();
-    GPIO_InitTypeDef gpio{};
-    gpio.Pin = GPIO_PIN_5 | GPIO_PIN_6;
-    gpio.Mode = GPIO_MODE_AF_PP;
-    gpio.Pull = GPIO_NOPULL;
-    gpio.Speed = GPIO_SPEED_FREQ_LOW;
-    gpio.Alternate = GPIO_AF7_USART1;
-    HAL_GPIO_Init(GPIOE, &gpio);
-    tm_com_init();
-
     T_CFLG flags{};
     flags.flgatr = TA_TFIFO;
     worker_events = tk_cre_flg(&flags);
     ui_events = tk_cre_flg(&flags);
-    T_CMTX mutex{};
-    mutex.mtxatr = TA_INHERIT;
-    uart_mutex = tk_cre_mtx(&mutex);
-    if (worker_events <= 0 || ui_events <= 0 || uart_mutex <= 0) {
+    if (worker_events <= 0 || ui_events <= 0) {
         return E_SYS;
     }
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    const auto uart = uai::ai::console::ConsoleManagement::Instance().Initialize({nullptr, [](void *) {
+                                                                                      if (ui_events > 0)
+                                                                                          tk_set_flg(ui_events, 1);
+                                                                                  }});
+    if (!uart.Ok() && uart.Code() != uai::ai::common::ErrorCode::kAlreadyInitialized)
+        return E_SYS;
+    uai::ai::driver::board::EnableCycleCounter();
 
     T_CTSK task{};
     task.tskatr = TA_HLNG | TA_USERBUF;

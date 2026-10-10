@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cstring>
 
-namespace experiment::hwtest {
+namespace uai::hwtest {
 
 class LogBuffer {
 public:

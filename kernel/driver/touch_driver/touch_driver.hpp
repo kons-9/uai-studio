@@ -3,6 +3,7 @@
 #include "middleware/foundation/error.hpp"
 #include "driver/driver_ownership.hpp"
 #include "middleware/ui/touch_point.hpp"
+#include "driver/touch_driver/registers/touch_registers.hpp"
 
 namespace uai::ai::touch {
 
@@ -20,6 +21,10 @@ public:
         ui::TouchPoint *sample,
         const Writer &writer
     );
+    common::Error ReadRaw(
+        ui::TouchPoint *sample,
+        const Writer &writer
+    );
 
 private:
     friend class TouchManagement;
@@ -27,6 +32,7 @@ private:
     ~TouchDriver() = default;
     common::Error Initialize();
     driver::ResourceManagement *management_;
+    registers::TouchRegisterLayer registers_{};
     bool initialized_ = false;
 };
 
@@ -59,6 +65,12 @@ public:
         Accessor a;
         auto s = Acquire(&a);
         return s.Ok() ? a.Get()->Read(sample, a.Ownership()) : s;
+    }
+    common::Error ReadRaw(ui::TouchPoint *sample)
+    {
+        Accessor accessor;
+        auto status = Acquire(&accessor);
+        return status.Ok() ? accessor.Get()->ReadRaw(sample, accessor.Ownership()) : status;
     }
     TouchManagement(const TouchManagement &) = delete;
     TouchManagement &operator=(const TouchManagement &) = delete;

@@ -1,7 +1,7 @@
 #include "tests/memory_patterns.hpp"
 #include "driver/psram_driver/psram_driver.hpp"
 
-namespace experiment::hwtest::tests::psram_driver {
+namespace uai::hwtest::tests::psram_driver {
 namespace {
 alignas(32) __attribute__((section(".experiment_scratch"))) std::uint8_t scratch[4096];
 }

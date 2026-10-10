@@ -7,6 +7,7 @@
 #include "driver/driver_ownership.hpp"
 #include "middleware/pipeline/frame_types.hpp"
 #include "memory_manager/memory_manager.hpp"
+#include "driver/camera_driver/capture_configuration.hpp"
 
 namespace uai::ai::camera {
 
@@ -76,6 +77,51 @@ public:
         const Writer &writer
     );
     Diagnostics GetDiagnostics() const;
+    common::Error Recover(const Writer &writer);
+    common::Error Configure(
+        const Geometry &geometry,
+        const Writer &writer
+    );
+    common::Error GetGeometry(
+        Geometry *geometry,
+        const Writer &writer
+    ) const;
+    common::Error ReadState(
+        State *state,
+        const Writer &writer
+    ) const;
+    common::Error ApplyState(
+        const State &state,
+        const Writer &writer
+    );
+    common::Error AutoExposure(
+        bool enabled,
+        const Writer &writer
+    );
+    common::Error Compensation(
+        int half_stops,
+        const Writer &writer
+    );
+    common::Error Manual(
+        std::int32_t exposure_us,
+        std::int32_t gain_mdB,
+        const Writer &writer
+    );
+    common::Error Statistics(
+        Rect rectangle,
+        const Writer &writer
+    );
+    common::Error WhiteBalance(
+        std::uint32_t temperature,
+        const Writer &writer
+    );
+    common::Error ListWhiteBalance(
+        std::uint32_t *temperatures,
+        std::size_t capacity,
+        std::size_t *count,
+        const Writer &writer
+    ) const;
+    bool Running(const Writer &writer) const { return management_->Validate(writer).Ok() && started_; }
 
 private:
     friend class CameraManagement;
@@ -85,11 +131,20 @@ private:
         memory_manager::MemoryManager &memory,
         cache::CacheManagement &cache
     );
+    common::Error Initialize(const CaptureConfiguration &configuration);
+    common::Error InitializeExternalHardware();
+    common::Error StartExternal(const Writer &writer);
+    common::Error ValidateControl(const Writer &writer) const;
     driver::ResourceManagement *management_;
     memory_manager::MemoryManager *memory_ = nullptr;
     cache::CacheManagement *cache_ = nullptr;
     bool initialized_ = false;
     bool started_ = false;
+    bool external_capture_ = false;
+    CaptureConfiguration capture_{};
+    Rect pipe1_crop_{};
+    mutable State saved_controls_{};
+    mutable bool have_saved_controls_ = false;
 };
 
 class CameraManagement final {
@@ -108,6 +163,7 @@ public:
     {
         return driver_.Initialize(memory, cache);
     }
+    common::Error Initialize(const CaptureConfiguration &configuration) { return driver_.Initialize(configuration); }
     common::Error Acquire(
         Accessor *a,
         TMO timeout = TMO_FEVR
@@ -168,6 +224,84 @@ public:
         });
     }
     Diagnostics GetDiagnostics() const { return driver_.GetDiagnostics(); }
+    common::Error Recover()
+    {
+        return WithWriter([](CameraDriver &driver, const Writer &writer) {
+            return driver.Recover(writer);
+        });
+    }
+    common::Error Configure(const Geometry &geometry)
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.Configure(geometry, writer);
+        });
+    }
+    common::Error GetGeometry(Geometry *geometry)
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.GetGeometry(geometry, writer);
+        });
+    }
+    common::Error ReadState(State *state)
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.ReadState(state, writer);
+        });
+    }
+    common::Error ApplyState(const State &state)
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.ApplyState(state, writer);
+        });
+    }
+    common::Error AutoExposure(bool enabled)
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.AutoExposure(enabled, writer);
+        });
+    }
+    common::Error Compensation(int half_stops)
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.Compensation(half_stops, writer);
+        });
+    }
+    common::Error Manual(
+        std::int32_t exposure_us,
+        std::int32_t gain_mdB
+    )
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.Manual(exposure_us, gain_mdB, writer);
+        });
+    }
+    common::Error Statistics(Rect rectangle)
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.Statistics(rectangle, writer);
+        });
+    }
+    common::Error WhiteBalance(std::uint32_t temperature)
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.WhiteBalance(temperature, writer);
+        });
+    }
+    common::Error ListWhiteBalance(
+        std::uint32_t *temperatures,
+        std::size_t capacity,
+        std::size_t *count
+    )
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.ListWhiteBalance(temperatures, capacity, count, writer);
+        });
+    }
+    bool Running()
+    {
+        Accessor accessor;
+        return Acquire(&accessor).Ok() && accessor->Running(accessor.Ownership());
+    }
     CameraManagement(const CameraManagement &) = delete;
     CameraManagement &operator=(const CameraManagement &) = delete;
 

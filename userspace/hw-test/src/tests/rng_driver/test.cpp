@@ -1,7 +1,7 @@
-#include "hwtest.hpp"
+#include "tests/framework.hpp"
 #include "driver/peripheral_driver/peripheral_driver.hpp"
 
-namespace experiment::hwtest::tests::rng_driver {
+namespace uai::hwtest::tests::rng_driver {
 
 Result Run(const Context &)
 {

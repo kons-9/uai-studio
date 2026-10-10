@@ -5,7 +5,7 @@
 #include "middleware/foundation/error.hpp"
 #include "driver/driver_status.hpp"
 #include "driver/driver_ownership.hpp"
-#include "driver/lcd_driver/registers/lcd_registers.hpp"
+#include "driver/lcd_driver/display_driver.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "middleware/pipeline/frame_types.hpp"
 #include "memory_manager/memory_manager.hpp"
@@ -98,10 +98,9 @@ private:
         const pipeline::DisplayBuffer &buffer,
         const inference::BoxSet &boxes
     );
-    static common::Error FromBackend(uai::driver::DriverStatus status);
     memory_manager::MemoryManager *memory_ = nullptr;
     cache::CacheManagement *cache_ = nullptr;
-    registers::LcdRegisterLayer registers_{};
+    DisplayManagement &display_ = DisplayManagement::Instance();
     bool initialized_ = false;
     bool timing_diagnostics_ = false;
 };
@@ -208,7 +207,7 @@ private:
         auto s = Acquire(&a);
         return s.Ok() ? f(*a.Get(), a.Ownership()) : s;
     }
-    driver::ResourceManagement ownership_{};
+    driver::ResourceManagement &ownership_ = DisplayManagement::Instance().ownership_;
     LcdDriver driver_;
 };
 

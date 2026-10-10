@@ -1,7 +1,7 @@
-#include "hwtest.hpp"
+#include "tests/framework.hpp"
 #include "driver/peripheral_driver/peripheral_driver.hpp"
 
-namespace experiment::hwtest::tests::crc_driver {
+namespace uai::hwtest::tests::crc_driver {
 
 Result Run(const Context &)
 {

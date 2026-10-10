@@ -8,13 +8,14 @@ EXPECTED = {
     "HAL_Delay": "hal_time.c",
     "BSP_XSPI_NOR_Init": "stm32n6570_discovery_xspi.c",
     "BSP_XSPI_RAM_Init": "stm32n6570_discovery_xspi.c",
-    "HAL_DCMIPP_PIPE_VsyncEventCallback": "frame_events.c",
-    "HAL_DCMIPP_PIPE_FrameEventCallback": "frame_events.c",
-    "experiment_original_vsync": "dcmipp_callbacks.c",
-    "experiment_original_frame": "dcmipp_callbacks.c",
-    "USART1_IRQHandler": "main.cpp",
-    "CSI_IRQHandler": "irq_handlers.c",
-    "DCMIPP_IRQHandler": "irq_handlers.c",
+    "HAL_DCMIPP_PIPE_VsyncEventCallback": "dcmipp_callbacks.c",
+    "HAL_DCMIPP_PIPE_FrameEventCallback": "dcmipp_callbacks.c",
+    "BSP_CAMERA_FrameEventCallback": "camera_driver.cpp",
+    "AiCameraPipe2FrameEventCallback": "camera_driver.cpp",
+    "MX_DCMIPP_ClockConfig": "camera_driver.cpp",
+    "USART1_IRQHandler": "console_registers.cpp",
+    "CSI_IRQHandler": "camera_driver.cpp",
+    "DCMIPP_IRQHandler": "camera_driver.cpp",
 }
 
 SHARED = (
@@ -23,6 +24,14 @@ SHARED = (
     ("NorDriver4Read", "nor_driver.cpp"),
     ("ReadDisplayState", "lcd_registers.cpp"),
     ("CacheDriver15CleanInvalidate", "cache_driver.cpp"),
+    ("CameraDriver5StartERK", "camera_driver.cpp"),
+    ("CameraDriver7Recover", "camera_driver.cpp"),
+    ("CameraDriver9Configure", "camera_driver.cpp"),
+    ("IspControls4Read", "isp_controls.cpp"),
+    ("DisplayDriver7Present", "display_driver.cpp"),
+    ("TouchDriver7ReadRaw", "touch_driver.cpp"),
+    ("ConsoleDriver5Write", "console_driver.cpp"),
+    ("board12Milliseconds", "time.cpp"),
     ("2ui6Canvas8FillRect", "canvas.cpp"),
 )
 
@@ -55,7 +64,7 @@ def audit(symbols, map_text):
         ):
             raise ValueError(f"{symbol}: unexpected or missing map origin: {objects}")
         shared_source = source in {shared_source for _, shared_source in SHARED}
-        kernel_symbol = symbol in ("HAL_GetTick", "HAL_Delay", "BSP_XSPI_NOR_Init", "BSP_XSPI_RAM_Init", "npu_cache_enable")
+        kernel_symbol = symbol in EXPECTED or symbol == "npu_cache_enable"
         if (shared_source or kernel_symbol) and "kernel/" not in objects[0]:
             raise ValueError(f"{symbol}: implementation must come from kernel: {objects[0]}")
 

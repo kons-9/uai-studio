@@ -1,7 +1,11 @@
-#include "display_log.hpp"
+#include "ui/display.hpp"
 #include "ui/log_buffer.hpp"
 #include "ui/ui_layout.hpp"
 #include "tests/suite.hpp"
+#include "driver/lcd_driver/display_driver.hpp"
+#include "driver/lcd_driver/display_state.hpp"
+#include "driver/cache_driver/cache_driver.hpp"
+#include "driver/board/time.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -9,16 +13,13 @@
 #include <tk/tkernel.h>
 
 extern "C" {
-#include "stm32n6xx_hal.h"
-#include "stm32n6570_discovery_lcd.h"
-extern LTDC_HandleTypeDef hlcd_ltdc;
 alignas(32) std::uint16_t experiment_hwtest_display_framebuffer[800U * 480U]
     __attribute__((section(".display_frame_0")));
 alignas(32) std::uint16_t experiment_hwtest_display_backbuffer[800U * 480U]
     __attribute__((section(".display_frame_1")));
 }
 
-namespace experiment::hwtest::display_log {
+namespace uai::hwtest::display_log {
 namespace {
 namespace ui = uai::ai::ui;
 namespace layout = uai::ai::hwtest_layout;
@@ -46,7 +47,7 @@ const char *ChoiceName(std::size_t index)
     if (index == 1) {
         return "ALL-STRESS";
     }
-    return experiment::hwtest::tests::cases[index - 2].name;
+    return uai::hwtest::tests::cases[index - 2].name;
 }
 
 void KeepChoiceVisible(
@@ -105,8 +106,10 @@ void CopyCamera(
     if (!source) {
         return;
     }
-    SCB_InvalidateDCache_by_Addr(const_cast<std::uint16_t *>(source), 400 * 480 * 2);
-    __DSB();
+    if (!uai::ai::cache::CacheDriver::Invalidate(const_cast<std::uint16_t *>(source), 400 * 480 * 2).Ok()) {
+        ready = false;
+        return;
+    }
     for (unsigned row = 0; row < 480; ++row) {
         std::memcpy(destination + row * 800 + x, source + row * 400, 400 * sizeof(std::uint16_t));
     }
@@ -115,42 +118,26 @@ void CopyCamera(
 
 bool Initialize()
 {
-    __HAL_RCC_RIFSC_CLK_ENABLE();
-    RIMC_MasterConfig_t master{};
-    master.MasterCID = RIF_CID_1;
-    master.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV;
-    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC1, &master);
-    HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC2, &master);
-    for (const auto peripheral :
-         {RIF_RISC_PERIPH_INDEX_LTDC,
-          RIF_RISC_PERIPH_INDEX_LTDCL1,
-          RIF_RISC_PERIPH_INDEX_LTDCL2,
-          RIF_RCC_PERIPH_INDEX_CACHEAXIRAM,
-          RIF_RCC_PERIPH_INDEX_CACHECONFIG,
-          RIF_RCC_PERIPH_INDEX_AXISRAM1,
-          RIF_RCC_PERIPH_INDEX_AXISRAM2,
-          RIF_RCC_PERIPH_INDEX_FLEXRAM}) {
-        HAL_RIF_RISC_SetSlaveSecureAttributes(peripheral, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-    }
     T_CMTX mutex{};
     mutex.mtxatr = TA_INHERIT;
     log_mutex = tk_cre_mtx(&mutex);
-    if (log_mutex <= 0 || BSP_LCD_Init(0U, LCD_ORIENTATION_LANDSCAPE) != BSP_ERROR_NONE) {
+    if (log_mutex <= 0) {
         return false;
     }
     std::fill(Page(0), Page(0) + 800 * 480, 0);
     std::fill(Page(1), Page(1) + 800 * 480, 0);
-    SCB_CleanDCache_by_Addr(Page(0), 800 * 480 * 2);
-    SCB_CleanDCache_by_Addr(Page(1), 800 * 480 * 2);
-    BSP_LCD_LayerConfig_t layer{};
-    layer.Address = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(Page(0)));
-    layer.PixelFormat = LCD_PIXEL_FORMAT_RGB565;
-    layer.X1 = 800;
-    layer.Y1 = 480;
-    if (BSP_LCD_ConfigLayer(0, 0, &layer) != BSP_ERROR_NONE || BSP_LCD_SetLayerVisible(0, 1, DISABLE) != BSP_ERROR_NONE
-        || BSP_LCD_SetLayerVisible(0, 0, ENABLE) != BSP_ERROR_NONE || BSP_LCD_DisplayOn(0) != BSP_ERROR_NONE) {
+    auto &display = uai::ai::lcd::DisplayManagement::Instance();
+    const uai::ai::buffer::Buffer initial{
+        reinterpret_cast<std::uintptr_t>(Page(0)), uai::ai::lcd::kDisplayBytes, 0U, uai::ai::buffer::Region::kDisplay
+    };
+    const auto status = display.Initialize(initial);
+    if ((!status.Ok() && status.Code() != uai::ai::common::ErrorCode::kAlreadyInitialized)
+        || !display.Present(initial).Ok()) {
         return false;
     }
+    front = 1;
+    pending = true;
+    pending_begin = uai::ai::driver::board::Milliseconds();
     ready = true;
     return true;
 }
@@ -165,7 +152,7 @@ bool SelfTest()
 }
 std::uintptr_t FramebufferAddress()
 {
-    return hlcd_ltdc.LayerCfg[0].FBStartAdress;
+    return uai::ai::lcd::ReadDisplayState().framebuffer;
 }
 bool IsFramebuffer(std::uintptr_t address)
 {
@@ -293,8 +280,12 @@ Action Process(
     }
     touch_was_active = touch.active;
     if (pending) {
-        if ((LTDC->SRCR & LTDC_SRCR_VBR) != 0) {
-            if (HAL_GetTick() - pending_begin >= 1000) {
+        const auto status = uai::ai::lcd::DisplayManagement::Instance().Synchronize();
+        if (!status.Ok()) {
+            if (status.Code() != uai::ai::common::ErrorCode::kNoBuffer) {
+                ready = false;
+            }
+            if (uai::ai::driver::board::Milliseconds() - pending_begin >= 1000) {
                 ready = false;
             }
             return action;
@@ -337,7 +328,7 @@ Action Process(
             test_count,
             sizeof(test_count),
             "TESTS %u - SWIPE OR TAP",
-            static_cast<unsigned>(experiment::hwtest::tests::case_count)
+            static_cast<unsigned>(uai::hwtest::tests::case_count)
         );
         canvas.DrawText(12, 118, test_count, 1, ui::Rgb565(80, 220, 152));
         for (std::size_t row = 0; row < kChoiceVisible; ++row) {
@@ -355,7 +346,7 @@ Action Process(
             char choice[64];
             std::snprintf(choice, sizeof(choice), "%s", ChoiceName(index));
             if (index >= 2 && progress_total != 0
-                && std::strcmp(progress_name, experiment::hwtest::tests::cases[index - 2].name) == 0) {
+                && std::strcmp(progress_name, uai::hwtest::tests::cases[index - 2].name) == 0) {
                 std::snprintf(choice, sizeof(choice), "%s %u/%u", progress_name, progress_current, progress_total);
             }
             canvas.DrawText(16, y, choice, 1, index == selected ? 0xffff : ui::Rgb565(208, 220, 220));
@@ -391,7 +382,7 @@ Action Process(
     }
     static std::uint32_t fps_tick = 0, fps_first = 0, fps_second = 0;
     static unsigned first_fps = 0, second_fps = 0;
-    const auto now = HAL_GetTick();
+    const auto now = uai::ai::driver::board::Milliseconds();
     const auto elapsed = now - fps_tick;
     if (elapsed >= 1000) {
         first_fps = static_cast<unsigned>(std::uint64_t(first - fps_first) * 1000 / elapsed);
@@ -418,17 +409,18 @@ Action Process(
         };
         canvas.FillRect(targets[target], 0xffe0);
     }
-    SCB_CleanDCache_by_Addr(back, 800 * 480 * 2);
-    __DSB();
-    if (HAL_LTDC_SetAddress_NoReload(
-            &hlcd_ltdc, static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(back)), LTDC_LAYER_1
-        ) != HAL_OK
-        || HAL_LTDC_Reload(&hlcd_ltdc, LTDC_RELOAD_VERTICAL_BLANKING) != HAL_OK) {
+    const uai::ai::buffer::Buffer frame{
+        reinterpret_cast<std::uintptr_t>(back),
+        uai::ai::lcd::kDisplayBytes,
+        static_cast<std::uint8_t>(1 - front),
+        uai::ai::buffer::Region::kDisplay
+    };
+    if (!uai::ai::lcd::DisplayManagement::Instance().Present(frame).Ok()) {
         ready = false;
         return action;
     }
     pending = true;
-    pending_begin = HAL_GetTick();
+    pending_begin = uai::ai::driver::board::Milliseconds();
     return action;
 }
 

@@ -280,20 +280,10 @@ add_executable(${AI_APP_TARGET}
     src/ui/app_ui.cpp
     ${AI_INFERENCE_TASK_SOURCES}
     ${AI_MODEL_SOURCES}
-    # Project-owned ref-compatible BSP with a reset fallback for NOR left in
-    # OPI-DTR by the external loader.
-    "${AI_BSP_ROOT}/stm32n6570_discovery_bus.c"
-    "${AI_CUBE_ROOT}/Drivers/BSP/Components/imx335/imx335_reg.c"
-    "${AI_BSP_ROOT}/stm32n6570_discovery_lcd.c"
-    "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/isp/Src/isp_core.c"
-    "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/isp/Src/isp_algo.c"
-    "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/isp/Src/isp_services.c"
     "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dcmipp.c"
     "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c.c"
     "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c_ex.c"
-    "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_ltdc.c"
-    "${AI_COMPONENT_ROOT}/mx66uw1g45g/mx66uw1g45g.c"
-    "${AI_COMPONENT_ROOT}/aps256xx/aps256xx.c")
+    "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_ltdc.c")
 
 target_include_directories(${AI_APP_TARGET} PRIVATE
     "${AI_MEMORY_LAYOUT_GENERATED_DIR}"

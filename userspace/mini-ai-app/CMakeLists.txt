@@ -240,18 +240,10 @@ add_executable(${MINI_APP_TARGET}
     src/model/person_decoder.cpp
     # Keep the strong kernel HAL overrides directly in the executable.
     $<TARGET_OBJECTS:uai-driver-overrides>
-    "${MINI_BSP_ROOT}/stm32n6570_discovery_bus.c"
-    "${MINI_COMPONENT_ROOT}/imx335/imx335_reg.c"
-    "${MINI_BSP_ROOT}/stm32n6570_discovery_lcd.c"
-    "${MINI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/isp/Src/isp_core.c"
-    "${MINI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/isp/Src/isp_algo.c"
-    "${MINI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/isp/Src/isp_services.c"
     "${MINI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dcmipp.c"
     "${MINI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c.c"
     "${MINI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c_ex.c"
-    "${MINI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_ltdc.c"
-    "${MINI_COMPONENT_ROOT}/mx66uw1g45g/mx66uw1g45g.c"
-    "${MINI_COMPONENT_ROOT}/aps256xx/aps256xx.c")
+    "${MINI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_ltdc.c")
 target_include_directories(${MINI_APP_TARGET} PRIVATE ${MINI_INCLUDE_DIRS})
 add_dependencies(${MINI_APP_TARGET} ${MINI_APP_NAME}-memory-layout)
 target_compile_definitions(${MINI_APP_TARGET} PRIVATE

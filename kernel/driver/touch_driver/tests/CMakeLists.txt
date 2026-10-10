@@ -1,0 +1,1 @@
+uai_add_host_test(touch_driver_test touch_driver_test.cpp ../touch_driver.cpp)

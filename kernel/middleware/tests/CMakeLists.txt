@@ -43,6 +43,10 @@ add_subdirectory("${UAI_ROOT}/kernel/middleware/trace_format/tests" trace_format
 add_subdirectory("${UAI_ROOT}/kernel/middleware/pipeline/tests" pipeline)
 add_subdirectory("${UAI_ROOT}/kernel/middleware/ui/tests" ui)
 add_subdirectory("${UAI_ROOT}/kernel/driver/dma2d_driver/tests" dma2d_driver)
+add_subdirectory("${UAI_ROOT}/kernel/driver/camera_driver/tests" camera_driver)
+add_subdirectory("${UAI_ROOT}/kernel/driver/console_driver/tests" console_driver)
+add_subdirectory("${UAI_ROOT}/kernel/driver/lcd_driver/tests" lcd_driver)
+add_subdirectory("${UAI_ROOT}/kernel/driver/touch_driver/tests" touch_driver)
 add_subdirectory("${UAI_ROOT}/kernel/driver/peripheral_driver/tests" peripheral_driver)
 
 uai_add_host_test(frame_channels_test

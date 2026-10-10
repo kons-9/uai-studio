@@ -1,7 +1,7 @@
-#include "hwtest.hpp"
+#include "tests/framework.hpp"
 #include "driver/dma2d_driver/dma2d_driver.hpp"
 
-namespace experiment::hwtest::tests::dma2d_driver {
+namespace uai::hwtest::tests::dma2d_driver {
 
 Result Run(const Context &)
 {

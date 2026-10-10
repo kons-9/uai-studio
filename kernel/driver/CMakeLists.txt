@@ -9,14 +9,20 @@ set(UAI_DRIVER_SOURCES
     c_bsp/stm32n6570_discovery_xspi.c
     board/register_diagnostics.cpp
     board/interrupt_priority.cpp
+    board/time.cpp
+    console_driver/console_driver.cpp
+    console_driver/registers/console_registers.cpp
     cache_driver/cache_driver.cpp
     dma2d_driver/dma2d_driver.cpp
     camera_driver/board_driver/stm32n6570_discovery_camera.c
     camera_driver/camera_diagnostics.cpp
     camera_driver/camera_driver.cpp
+    camera_driver/camera_controls.cpp
     camera_driver/sensor_driver/imx335_driver.c
     camera_driver/sensor_driver/registers/imx335_registers.cpp
+    camera_driver/sensor_driver/registers/isp_controls.cpp
     lcd_driver/lcd_driver.cpp
+    lcd_driver/display_driver.cpp
     lcd_driver/registers/lcd_registers.cpp
     nor_driver/nor_driver.cpp
     nor_driver/registers/nor_registers.cpp
@@ -26,13 +32,22 @@ set(UAI_DRIVER_SOURCES
     psram_driver/psram_driver.cpp
     psram_driver/registers/psram_registers.cpp
     rif_driver/rif_driver.cpp
-    touch_driver/touch_driver.cpp)
+    touch_driver/touch_driver.cpp
+    touch_driver/registers/touch_registers.cpp)
     if(APP_TARGET STREQUAL "hw-test")
         list(FILTER UAI_DRIVER_SOURCES EXCLUDE REGEX "^npu_driver/")
         list(APPEND UAI_DRIVER_SOURCES peripheral_driver/peripheral_driver.cpp)
     endif()
 list(TRANSFORM UAI_DRIVER_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 list(APPEND UAI_DRIVER_SOURCES
+    "${AI_BSP_ROOT}/stm32n6570_discovery_lcd.c"
+    "${AI_BSP_ROOT}/stm32n6570_discovery_bus.c"
+    "${AI_COMPONENT_ROOT}/imx335/imx335_reg.c"
+    "${AI_COMPONENT_ROOT}/aps256xx/aps256xx.c"
+    "${AI_COMPONENT_ROOT}/mx66uw1g45g/mx66uw1g45g.c"
+    "${AI_ISP_ROOT}/Src/isp_core.c"
+    "${AI_ISP_ROOT}/Src/isp_algo.c"
+    "${AI_ISP_ROOT}/Src/isp_services.c"
     "${AI_BSP_ROOT}/stm32n6570_discovery_ts.c"
     "${AI_COMPONENT_ROOT}/gt911/gt911.c"
     "${AI_COMPONENT_ROOT}/gt911/gt911_reg.c")
@@ -136,6 +151,7 @@ target_include_directories(uai-drivers
         "${AI_COMPONENT_ROOT}/aps256xx"
         "${AI_ISP_ROOT}/Inc"
         "${AI_ISP_ROOT}/../evision/Inc"
+        "${AI_ISP_ROOT}/../evision/Inc"
         "${CMAKE_CURRENT_SOURCE_DIR}/board/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/c_bsp"
     PRIVATE
@@ -171,11 +187,3 @@ target_link_libraries(uai-driver-overrides PRIVATE uai::drivers)
 target_compile_options(uai-driver-overrides PRIVATE
     -O3
     $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
-
-if(APP_TARGET STREQUAL "hw-test")
-    add_library(uai-driver-time-override OBJECT board/hal_time.c)
-    target_link_libraries(uai-driver-time-override PRIVATE uai::drivers)
-    target_compile_options(uai-driver-time-override PRIVATE
-        -O3
-        $<$<COMPILE_LANGUAGE:C,CXX>:-mcmse>)
-endif()

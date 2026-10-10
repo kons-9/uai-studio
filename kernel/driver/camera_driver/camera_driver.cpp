@@ -9,6 +9,7 @@
 #include "middleware/memory/generated/static_memory_layout/key.hpp"
 
 #include "driver/camera_driver/sensor_driver/registers/imx335_registers.hpp"
+#include "driver/camera_driver/sensor_driver/registers/isp_controls.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -18,9 +19,11 @@
 extern "C" {
 #include "stm32n6570_discovery_camera.h"
 #include "stm32n6xx_hal.h"
+#include "imx335.h"
 
 extern DCMIPP_HandleTypeDef hcamera_dcmipp;
 extern ISP_HandleTypeDef hcamera_isp;
+extern void *Camera_CompObj;
 ISP_StatusTypeDef AiSetImx335Exposure(
     uint32_t instance,
     int32_t exposure
@@ -85,11 +88,14 @@ volatile std::uint32_t g_inference_sequence = 0U;
 uai::ai::memory_manager::MemoryManager *g_pipe2_memory = nullptr;
 ID g_pipe2_frame_event_flag = 0;
 volatile std::uint32_t g_last_frame_tick = 0U;
+volatile std::uint32_t g_last_pipe2_frame_tick = 0U;
 volatile std::uint32_t g_last_csi_error_tick = 0U;
 volatile bool g_csi_fault_pending = false;
 std::uint32_t g_last_vsync_count = 0U;
 std::uint32_t g_last_recovery_tick = 0U;
 bool g_camera_recovery_attempted = false;
+volatile bool g_external_capture = false;
+volatile bool g_capture_active = false;
 
 std::uintptr_t InferenceDmaAddress(std::uintptr_t buffer)
 {
@@ -157,9 +163,24 @@ uai::ai::common::Error SelectDcmippResize(
     return uai::ai::image_resizer::Select(request, selection);
 }
 
+uai::ai::common::Error UpdateExposureLimits(const uai::ai::camera::sensor::registers::Imx335RegisterLayer &registers)
+{
+    std::uint8_t frame_length[3]{};
+    if (!registers.Read(uai::ai::camera::sensor::registers::Imx335Register::kVmax, frame_length, sizeof(frame_length))
+             .Ok())
+        return {uai::ai::common::ErrorCode::kHardware};
+    const auto lines =
+        std::uint32_t(frame_length[0]) | (std::uint32_t(frame_length[1]) << 8) | (std::uint32_t(frame_length[2]) << 16);
+    if (lines <= 9 || lines > 0xfffff)
+        return {uai::ai::common::ErrorCode::kHardware};
+    hcamera_isp.sensorInfo.exposure_max = (lines - 9) * 7;
+    return {};
+}
+
 uai::ai::common::Error ConfigureSensor(uai::ai::camera::sensor::registers::Imx335RegisterLayer &registers)
 {
-    return registers.Configure(uai::ai::config::kCamera.imx335_test_pattern_mode, kFrameRateFps);
+    auto status = registers.Configure(uai::ai::config::kCamera.imx335_test_pattern_mode, kFrameRateFps);
+    return status.Ok() ? UpdateExposureLimits(registers) : status;
 }
 
 uai::ai::common::Error ConfigurePipe()
@@ -338,6 +359,95 @@ uai::ai::common::Error ConfigureInferencePipe(
         static_cast<unsigned int>(inference_height)
     );
     return {uai::ai::common::ErrorCode::kOk};
+}
+
+uai::ai::common::Error ConfigureOutput(
+    std::uint32_t pipe,
+    const uai::ai::camera::CaptureOutput &output,
+    const uai::ai::camera::Rect &rectangle,
+    std::uint32_t frame_rate = DCMIPP_FRAME_RATE_ALL
+)
+{
+    DCMIPP_CropConfTypeDef crop{};
+    crop.HStart = rectangle.x;
+    crop.VStart = rectangle.y;
+    crop.HSize = rectangle.width;
+    crop.VSize = rectangle.height;
+    crop.PipeArea = DCMIPP_POSITIVE_AREA;
+    uai::ai::image_resizer::Selection resize{};
+    auto status = SelectDcmippResize(crop.HSize, crop.VSize, output.width, output.height, &resize);
+    if (!status.Ok())
+        return status;
+    if (HAL_DCMIPP_PIPE_DisableCrop(&hcamera_dcmipp, pipe) != HAL_OK
+        || HAL_DCMIPP_PIPE_SetCropConfig(&hcamera_dcmipp, pipe, &crop) != HAL_OK
+        || HAL_DCMIPP_PIPE_EnableCrop(&hcamera_dcmipp, pipe) != HAL_OK)
+        return {uai::ai::common::ErrorCode::kHardware};
+    status = ApplyDcmippDecimation(pipe, resize);
+    if (!status.Ok())
+        return status;
+    DCMIPP_DownsizeTypeDef downsize{};
+    downsize.HRatio = 8192U * resize.dcmipp_input_width / output.width;
+    downsize.VRatio = 8192U * resize.dcmipp_input_height / output.height;
+    downsize.HDivFactor = (1024U * 8192U - 1U) / downsize.HRatio;
+    downsize.VDivFactor = (1024U * 8192U - 1U) / downsize.VRatio;
+    downsize.HSize = output.width;
+    downsize.VSize = output.height;
+    if (HAL_DCMIPP_PIPE_DisableDownsize(&hcamera_dcmipp, pipe) != HAL_OK
+        || HAL_DCMIPP_PIPE_SetDownsizeConfig(&hcamera_dcmipp, pipe, &downsize) != HAL_OK
+        || HAL_DCMIPP_PIPE_EnableDownsize(&hcamera_dcmipp, pipe) != HAL_OK)
+        return {uai::ai::common::ErrorCode::kHardware};
+    DCMIPP_PipeConfTypeDef configuration{};
+    configuration.FrameRate = frame_rate;
+    configuration.PixelPipePitch = output.width * uai::ai::image_processing::PixelBytes(output.format);
+    const bool rgb888 = output.format == uai::ai::image_processing::Format::kRgb888;
+    configuration.PixelPackerFormat =
+        rgb888 ? DCMIPP_PIXEL_PACKER_FORMAT_RGB888_YUV444_1 : DCMIPP_PIXEL_PACKER_FORMAT_RGB565_1;
+    const auto swap = rgb888 ? HAL_DCMIPP_PIPE_EnableRedBlueSwap(&hcamera_dcmipp, pipe)
+                             : HAL_DCMIPP_PIPE_DisableRedBlueSwap(&hcamera_dcmipp, pipe);
+    if (swap != HAL_OK || HAL_DCMIPP_PIPE_DisableGammaConversion(&hcamera_dcmipp, pipe) != HAL_OK
+        || HAL_DCMIPP_PIPE_SetConfig(&hcamera_dcmipp, pipe, &configuration) != HAL_OK)
+        return {uai::ai::common::ErrorCode::kHardware};
+    return {};
+}
+
+uai::ai::common::Error ApplyGeometry(
+    const uai::ai::camera::Geometry &geometry,
+    const uai::ai::camera::CaptureOutput &output,
+    std::uintptr_t dma_address,
+    bool restart,
+    bool external
+)
+{
+    using namespace uai::ai;
+    auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
+    if (sensor == nullptr)
+        return {common::ErrorCode::kHardware};
+    camera::sensor::registers::Imx335RegisterLayer registers;
+    bool success = registers.SetStreaming(false).Ok();
+    const auto flip = (geometry.horizontal ? IMX335_MIRROR : 0U) | (geometry.vertical ? IMX335_FLIP : 0U);
+    success = success && IMX335_SetFramerate(sensor, static_cast<std::int32_t>(geometry.fps)) == IMX335_OK
+        && IMX335_MirrorFlipConfig(sensor, flip) == IMX335_OK && UpdateExposureLimits(registers).Ok();
+    std::int32_t exposure = 0;
+    success = success && AiGetImx335Exposure(0, &exposure) == ISP_OK && AiSetImx335Exposure(0, exposure) == ISP_OK;
+    if (restart)
+        success = HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0) == HAL_OK && success;
+    std::uint32_t frame_rate = DCMIPP_FRAME_RATE_ALL;
+    if (!external && config::kCamera.pipe2_frame_rate == config::PipeFrameRate::kOneOverTwo)
+        frame_rate = DCMIPP_FRAME_RATE_1_OVER_2;
+    if (!external && config::kCamera.pipe2_frame_rate == config::PipeFrameRate::kOneOverFour)
+        frame_rate = DCMIPP_FRAME_RATE_1_OVER_4;
+    success = success && ConfigureOutput(DCMIPP_PIPE2, output, geometry.crop, frame_rate).Ok();
+    if (success && restart)
+        success = HAL_DCMIPP_CSI_PIPE_Start(
+                      &hcamera_dcmipp,
+                      DCMIPP_PIPE2,
+                      DCMIPP_VIRTUAL_CHANNEL0,
+                      static_cast<std::uint32_t>(dma_address),
+                      DCMIPP_MODE_CONTINUOUS
+                  )
+            == HAL_OK;
+    success = registers.SetStreaming(restart).Ok() && success;
+    return success ? common::Error{} : common::Error{common::ErrorCode::kHardware};
 }
 
 uai::ai::common::Error ConfigureRawDumpPipe()
@@ -558,13 +668,60 @@ void InstallExposureWorkaround()
     }
 }
 
+common::Error CameraDriver::InitializeExternalHardware()
+{
+    if (BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) != BSP_ERROR_NONE)
+        return {common::ErrorCode::kHardware};
+    sensor::registers::Imx335RegisterLayer registers;
+    const auto &geometry = capture_.geometry;
+    auto *sensor = static_cast<IMX335_Object_t *>(Camera_CompObj);
+    const auto flip = (geometry.horizontal ? IMX335_MIRROR : 0U) | (geometry.vertical ? IMX335_FLIP : 0U);
+    bool success = sensor != nullptr && registers.Configure(-1, geometry.fps).Ok()
+        && UpdateExposureLimits(registers).Ok() && IMX335_MirrorFlipConfig(sensor, flip) == IMX335_OK;
+    if (success) {
+        InstallExposureWorkaround();
+        success = HAL_DCMIPP_PIPE_CSI_EnableShare(&hcamera_dcmipp, DCMIPP_PIPE2) == HAL_OK
+            && ConfigureOutput(DCMIPP_PIPE1, capture_.pipe1, pipe1_crop_).Ok()
+            && ConfigureOutput(DCMIPP_PIPE2, capture_.pipe2, geometry.crop).Ok();
+    }
+    if (!success) {
+        (void)BSP_CAMERA_DeInit(0U);
+        return {common::ErrorCode::kHardware};
+    }
+    return {};
+}
+
+common::Error CameraDriver::Initialize(const CaptureConfiguration &configuration)
+{
+    if (!ValidConfiguration(configuration))
+        return {common::ErrorCode::kInvalidArgument};
+    auto status = management_->Initialize();
+    if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized)
+        return status;
+    Writer writer;
+    status = management_->Acquire(&writer);
+    if (!status.Ok())
+        return status;
+    if (initialized_)
+        return {common::ErrorCode::kAlreadyInitialized};
+    capture_ = configuration;
+    pipe1_crop_ = configuration.geometry.crop;
+    external_capture_ = true;
+    g_external_capture = true;
+    g_capture_active = false;
+    g_pipe2_memory = nullptr;
+    g_inference_dma_offset = 0;
+    status = InitializeExternalHardware();
+    if (status.Ok())
+        initialized_ = true;
+    return status;
+}
+
 uai::ai::common::Error CameraDriver::Initialize(
     memory_manager::MemoryManager &memory,
     cache::CacheManagement &cache
 )
 {
-    if (initialized_)
-        return {uai::ai::common::ErrorCode::kAlreadyInitialized};
     uai::ai::common::Error management_status = management_->Initialize();
     if (!management_status.Ok() && management_status.Code() != uai::ai::common::ErrorCode::kAlreadyInitialized) {
         return management_status;
@@ -573,20 +730,52 @@ uai::ai::common::Error CameraDriver::Initialize(
     management_status = management_->Acquire(&writer);
     if (!management_status.Ok())
         return management_status;
+    if (initialized_)
+        return {common::ErrorCode::kAlreadyInitialized};
     buffer::Buffer first{};
     buffer::Buffer second{};
     if (!memory.CaptureBuffer(0U, &first).Ok() || !memory.CaptureBuffer(1U, &second).Ok()) {
         return {uai::ai::common::ErrorCode::kNotInitialized};
     }
+    external_capture_ = false;
+    capture_ = {};
+    have_saved_controls_ = false;
+    g_external_capture = false;
+    g_capture_active = false;
+    capture_.pipe1 = {
+        first,
+        static_cast<std::uint16_t>(kOutputWidth),
+        static_cast<std::uint16_t>(kOutputHeight),
+        image_processing::Format::kRgb565
+    };
+    const auto content_height = (pipeline::kInferenceFormat.width * kOutputHeight + kOutputWidth - 1) / kOutputWidth;
+    capture_.pipe2.width = pipeline::kInferenceFormat.width;
+    capture_.pipe2.height = content_height;
+    capture_.pipe2.format = image_processing::Format::kRgb888;
+    const float ratio =
+        static_cast<float>(kSensorWidth) / kOutputWidth < static_cast<float>(kSensorHeight) / kOutputHeight
+        ? static_cast<float>(kSensorWidth) / kOutputWidth
+        : static_cast<float>(kSensorHeight) / kOutputHeight;
+    const auto crop_width =
+        config::kCamera.bypass_downsize ? kOutputWidth : static_cast<std::uint32_t>(kOutputWidth * ratio);
+    const auto crop_height =
+        config::kCamera.bypass_downsize ? kOutputHeight : static_cast<std::uint32_t>(kOutputHeight * ratio);
+    pipe1_crop_ = {
+        ((kSensorWidth - crop_width) / 2U) & ~1U, ((kSensorHeight - crop_height) / 2U) & ~1U, crop_width, crop_height
+    };
+    capture_.geometry = {kFrameRateFps, false, false, pipe1_crop_};
     if (BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) != BSP_ERROR_NONE)
         return {uai::ai::common::ErrorCode::kHardware};
     uai::ai::camera::sensor::registers::Imx335RegisterLayer registers;
-    if (!ConfigureSensor(registers).Ok())
+    if (!ConfigureSensor(registers).Ok()) {
+        (void)BSP_CAMERA_DeInit(0U);
         return {uai::ai::common::ErrorCode::kHardware};
+    }
     InstallExposureWorkaround();
     if (!ConfigurePipe().Ok()
         || !ConfigureInferencePipe(pipeline::kInferenceFormat.width, pipeline::kInferenceFormat.height).Ok()
         || !ConfigureRawDumpPipe().Ok()) {
+        (void)BSP_CAMERA_DeInit(0U);
         return {uai::ai::common::ErrorCode::kHardware};
     }
     memory_ = &memory;
@@ -597,8 +786,11 @@ uai::ai::common::Error CameraDriver::Initialize(
         event_flag.flgatr = TA_TFIFO;
         g_pipe2_frame_event_flag = tk_cre_flg(&event_flag);
         if (g_pipe2_frame_event_flag < E_OK) {
-            const ID event_status = g_pipe2_frame_event_flag;
             g_pipe2_frame_event_flag = 0;
+            memory_ = nullptr;
+            cache_ = nullptr;
+            g_pipe2_memory = nullptr;
+            (void)BSP_CAMERA_DeInit(0U);
             return {uai::ai::common::ErrorCode::kInvalidState};
         }
     }
@@ -631,15 +823,54 @@ uai::ai::common::Error CameraDriver::Start()
     return Start(writer);
 }
 
+common::Error CameraDriver::StartExternal(const Writer &writer)
+{
+    for (const auto *output : {&capture_.pipe1, &capture_.pipe2}) {
+        auto status =
+            cache::CacheDriver::CleanInvalidate(reinterpret_cast<void *>(output->buffer.address), output->buffer.size);
+        if (!status.Ok())
+            return status;
+    }
+    g_active_frame = capture_.pipe1.buffer.address;
+    g_active_inference = capture_.pipe2.buffer.address;
+    g_completed_frame = g_completed_inference = 0;
+    g_last_frame_tick = HAL_GetTick();
+    g_last_pipe2_frame_tick = g_last_frame_tick;
+    g_last_vsync_count = g_camera_vsync_event_count;
+    g_camera_recovery_attempted = false;
+    HAL_Delay(100);
+    g_capture_active = true;
+    started_ = true;
+    if (BSP_CAMERA_Start(0U, reinterpret_cast<std::uint8_t *>(g_active_frame), CAMERA_MODE_CONTINUOUS) != BSP_ERROR_NONE
+        || HAL_DCMIPP_CSI_PIPE_Start(
+               &hcamera_dcmipp,
+               DCMIPP_PIPE2,
+               DCMIPP_VIRTUAL_CHANNEL0,
+               static_cast<std::uint32_t>(g_active_inference),
+               DCMIPP_MODE_CONTINUOUS
+           ) != HAL_OK) {
+        (void)Stop(writer);
+        return {common::ErrorCode::kHardware};
+    }
+    auto status = ReadState(&saved_controls_, writer);
+    if (!status.Ok())
+        (void)Stop(writer);
+    return status;
+}
+
 uai::ai::common::Error CameraDriver::Start(const Writer &writer)
 {
     uai::ai::common::Error ownership = management_->Validate(writer);
     if (!ownership.Ok())
         return ownership;
-    if (!initialized_ || memory_ == nullptr || cache_ == nullptr)
+    if (!initialized_)
         return {uai::ai::common::ErrorCode::kNotInitialized};
     if (started_)
         return {uai::ai::common::ErrorCode::kAlreadyInitialized};
+    if (external_capture_)
+        return StartExternal(writer);
+    if (memory_ == nullptr || cache_ == nullptr)
+        return {common::ErrorCode::kNotInitialized};
     buffer::Buffer first_buffer{};
     buffer::Buffer second_buffer{};
     uai::ai::common::Error status = memory_->CaptureBuffer(0U, &first_buffer);
@@ -688,6 +919,7 @@ uai::ai::common::Error CameraDriver::Start(const Writer &writer)
     g_csi_fault_pending = false;
     g_camera_recovery_attempted = false;
     PrepareRawDump();
+    g_capture_active = true;
     if (BSP_CAMERA_Start(0U, reinterpret_cast<uint8_t *>(g_active_frame), CAMERA_MODE_CONTINUOUS) != BSP_ERROR_NONE)
         return {uai::ai::common::ErrorCode::kHardware};
     if (HAL_DCMIPP_CSI_PIPE_Start(
@@ -710,10 +942,14 @@ uai::ai::common::Error CameraDriver::Start(const Writer &writer)
         return status;
     StartRawDump();
     g_last_frame_tick = HAL_GetTick();
+    g_last_pipe2_frame_tick = g_last_frame_tick;
     g_last_vsync_count = g_camera_vsync_event_count;
     started_ = true;
     LogCameraLinkState(registers);
-    return {uai::ai::common::ErrorCode::kOk};
+    status = ReadState(&saved_controls_, writer);
+    if (!status.Ok())
+        (void)Stop(writer);
+    return status;
 }
 
 uai::ai::common::Error CameraDriver::Stop()
@@ -732,17 +968,140 @@ uai::ai::common::Error CameraDriver::Stop(const Writer &writer)
         return ownership;
     if (!initialized_ || !started_)
         return {uai::ai::common::ErrorCode::kNotInitialized};
+    g_capture_active = false;
     uai::ai::camera::sensor::registers::Imx335RegisterLayer registers;
     const auto standby = registers.SetStreaming(false);
-    if (!standby.Ok())
-        return standby;
-    if (HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0) != HAL_OK) {
-        return {uai::ai::common::ErrorCode::kHardware};
-    }
-    if (BSP_CAMERA_Stop(0U) != BSP_ERROR_NONE)
+    const auto ancillary = HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0);
+    const auto main = BSP_CAMERA_Stop(0U);
+    if (!standby.Ok() || ancillary != HAL_OK || main != BSP_ERROR_NONE)
         return {uai::ai::common::ErrorCode::kHardware};
     started_ = false;
+    g_camera_recovery_attempted = false;
     return {uai::ai::common::ErrorCode::kOk};
+}
+
+common::Error CameraDriver::Configure(
+    const Geometry &geometry,
+    const Writer &writer
+)
+{
+    auto status = ValidateControl(writer);
+    if (!status.Ok())
+        return status;
+    if (geometry.fps < 10 || geometry.fps > 30 || geometry.fps % 5 != 0
+        || !Inside(geometry.crop, hcamera_isp.sensorInfo.width, hcamera_isp.sensorInfo.height)
+        || geometry.crop.width < capture_.pipe2.width || geometry.crop.height < capture_.pipe2.height)
+        return {common::ErrorCode::kInvalidArgument};
+    State previous;
+    status = ReadState(&previous, writer);
+    if (!status.Ok())
+        return status;
+    if (ISP_SetAECState(&hcamera_isp, 0) != ISP_OK)
+        return {common::ErrorCode::kHardware};
+    const auto address = external_capture_ ? g_active_inference : InferenceDmaAddress(g_active_inference);
+    status = ApplyGeometry(geometry, capture_.pipe2, address, started_, external_capture_);
+    const bool restored_ae = ISP_SetAECState(&hcamera_isp, previous.auto_exposure ? 1 : 0) == ISP_OK;
+    if (!status.Ok() || !restored_ae) {
+        const auto rollback = ApplyGeometry(capture_.geometry, capture_.pipe2, address, started_, external_capture_);
+        const auto controls = sensor::registers::IspControls::Apply(previous);
+        if (!rollback.Ok() || !controls.Ok())
+            (void)Recover(writer);
+        return {common::ErrorCode::kHardware};
+    }
+    capture_.geometry = geometry;
+    return ReadState(&saved_controls_, writer);
+}
+
+common::Error CameraDriver::Recover(const Writer &writer)
+{
+    auto status = ValidateControl(writer);
+    if (!status.Ok())
+        return status;
+    if (!external_capture_ && g_frame_buffer0 == 0)
+        return Start(writer);
+    State controls;
+    if (!ReadState(&controls, writer).Ok()) {
+        if (!have_saved_controls_)
+            return {common::ErrorCode::kHardware};
+        controls = saved_controls_;
+    }
+    ++g_camera_recovery_count;
+    g_last_recovery_tick = HAL_GetTick();
+    if (started_)
+        (void)Stop(writer);
+    g_camera_recovery_attempted = true;
+    g_capture_active = false;
+    if (BSP_CAMERA_DeInit(0U) != BSP_ERROR_NONE) {
+        ++g_camera_recovery_error_count;
+        return {common::ErrorCode::kHardware};
+    }
+    started_ = false;
+    if (external_capture_) {
+        status = InitializeExternalHardware();
+        if (status.Ok())
+            status = StartExternal(writer);
+        if (status.Ok())
+            status = sensor::registers::IspControls::Apply(controls);
+    } else {
+        if (g_completed_inference != 0 && g_pipe2_memory != nullptr)
+            (void)g_pipe2_memory->DropCompletedInference(g_completed_inference, g_completed_inference_sequence);
+        g_completed_frame = g_completed_inference = 0;
+        g_completed_inference_sequence = 0;
+        g_active_frame = g_frame_buffer0;
+        g_next_frame = g_frame_buffer1;
+        g_active_inference = g_inference_drop_buffer;
+        for (const auto address : g_inference_buffers) {
+            if (g_pipe2_memory != nullptr && g_pipe2_memory->IsInferenceBufferFree(address)) {
+                g_active_inference = address;
+                break;
+            }
+        }
+        g_next_inference = g_inference_buffers[0];
+        if (g_pipe2_frame_event_flag > 0)
+            (void)tk_clr_flg(g_pipe2_frame_event_flag, 0U);
+        sensor::registers::Imx335RegisterLayer registers;
+        bool success = BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) == BSP_ERROR_NONE
+            && ConfigureSensor(registers).Ok();
+        if (success) {
+            InstallExposureWorkaround();
+            success = ConfigurePipe().Ok()
+                && ConfigureInferencePipe(pipeline::kInferenceFormat.width, pipeline::kInferenceFormat.height).Ok()
+                && ConfigureRawDumpPipe().Ok()
+                && ApplyGeometry(capture_.geometry, capture_.pipe2, 0, false, false).Ok();
+        }
+        if (success) {
+            PrepareRawDump();
+            g_capture_active = true;
+            success = BSP_CAMERA_Start(0U, reinterpret_cast<std::uint8_t *>(g_active_frame), CAMERA_MODE_CONTINUOUS)
+                    == BSP_ERROR_NONE
+                && HAL_DCMIPP_CSI_PIPE_Start(
+                       &hcamera_dcmipp,
+                       DCMIPP_PIPE2,
+                       DCMIPP_VIRTUAL_CHANNEL0,
+                       static_cast<std::uint32_t>(InferenceDmaAddress(g_active_inference)),
+                       DCMIPP_MODE_CONTINUOUS
+                   ) == HAL_OK
+                && ApplyDemosaicDiagnostic().Ok() && StartStream(registers).Ok()
+                && sensor::registers::IspControls::Apply(controls).Ok();
+        }
+        if (success) {
+            started_ = true;
+            StartRawDump();
+        }
+        status = success ? common::Error{} : common::Error{common::ErrorCode::kHardware};
+    }
+    if (!status.Ok()) {
+        g_capture_active = false;
+        ++g_camera_recovery_error_count;
+        g_camera_recovery_attempted = true;
+        return status;
+    }
+    g_last_frame_tick = HAL_GetTick();
+    g_last_pipe2_frame_tick = g_last_frame_tick;
+    g_last_vsync_count = g_camera_vsync_event_count;
+    g_csi_fault_pending = false;
+    g_camera_recovery_attempted = false;
+    return ReadState(&saved_controls_, writer);
 }
 
 uai::ai::common::Error CameraDriver::Process()
@@ -759,90 +1118,38 @@ uai::ai::common::Error CameraDriver::Process(const Writer &writer)
     uai::ai::common::Error ownership = management_->Validate(writer);
     if (!ownership.Ok())
         return ownership;
-    if (!initialized_ || !started_)
+    if (!initialized_)
         return {uai::ai::common::ErrorCode::kNotInitialized};
-    ProcessRawDump();
+    if (!started_) {
+        if (!g_camera_recovery_attempted)
+            return {common::ErrorCode::kNotInitialized};
+        if (capture_.automatic_recovery && HAL_GetTick() - g_last_recovery_tick >= kRecoveryRetryMs)
+            (void)Recover(writer);
+        return {};
+    }
+    if (!external_capture_)
+        ProcessRawDump();
     if (g_camera_vsync_event_count != g_last_vsync_count) {
         g_last_vsync_count = g_camera_vsync_event_count;
         if (BSP_CAMERA_BackgroundProcess() != BSP_ERROR_NONE)
             ++g_camera_isp_error_count;
     }
     const std::uint32_t now = HAL_GetTick();
-    const bool timed_out = now - g_last_frame_tick >= kFrameTimeoutMs;
+    const bool timed_out =
+        now - g_last_frame_tick >= kFrameTimeoutMs || now - g_last_pipe2_frame_tick >= kFrameTimeoutMs;
     /* A CSI error is diagnostic information, not by itself a reason to
      * restart the sensor.  The reference application waits for an actual
      * frame timeout; doing the same avoids restarting on a transient SOT or
      * D-PHY status bit while frames are still arriving. */
-    if (timed_out && (!g_camera_recovery_attempted || now - g_last_recovery_tick >= kRecoveryRetryMs)) {
+    if (capture_.automatic_recovery && timed_out
+        && (!g_camera_recovery_attempted || now - g_last_recovery_tick >= kRecoveryRetryMs)) {
+        const auto recovery = Recover(writer);
         UAI_LOG_WARN(
-            "camera: no frame for %u ms; starting recovery #%u\n",
-            static_cast<unsigned int>(now - g_last_frame_tick),
-            g_camera_recovery_count + 1U
+            "camera: recovery attempts=%u failed=%u status=%u\n",
+            g_camera_recovery_count,
+            g_camera_recovery_error_count,
+            static_cast<unsigned>(recovery.Code())
         );
-        uai::ai::camera::sensor::registers::Imx335RegisterLayer registers;
-        LogCameraLinkState(registers);
-        g_last_recovery_tick = now;
-        g_camera_recovery_attempted = true;
-        ++g_camera_recovery_count;
-        g_completed_frame = 0U;
-        g_active_frame = g_frame_buffer0;
-        g_next_frame = g_frame_buffer1;
-        if (g_completed_inference != 0U && g_pipe2_memory != nullptr) {
-            (void)g_pipe2_memory->DropCompletedInference(g_completed_inference, g_completed_inference_sequence);
-        }
-        g_completed_inference = 0U;
-        g_completed_inference_sequence = 0U;
-        g_active_inference = g_inference_buffers[0];
-        g_next_inference = g_inference_buffers[1];
-        if (g_pipe2_frame_event_flag > 0) {
-            (void)tk_clr_flg(g_pipe2_frame_event_flag, 0U);
-        }
-        (void)registers.SetStreaming(false);
-        HAL_Delay(20U);
-        const HAL_StatusTypeDef pipe_stop_status =
-            HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE1, DCMIPP_VIRTUAL_CHANNEL0);
-        const HAL_StatusTypeDef pipe2_stop_status =
-            HAL_DCMIPP_CSI_PIPE_Stop(&hcamera_dcmipp, DCMIPP_PIPE2, DCMIPP_VIRTUAL_CHANNEL0);
-        bool recovery_ok = pipe_stop_status == HAL_OK && pipe2_stop_status == HAL_OK
-            && HAL_DCMIPP_DeInit(&hcamera_dcmipp) == HAL_OK
-            && BSP_CAMERA_Init(0U, CAMERA_R2592x1944, CAMERA_PF_RAW_RGGB10) == BSP_ERROR_NONE
-            && ConfigureSensor(registers).Ok();
-        if (recovery_ok) {
-            InstallExposureWorkaround();
-            recovery_ok = ConfigurePipe().Ok()
-                && ConfigureInferencePipe(pipeline::kInferenceFormat.width, pipeline::kInferenceFormat.height).Ok()
-                && ConfigureRawDumpPipe().Ok();
-        }
-        if (!recovery_ok
-            || BSP_CAMERA_Start(0U, reinterpret_cast<uint8_t *>(g_active_frame), CAMERA_MODE_CONTINUOUS)
-                != BSP_ERROR_NONE
-            || HAL_DCMIPP_CSI_PIPE_Start(
-                   &hcamera_dcmipp,
-                   DCMIPP_PIPE2,
-                   DCMIPP_VIRTUAL_CHANNEL0,
-                   static_cast<std::uint32_t>(g_active_inference),
-                   DCMIPP_MODE_CONTINUOUS
-               ) != HAL_OK
-            || !ApplyDemosaicDiagnostic().Ok() || !StartStream(registers).Ok()) {
-            ++g_camera_recovery_error_count;
-            LogCameraLinkState(registers);
-            UAI_LOG_ERROR(
-                "camera: recovery failed attempts=%u failed=%u\n",
-                g_camera_recovery_count,
-                g_camera_recovery_error_count
-            );
-        } else {
-            InstallExposureWorkaround();
-            PrepareRawDump();
-            StartRawDump();
-            g_csi_fault_pending = false;
-            g_last_frame_tick = now;
-            g_last_vsync_count = g_camera_vsync_event_count;
-            LogCameraLinkState(registers);
-            UAI_LOG_WARN(
-                "camera: recovery done attempts=%u frames=%u\n", g_camera_recovery_count, g_camera_frame_event_count
-            );
-        }
     }
     return {uai::ai::common::ErrorCode::kOk};
 }
@@ -978,6 +1285,13 @@ extern "C" void BSP_CAMERA_FrameEventCallback(uint32_t Instance)
 {
     (void)Instance;
     ++g_camera_frame_event_count;
+    if (g_external_capture) {
+        if (g_capture_active)
+            g_last_frame_tick = HAL_GetTick();
+        return;
+    }
+    if (!g_capture_active)
+        return;
     if (HAL_DCMIPP_PIPE_SetMemoryAddress(
             &hcamera_dcmipp, DCMIPP_PIPE1, DCMIPP_MEMORY_ADDRESS_0, static_cast<uint32_t>(g_next_frame)
         )
@@ -1016,6 +1330,10 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
      * to the drop sink. It is intentionally separate from the sequence of a
      * frame handed to inference so lag can expose dropped intermediate frames. */
     const std::uint32_t capture_sequence = ++g_inference_sequence;
+    if (g_capture_active)
+        g_last_pipe2_frame_tick = HAL_GetTick();
+    if (g_external_capture || !g_capture_active)
+        return;
     const std::uintptr_t completed = g_active_inference;
     const bool completed_is_real_buffer = completed != 0U && completed != g_inference_drop_buffer;
     if (completed_is_real_buffer) {

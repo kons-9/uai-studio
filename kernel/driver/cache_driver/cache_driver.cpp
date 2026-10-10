@@ -66,6 +66,23 @@ common::Error CacheOperation(
 
 } // namespace
 
+common::Error CacheDriver::Clean(
+    void *address,
+    std::size_t bytes
+)
+{
+    const auto start = reinterpret_cast<std::uintptr_t>(address);
+    if (address == nullptr || start % kCacheLineSize != 0 || bytes == 0 || bytes % kCacheLineSize != 0
+        || bytes > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())
+        || start > std::numeric_limits<std::uintptr_t>::max() - bytes) {
+        return {common::ErrorCode::kInvalidArgument};
+    }
+    __DSB();
+    SCB_CleanDCache_by_Addr(address, static_cast<std::int32_t>(bytes));
+    __DSB();
+    return {};
+}
+
 common::Error CacheDriver::CleanInvalidate(
     void *address,
     std::size_t bytes

@@ -1,10 +1,10 @@
-#include "display_log.hpp"
-#include "hwtest.hpp"
+#include "ui/display.hpp"
+#include "tests/framework.hpp"
 #include "driver/lcd_driver/display_state.hpp"
 
 #include <cstdio>
 
-namespace experiment::hwtest::tests::display_driver {
+namespace uai::hwtest::tests::display_driver {
 
 Result Run(const Context &context)
 {

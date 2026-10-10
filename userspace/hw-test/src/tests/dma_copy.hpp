@@ -1,9 +1,9 @@
 #pragma once
 
-#include "hwtest.hpp"
+#include "tests/framework.hpp"
 #include "driver/peripheral_driver/peripheral_driver.hpp"
 
-namespace experiment::hwtest::tests {
+namespace uai::hwtest::tests {
 
 inline Result CheckDmaCopy(
     uai::ai::peripheral::DmaController controller,

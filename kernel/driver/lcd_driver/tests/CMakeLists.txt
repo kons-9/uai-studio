@@ -1,0 +1,1 @@
+uai_add_host_test(display_driver_test display_driver_test.cpp ../display_driver.cpp)

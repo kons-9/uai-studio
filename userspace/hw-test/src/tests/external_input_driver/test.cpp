@@ -1,4 +1,4 @@
-#include "hwtest.hpp"
+#include "tests/framework.hpp"
 
 static_assert(
     false,

@@ -2,6 +2,8 @@
 #include "middleware/foundation/log.hpp"
 #include "middleware/pipeline/image_format.hpp"
 #include "memory_manager/memory_sizes.hpp"
+#include "middleware/memory/static_memory_layout.hpp"
+#include "middleware/memory/generated/static_memory_layout/key.hpp"
 
 #include <cstddef>
 #include <cstring>
@@ -88,17 +90,6 @@ std::uint32_t Crc32(
 
 } // namespace
 
-common::Error LcdDriver::FromBackend(uai::driver::DriverStatus status)
-{
-    if (uai::driver::IsOk(status)) {
-        return {common::ErrorCode::kOk};
-    }
-    if (status == uai::driver::DriverStatus::kBusy) {
-        return {common::ErrorCode::kNoBuffer};
-    }
-    return {common::ErrorCode::kHardware};
-}
-
 common::Error LcdDriver::Initialize(
     memory_manager::MemoryManager &memory,
     cache::CacheManagement &cache
@@ -117,10 +108,12 @@ common::Error LcdDriver::Initialize(
         return management_status;
     memory_ = &memory;
     cache_ = &cache;
-    const uai::driver::DriverStatus status = registers_.Initialize();
-    if (!uai::driver::IsOk(status)) {
+    const auto &region = static_memory_layout::Region::GetRegionFromKey(static_memory_layout::Key::kDisplay0);
+    const auto status = display_.Initialize({region.address(), kDisplayBytes, 0U, buffer::Region::kDisplay}, writer);
+    if (!status.Ok() && status.Code() != common::ErrorCode::kAlreadyInitialized) {
         memory_ = nullptr;
-        return FromBackend(status);
+        cache_ = nullptr;
+        return status;
     }
     initialized_ = true;
     return {common::ErrorCode::kOk};
@@ -333,10 +326,10 @@ common::Error LcdDriver::ShowInitialFrame(
         (void)memory_->ReleaseDisplayBuffer(first);
         return status;
     }
-    const uai::driver::DriverStatus backend_status = registers_.Present(first.buffer.address);
-    if (!uai::driver::IsOk(backend_status)) {
+    const auto backend_status = display_.Present(first.buffer, writer);
+    if (!backend_status.Ok()) {
         (void)memory_->ReleaseDisplayBuffer(first);
-        return FromBackend(backend_status);
+        return backend_status;
     }
     status = memory_->CommitDisplayBuffer(first);
     if (!status.Ok()) {
@@ -377,9 +370,9 @@ common::Error LcdDriver::SynchronizeCurrentFrame(const Writer &writer)
     if (!initialized_ || memory_ == nullptr) {
         return {common::ErrorCode::kNotInitialized};
     }
-    const uai::driver::DriverStatus status = registers_.Synchronize();
-    if (!uai::driver::IsOk(status)) {
-        return FromBackend(status);
+    const auto status = display_.Synchronize(writer);
+    if (!status.Ok()) {
+        return status;
     }
     return memory_->CompleteDisplayHandoff();
 }
@@ -419,12 +412,9 @@ common::Error LcdDriver::ComposeAndPresent(
 
     /* Do not reacquire the previous active surface until LTDC confirms that
      * the queued VBlank reload has latched the new CFBAR. */
-    const uai::driver::DriverStatus sync_status = registers_.Synchronize();
-    if (sync_status == uai::driver::DriverStatus::kBusy) {
-        return {common::ErrorCode::kNoBuffer};
-    }
-    if (!uai::driver::IsOk(sync_status)) {
-        return FromBackend(sync_status);
+    const auto sync_status = display_.Synchronize(writer);
+    if (!sync_status.Ok()) {
+        return sync_status;
     }
     status = memory_->CompleteDisplayHandoff();
     if (!status.Ok()) {
@@ -527,10 +517,10 @@ common::Error LcdDriver::ComposeAndPresent(
             static_cast<unsigned int>(memory_crc)
         );
     }
-    const uai::driver::DriverStatus backend_status = registers_.Present(display.buffer.address);
-    if (!uai::driver::IsOk(backend_status)) {
+    const auto backend_status = display_.Present(display.buffer, writer);
+    if (!backend_status.Ok()) {
         (void)memory_->ReleaseDisplayBuffer(display);
-        return FromBackend(backend_status);
+        return backend_status;
     }
     return memory_->CommitDisplayBuffer(display);
 }
@@ -561,12 +551,9 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
 
     /* Ensure the previous reload has latched before reusing the other LCD
      * surface. This is the same handoff discipline as ComposeAndPresent(). */
-    const uai::driver::DriverStatus sync_status = registers_.Synchronize();
-    if (sync_status == uai::driver::DriverStatus::kBusy) {
-        return {common::ErrorCode::kNoBuffer};
-    }
-    if (!uai::driver::IsOk(sync_status)) {
-        return FromBackend(sync_status);
+    const auto sync_status = display_.Synchronize(writer);
+    if (!sync_status.Ok()) {
+        return sync_status;
     }
     common::Error status = memory_->CompleteDisplayHandoff();
     if (!status.Ok()) {
@@ -612,10 +599,10 @@ common::Error LcdDriver::ComposeInferenceAndPresent(
         (void)memory_->ReleaseDisplayBuffer(display);
         return status;
     }
-    const uai::driver::DriverStatus backend_status = registers_.Present(display.buffer.address);
-    if (!uai::driver::IsOk(backend_status)) {
+    const auto backend_status = display_.Present(display.buffer, writer);
+    if (!backend_status.Ok()) {
         (void)memory_->ReleaseDisplayBuffer(display);
-        return FromBackend(backend_status);
+        return backend_status;
     }
     return memory_->CommitDisplayBuffer(display);
 }
@@ -642,12 +629,9 @@ common::Error LcdDriver::PresentOverlay(
     }
 
     /* Same surface handoff discipline as ComposeAndPresent(). */
-    const uai::driver::DriverStatus sync_status = registers_.Synchronize();
-    if (sync_status == uai::driver::DriverStatus::kBusy) {
-        return {common::ErrorCode::kNoBuffer};
-    }
-    if (!uai::driver::IsOk(sync_status)) {
-        return FromBackend(sync_status);
+    const auto sync_status = display_.Synchronize(writer);
+    if (!sync_status.Ok()) {
+        return sync_status;
     }
     common::Error status = memory_->CompleteDisplayHandoff();
     if (!status.Ok()) {
@@ -671,10 +655,10 @@ common::Error LcdDriver::PresentOverlay(
         (void)memory_->ReleaseDisplayBuffer(display);
         return status;
     }
-    const uai::driver::DriverStatus backend_status = registers_.Present(display.buffer.address);
-    if (!uai::driver::IsOk(backend_status)) {
+    const auto backend_status = display_.Present(display.buffer, writer);
+    if (!backend_status.Ok()) {
         (void)memory_->ReleaseDisplayBuffer(display);
-        return FromBackend(backend_status);
+        return backend_status;
     }
     return memory_->CommitDisplayBuffer(display);
 }

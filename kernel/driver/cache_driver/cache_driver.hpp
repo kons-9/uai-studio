@@ -15,6 +15,10 @@ public:
 
     CacheDriver(const CacheDriver &) = delete;
     CacheDriver &operator=(const CacheDriver &) = delete;
+    static common::Error Clean(
+        void *address,
+        std::size_t bytes
+    );
     static common::Error CleanInvalidate(
         void *address,
         std::size_t bytes

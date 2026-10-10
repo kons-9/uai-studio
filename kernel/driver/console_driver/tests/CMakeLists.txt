@@ -1,0 +1,1 @@
+uai_add_host_test(console_driver_test console_driver_test.cpp ../console_driver.cpp)

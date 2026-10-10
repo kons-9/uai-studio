@@ -3,7 +3,7 @@
 #include "board.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 
-namespace experiment::hwtest::tests {
+namespace uai::hwtest::tests {
 
 inline Result CheckMemoryPatterns(
     std::uint8_t *buffer,

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "hwtest.hpp"
+#include "tests/framework.hpp"
 
-namespace experiment::hwtest::tests {
+namespace uai::hwtest::tests {
 
 extern const Case cases[];
 extern const std::size_t case_count;

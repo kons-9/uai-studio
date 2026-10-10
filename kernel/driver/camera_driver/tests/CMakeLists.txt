@@ -1,0 +1,2 @@
+uai_add_host_test(camera_controls_test camera_controls_test.cpp ../sensor_driver/registers/isp_controls.cpp)
+target_include_directories(camera_controls_test BEFORE PRIVATE fixtures)

@@ -1,9 +1,9 @@
-#include "hwtest.hpp"
+#include "tests/framework.hpp"
 #include "driver/peripheral_driver/peripheral_driver.hpp"
 
 #include <cstdio>
 
-namespace experiment::hwtest::tests::tim_driver {
+namespace uai::hwtest::tests::tim_driver {
 
 Result Run(const Context &context)
 {

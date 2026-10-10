@@ -1,11 +1,10 @@
-#include "integration.hpp"
-#include "graphics/dma2d.hpp"
-#include "graphics/scenario.hpp"
-#include "graphics/verification.hpp"
+#include "tests/integration.hpp"
+#include "tests/graphics/scenario.hpp"
+#include "driver/dma2d_driver/dma2d_driver.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
 #include "driver/peripheral_driver/peripheral_driver.hpp"
 
-namespace experiment::hwtest::integrated {
+namespace uai::hwtest::integrated {
 namespace {
 class Backend final : public graphics::ScenarioBackend {
 public:
@@ -26,7 +25,9 @@ public:
                 (void)uai::ai::cache::CacheDriver::Invalidate(address, bytes);
             }
         };
-        return verification_.Run(test, dma_, uai::ai::peripheral::CycleCount, cache);
+        return verification_.Run(
+            test, uai::ai::dma2d::Dma2dManagement::Instance(), uai::ai::peripheral::CycleCount, cache
+        );
     }
     void Reset()
     {
@@ -67,7 +68,6 @@ public:
 
 private:
     Context context_;
-    graphics::Dma2d dma_;
     graphics::Verification verification_;
 };
 }

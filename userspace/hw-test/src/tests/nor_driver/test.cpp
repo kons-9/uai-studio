@@ -1,9 +1,9 @@
-#include "hwtest.hpp"
+#include "tests/framework.hpp"
 #include "driver/nor_driver/nor_driver.hpp"
 
 #include <cstdio>
 
-namespace experiment::hwtest::tests::nor_driver {
+namespace uai::hwtest::tests::nor_driver {
 namespace {
 
 Result Failure(

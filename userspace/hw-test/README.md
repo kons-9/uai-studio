@@ -2,9 +2,9 @@
 
 ## 状態と目的
 
-STM32N6570-DKのHWを検査するアプリ。[experiment-hw-test](../experiment-hw-test/README.md)と同じ17試験、カメラ制御、LCD画面、UARTコマンドを持ち、共有middlewareとDMA2D driverを使う。AI推論・モデル生成は不要だが、共有CacheDriverが使うNPUキャッシュ実装のためSTEdgeAIを必要とする。
+STM32N6570-DKのHWを検査するアプリ。[experiment-hw-test](../experiment-hw-test/README.md)と同じ17試験、カメラ制御、LCD画面、UARTコマンドを持ち、共有middlewareとkernel driverを使う。AI推論・モデル生成は不要だが、共有CacheDriverが使うNPUキャッシュ実装のためSTEdgeAIを必要とする。
 
-`uai::middleware`のUIと画像演算・転送検証器、`uai::drivers`の周辺機器・メモリ・LCD・DMA2D driverを使用する。`src/tests`はHAL/BSP/CMSISやレジスタへ直接アクセスしない。クロック・RIF・初期化・キャッシュ同期・停止・deinitはkernel側のAPIへ集約する。カメラ・ISP・GT911の試験fixture、UART処理、IOC、ボード設定は本アプリ内に保持し、他userspaceの実装を参照しない。元experimentは変更せず独立した構成を維持する。
+`uai::middleware`のUIと画像演算・転送検証器、`uai::drivers`のカメラ・ISP・タッチ・表示・UART・周辺機器・メモリ・DMA2D APIを使用する。`src`はHAL/BSP/CMSISやレジスタへ直接アクセスしない。クロック・RIF・初期化・IRQ・キャッシュ同期・停止・deinitはkernelへ集約する。試験手順・期待値・試験用バッファ・画面構成・コマンド解析・IOCは本アプリが持ち、他userspaceの実装を参照しない。元experimentは変更せず独立した構成を維持する。
 
 STEdgeAIの`Npu/Devices/STM32N6xx/npu_cache.h`と`npu_cache.c`を使用する。ヘッダーのインクルード先・キャッシュ実装・CACHEAXI HALの登録はkernel側で行い、AIモデルやNeural-ART実行ランタイム全体はリンクしない。
 
@@ -16,22 +16,25 @@ LCD表示の初期化確認に続いて、RNG、HASH、CRC、GPDMA、HPDMA、RTC
 
 | ファイル | 責務 |
 | --- | --- |
-| [src/main.cpp](src/main.cpp) | T-Monitor UART、試験タスク、shellの実機入口 |
-| [src/commands.hpp](src/commands.hpp) | `hwtest list / run / all / all-stress`。listに目的・実行時間上限・負荷試験区分を表示 |
-| [src/hwtest.hpp](src/hwtest.hpp) | 共通I/F、登録検査、実行、PASS/FAIL、SUMMARY出力 |
+| [src/main.cpp](src/main.cpp) | 試験タスク・UIタスクの起動、共有UARTとshellの接続 |
+| [src/tests/commands.hpp](src/tests/commands.hpp) | `hwtest list / run / all / all-stress`。listに目的・実行時間上限・負荷試験区分を表示 |
+| [src/tests/framework.hpp](src/tests/framework.hpp) | 共通I/F、登録検査、実行、PASS/FAIL、SUMMARY出力 |
+| [src/ui/console.hpp](src/ui/console.hpp) | 受信文字のコマンド解析。受信エラー時は不完全なコマンドを破棄 |
 | [src/ui/display.cpp](src/ui/display.cpp) | LCDの試験一覧・ログ・プレビューとタッチ操作 |
 | [src/ui/log_buffer.hpp](src/ui/log_buffer.hpp) | 今回のログ・結果集計・スクロール |
-| [src/integration.cpp](src/integration.cpp) | カメラ所有処理・ISPシナリオ・GT911試験 |
+| [src/tests/integration.cpp](src/tests/integration.cpp) | カメラ・タッチの試験fixtureとUI所有タスクへの試験要求 |
+| [src/tests/camera/runtime.hpp](src/tests/camera/runtime.hpp) | 共有カメラAPIへのコマンド接続 |
+| [src/tests/camera/scenario.hpp](src/tests/camera/scenario.hpp) | 32段階のISP・geometry・停止・復旧の検証と状態復元 |
+| [src/tests/camera/buffers.cpp](src/tests/camera/buffers.cpp) | 400x480 RGB565の試験専用SRAMバッファ2面 |
 | [src/tests/dma2d_driver/suite.cpp](src/tests/dma2d_driver/suite.cpp) | DMA2Dの画素・guard/cache・併用負荷検査 |
-| [src/graphics/verification.hpp](src/graphics/verification.hpp) | 共有image_processing検証器への型alias |
-| [src/graphics/dma2d.hpp](src/graphics/dma2d.hpp) | 共有Dma2dManagementへのアダプタ |
+| [src/tests/graphics/scenario.hpp](src/tests/graphics/scenario.hpp) | 共有25検証ケースとカメラ/LCD同時負荷の試験進行 |
 | [generate_memory.py](generate_memory.py)、[config/memory_layout.json](config/memory_layout.json) | AIモデルなしの共有メモリ契約生成 |
 | [src/tests/suite.cpp](src/tests/suite.cpp) | 実装済み試験だけの登録表、目的、タイムアウト |
 | [src/tests/suite.hpp](src/tests/suite.hpp) | 各`<hardware>_driver::Run`の宣言 |
 | [src/tests/board.hpp](src/tests/board.hpp) | 試験ContextへのHAL非依存の互換include |
 | [src/tests/dma_copy.hpp](src/tests/dma_copy.hpp) | 共有DMAコピーAPIによるガード・入力保持検査 |
 | [kernel周辺ドライバ](../../kernel/driver/peripheral_driver/peripheral_driver.hpp) | 排他付きRNG・SHA-256・CRC・GPDMA/HPDMA・TIM2・RTC API |
-| [config/stm32n6xx_hal_conf.h](config/stm32n6xx_hal_conf.h) | ローカルHAL設定へ試験対象モジュールを追加 |
+| [config/stm32n6xx_hal_conf.h](config/stm32n6xx_hal_conf.h) | CubeMX生成HAL設定へ試験対象モジュールを追加 |
 | [camera-runtime-ram.ld](camera-runtime-ram.ld) | コード・表示ページ・撮像バッファの独立したSRAM配置 |
 | [scratch.ld](scratch.ld) | PSRAMの`0x91000000`から4KiBを試験専用に予約 |
 | [runner.py](runner.py)、[uart.py](uart.py) | 実機UART結果の収集とJUnit変換。ホスト上でHW試験を実行するものではない |
@@ -42,14 +45,16 @@ LCD表示の初期化確認に続いて、RNG、HASH、CRC、GPDMA、HPDMA、RTC
 
 LCD左側の試験一覧は上下スワイプでスクロールでき、行をタップして選択できる。右側の結果ログも上下スワイプでスクロールできる。見出しに登録済みの総試験数、開始前の`P/F/T`に選択した試験数を表示する。複数シナリオを持つ試験は一覧の試験名の横に`n/n`を表示する。`RUN`で選択した試験または試験セットを開始する。新しい実行を始めると、前回のログを消して今回の結果を表示する。
 
-通常のHW試験は共有driver APIと試験専用領域を使い、既知ベクトル・転送ガード・読み取り安定性・日時繰り上がり・カウンタ停止を検査する。`dma2d-suite`は共有検証器と共有DMA2D driverを経由する。通常の`dma2d`試験も共有driverが対応するRGB565の8×8転送を使い、HALでの再初期化やクロック操作は行わない。NORはモデル不要の`OpenReadOnly`で初期化し、kernel側で取得した診断情報を報告する。互換性のため試験コードの`experiment::*`名前空間は維持しているが、元experimentをimport・リンクしない。
+通常のHW試験は共有driver APIと試験専用領域を使い、既知ベクトル・転送ガード・読み取り安定性・日時繰り上がり・カウンタ停止を検査する。`dma2d-suite`は共有検証器と共有DMA2D driverを経由する。通常の`dma2d`試験も共有driverが対応するRGB565の8×8転送を使い、HALでの再初期化やクロック操作は行わない。NORはモデル不要の`OpenReadOnly`で初期化し、kernel側で取得した診断情報を報告する。試験コードの名前空間は`uai::hwtest`に統一し、元experimentをimport・リンクしない。
+
+カメラは`CameraManagement::Initialize(CaptureConfiguration)`で試験用の2出力を設定する。ISP設定・geometry変更・復旧は共有driverが担当する。試験中に意図しない復旧を成功と見なさないよう、このfixtureでは自動復旧を無効化する。タッチ検査は`TouchManagement::ReadRaw`で補正前の座標を検査する。通常アプリの`Read`は従来どおり800x480の範囲へ補正する。
 
 ## 共通I/F
 
 各試験は次の関数を実装し、[登録表](src/tests/suite.cpp)へ明示的に追加する。
 
 ```cpp
-namespace experiment::hwtest::tests::rng_driver {
+namespace uai::hwtest::tests::rng_driver {
 Result Run(const Context &context);
 }
 ```
@@ -98,7 +103,7 @@ fixtureと実行本体を整備した段階でstatic_assertを外し、同じRun
 
 ## 実機での実行
 
-ARMツールチェーン、STM32CubeN6、CubeMX、CubeProgrammerとST-LINK/VCPの接続を用意する。ホスト固有設定は[local.mk.example](../../project-tools/host-config/local.mk.example)を参照。[本アプリのIOC](config/stm32n6570-dk-fullsecure.ioc)とローカルのボード設定を使用する。ビルド先は`build-hw-test`。共有コンポーネント用ヘッダーと予約領域はビルド時に生成する。NPU driverはこのアプリのビルドから除外する。
+ARMツールチェーン、STM32CubeN6、CubeMX、CubeProgrammerとST-LINK/VCPの接続を用意する。ホスト固有設定は[local.mk.example](../../project-tools/host-config/local.mk.example)を参照。[本アプリのIOC](config/stm32n6570-dk-fullsecure.ioc)とkernelの共有ボード設定を使用する。ビルド先は`build-hw-test`。共有コンポーネント用ヘッダーと予約領域はビルド時に生成する。NPU driverはこのアプリのビルドから除外する。
 
 `STEDGEAI_LIB_DIR`にはai-appと同じ`Middlewares/ST/AI`ディレクトリを指定する。Make変数、同名の環境変数、CMakeの`-DSTEDGEAI_LIB_DIR=...`で設定できる。未指定の場合は`/opt/ST/STEdgeAI/*/Middlewares/ST/AI`から検出する。`npu_cache.h`または`npu_cache.c`が不足するとCMakeの設定時に停止する。
 
@@ -143,7 +148,7 @@ python3 userspace/hw-test/runner.py --uart /dev/ttyACM0 \
 
 ## リンク監査
 
-最終ELFのビルド後は[check_link.py](check_link.py)がHAL／IRQのstrong実装に加え、UI・DMA2D・周辺driver・NOR・表示状態API・キャッシュ同期とHAL時刻処理がkernelオブジェクトから配置されたことをnmとリンクマップで確認する。`npu_cache_enable`が最終ELFに残る場合もkernelターゲットのSTEdgeAI実装から配置されたことを検査する。
+最終ELFのビルド後は[check_link.py](check_link.py)がHAL／IRQのstrong実装に加え、カメラ開始・geometry・復旧・ISP制御・表示・タッチ・UART・UI・DMA2D・周辺driver・NOR・キャッシュ同期・時刻処理がkernelオブジェクトから配置されたことをnmとリンクマップで確認する。`npu_cache_enable`が最終ELFに残る場合もkernelターゲットのSTEdgeAI実装から配置されたことを検査する。
 
 ## 安全条件と確認範囲
 

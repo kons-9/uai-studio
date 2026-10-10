@@ -1,6 +1,6 @@
 #include "tests/memory_patterns.hpp"
 
-namespace experiment::hwtest::tests::sram_driver {
+namespace uai::hwtest::tests::sram_driver {
 
 Result Run(const Context &)
 {

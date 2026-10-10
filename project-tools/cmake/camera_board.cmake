@@ -4,8 +4,7 @@ set(_uai_camera_board_apps
     experiment-model-load
     model-loader
     experiment-ui-control
-    experiment-hw-test
-    hw-test)
+    experiment-hw-test)
 
 if(APP_TARGET IN_LIST _uai_camera_board_apps)
     set(UAI_CAMERA_BOARD_APP "${APP_TARGET}")
