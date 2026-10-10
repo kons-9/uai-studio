@@ -257,7 +257,10 @@ TEST(
     EXPECT_EQ(camera.writes, 2U);
 }
 
-TEST(ExposureRuntime, DisablingRestoresFullFrameAndForgetsOldResults)
+TEST(
+    ExposureRuntime,
+    DisablingRestoresFullFrameAndForgetsOldResults
+)
 {
     exposure_control::Runtime runtime;
     FakeCamera camera;

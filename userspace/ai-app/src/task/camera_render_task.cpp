@@ -492,8 +492,8 @@ void CameraRenderTask::Run(CameraRenderContext context)
             const std::uint32_t now = common::Task::Now();
             if constexpr (kAiExposureControl) {
                 const bool ai_exposure_enabled = screen_ui.AiExposureEnabled();
-                const auto exposure_results = context.pipeline_task.ConsumeExposureResults(
-                    [&](const inference::BoxSet &result) {
+                const auto exposure_results =
+                    context.pipeline_task.ConsumeExposureResults([&](const inference::BoxSet &result) {
                         if (ai_exposure_enabled && previous_exposure_enabled)
                             exposure.Observe(result, now);
                     });

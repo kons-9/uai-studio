@@ -303,7 +303,10 @@ TEST(
     EXPECT_FALSE(ui.ShowBoxes());
 }
 
-TEST(AiAppUi, AiExposureToggleIsIndependentFromInferenceOverlay)
+TEST(
+    AiAppUi,
+    AiExposureToggleIsIndependentFromInferenceOverlay
+)
 {
     FakeModels models;
     uai::ai::app_ui::AppUi ui(models);

@@ -138,8 +138,13 @@ public:
         } else if (!values.available) {
             std::snprintf(text, capacity, "%s", enabled ? "AE WAITING" : "AI AE OFF");
         } else if (!enabled) {
-            std::snprintf(text, capacity, "AI AE OFF %ldus %ldmdB",
-                static_cast<long>(values.exposure_us), static_cast<long>(values.gain_mdB));
+            std::snprintf(
+                text,
+                capacity,
+                "AI AE OFF %ldus %ldmdB",
+                static_cast<long>(values.exposure_us),
+                static_cast<long>(values.gain_mdB)
+            );
         } else {
             const char *source = values.source == Source::kFace ? "FACE"
                 : values.source == Source::kPerson              ? "PERSON"
