@@ -113,7 +113,7 @@ make -C userspace/mini-ai-app monitor    # 別端末
 make -C userspace/mini-ai-app ram-run
 ```
 
-UARTに`hello from mini-ai-app`が出れば完了です。この章では`STM32_RAM_ENTRY`/`STM32_RAM_STACK`の既定値（`0x34000800`/`0x34200000`）が使われます。章2でカーネルアプリとして登録すると、ai-appと同じ値（`0x34060001`/`0x34100000`）に切り替わります。
+UARTに`hello from mini-ai-app`が出れば完了です。この章では`STM32_RAM_ENTRY`/`STM32_RAM_STACK`の既定値（`0x34000800`/`0x34200000`）が使われます。章2でカーネルアプリとして登録すると、mini-ai-appは`0x34060001`/`0x34100000`、ai-appは`0x34062001`/`0x34100000`に切り替わります。
 
 !!! note "リポジトリ上の完成形との関係"
     リポジトリの`mini-ai-app`は章2の登録（`UAI_KERNEL_APPS`）が済んでいるため、この章の状態のまま`mini-ai-app`という名前でビルドするとミドルウェアの生成物を要求されます。この章だけを試すなら、同じ内容の[experiment-hello-world](https://github.com/kons-9/uai-studio/tree/main/userspace/experiment-hello-world)を`make -C userspace/experiment-hello-world ram-run`で動かすか、別名のディレクトリで作業してください。

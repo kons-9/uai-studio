@@ -31,7 +31,7 @@ endif()
 
 | 場所 | 内容 |
 | --- | --- |
-| `stm32_cli.cmake` | 既定IOCが`userspace/<app>/config/stm32n6570-dk-<app>.ioc`になる。`STM32_RAM_ENTRY=0x34060001`、`STM32_RAM_STACK=0x34100000` |
+| `stm32_cli.cmake` | 既定IOCが`userspace/<app>/config/stm32n6570-dk-<app>.ioc`になる。`STM32_RAM_ENTRY=0x34060001`（ai-appは`0x34062001`）、`STM32_RAM_STACK=0x34100000` |
 | `pre_kernel` | `userspace/<app>/config`をインクルードパスに加える。`UAI_CAMERA_LCD_CLOCKS`でカメラ・LCDのクロックとRIF設定を`main()`で行う |
 
 `src/hal_time.c`は削除します。`HAL_GetTick`/`HAL_Delay`は`uai::driver_overrides`（`kernel/driver/board/hal_time.c`）が提供します。`uai_systick_count`だけはアプリに残るので、`main.cpp`で定義します。
@@ -46,7 +46,7 @@ volatile std::uint32_t uai_systick_count = 0U;
 ## なぜそうするか
 
 - ミドルウェアは`memory_config.hpp`（バッファ数、モデル出力サイズ）に依存し、ドライバは`static_memory_layout`（PSRAM上のアドレス）に依存します。どちらもアプリの設定から生成されるので、アプリなしにはビルドできません。そのため「どのアプリの生成物を使うか」をルートで決めています。
-- `STM32_RAM_ENTRY`は`uai_ram_entry`の配置アドレスです。章3で入れるリンカスクリプト雛形は`.text.uai_ram_entry`を`0x34060000`に固定しているので、登録と同時に既定値が切り替わります。
+- `STM32_RAM_ENTRY`は`uai_ram_entry`の配置アドレスです。章3で入れるリンカスクリプト雛形は`.text.uai_ram_entry`を固定配置し、ai-appは`.rodata`の増加に合わせて`0x34062000`を使います。
 - `UAI_CAMERA_LCD_CLOCKS`はCubeMXの`main()`にカメラ・LCDのクロック有効化とDCMIPP/LTDCのRIF設定を追加します（[起動の流れ](../kernel/boot.md)）。
 
 ## 確認

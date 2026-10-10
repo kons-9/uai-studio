@@ -6,7 +6,7 @@
  * this section; the latter uses the board's external-memory startup.
  */
 
-ENTRY(Reset_Handler)
+ENTRY(uai_ram_entry)
 
 _estack = 0x34200000;
 _Min_Stack_Size = 0x800;
@@ -32,7 +32,9 @@ SECTIONS
     . = ALIGN(4);
     KEEP(*(.text.Reset_Handler))
     *(.text)
-    *(.text*)
+    /* Keep the RAM launch trampoline out of ordinary text so it remains at
+     * the address used by STM32_Programmer_CLI's PC parameter. */
+    *(EXCLUDE_FILE (*ram_entry.S.obj *ram_entry.c.obj) .text*)
     *(.glue_7)
     *(.glue_7t)
     *(.eh_frame)
@@ -85,6 +87,15 @@ SECTIONS
     KEEP(*(SORT(.fini_array.*)))
     KEEP(*(.fini_array*))
     PROVIDE_HIDDEN(__fini_array_end = .);
+    . = ALIGN(4);
+  } >SRAM
+
+  /* The runner starts at 0x34060001. Keep this trampoline beyond the regular
+   * image so it cannot inherit an instruction-cache line from the prior app. */
+  .text.uai_ram_entry 0x34060000 :
+  {
+    . = ALIGN(4);
+    KEEP(*(.text.uai_ram_entry))
     . = ALIGN(4);
   } >SRAM
 

@@ -16,6 +16,20 @@ class CameraManagement;
 struct Diagnostics {
     Diagnostics();
 
+    enum class Anomaly : std::uint32_t {
+        kNone = 0U,
+        kPipe1FrameTimeout = 1U,
+        kPipe2FrameTimeout = 2U,
+        kBothPipeFrameTimeout = 3U,
+        kPipe1BufferSwitchError = 4U,
+        kPipe2BufferSwitchError = 5U,
+        kCameraPipeError = 6U,
+        kCameraError = 7U,
+        kCsiError = 8U,
+        kIspBackgroundError = 9U,
+        kRecoveryError = 10U,
+    };
+
     std::uint32_t vsync_event_count = 0U;
     std::uint32_t frame_event_count = 0U;
     std::uint32_t recovery_count = 0U;
@@ -38,7 +52,43 @@ struct Diagnostics {
     std::uint32_t csi_sot_sync_dl1_count = 0U;
     std::uint32_t csi_sot_dl0_count = 0U;
     std::uint32_t csi_sot_dl1_count = 0U;
+    std::uint32_t pipe1_timeout_count = 0U;
+    std::uint32_t pipe2_timeout_count = 0U;
+    std::uint32_t pipe1_frame_age_ms = 0U;
+    std::uint32_t pipe2_frame_age_ms = 0U;
+    Anomaly last_anomaly = Anomaly::kNone;
+    std::uint32_t last_anomaly_tick = 0U;
+    std::uint32_t last_anomaly_detail = 0U;
 };
+
+inline const char *AnomalyName(Diagnostics::Anomaly anomaly)
+{
+    switch (anomaly) {
+    case Diagnostics::Anomaly::kNone:
+        return "none";
+    case Diagnostics::Anomaly::kPipe1FrameTimeout:
+        return "pipe1-frame-timeout";
+    case Diagnostics::Anomaly::kPipe2FrameTimeout:
+        return "pipe2-frame-timeout";
+    case Diagnostics::Anomaly::kBothPipeFrameTimeout:
+        return "both-pipe-frame-timeout";
+    case Diagnostics::Anomaly::kPipe1BufferSwitchError:
+        return "pipe1-buffer-switch-error";
+    case Diagnostics::Anomaly::kPipe2BufferSwitchError:
+        return "pipe2-buffer-switch-error";
+    case Diagnostics::Anomaly::kCameraPipeError:
+        return "camera-pipe-error";
+    case Diagnostics::Anomaly::kCameraError:
+        return "camera-error";
+    case Diagnostics::Anomaly::kCsiError:
+        return "csi-error";
+    case Diagnostics::Anomaly::kIspBackgroundError:
+        return "isp-background-error";
+    case Diagnostics::Anomaly::kRecoveryError:
+        return "recovery-error";
+    }
+    return "unknown";
+}
 
 /* Application-facing capture driver. It owns camera state, buffer ownership,
  * and the backend lifecycle; sensor register details stay in registers/. */

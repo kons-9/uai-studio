@@ -11,7 +11,7 @@ STM32_PROGRAM_PORT ?= swd
 
 # STM32N6570-DK RAM image layout.
 STM32_RAM_ADDRESS ?= 0x34000400
-STM32_RAM_ENTRY ?= $(if $(filter ai-app mini-ai-app,$(APP_TARGET)),0x34060001,$(if $(filter experiment-ai,$(APP_TARGET)),0x340FE001,0x34000800))
+STM32_RAM_ENTRY ?= $(if $(filter ai-app,$(APP_TARGET)),0x34062001,$(if $(filter mini-ai-app,$(APP_TARGET)),0x34060001,$(if $(filter experiment-ai,$(APP_TARGET)),0x340FE001,0x34000800)))
 STM32_RAM_STACK ?= $(if $(filter ai-app mini-ai-app experiment-ai,$(APP_TARGET)),0x34100000,0x34200000)
 STM32_RAM_XPSR ?= 0x01000000
 

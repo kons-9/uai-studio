@@ -35,8 +35,11 @@ Result Run(const Context &context)
 {
     uai::ai::nor::NorManagement::Accessor accessor;
     const auto init_begin = context.clock();
-    if (!uai::ai::nor::NorManagement::Instance().OpenReadOnly(&accessor, 100).Ok()) {
-        return Failure(accessor, "nor-initialization");
+    const auto open_status = uai::ai::nor::NorManagement::Instance().OpenReadOnly(&accessor, 100);
+    if (!open_status.Ok()) {
+        char stage[64];
+        std::snprintf(stage, sizeof(stage), "nor-initialization status=%s", uai::ai::common::ErrorCodeName(open_status.Code()));
+        return Failure(accessor, stage);
     }
     const auto init_ms = context.clock() - init_begin;
     std::uint8_t first[256]{}, second[256]{};

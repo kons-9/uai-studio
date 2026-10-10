@@ -41,7 +41,9 @@ def audit(symbols, map_text):
     expected = dict(EXPECTED)
     for fragment, source in SHARED:
         matches = [line.split()[2] for line in symbols.splitlines()
-                   if len(line.split()) == 3 and fragment in line.split()[2]]
+                   if len(line.split()) == 3 and fragment in line.split()[2]
+                   and not re.search(r"\.(?:part|isra|constprop|clone)(?:\.\d+)?$",
+                                     line.split()[2])]
         if len(matches) != 1:
             raise ValueError(f"missing or ambiguous shared implementation: {fragment}")
         expected[matches[0]] = source

@@ -25,7 +25,7 @@ STM32_Programmer_CLI        <app>.bin を 0x34000400 へ書き、MSP/PC を設�
 | 変数 | 内容 | ai-appの値 |
 | --- | --- | --- |
 | `STM32_RAM_ADDRESS` | `.bin`を書き込む先頭アドレス | `0x34000400` |
-| `STM32_RAM_ENTRY` | 再開時のPC。`uai_ram_entry`のアドレス（Thumbのため最下位ビットが1） | `0x34060001` |
+| `STM32_RAM_ENTRY` | 再開時のPC。`uai_ram_entry`のアドレス（Thumbのため最下位ビットが1） | ai-app: `0x34062001` |
 | `STM32_RAM_STACK` | 再開時のMSP | `0x34100000` |
 
 独自のリンカスクリプトを使う場合は、`uai_ram_entry`の配置に合わせてこれらを変更してください。値はELFの`arm-none-eabi-nm <app>.elf | grep uai_ram_entry`で確認できます。

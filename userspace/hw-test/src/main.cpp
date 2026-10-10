@@ -5,6 +5,8 @@
 #include "driver/console_driver/console_driver.hpp"
 #include "driver/board/time.hpp"
 #include "driver/cache_driver/cache_driver.hpp"
+#include "driver/camera_driver/camera_driver.hpp"
+#include "stm32n6xx.h"
 #include "tests/camera/buffers.hpp"
 #include <atomic>
 #include <cstdint>
@@ -210,16 +212,62 @@ uai::hwtest::console::Status Frames(
         return uai::hwtest::console::Status::kInvalidArgument;
     }
     const auto state = uai::hwtest::integrated::Observe();
-    char line[128];
+    const auto diagnostics = uai::ai::camera::CameraManagement::Instance().GetDiagnostics();
+    const auto *const vectors = reinterpret_cast<const volatile std::uint32_t *>(SCB->VTOR);
+    char line[640];
     std::snprintf(
         line,
         sizeof(line),
-        "frames: pipe1=%lu pipe2=%lu errors=%lu recoveries=%lu running=%u\n",
+        "frames: pipe1=%lu pipe2=%lu errors=%lu recoveries=%lu running=%u "
+        "watchdog=%lu/%lu age=%lu/%lu anomaly=%s@%lu detail=%08lx "
+        "csi=%lu status=%08lx/%08lx pending=%08lx/%08lx dcmipp=%lu/%08lx "
+        "camera=%lu isp=%lu recovery-errors=%lu "
+        "csi-reg=%08lx/%08lx ie=%08lx/%08lx dcmipp-reg=%08lx/%08lx "
+        "pipe-reg=%08lx/%08lx ie=%08lx/%08lx cmier=%08lx cmcr=%08lx "
+        "cpt=%08lx/%08lx fscr=%08lx/%08lx vec=%08lx/%08lx nvic=%08lx vtor=%08lx primask=%lu\n",
         static_cast<unsigned long>(state.pipe1),
         static_cast<unsigned long>(state.pipe2),
         static_cast<unsigned long>(state.errors),
         static_cast<unsigned long>(state.recoveries),
-        unsigned(state.running)
+        unsigned(state.running),
+        static_cast<unsigned long>(diagnostics.pipe1_timeout_count),
+        static_cast<unsigned long>(diagnostics.pipe2_timeout_count),
+        static_cast<unsigned long>(diagnostics.pipe1_frame_age_ms),
+        static_cast<unsigned long>(diagnostics.pipe2_frame_age_ms),
+        uai::ai::camera::AnomalyName(diagnostics.last_anomaly),
+        static_cast<unsigned long>(diagnostics.last_anomaly_tick),
+        static_cast<unsigned long>(diagnostics.last_anomaly_detail),
+        static_cast<unsigned long>(diagnostics.csi_error_count),
+        static_cast<unsigned long>(diagnostics.csi_last_status),
+        static_cast<unsigned long>(diagnostics.csi_last_status1),
+        static_cast<unsigned long>(diagnostics.csi_last_pending_status),
+        static_cast<unsigned long>(diagnostics.csi_last_pending_status1),
+        static_cast<unsigned long>(diagnostics.dcmipp_error_count),
+        static_cast<unsigned long>(diagnostics.dcmipp_last_status),
+        static_cast<unsigned long>(diagnostics.camera_error_count),
+        static_cast<unsigned long>(diagnostics.isp_error_count),
+        static_cast<unsigned long>(diagnostics.recovery_error_count),
+        static_cast<unsigned long>(CSI->SR0),
+        static_cast<unsigned long>(CSI->SR1),
+        static_cast<unsigned long>(CSI->IER0),
+        static_cast<unsigned long>(CSI->IER1),
+        static_cast<unsigned long>(DCMIPP->CMSR1),
+        static_cast<unsigned long>(DCMIPP->CMSR2),
+        static_cast<unsigned long>(DCMIPP->P1SR),
+        static_cast<unsigned long>(DCMIPP->P2SR),
+        static_cast<unsigned long>(DCMIPP->P1IER),
+        static_cast<unsigned long>(DCMIPP->P2IER),
+        static_cast<unsigned long>(DCMIPP->CMIER),
+        static_cast<unsigned long>(DCMIPP->CMCR),
+        static_cast<unsigned long>(DCMIPP->P1FCTCR),
+        static_cast<unsigned long>(DCMIPP->P2FCTCR),
+        static_cast<unsigned long>(DCMIPP->P1FSCR),
+        static_cast<unsigned long>(DCMIPP->P2FSCR),
+        static_cast<unsigned long>(vectors[16U + CSI_IRQn]),
+        static_cast<unsigned long>(vectors[16U + DCMIPP_IRQn]),
+        static_cast<unsigned long>(NVIC->ISER[1]),
+        static_cast<unsigned long>(SCB->VTOR),
+        static_cast<unsigned long>(__get_PRIMASK())
     );
     writer.Write(line);
     return uai::hwtest::console::Status::kOk;

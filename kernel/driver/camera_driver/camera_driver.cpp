@@ -91,6 +91,8 @@ volatile std::uint32_t g_last_frame_tick = 0U;
 volatile std::uint32_t g_last_pipe2_frame_tick = 0U;
 volatile std::uint32_t g_last_csi_error_tick = 0U;
 volatile bool g_csi_fault_pending = false;
+volatile bool g_pipe1_timeout_reported = false;
+volatile bool g_pipe2_timeout_reported = false;
 std::uint32_t g_last_vsync_count = 0U;
 std::uint32_t g_last_recovery_tick = 0U;
 bool g_camera_recovery_attempted = false;
@@ -587,6 +589,11 @@ volatile unsigned int g_camera_csi_sot_sync_dl0_count = 0U;
 volatile unsigned int g_camera_csi_sot_sync_dl1_count = 0U;
 volatile unsigned int g_camera_csi_sot_dl0_count = 0U;
 volatile unsigned int g_camera_csi_sot_dl1_count = 0U;
+volatile unsigned int g_camera_pipe1_timeout_count = 0U;
+volatile unsigned int g_camera_pipe2_timeout_count = 0U;
+volatile unsigned int g_camera_last_anomaly = 0U;
+volatile unsigned int g_camera_last_anomaly_tick = 0U;
+volatile unsigned int g_camera_last_anomaly_detail = 0U;
 }
 
 namespace uai::ai::camera {
@@ -612,7 +619,14 @@ Diagnostics::Diagnostics()
       csi_sot_sync_dl0_count(g_camera_csi_sot_sync_dl0_count),
       csi_sot_sync_dl1_count(g_camera_csi_sot_sync_dl1_count),
       csi_sot_dl0_count(g_camera_csi_sot_dl0_count),
-      csi_sot_dl1_count(g_camera_csi_sot_dl1_count)
+      csi_sot_dl1_count(g_camera_csi_sot_dl1_count),
+      pipe1_timeout_count(g_camera_pipe1_timeout_count),
+      pipe2_timeout_count(g_camera_pipe2_timeout_count),
+      pipe1_frame_age_ms(g_capture_active ? HAL_GetTick() - g_last_frame_tick : 0U),
+      pipe2_frame_age_ms(g_capture_active ? HAL_GetTick() - g_last_pipe2_frame_tick : 0U),
+      last_anomaly(static_cast<Anomaly>(g_camera_last_anomaly)),
+      last_anomaly_tick(g_camera_last_anomaly_tick),
+      last_anomaly_detail(g_camera_last_anomaly_detail)
 {}
 
 Diagnostics CameraDriver::GetDiagnostics() const
@@ -621,6 +635,16 @@ Diagnostics CameraDriver::GetDiagnostics() const
 }
 
 namespace {
+
+void RecordAnomaly(
+    Diagnostics::Anomaly anomaly,
+    std::uint32_t detail = 0U
+)
+{
+    g_camera_last_anomaly = static_cast<std::uint32_t>(anomaly);
+    g_camera_last_anomaly_tick = HAL_GetTick();
+    g_camera_last_anomaly_detail = detail;
+}
 
 void LogCameraLinkState(const sensor::registers::Imx335RegisterLayer &sensor_registers)
 {
@@ -836,6 +860,8 @@ common::Error CameraDriver::StartExternal(const Writer &writer)
     g_completed_frame = g_completed_inference = 0;
     g_last_frame_tick = HAL_GetTick();
     g_last_pipe2_frame_tick = g_last_frame_tick;
+    g_pipe1_timeout_reported = false;
+    g_pipe2_timeout_reported = false;
     g_last_vsync_count = g_camera_vsync_event_count;
     g_camera_recovery_attempted = false;
     HAL_Delay(100);
@@ -852,7 +878,13 @@ common::Error CameraDriver::StartExternal(const Writer &writer)
         (void)Stop(writer);
         return {common::ErrorCode::kHardware};
     }
-    auto status = ReadState(&saved_controls_, writer);
+    uai::ai::camera::sensor::registers::Imx335RegisterLayer registers;
+    auto status = StartStream(registers);
+    if (!status.Ok()) {
+        (void)Stop(writer);
+        return status;
+    }
+    status = ReadState(&saved_controls_, writer);
     if (!status.Ok())
         (void)Stop(writer);
     return status;
@@ -917,6 +949,8 @@ uai::ai::common::Error CameraDriver::Start(const Writer &writer)
         (void)tk_clr_flg(g_pipe2_frame_event_flag, 0U);
     }
     g_csi_fault_pending = false;
+    g_pipe1_timeout_reported = false;
+    g_pipe2_timeout_reported = false;
     g_camera_recovery_attempted = false;
     PrepareRawDump();
     g_capture_active = true;
@@ -943,6 +977,8 @@ uai::ai::common::Error CameraDriver::Start(const Writer &writer)
     StartRawDump();
     g_last_frame_tick = HAL_GetTick();
     g_last_pipe2_frame_tick = g_last_frame_tick;
+    g_pipe1_timeout_reported = false;
+    g_pipe2_timeout_reported = false;
     g_last_vsync_count = g_camera_vsync_event_count;
     started_ = true;
     LogCameraLinkState(registers);
@@ -1031,8 +1067,10 @@ common::Error CameraDriver::Recover(const Writer &writer)
         (void)Stop(writer);
     g_camera_recovery_attempted = true;
     g_capture_active = false;
-    if (BSP_CAMERA_DeInit(0U) != BSP_ERROR_NONE) {
+    const int deinit_status = BSP_CAMERA_DeInit(0U);
+    if (deinit_status != BSP_ERROR_NONE) {
         ++g_camera_recovery_error_count;
+        RecordAnomaly(Diagnostics::Anomaly::kRecoveryError, static_cast<std::uint32_t>(deinit_status));
         return {common::ErrorCode::kHardware};
     }
     started_ = false;
@@ -1094,10 +1132,13 @@ common::Error CameraDriver::Recover(const Writer &writer)
         g_capture_active = false;
         ++g_camera_recovery_error_count;
         g_camera_recovery_attempted = true;
+        RecordAnomaly(Diagnostics::Anomaly::kRecoveryError, static_cast<std::uint32_t>(status.Code()));
         return status;
     }
     g_last_frame_tick = HAL_GetTick();
     g_last_pipe2_frame_tick = g_last_frame_tick;
+    g_pipe1_timeout_reported = false;
+    g_pipe2_timeout_reported = false;
     g_last_vsync_count = g_camera_vsync_event_count;
     g_csi_fault_pending = false;
     g_camera_recovery_attempted = false;
@@ -1131,12 +1172,33 @@ uai::ai::common::Error CameraDriver::Process(const Writer &writer)
         ProcessRawDump();
     if (g_camera_vsync_event_count != g_last_vsync_count) {
         g_last_vsync_count = g_camera_vsync_event_count;
-        if (BSP_CAMERA_BackgroundProcess() != BSP_ERROR_NONE)
+        const int background_status = BSP_CAMERA_BackgroundProcess();
+        if (background_status != BSP_ERROR_NONE) {
             ++g_camera_isp_error_count;
+            RecordAnomaly(Diagnostics::Anomaly::kIspBackgroundError, static_cast<std::uint32_t>(background_status));
+        }
     }
     const std::uint32_t now = HAL_GetTick();
-    const bool timed_out =
-        now - g_last_frame_tick >= kFrameTimeoutMs || now - g_last_pipe2_frame_tick >= kFrameTimeoutMs;
+    const bool pipe1_timed_out = now - g_last_frame_tick >= kFrameTimeoutMs;
+    const bool pipe2_timed_out = now - g_last_pipe2_frame_tick >= kFrameTimeoutMs;
+    const bool new_pipe1_timeout = pipe1_timed_out && !g_pipe1_timeout_reported;
+    const bool new_pipe2_timeout = pipe2_timed_out && !g_pipe2_timeout_reported;
+    if (new_pipe1_timeout) {
+        ++g_camera_pipe1_timeout_count;
+        g_pipe1_timeout_reported = true;
+    }
+    if (new_pipe2_timeout) {
+        ++g_camera_pipe2_timeout_count;
+        g_pipe2_timeout_reported = true;
+    }
+    if (new_pipe1_timeout || new_pipe2_timeout) {
+        const auto anomaly = new_pipe1_timeout && new_pipe2_timeout ? Diagnostics::Anomaly::kBothPipeFrameTimeout
+            : new_pipe1_timeout ? Diagnostics::Anomaly::kPipe1FrameTimeout
+                                : Diagnostics::Anomaly::kPipe2FrameTimeout;
+        const std::uint32_t detail = (pipe1_timed_out ? 1U : 0U) | (pipe2_timed_out ? 2U : 0U);
+        RecordAnomaly(anomaly, detail);
+    }
+    const bool timed_out = pipe1_timed_out || pipe2_timed_out;
     /* A CSI error is diagnostic information, not by itself a reason to
      * restart the sensor.  The reference application waits for an actual
      * frame timeout; doing the same avoids restarting on a transient SOT or
@@ -1286,8 +1348,10 @@ extern "C" void BSP_CAMERA_FrameEventCallback(uint32_t Instance)
     (void)Instance;
     ++g_camera_frame_event_count;
     if (g_external_capture) {
-        if (g_capture_active)
+        if (g_capture_active) {
             g_last_frame_tick = HAL_GetTick();
+            g_pipe1_timeout_reported = false;
+        }
         return;
     }
     if (!g_capture_active)
@@ -1297,9 +1361,13 @@ extern "C" void BSP_CAMERA_FrameEventCallback(uint32_t Instance)
         )
         != HAL_OK) {
         ++g_camera_dcmipp_error_count;
+        uai::ai::camera::RecordAnomaly(
+            uai::ai::camera::Diagnostics::Anomaly::kPipe1BufferSwitchError, hcamera_dcmipp.ErrorCode
+        );
         return;
     }
     g_last_frame_tick = HAL_GetTick();
+    g_pipe1_timeout_reported = false;
     g_csi_fault_pending = false;
     g_camera_recovery_attempted = false;
     g_completed_frame = g_active_frame;
@@ -1314,13 +1382,13 @@ extern "C" void BSP_CAMERA_VsyncEventCallback(uint32_t Instance)
 }
 extern "C" void BSP_CAMERA_PipeErrorCallback(uint32_t Instance)
 {
-    (void)Instance;
     ++g_camera_dcmipp_error_count;
+    uai::ai::camera::RecordAnomaly(uai::ai::camera::Diagnostics::Anomaly::kCameraPipeError, Instance);
 }
 extern "C" void BSP_CAMERA_ErrorCallback(uint32_t Instance)
 {
-    (void)Instance;
     ++g_camera_camera_error_count;
+    uai::ai::camera::RecordAnomaly(uai::ai::camera::Diagnostics::Anomaly::kCameraError, Instance);
 }
 
 extern "C" void AiCameraPipe2FrameEventCallback(void)
@@ -1330,8 +1398,10 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
      * to the drop sink. It is intentionally separate from the sequence of a
      * frame handed to inference so lag can expose dropped intermediate frames. */
     const std::uint32_t capture_sequence = ++g_inference_sequence;
-    if (g_capture_active)
+    if (g_capture_active) {
         g_last_pipe2_frame_tick = HAL_GetTick();
+        g_pipe2_timeout_reported = false;
+    }
     if (g_external_capture || !g_capture_active)
         return;
     const std::uintptr_t completed = g_active_inference;
@@ -1392,6 +1462,9 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
         )
         != HAL_OK) {
         ++g_camera_dcmipp_error_count;
+        uai::ai::camera::RecordAnomaly(
+            uai::ai::camera::Diagnostics::Anomaly::kPipe2BufferSwitchError, hcamera_dcmipp.ErrorCode
+        );
         if (completed_is_real_buffer && g_completed_inference != 0U && g_pipe2_memory != nullptr) {
             (void)g_pipe2_memory->DropCompletedInference(g_completed_inference, g_completed_inference_sequence);
             g_completed_inference = 0U;
@@ -1444,6 +1517,9 @@ extern "C" void CSI_IRQHandler(void)
         ++g_camera_csi_error_count;
         g_last_csi_error_tick = HAL_GetTick();
         g_csi_fault_pending = true;
+        uai::ai::camera::RecordAnomaly(
+            uai::ai::camera::Diagnostics::Anomaly::kCsiError, pending0 != 0U ? pending0 : pending1
+        );
         // HAL_DCMIPP_CSI_IRQHandler() disables and clears the faulty CSI
         // interrupt source.  Do not re-arm it here: repeated D-PHY errors
         // must not turn into an interrupt storm.  The normal frame watchdog

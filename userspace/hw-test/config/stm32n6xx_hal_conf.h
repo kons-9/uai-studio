@@ -9,4 +9,5 @@
 #define HAL_RTC_MODULE_ENABLED
 #define HAL_TIM_MODULE_ENABLED
 #define HAL_LTDC_MODULE_ENABLED
+#define HAL_I2C_MODULE_ENABLED
 #include_next "stm32n6xx_hal_conf.h"

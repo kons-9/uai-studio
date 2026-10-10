@@ -407,6 +407,9 @@ void CameraRenderTask::Run(CameraRenderContext context)
     unsigned int reported_recoveries = 0U;
     unsigned int reported_recovery_errors = 0U;
     unsigned int reported_isp_errors = 0U;
+    unsigned int reported_pipe1_timeouts = 0U;
+    unsigned int reported_pipe2_timeouts = 0U;
+    unsigned int reported_anomaly_tick = 0U;
     std::uint32_t last_async_error_log_tick = common::Task::Now();
     common::Task::RunForever(
         context.cpu_task_monitor,
@@ -424,7 +427,10 @@ void CameraRenderTask::Run(CameraRenderContext context)
             const camera::Diagnostics snapshot = context.camera.GetDiagnostics();
             const bool async_error_changed = reported_pipe_errors != snapshot.dcmipp_error_count
                 || reported_camera_errors != snapshot.camera_error_count
-                || reported_csi_errors != snapshot.csi_error_count || reported_isp_errors != snapshot.isp_error_count;
+                || reported_csi_errors != snapshot.csi_error_count || reported_isp_errors != snapshot.isp_error_count
+                || reported_pipe1_timeouts != snapshot.pipe1_timeout_count
+                || reported_pipe2_timeouts != snapshot.pipe2_timeout_count
+                || reported_anomaly_tick != snapshot.last_anomaly_tick;
             if (async_error_changed
                 && ((reported_pipe_errors == 0U && reported_camera_errors == 0U && reported_csi_errors == 0U
                      && reported_isp_errors == 0U)
@@ -433,10 +439,21 @@ void CameraRenderTask::Run(CameraRenderContext context)
                 reported_camera_errors = snapshot.camera_error_count;
                 reported_csi_errors = snapshot.csi_error_count;
                 reported_isp_errors = snapshot.isp_error_count;
+                reported_pipe1_timeouts = snapshot.pipe1_timeout_count;
+                reported_pipe2_timeouts = snapshot.pipe2_timeout_count;
+                reported_anomaly_tick = snapshot.last_anomaly_tick;
                 last_async_error_log_tick = common::Task::Now();
                 UAI_LOG_WARN(
-                    "camera: async errors pipe=%u sensor=%u csi=%u isp=%u dcmipp=%x csi0=%x csi1=%x pend0=%x pend1=%x "
+                    "camera: health anomaly=%s tick=%u detail=%x timeout=%u/%u age_ms=%u/%u "
+                    "errors pipe=%u sensor=%u csi=%u isp=%u dcmipp=%x csi0=%x csi1=%x pend0=%x pend1=%x "
                     "code=%x sot_sync_dl0=%u sot_sync_dl1=%u sot_dl0=%u sot_dl1=%u\n",
+                    camera::AnomalyName(snapshot.last_anomaly),
+                    snapshot.last_anomaly_tick,
+                    snapshot.last_anomaly_detail,
+                    reported_pipe1_timeouts,
+                    reported_pipe2_timeouts,
+                    snapshot.pipe1_frame_age_ms,
+                    snapshot.pipe2_frame_age_ms,
                     reported_pipe_errors,
                     reported_camera_errors,
                     reported_csi_errors,

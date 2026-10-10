@@ -32,7 +32,10 @@ common::Error ApplySettings(const State &state)
         status = IspControls::Statistics(state.statistics);
     if (status.Ok())
         status = IspControls::WhiteBalance(state.auto_white_balance ? 0 : state.color_temperature);
-    if (status.Ok() && state.reported_exposure_us > 0)
+    /* In automatic exposure mode these are current readback values, not a
+     * manual target. They can be outside the sensor's manual range after AE
+     * has converged, so restore AE itself without forcing that readback. */
+    if (status.Ok() && !state.auto_exposure && state.reported_exposure_us > 0)
         status = IspControls::Manual(state.reported_exposure_us, state.reported_gain_mdB);
     if (status.Ok())
         status = IspControls::AutoExposure(state.auto_exposure);
