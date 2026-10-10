@@ -106,10 +106,9 @@ const uai::ai::ui::ButtonSpec &ButtonOf(uai::ai::app_ui::WidgetId id)
     return uai::ai::app_ui::kMainButtons[0];
 }
 
-uai::ai::ui::Event Tap(
-    uai::ai::app_ui::AppUi &ui,
-    uai::ai::app_ui::WidgetId id
-)
+uai::ai::ui::Event
+Tap(uai::ai::app_ui::AppUi &ui,
+    uai::ai::app_ui::WidgetId id)
 {
     const uai::ai::ui::Rect bounds = BoundsOf(id);
     ui.HandleTouch(

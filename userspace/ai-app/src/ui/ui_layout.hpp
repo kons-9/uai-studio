@@ -39,7 +39,11 @@ enum class WidgetId : std::uint16_t {
     kStatusHint = 19U,
 };
 
-struct FeatureBinding { WidgetId widget; const char *feature; const char *operation; };
+struct FeatureBinding {
+    WidgetId widget;
+    const char *feature;
+    const char *operation;
+};
 inline constexpr FeatureBinding kFeatureBindings[] = {
     {WidgetId::kPerson, "models", "toggle"},
     {WidgetId::kFace, "models", "toggle"},
@@ -244,7 +248,10 @@ inline constexpr ui::SliderSpec kMenuSliders[] = {
         static_cast<std::uint16_t>(WidgetId::kMinConfidence),
         {24U, 296U, 352U, 72U},
         "CONFIDENCE %",
-        0, 100, 5, 50,
+        0,
+        100,
+        5,
+        50,
         {
             ui::Rgb565(0x30U, 0x40U, 0x50U),
             ui::Rgb565(0x20U, 0x60U, 0xC0U),
@@ -261,7 +268,10 @@ inline constexpr ui::DialSpec kMenuDials[] = {
         static_cast<std::uint16_t>(WidgetId::kStatusPeriod),
         {488U, 264U, 224U, 176U},
         "STATUS MS",
-        100, 2000, 100, 500,
+        100,
+        2000,
+        100,
+        500,
         {
             ui::Rgb565(0x20U, 0x28U, 0x30U),
             ui::Rgb565(0x30U, 0x40U, 0x50U),
@@ -279,31 +289,36 @@ inline constexpr ui::ImageSpec kMenuImages[] = {
         static_cast<std::uint16_t>(WidgetId::kLogo),
         {687U, 15U, 77U, 50U},
         kLogoPixels,
-        true, 0xF81FU,
+        true,
+        0xF81FU,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kModelsHint),
         {25U, 139U, 268U, 17U},
         kModelsHintPixels,
-        true, 0xF81FU,
+        true,
+        0xF81FU,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kVisualizationHint),
         {425U, 139U, 268U, 17U},
         kVisualizationHintPixels,
-        true, 0xF81FU,
+        true,
+        0xF81FU,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kConfidenceHint),
         {28U, 379U, 282U, 17U},
         kConfidenceHintPixels,
-        true, 0xF81FU,
+        true,
+        0xF81FU,
     },
     {
         static_cast<std::uint16_t>(WidgetId::kStatusHint),
         {426U, 451U, 267U, 17U},
         kStatusHintPixels,
-        true, 0xF81FU,
+        true,
+        0xF81FU,
     },
 };
 
@@ -311,31 +326,48 @@ inline constexpr ui::ImageSpec kMenuImages[] = {
 inline constexpr ui::ScreenSpec kScreens[] = {
     {
         static_cast<std::uint16_t>(ScreenId::kMain),
-        ui::Background::kCamera, 0U,
-        kMainButtons, sizeof(kMainButtons) / sizeof(kMainButtons[0]),
-        kMainLabels, sizeof(kMainLabels) / sizeof(kMainLabels[0]),
-        nullptr, 0U,
-        nullptr, 0U,
-        nullptr, 0U,
-        nullptr, 0U,
-        nullptr, 0U,
-        nullptr, 0U,
+        ui::Background::kCamera,
+        0U,
+        kMainButtons,
+        sizeof(kMainButtons) / sizeof(kMainButtons[0]),
+        kMainLabels,
+        sizeof(kMainLabels) / sizeof(kMainLabels[0]),
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
     },
     {
         static_cast<std::uint16_t>(ScreenId::kMenu),
-        ui::Background::kSolid, ui::Rgb565(0x10U, 0x18U, 0x20U),
-        kMenuButtons, sizeof(kMenuButtons) / sizeof(kMenuButtons[0]),
-        kMenuLabels, sizeof(kMenuLabels) / sizeof(kMenuLabels[0]),
-        kMenuSliders, sizeof(kMenuSliders) / sizeof(kMenuSliders[0]),
-        kMenuDials, sizeof(kMenuDials) / sizeof(kMenuDials[0]),
-        nullptr, 0U,
-        nullptr, 0U,
-        kMenuImages, sizeof(kMenuImages) / sizeof(kMenuImages[0]),
-        nullptr, 0U,
+        ui::Background::kSolid,
+        ui::Rgb565(0x10U, 0x18U, 0x20U),
+        kMenuButtons,
+        sizeof(kMenuButtons) / sizeof(kMenuButtons[0]),
+        kMenuLabels,
+        sizeof(kMenuLabels) / sizeof(kMenuLabels[0]),
+        kMenuSliders,
+        sizeof(kMenuSliders) / sizeof(kMenuSliders[0]),
+        kMenuDials,
+        sizeof(kMenuDials) / sizeof(kMenuDials[0]),
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        kMenuImages,
+        sizeof(kMenuImages) / sizeof(kMenuImages[0]),
+        nullptr,
+        0U,
     },
 };
-inline constexpr std::size_t kScreenCount =
-    sizeof(kScreens) / sizeof(kScreens[0]);
+inline constexpr std::size_t kScreenCount = sizeof(kScreens) / sizeof(kScreens[0]);
 
 /* Handler methods the application must provide on its Handlers type:
  *   void OnFaceTap(const ui::Event &event);
@@ -347,7 +379,10 @@ inline constexpr std::size_t kScreenCount =
  *   void ShowScreen(ScreenId screen);
  */
 template <typename Handlers>
-bool Dispatch(Handlers &handlers, const ui::Event &event)
+bool Dispatch(
+    Handlers &handlers,
+    const ui::Event &event
+)
 {
     if (event.type == ui::EventType::kTap) {
         switch (static_cast<WidgetId>(event.widget_id)) {

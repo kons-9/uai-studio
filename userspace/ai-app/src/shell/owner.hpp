@@ -193,7 +193,9 @@ Reply Apply(
     return reply;
 }
 
-template <typename Camera, typename Ui>
+template <
+    typename Camera,
+    typename Ui>
 bool ApplyTouch(
     const ui::Event &event,
     Camera &camera,
@@ -205,9 +207,7 @@ bool ApplyTouch(
     if (event.type != ui::EventType::kTap
         || event.widget_id != static_cast<std::uint16_t>(app_ui::WidgetId::kAiExposure))
         return false;
-    *reply = Apply(
-        {Action::kAiExposure, {screen_ui.AiExposureEnabled() ? 0 : 1}}, camera, screen_ui, mode
-    );
+    *reply = Apply({Action::kAiExposure, {screen_ui.AiExposureEnabled() ? 0 : 1}}, camera, screen_ui, mode);
     return true;
 }
 
