@@ -14,7 +14,12 @@ struct ExposureMode {
 };
 
 template <typename Camera>
-common::Error FollowUiExposure(bool enabled, bool previous, Camera &camera, ExposureMode &mode)
+common::Error FollowUiExposure(
+    bool enabled,
+    bool previous,
+    Camera &camera,
+    ExposureMode &mode
+)
 {
     if (!enabled)
         return {};
@@ -29,8 +34,15 @@ common::Error FollowUiExposure(bool enabled, bool previous, Camera &camera, Expo
     return {};
 }
 
-template <typename Camera, typename Ui>
-Reply Apply(const Request &request, Camera &camera, Ui &ui, ExposureMode &mode)
+template <
+    typename Camera,
+    typename Ui>
+Reply Apply(
+    const Request &request,
+    Camera &camera,
+    Ui &ui,
+    ExposureMode &mode
+)
 {
     Reply reply{};
     common::Error status{};
@@ -44,23 +56,34 @@ Reply Apply(const Request &request, Camera &camera, Ui &ui, ExposureMode &mode)
             status = camera.GetGeometry(&geometry);
         if (status.Ok()) {
             const auto diagnostics = camera.GetDiagnostics();
-            std::snprintf(reply.text, sizeof(reply.text),
+            std::snprintf(
+                reply.text,
+                sizeof(reply.text),
                 "camera ae=%u exp=%ldus gain=%ldmdB comp=%d awb=%u temp=%lu stats=%lu,%lu,%lu,%lu\r\n"
                 "fps=%lu flip=%u,%u crop=%lu,%lu,%lu,%lu frames=%lu/%lu errors=%lu/%lu/%lu\r\n",
-                static_cast<unsigned int>(state.auto_exposure), static_cast<long>(state.reported_exposure_us),
-                static_cast<long>(state.reported_gain_mdB), state.compensation,
-                static_cast<unsigned int>(state.auto_white_balance), static_cast<unsigned long>(state.color_temperature),
-                static_cast<unsigned long>(state.statistics.x), static_cast<unsigned long>(state.statistics.y),
-                static_cast<unsigned long>(state.statistics.width), static_cast<unsigned long>(state.statistics.height),
-                static_cast<unsigned long>(geometry.fps), static_cast<unsigned int>(geometry.horizontal),
-                static_cast<unsigned int>(geometry.vertical), static_cast<unsigned long>(geometry.crop.x),
-                static_cast<unsigned long>(geometry.crop.y), static_cast<unsigned long>(geometry.crop.width),
+                static_cast<unsigned int>(state.auto_exposure),
+                static_cast<long>(state.reported_exposure_us),
+                static_cast<long>(state.reported_gain_mdB),
+                state.compensation,
+                static_cast<unsigned int>(state.auto_white_balance),
+                static_cast<unsigned long>(state.color_temperature),
+                static_cast<unsigned long>(state.statistics.x),
+                static_cast<unsigned long>(state.statistics.y),
+                static_cast<unsigned long>(state.statistics.width),
+                static_cast<unsigned long>(state.statistics.height),
+                static_cast<unsigned long>(geometry.fps),
+                static_cast<unsigned int>(geometry.horizontal),
+                static_cast<unsigned int>(geometry.vertical),
+                static_cast<unsigned long>(geometry.crop.x),
+                static_cast<unsigned long>(geometry.crop.y),
+                static_cast<unsigned long>(geometry.crop.width),
                 static_cast<unsigned long>(geometry.crop.height),
                 static_cast<unsigned long>(diagnostics.frame_event_count),
                 static_cast<unsigned long>(diagnostics.pipe2_frame_event_count),
                 static_cast<unsigned long>(diagnostics.dcmipp_error_count),
                 static_cast<unsigned long>(diagnostics.csi_error_count),
-                static_cast<unsigned long>(diagnostics.isp_error_count));
+                static_cast<unsigned long>(diagnostics.isp_error_count)
+            );
         }
         break;
     }
@@ -79,15 +102,18 @@ Reply Apply(const Request &request, Camera &camera, Ui &ui, ExposureMode &mode)
         status = camera.Compensation(values[0]);
         break;
     case Action::kCameraManual:
-        status = mode.manual ? camera.Manual(values[0], values[1])
-                             : common::Error{common::ErrorCode::kInvalidState};
+        status = mode.manual ? camera.Manual(values[0], values[1]) : common::Error{common::ErrorCode::kInvalidState};
         break;
     case Action::kCameraStatistics:
         if (ui.AiExposureEnabled())
             status = {common::ErrorCode::kInvalidState};
         else
-            status = camera.Statistics({static_cast<std::uint32_t>(values[0]), static_cast<std::uint32_t>(values[1]),
-                                        static_cast<std::uint32_t>(values[2]), static_cast<std::uint32_t>(values[3])});
+            status = camera.Statistics(
+                {static_cast<std::uint32_t>(values[0]),
+                 static_cast<std::uint32_t>(values[1]),
+                 static_cast<std::uint32_t>(values[2]),
+                 static_cast<std::uint32_t>(values[3])}
+            );
         if (status.Ok())
             mode.custom_statistics = true;
         break;
@@ -103,8 +129,12 @@ Reply Apply(const Request &request, Camera &camera, Ui &ui, ExposureMode &mode)
             geometry.horizontal = values[0] != 0;
             geometry.vertical = values[1] != 0;
         } else {
-            geometry.crop = {static_cast<std::uint32_t>(values[0]), static_cast<std::uint32_t>(values[1]),
-                             static_cast<std::uint32_t>(values[2]), static_cast<std::uint32_t>(values[3])};
+            geometry.crop = {
+                static_cast<std::uint32_t>(values[0]),
+                static_cast<std::uint32_t>(values[1]),
+                static_cast<std::uint32_t>(values[2]),
+                static_cast<std::uint32_t>(values[3])
+            };
         }
         status = camera.Configure(geometry);
         break;
@@ -130,21 +160,34 @@ Reply Apply(const Request &request, Camera &camera, Ui &ui, ExposureMode &mode)
         break;
     }
     reply.code = static_cast<std::int32_t>(status.Code());
-    if (status.Ok() && (request.action == Action::kModels || request.action == Action::kBoxes
-                       || request.action == Action::kUiStatus)) {
-        std::snprintf(reply.text, sizeof(reply.text), "models=%u boxes=%u ai_exposure=%u\r\n",
-            static_cast<unsigned int>(ui.ModelMask()), static_cast<unsigned int>(ui.ShowBoxes()),
-            static_cast<unsigned int>(ui.AiExposureEnabled()));
+    if (status.Ok()
+        && (request.action == Action::kModels || request.action == Action::kBoxes
+            || request.action == Action::kUiStatus)) {
+        std::snprintf(
+            reply.text,
+            sizeof(reply.text),
+            "models=%u boxes=%u ai_exposure=%u\r\n",
+            static_cast<unsigned int>(ui.ModelMask()),
+            static_cast<unsigned int>(ui.ShowBoxes()),
+            static_cast<unsigned int>(ui.AiExposureEnabled())
+        );
     }
     if (status.Ok() && reply.text[0] == '\0') {
         status = camera.ReadState(&state);
         reply.code = static_cast<std::int32_t>(status.Code());
         if (status.Ok())
-            std::snprintf(reply.text, sizeof(reply.text), "ok ae=%u exp=%ldus gain=%ldmdB stats=%lu,%lu,%lu,%lu\r\n",
-                static_cast<unsigned int>(state.auto_exposure), static_cast<long>(state.reported_exposure_us),
-                static_cast<long>(state.reported_gain_mdB), static_cast<unsigned long>(state.statistics.x),
-                static_cast<unsigned long>(state.statistics.y), static_cast<unsigned long>(state.statistics.width),
-                static_cast<unsigned long>(state.statistics.height));
+            std::snprintf(
+                reply.text,
+                sizeof(reply.text),
+                "ok ae=%u exp=%ldus gain=%ldmdB stats=%lu,%lu,%lu,%lu\r\n",
+                static_cast<unsigned int>(state.auto_exposure),
+                static_cast<long>(state.reported_exposure_us),
+                static_cast<long>(state.reported_gain_mdB),
+                static_cast<unsigned long>(state.statistics.x),
+                static_cast<unsigned long>(state.statistics.y),
+                static_cast<unsigned long>(state.statistics.width),
+                static_cast<unsigned long>(state.statistics.height)
+            );
     }
     return reply;
 }

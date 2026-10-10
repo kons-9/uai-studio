@@ -7,7 +7,10 @@
 
 namespace uai::ai::shell {
 
-inline std::uint32_t TraceCrc(const std::uint8_t *bytes, std::size_t size)
+inline std::uint32_t TraceCrc(
+    const std::uint8_t *bytes,
+    std::size_t size
+)
 {
     std::uint32_t crc = 0xffffffffU;
     for (std::size_t index = 0; index < size; ++index) {
@@ -18,13 +21,24 @@ inline std::uint32_t TraceCrc(const std::uint8_t *bytes, std::size_t size)
     return ~crc;
 }
 
-inline void StreamTrace(const Output &out, const char *format, unsigned version,
-    const std::uint8_t *bytes, std::size_t size, void (*yield)() = nullptr)
+inline void StreamTrace(
+    const Output &out,
+    const char *format,
+    unsigned version,
+    const std::uint8_t *bytes,
+    std::size_t size,
+    void (*yield)() = nullptr
+)
 {
     constexpr char hex[] = "0123456789abcdef";
     const std::uint32_t crc = TraceCrc(bytes, size);
-    out.Printf("@TRACE BEGIN format=%s version=%u length=%lu crc=%08lx\r\n",
-        format, version, static_cast<unsigned long>(size), static_cast<unsigned long>(crc));
+    out.Printf(
+        "@TRACE BEGIN format=%s version=%u length=%lu crc=%08lx\r\n",
+        format,
+        version,
+        static_cast<unsigned long>(size),
+        static_cast<unsigned long>(crc)
+    );
     for (std::size_t offset = 0; offset < size; offset += 32U) {
         char line[96]{};
         const int prefix = std::snprintf(line, sizeof(line), "@TRACE %08lx ", static_cast<unsigned long>(offset));

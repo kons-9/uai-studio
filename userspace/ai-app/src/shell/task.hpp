@@ -20,8 +20,14 @@ public:
 
     static void Entry();
     static void Wake(void *context);
-    void Start(middleware::cpu_task_monitor::CpuTaskMonitor &monitor, ID &wake_flag);
-    void Run(Mailbox &mailbox, ID wake_flag, middleware::cpu_task_monitor::CpuTaskMonitor &monitor);
+    void Start(
+        middleware::cpu_task_monitor::CpuTaskMonitor &monitor,
+        ID &wake_flag
+    );
+    void
+    Run(Mailbox &mailbox,
+        ID wake_flag,
+        middleware::cpu_task_monitor::CpuTaskMonitor &monitor);
 
 private:
     common::StableAlignedBytes<8192U> stack_;

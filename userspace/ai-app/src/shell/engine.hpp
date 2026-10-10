@@ -8,7 +8,11 @@ namespace uai::ai::shell {
 
 struct Output {
     void *context = nullptr;
-    void (*write)(void *, const char *, std::size_t) = nullptr;
+    void (*write)(
+        void *,
+        const char *,
+        std::size_t
+    ) = nullptr;
 
     void Write(const char *text) const
     {
@@ -17,17 +21,28 @@ struct Output {
     }
 
     template <typename... Args>
-    void Printf(const char *format, Args... args) const
+    void Printf(
+        const char *format,
+        Args... args
+    ) const
     {
         char buffer[256]{};
         const int count = std::snprintf(buffer, sizeof(buffer), format, args...);
         if (count > 0 && write != nullptr)
-            write(context, buffer, static_cast<std::size_t>(count) < sizeof(buffer)
-                    ? static_cast<std::size_t>(count) : sizeof(buffer) - 1U);
+            write(
+                context,
+                buffer,
+                static_cast<std::size_t>(count) < sizeof(buffer) ? static_cast<std::size_t>(count) : sizeof(buffer) - 1U
+            );
     }
 };
 
-using Handler = void (*)(int, const char *const *, const Output &, void *);
+using Handler = void (*)(
+    int,
+    const char *const *,
+    const Output &,
+    void *
+);
 
 struct Command {
     const char *name;
@@ -42,12 +57,18 @@ public:
     static constexpr std::size_t kMaxArguments = 8;
     static constexpr std::size_t kMaxCommands = 32;
 
-    explicit Engine(Output output, bool echo = false) : output_(output), echo_(echo) {}
+    explicit Engine(
+        Output output,
+        bool echo = false
+    )
+        : output_(output),
+          echo_(echo)
+    {}
 
     bool Register(Command command)
     {
-        if (command.name == nullptr || command.usage == nullptr || command.run == nullptr
-            || count_ == kMaxCommands || std::strchr(command.name, ' ') != nullptr)
+        if (command.name == nullptr || command.usage == nullptr || command.run == nullptr || count_ == kMaxCommands
+            || std::strchr(command.name, ' ') != nullptr)
             return false;
         for (std::size_t index = 0; index < count_; ++index) {
             if (std::strcmp(commands_[index].name, command.name) == 0)
@@ -60,7 +81,10 @@ public:
     const Command *Commands() const { return commands_; }
     std::size_t CommandCount() const { return count_; }
 
-    void Feed(char value, bool error = false)
+    void Feed(
+        char value,
+        bool error = false
+    )
     {
         if (error) {
             length_ = 0;

@@ -67,7 +67,12 @@ public:
     }
 
 private:
-    enum class Phase : std::uint8_t { kIdle, kPending, kRunning, kDone };
+    enum class Phase : std::uint8_t {
+        kIdle,
+        kPending,
+        kRunning,
+        kDone
+    };
     Request request_{};
     Reply reply_{};
     std::atomic<Phase> phase_{Phase::kIdle};

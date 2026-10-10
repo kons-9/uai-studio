@@ -18,9 +18,15 @@ struct Context {
     void (*wait_ms)(std::uint32_t) = nullptr;
     void (*list_tasks)(const Output &) = nullptr;
     void (*memory_usage)(const Output &) = nullptr;
-    void (*transfer_trace)(const Output &, bool) = nullptr;
+    void (*transfer_trace)(
+        const Output &,
+        bool
+    ) = nullptr;
 
-    void Send(const Request &request, const Output &output) const
+    void Send(
+        const Request &request,
+        const Output &output
+    ) const
     {
         Reply late{};
         if (mailbox.Receive(&late)) {
@@ -49,7 +55,12 @@ struct Context {
     }
 };
 
-inline bool ParseInt(const char *text, std::int32_t minimum, std::int32_t maximum, std::int32_t *value)
+inline bool ParseInt(
+    const char *text,
+    std::int32_t minimum,
+    std::int32_t maximum,
+    std::int32_t *value
+)
 {
     if (text == nullptr || *text == '\0')
         return false;
@@ -62,7 +73,10 @@ inline bool ParseInt(const char *text, std::int32_t minimum, std::int32_t maximu
     return true;
 }
 
-inline bool ParseOnOff(const char *text, std::int32_t *value)
+inline bool ParseOnOff(
+    const char *text,
+    std::int32_t *value
+)
 {
     if (std::strcmp(text, "on") == 0) {
         *value = 1;
@@ -75,23 +89,56 @@ inline bool ParseOnOff(const char *text, std::int32_t *value)
     return false;
 }
 
-bool RegisterHelp(Engine &engine, Context &context);
-bool RegisterUptime(Engine &engine, Context &context);
-bool RegisterTasks(Engine &engine, Context &context);
-bool RegisterMemory(Engine &engine, Context &context);
-bool RegisterLog(Engine &engine, Context &context);
-bool RegisterCamera(Engine &engine, Context &context);
-bool RegisterModels(Engine &engine, Context &context);
-bool RegisterUi(Engine &engine, Context &context);
-bool RegisterDiagnostics(Engine &engine, Context &context);
-bool RegisterTrace(Engine &engine, Context &context);
+bool RegisterHelp(
+    Engine &engine,
+    Context &context
+);
+bool RegisterUptime(
+    Engine &engine,
+    Context &context
+);
+bool RegisterTasks(
+    Engine &engine,
+    Context &context
+);
+bool RegisterMemory(
+    Engine &engine,
+    Context &context
+);
+bool RegisterLog(
+    Engine &engine,
+    Context &context
+);
+bool RegisterCamera(
+    Engine &engine,
+    Context &context
+);
+bool RegisterModels(
+    Engine &engine,
+    Context &context
+);
+bool RegisterUi(
+    Engine &engine,
+    Context &context
+);
+bool RegisterDiagnostics(
+    Engine &engine,
+    Context &context
+);
+bool RegisterTrace(
+    Engine &engine,
+    Context &context
+);
 
-inline bool RegisterAll(Engine &engine, Context &context)
+inline bool RegisterAll(
+    Engine &engine,
+    Context &context
+)
 {
     return RegisterHelp(engine, context) && RegisterUptime(engine, context) && RegisterTasks(engine, context)
         && RegisterMemory(engine, context) && RegisterLog(engine, context) && RegisterCamera(engine, context)
-        && RegisterModels(engine, context) && RegisterUi(engine, context)
-        && RegisterDiagnostics(engine, context) && RegisterTrace(engine, context);
+        && RegisterModels(engine, context) && RegisterUi(engine, context) && RegisterDiagnostics(engine, context)
+        && RegisterTrace(engine, context);
 }
 
 } // namespace uai::ai::shell
