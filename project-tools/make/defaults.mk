@@ -20,7 +20,10 @@ endif
 HOST_APP_DIR ?= $(PROJECT_ROOT)/host_app
 UAI_SCRIPTS_DIR := $(abspath $(UAI_MAKE_DIR)/../scripts)
 CMAKE ?= cmake
-CUBEMX_EXECUTABLE ?= STM32CubeMX
+# STM32CubeMX_PATH is set by the installed Linux CubeMX launcher on this host.
+# Prefer its explicit executable path over relying on PATH, which may not
+# include the installation directory when invoked from a sample Makefile.
+CUBEMX_EXECUTABLE ?= $(if $(strip $(STM32CubeMX_PATH)),$(STM32CubeMX_PATH)/STM32CubeMX,STM32CubeMX)
 SAMPLE_DEFAULT_IOC ?= $(SAMPLE_DIR)/config/stm32n6570-dk-fullsecure.ioc
 CUBEMX_IOC ?= $(SAMPLE_DEFAULT_IOC)
 CUBEMX_OUTPUT_DIR ?= $(BUILD_DIR)/cubemx
