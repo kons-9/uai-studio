@@ -9,6 +9,16 @@ set_property(CACHE APP_TARGET PROPERTY STRINGS
     mini-ai-app experiment-model-load model-loader
     experiment-ui-control experiment-hw-test hw-test)
 
+# ai-app's RAM image has a fixed launch trampoline at 0x34062000. Keep the
+# supporting kernel/Cube objects small enough that ordinary code and rodata
+# stay below it. The time-critical ai-app and model targets set their own
+# -O3 options below, so the size-oriented default only applies to targets that
+# do not provide a target-specific optimization level.
+if(APP_TARGET STREQUAL "ai-app" AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE MinSizeRel CACHE STRING
+        "Default build type for the memory-constrained ai-app RAM image" FORCE)
+endif()
+
 # Applications built on the kernel middleware and drivers. They generate the
 # memory contract that the kernel components include.
 set(UAI_KERNEL_APPS ai-app mini-ai-app hw-test)
