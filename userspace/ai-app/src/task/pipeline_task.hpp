@@ -13,6 +13,8 @@
 #include "middleware/pipeline/frame_types.hpp"
 #include "task/model_control.hpp"
 #include "task/task_config.hpp"
+#include "task/model_result_snapshot.hpp"
+#include "middleware/task/event_notification.hpp"
 
 namespace uai::ai::middleware::cpu_task_monitor {
 class CpuTaskMonitor;
@@ -75,6 +77,68 @@ private:
         channel_;
 };
 
+class ExposureResultChannel final {
+public:
+    common::Error Create() { return channel_.Create(); }
+    common::Error PublishLatest(
+        const inference::BoxSet &boxes,
+        std::uint32_t generation
+    )
+    {
+        return channel_.SendReplacingOldestOnce({boxes, generation});
+    }
+    template <typename Consumer>
+    message_channel::DrainResult Consume(
+        Consumer consumer,
+        std::uint32_t generation
+    )
+    {
+        Result latest{};
+        return channel_.DrainLatest(&latest, [&](const Result &result) {
+            if (result.generation != generation)
+                return false;
+            consumer(result.boxes);
+            return true;
+        });
+    }
+
+private:
+    struct Result {
+        inference::BoxSet boxes{};
+        std::uint32_t generation = 0U;
+    };
+    message_channel::
+        LatestValueChannel<Result, kResultQueueDepth, message_channel::MicroTKernelBackend<Result, kResultQueueDepth>>
+            channel_;
+};
+
+class ModelResultChannel final {
+public:
+    common::Error Create() { return channel_.Create(); }
+    void SetNotification(common::EventNotification notification) { notification_ = notification; }
+    common::Error PublishLatest(const ModelResultSnapshot &snapshot)
+    {
+        const auto status = channel_.SendReplacingOldestOnce(snapshot);
+        if (status.Ok())
+            notification_.Notify();
+        return status;
+    }
+    message_channel::DrainResult DrainLatest(ModelResultSnapshot *snapshot)
+    {
+        return channel_.DrainLatest(snapshot, [](const ModelResultSnapshot &) {
+            return true;
+        });
+    }
+
+private:
+    message_channel::LatestValueChannel<
+        ModelResultSnapshot,
+        kResultQueueDepth,
+        message_channel::MicroTKernelBackend<ModelResultSnapshot, kResultQueueDepth>>
+        channel_;
+    common::EventNotification notification_;
+};
+
 /* Every frame carries an inference buffer lease, so a dropped frame must be
  * returned to MemoryManager exactly once by whoever drops it. */
 class InferenceFrameChannel final {
@@ -83,31 +147,55 @@ public:
 
     common::Error Create() { return channel_.Create(); }
 
-    void Send(const pipeline::InferenceFrame &frame)
+    common::Error Send(
+        const pipeline::InferenceFrame &frame,
+        std::uint32_t generation = 0U
+    )
     {
-        const common::Error status =
-            channel_.SendReplacingOldest(frame, [this](const pipeline::InferenceFrame &discarded) {
-                memory_.ReleaseInferenceBuffer(discarded).LogStatus("memory");
-            });
+        const common::Error status = channel_.SendReplacingOldest({frame, generation}, [this](const Job &discarded) {
+            memory_.ReleaseInferenceBuffer(discarded.frame).LogStatus("memory");
+            dropped_.fetch_add(1U, std::memory_order_relaxed);
+        });
         if (status.Ok())
-            return;
+            return status;
         memory_.ReleaseInferenceBuffer(frame).LogStatus("memory");
+        dropped_.fetch_add(1U, std::memory_order_relaxed);
         UAI_LOG_DEBUG(
             "ai: frame dropped reason=%s sequence=%u\n",
             common::ErrorCodeName(status.Code()),
             static_cast<unsigned int>(frame.capture_sequence)
         );
+        return status;
+    }
+    std::uint32_t Dropped() const { return dropped_.load(std::memory_order_relaxed); }
+
+    common::Error Receive(
+        pipeline::InferenceFrame *frame,
+        std::uint32_t *generation = nullptr
+    )
+    {
+        if (frame == nullptr)
+            return {common::ErrorCode::kInvalidArgument};
+        Job job{};
+        const auto status = channel_.ReceiveBlocking(&job);
+        if (status.Ok()) {
+            *frame = job.frame;
+            if (generation != nullptr)
+                *generation = job.generation;
+        }
+        return status;
     }
 
-    common::Error Receive(pipeline::InferenceFrame *frame) { return channel_.ReceiveBlocking(frame); }
-
 private:
+    struct Job {
+        pipeline::InferenceFrame frame{};
+        std::uint32_t generation = 0U;
+    };
     memory_manager::MemoryManager &memory_;
-    message_channel::LatestValueChannel<
-        pipeline::InferenceFrame,
-        kFrameQueueDepth,
-        message_channel::MicroTKernelBackend<pipeline::InferenceFrame, kFrameQueueDepth>>
-        channel_;
+    std::atomic<std::uint32_t> dropped_{0U};
+    message_channel::
+        LatestValueChannel<Job, kFrameQueueDepth, message_channel::MicroTKernelBackend<Job, kFrameQueueDepth>>
+            channel_;
 };
 
 /* Model pipeline tasks. Each worker runs one ai_runtime lane. */
@@ -133,17 +221,33 @@ public:
         auto status = results_.Create();
         return status.Ok() ? exposure_results_.Create() : status;
     }
-    common::Error PublishResult(const inference::BoxSet &boxes) { return results_.PublishLatest(boxes); }
-    common::Error PublishExposureResult(const inference::BoxSet &boxes)
+    common::Error PublishResult(const ModelResultSnapshot &snapshot) { return results_.PublishLatest(snapshot); }
+    void SetResultNotification(common::EventNotification notification)
     {
-        return exposure_results_.PublishLatest(boxes);
+        results_.SetNotification(notification);
+        result_notification_ = notification;
+    }
+    std::uint32_t Generation() const { return generation_.load(std::memory_order_acquire); }
+    std::uint32_t AdvanceGeneration() { return generation_.fetch_add(1U, std::memory_order_acq_rel) + 1U; }
+    common::Error PublishExposureResult(
+        const inference::BoxSet &boxes,
+        std::uint32_t generation
+    )
+    {
+        const auto status = exposure_results_.PublishLatest(boxes, generation);
+        if (status.Ok())
+            result_notification_.Notify();
+        return status;
     }
     template <typename Consumer>
     message_channel::DrainResult ConsumeExposureResults(Consumer consumer)
     {
-        return exposure_results_.Consume(consumer);
+        return exposure_results_.Consume(consumer, Generation());
     }
-    message_channel::DrainResult TryGetLatestResult(inference::BoxSet *active) { return results_.DrainLatest(active); }
+    message_channel::DrainResult TryGetLatestResult(ModelResultSnapshot *active)
+    {
+        return results_.DrainLatest(active);
+    }
     void SetModelMask(std::uint8_t mask) override
     {
         model_mask_.store(mask & kAllModelsMask, std::memory_order_relaxed);
@@ -156,8 +260,10 @@ public:
 private:
     explicit PipelineTask(memory_manager::MemoryManager &memory) : inference_frames_(memory) {}
     InferenceFrameChannel inference_frames_;
-    InferenceResultChannel results_;
-    InferenceResultChannel exposure_results_;
+    ModelResultChannel results_;
+    ExposureResultChannel exposure_results_;
+    common::EventNotification result_notification_;
+    std::atomic<std::uint32_t> generation_{0U};
     std::atomic<std::uint8_t> model_mask_{kAllModelsMask};
     common::StableAlignedBytes<kPipelineTaskStackSize> frame_stack_;
     common::StableAlignedBytes<kPipelineTaskStackSize> preprocess_stack_;

@@ -1,6 +1,7 @@
 """Unified GUI regressions using real HTTP and the public CLI subprocesses."""
 
 import base64
+import csv
 import json
 import subprocess
 import sys
@@ -164,6 +165,49 @@ class UnifiedGuiTest(unittest.TestCase):
             self.assertEqual(caught.exception.code, 504)
             self.assertIn("exceeded", json.load(caught.exception)["error"])
             caught.exception.close()
+
+
+class CpuScheduleContractTest(unittest.TestCase):
+    line = ("cpu: schedule name=touch due=4 started=1 completed=1 failed=0 skipped=3 "
+            "dropped=0 late_ms=35 frame_ms=0 idle=2\n")
+
+    def test_schedule_statistics_survive_json_and_csv(self):
+        from .cpu_task_monitor import cpu_task_monitor as monitor
+
+        reports = monitor.parse_reports("cpu: period=100 cycles irq=0% count=1 unknown=0\n" + self.line)
+        self.assertEqual(reports[0].schedules[0].skipped, 3)
+        with tempfile.TemporaryDirectory() as directory:
+            json_path = Path(directory) / "report.json"
+            csv_path = Path(directory) / "report.csv"
+            monitor.write_json(json_path, reports)
+            monitor.write_csv(csv_path, reports)
+            sample = json.loads(json_path.read_text())["reports"][0]["schedules"][0]
+            self.assertEqual(sample["max_lateness_ms"], 35)
+            with csv_path.open() as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual(rows[0]["schedule_name"], "touch")
+            self.assertEqual(rows[0]["schedule_idle_wakeups"], "2")
+
+    def test_schedule_only_and_legacy_cpu_inputs_remain_distinct(self):
+        from .cpu_task_monitor import cpu_task_monitor as monitor
+
+        self.assertEqual(monitor.parse_reports(self.line)[0].schedules[0].name, "touch")
+        self.assertEqual(monitor.parse_reports("cpu: period=100 cycles irq=0% count=1 unknown=0\n")[0].schedules, [])
+
+    def test_drop_reasons_are_preserved(self):
+        from .cpu_task_monitor import cpu_task_monitor as monitor
+
+        line = self.line.rstrip() + " drop_stride=1 drop_inactive=2 drop_source=3 drop_queue=4\n"
+        sample = monitor.parse_reports(line)[0].schedules[0]
+        self.assertEqual((sample.dropped_stride, sample.dropped_inactive, sample.dropped_source, sample.dropped_queue),
+                         (1, 2, 3, 4))
+
+    def test_schedule_only_cycles_are_separate_reports(self):
+        from .cpu_task_monitor import cpu_task_monitor as monitor
+
+        reports = monitor.parse_reports(self.line + self.line)
+        self.assertEqual(len(reports), 2)
+        self.assertEqual([report.sample for report in reports], [0, 1])
 
 
 class CliContractTest(unittest.TestCase):

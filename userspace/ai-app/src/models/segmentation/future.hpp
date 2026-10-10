@@ -24,7 +24,8 @@ namespace uai::ai::models::segmentation {
 
 using PublishCallback = void (*)(
     void *,
-    const inference::BoxSet &
+    const inference::BoxSet &,
+    std::uint32_t
 );
 
 struct FutureContext {
@@ -36,6 +37,7 @@ struct FutureContext {
     const stai_network_info *info = nullptr;
     PublishCallback publish = nullptr;
     void *publish_context = nullptr;
+    std::uint32_t generation = 0U;
 };
 
 class Future final : public ai_runtime::AiFuture {

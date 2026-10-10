@@ -9,13 +9,10 @@
 namespace uai::ai::task {
 
 inline constexpr UINT kExternalMemoryReady = 0x01U;
-/* Dispatch every completed Pipe2 frame immediately. The NPU task already
- * blocks on completion and consumes a prefetched frame without an extra
- * delay; this value only prevents the camera task from adding a software
- * interval between queued inference frames. */
-inline constexpr std::uint32_t kInferencePeriod = 0U;
+inline constexpr std::uint32_t kInferenceFrameStride = 1U;
+static_assert(kInferenceFrameStride > 0U && kInferenceFrameStride <= 0x7FFFFFFFU);
 /* GT911 state is read over I2C; 10 ms keeps taps responsive without adding
- * bus traffic on every 1 ms camera-task iteration. */
+ * bus traffic on every camera-task wake. */
 inline constexpr std::uint32_t kTouchPollPeriod = 10U;
 inline constexpr bool kAiExposureControl = true;
 

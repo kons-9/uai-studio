@@ -37,6 +37,14 @@ EVENT_RE = re.compile(
     r"n=(?P<loop_count>\d+)\s+avg=(?P<loop_average>\d+)\s+"
     r"max=(?P<loop_max>\d+)\s+"
     r"last=(?P<loop_last>\d+))"
+    r"|(?P<schedule>cpu:\s+schedule\s+name=(?P<schedule_name>[A-Za-z0-9_.-]+)\s+"
+    r"due=(?P<schedule_due>\d+)\s+started=(?P<schedule_started>\d+)\s+"
+    r"completed=(?P<schedule_completed>\d+)\s+failed=(?P<schedule_failed>\d+)\s+"
+    r"skipped=(?P<schedule_skipped>\d+)\s+dropped=(?P<schedule_dropped>\d+)\s+"
+    r"late_ms=(?P<schedule_late>\d+)\s+frame_ms=(?P<schedule_frame>\d+)\s+"
+    r"idle=(?P<schedule_idle>\d+)"
+    r"(?:\s+drop_stride=(?P<schedule_stride>\d+)\s+drop_inactive=(?P<schedule_inactive>\d+)"
+    r"\s+drop_source=(?P<schedule_source>\d+)\s+drop_queue=(?P<schedule_queue>\d+))?)"
 )
 TASK_NAME_RE = re.compile(
     r"cpu:\s+task_name\s+id=(?P<task_id>\d+)\s+"
@@ -90,6 +98,24 @@ class TaskLoopInterval:
 
 
 @dataclass
+class ScheduleSample:
+    name: str
+    due: int
+    started: int
+    completed: int
+    failed: int
+    skipped: int
+    dropped: int
+    max_lateness_ms: int
+    max_frame_delay_ms: int
+    idle_wakeups: int
+    dropped_stride: int = 0
+    dropped_inactive: int = 0
+    dropped_source: int = 0
+    dropped_queue: int = 0
+
+
+@dataclass
 class Report:
     sample: int
     period_cycles: int
@@ -100,6 +126,7 @@ class Report:
     tasks: list[TaskSample] = field(default_factory=list)
     loops: list[TaskLoopSample] = field(default_factory=list)
     loop_intervals: list[TaskLoopInterval] = field(default_factory=list)
+    schedules: list[ScheduleSample] = field(default_factory=list)
 
 
 def clean_terminal_text(text: str) -> str:
@@ -139,9 +166,24 @@ def parse_reports(text: str) -> list[Report]:
             reports.append(current)
             continue
 
+        values = match.groupdict()
+        if values["schedule"] is not None:
+            if current is None or (current.period_cycles == 0 and any(
+                    sample.name == values["schedule_name"] for sample in current.schedules)):
+                current = Report(len(reports), 0, 0, 0, 0)
+                reports.append(current)
+            current.schedules.append(ScheduleSample(
+                name=values["schedule_name"], due=int(values["schedule_due"]),
+                started=int(values["schedule_started"]), completed=int(values["schedule_completed"]),
+                failed=int(values["schedule_failed"]), skipped=int(values["schedule_skipped"]),
+                dropped=int(values["schedule_dropped"]), max_lateness_ms=int(values["schedule_late"]),
+                max_frame_delay_ms=int(values["schedule_frame"]), idle_wakeups=int(values["schedule_idle"]),
+                dropped_stride=int(values["schedule_stride"] or 0), dropped_inactive=int(values["schedule_inactive"] or 0),
+                dropped_source=int(values["schedule_source"] or 0), dropped_queue=int(values["schedule_queue"] or 0),
+            ))
+            continue
         if current is None:
             continue
-        values = match.groupdict()
         if values["task"] is not None:
             task_id = int(values["task_id"])
             current.tasks.append(
@@ -364,12 +406,25 @@ def write_csv(path: Path, reports: list[Report]) -> None:
             "loop_average_cycles",
             "loop_max_cycles",
             "loop_last_cycles",
+            "schedule_name", "schedule_due", "schedule_started", "schedule_completed", "schedule_failed",
+            "schedule_skipped", "schedule_dropped", "schedule_max_lateness_ms", "schedule_max_frame_delay_ms",
+            "schedule_idle_wakeups",
+            "schedule_dropped_stride", "schedule_dropped_inactive", "schedule_dropped_source", "schedule_dropped_queue",
         ])
         for report in reports:
+            for schedule in report.schedules:
+                writer.writerow([report.sample, report.period_cycles, report.irq_percent,
+                    report.interrupt_count, report.unknown_task_events, *([""] * 11),
+                    schedule.name, schedule.due, schedule.started, schedule.completed, schedule.failed,
+                    schedule.skipped, schedule.dropped, schedule.max_lateness_ms,
+                    schedule.max_frame_delay_ms, schedule.idle_wakeups, schedule.dropped_stride,
+                    schedule.dropped_inactive, schedule.dropped_source, schedule.dropped_queue])
             task_samples = {task.task_id: task for task in report.tasks}
             loop_samples = {loop.task_id: loop for loop in report.loops}
             task_ids = sorted(set(task_samples) | set(loop_samples))
             if not task_ids:
+                if report.schedules:
+                    continue
                 writer.writerow([
                     report.sample,
                     report.period_cycles,
@@ -387,7 +442,7 @@ def write_csv(path: Path, reports: list[Report]) -> None:
                     "",
                     "",
                     "",
-                ])
+                ] + [""] * 14)
                 continue
             for task_id in task_ids:
                 task = task_samples.get(task_id)
@@ -412,7 +467,7 @@ def write_csv(path: Path, reports: list[Report]) -> None:
                     loop.average_cycles if loop is not None else "",
                     loop.max_cycles if loop is not None else "",
                     loop.last_cycles if loop is not None else "",
-                ])
+                ] + [""] * 14)
 
 
 def write_json(path: Path, reports: list[Report]) -> None:
@@ -422,6 +477,29 @@ def write_json(path: Path, reports: list[Report]) -> None:
         + "\n",
         encoding="utf-8",
     )
+
+
+def plot_schedule_axis(axis, reports: list[Report]) -> None:
+    names = sorted({sample.name for report in reports for sample in report.schedules})
+    completion = axis.twinx()
+    for name in names:
+        samples = [(report.sample + 1, sample) for report in reports
+                   for sample in report.schedules if sample.name == name]
+        positions = [position for position, _ in samples]
+        line, = axis.plot(positions, [sample.max_lateness_ms for _, sample in samples],
+                          marker=".", label=name)
+        if any(sample.max_frame_delay_ms for _, sample in samples):
+            axis.plot(positions, [sample.max_frame_delay_ms for _, sample in samples],
+                      linestyle="--", marker=".", color=line.get_color(), label=f"{name} frame delay")
+        completion.plot(positions, [100 * sample.completed / sample.started if sample.started else None
+                                   for _, sample in samples], linestyle=":", color=line.get_color(), alpha=0.5)
+    axis.set_ylabel("maximum delay (ms)")
+    axis.set_xlabel("report")
+    axis.set_ylim(bottom=0)
+    axis.grid(axis="y", alpha=0.25)
+    axis.legend(loc="upper left", ncol=3, fontsize="small")
+    completion.set_ylabel("completion (%)")
+    completion.set_ylim(0, 100)
 
 
 def plot_reports(
@@ -440,6 +518,16 @@ def plot_reports(
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import numpy as np
+
+    has_schedules = any(report.schedules for report in reports)
+    if has_schedules and not any(report.period_cycles or report.tasks or report.loops for report in reports):
+        figure, axis = plt.subplots(figsize=(13, 5), constrained_layout=True)
+        axis.set_title(title or "ai-app scheduling")
+        plot_schedule_axis(axis, reports)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        figure.savefig(path, dpi=140)
+        plt.close(figure)
+        return
 
     task_ids = task_order(reports, top_tasks)
     if not task_ids:
@@ -494,14 +582,16 @@ def plot_reports(
     unknown = [report.unknown_task_events for report in reports]
 
     figure, axes = plt.subplots(
-        3,
+        4 if has_schedules else 3,
         1,
-        figsize=(13, 11),
+        figsize=(13, 14 if has_schedules else 11),
         sharex=False,
-        gridspec_kw={"height_ratios": (2, 1, 1.5)},
+        gridspec_kw={"height_ratios": (2, 1, 1.5, 1.5) if has_schedules else (2, 1, 1.5)},
         constrained_layout=True,
     )
-    top_axis, gantt_axis, loop_axis = axes
+    top_axis, gantt_axis, loop_axis = axes[:3]
+    if has_schedules:
+        plot_schedule_axis(axes[3], reports)
 
     if task_ids:
         colors = plt.get_cmap("tab20")(np.linspace(0.02, 0.96, len(task_ids)))

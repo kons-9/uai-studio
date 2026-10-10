@@ -8,6 +8,7 @@
 #include "middleware/pipeline/frame_types.hpp"
 #include "memory_manager/memory_manager.hpp"
 #include "driver/camera_driver/capture_configuration.hpp"
+#include "middleware/task/event_notification.hpp"
 
 namespace uai::ai::camera {
 
@@ -90,6 +91,13 @@ inline const char *AnomalyName(Diagnostics::Anomaly anomaly)
     return "unknown";
 }
 
+struct Notifications {
+    common::EventNotification capture;
+    common::EventNotification inference;
+    common::EventNotification vsync;
+    common::EventNotification anomaly;
+};
+
 /* Application-facing capture driver. It owns camera state, buffer ownership,
  * and the backend lifecycle; sensor register details stay in registers/. */
 class CameraDriver final {
@@ -111,6 +119,14 @@ public:
     common::Error Stop(const Writer &writer);
     common::Error Process();
     common::Error Process(const Writer &writer);
+    common::Error SetNotifications(
+        const Notifications &notifications,
+        const Writer &writer
+    );
+    common::Error GetServiceWait(
+        std::uint32_t *remaining_ms,
+        const Writer &writer
+    ) const;
     common::Error TakeCompletedCapture(pipeline::CaptureFrame *frame);
     common::Error TakeCompletedCapture(
         pipeline::CaptureFrame *frame,
@@ -246,6 +262,18 @@ public:
     {
         return WithWriter([](CameraDriver &d, const Writer &w) {
             return d.Process(w);
+        });
+    }
+    common::Error SetNotifications(const Notifications &notifications)
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.SetNotifications(notifications, writer);
+        });
+    }
+    common::Error GetServiceWait(std::uint32_t *remaining_ms)
+    {
+        return WithWriter([&](CameraDriver &driver, const Writer &writer) {
+            return driver.GetServiceWait(remaining_ms, writer);
         });
     }
     common::Error TakeCompletedCapture(pipeline::CaptureFrame *f)

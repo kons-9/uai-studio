@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include "middleware/task/event_notification.hpp"
 
 namespace uai::ai::shell {
 
@@ -33,12 +34,15 @@ struct Reply {
 
 class Mailbox final {
 public:
+    void SetNotification(common::EventNotification notification) { notification_ = notification; }
+    bool Pending() const { return phase_.load(std::memory_order_acquire) == Phase::kPending; }
     bool Post(const Request &request)
     {
         if (phase_.load(std::memory_order_acquire) != Phase::kIdle)
             return false;
         request_ = request;
         phase_.store(Phase::kPending, std::memory_order_release);
+        notification_.Notify();
         return true;
     }
 
@@ -76,6 +80,7 @@ private:
     Request request_{};
     Reply reply_{};
     std::atomic<Phase> phase_{Phase::kIdle};
+    common::EventNotification notification_;
 };
 
 } // namespace uai::ai::shell

@@ -11,6 +11,7 @@
 #include "task/task_config.hpp"
 #include "ui/ui_layout.hpp"
 #include "exposure_control/controller.hpp"
+#include "middleware/task/periodic.hpp"
 
 namespace uai::ai::app_ui {
 
@@ -41,11 +42,12 @@ public:
     ui::Event HandleTouch(const ui::TouchPoint &sample);
 
     /* Refreshes the status labels at most once per StatusPeriod(). */
-    void UpdateStatus(
+    bool UpdateStatus(
         std::uint32_t now_ms,
         const exposure_control::Values *exposure = nullptr
     );
     std::uint32_t StatusPeriod() const { return status_period_ms_; }
+    std::uint32_t RemainingStatusWait(std::uint32_t now) const { return status_timer_.RemainingWait(now); }
 
     /* Boxes to draw: hides disabled models, low-confidence boxes, and
      * everything when BOXES is off. */
@@ -106,6 +108,7 @@ private:
     std::uint32_t status_period_ms_ = 500U;
     task::PipelineStats last_stats_{};
     std::uint32_t last_stats_tick_ = 0U;
+    common::TimePeriod status_timer_;
 };
 
 } // namespace uai::ai::app_ui

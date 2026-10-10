@@ -135,7 +135,6 @@ common::Error Future::Preprocess()
     status = image_processing::Resize(source, destination);
     if (!status.Ok())
         return status;
-    frame_.input_prepared_by_cpu = true;
     status = context_.cache->PrepareForPeripheralRead(
         {frame_.buffer.address, InputBytes(), frame_.buffer.index, buffer::Region::kInference}
     );
@@ -211,7 +210,7 @@ common::Error Future::Postprocess()
     status = DecodeMask(reinterpret_cast<const void *>(output.address), &boxes);
     if (!status.Ok())
         return status;
-    context_.publish(context_.publish_context, boxes);
+    context_.publish(context_.publish_context, boxes, context_.generation);
     if (!postprocess_stage_logged_) {
         UAI_LOG_INFO(
             "ai: segmentation postprocess done seq=%u mask_px=%u\n",

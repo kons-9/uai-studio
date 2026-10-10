@@ -153,6 +153,7 @@ void AppUi::SetAiExposureEnabled(bool enabled)
     ai_exposure_enabled_ = task::kAiExposureControl && enabled;
     Menu().Buttons().SetChecked(Id(WidgetId::kAiExposure), ai_exposure_enabled_);
     last_stats_tick_ = 0U;
+    status_timer_.Reset();
     UAI_LOG_INFO("ui: ai exposure=%s\n", ai_exposure_enabled_ ? "on" : "off");
 }
 
@@ -182,17 +183,19 @@ void AppUi::OnMinConfidenceChange(const ui::Event &event)
 void AppUi::OnStatusPeriodChange(const ui::Event &event)
 {
     status_period_ms_ = static_cast<std::uint32_t>(event.value > 0 ? event.value : 1);
+    status_timer_.Reset();
     UAI_LOG_INFO("ui: status period=%u ms\n", static_cast<unsigned int>(status_period_ms_));
 }
 
-void AppUi::UpdateStatus(
+bool AppUi::UpdateStatus(
     std::uint32_t now_ms,
     const exposure_control::Values *exposure
 )
 {
-    if (last_stats_tick_ != 0U && now_ms - last_stats_tick_ < status_period_ms_) {
-        return;
-    }
+    if (status_timer_.Period() == 0U)
+        status_timer_.Configure(status_period_ms_, now_ms);
+    if (!status_timer_.Take(now_ms))
+        return false;
     const task::PipelineStats stats = models_.Stats();
     const std::uint32_t elapsed = last_stats_tick_ == 0U ? 0U : now_ms - last_stats_tick_;
     const std::uint8_t mask = models_.ModelMask();
@@ -242,6 +245,7 @@ void AppUi::UpdateStatus(
 
     last_stats_ = stats;
     last_stats_tick_ = now_ms;
+    return true;
 }
 
 inference::BoxSet AppUi::VisibleBoxes(const inference::BoxSet &latest) const

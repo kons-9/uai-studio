@@ -24,7 +24,8 @@ namespace uai::ai::models::person {
 
 using PublishCallback = void (*)(
     void *,
-    const inference::BoxSet &
+    const inference::BoxSet &,
+    std::uint32_t
 );
 
 /* Runtime resources supplied by the application when a frame is submitted.
@@ -38,6 +39,7 @@ struct FutureContext {
     const stai_network_info *info = nullptr;
     PublishCallback publish = nullptr;
     void *publish_context = nullptr;
+    std::uint32_t generation = 0U;
 };
 
 /* A complete person inference. PipelineRuntime only advances this object

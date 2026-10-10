@@ -20,6 +20,18 @@ inline constexpr int TA_TFIFO = 4;
 inline constexpr TMO TMO_POL = 0;
 inline constexpr TMO TMO_FEVR = -1;
 
+inline constexpr UINT TWF_ORW = 0x01U;
+inline constexpr UINT TWF_BITCLR = 0x20U;
+struct T_CFLG {
+    void *exinf = nullptr;
+    int flgatr = 0;
+    UINT iflgptn = 0U;
+};
+ID tk_cre_flg(const T_CFLG *configuration);
+ER tk_del_flg(ID flag);
+ER tk_set_flg(ID flag, UINT pattern);
+ER tk_wai_flg(ID flag, UINT pattern, UINT mode, UINT *result, TMO timeout);
+
 struct T_CMBF {
     int mbfatr = 0;
     SZ bufsz = 0;

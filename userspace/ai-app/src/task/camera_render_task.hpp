@@ -6,6 +6,7 @@
 
 #include "middleware/buffer/stable_aligned_bytes.hpp"
 #include "task/task_config.hpp"
+#include "task/camera_render_wake.hpp"
 
 namespace uai::ai::middleware::cpu_task_monitor {
 class CpuTaskMonitor;
@@ -60,6 +61,7 @@ public:
 
 private:
     void Run(CameraRenderContext context);
+    CameraRenderWake wake_;
     common::StableAlignedBytes<kCameraTaskStackSize> stack_;
 };
 

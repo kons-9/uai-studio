@@ -2,6 +2,7 @@
 #include "middleware/ui/widget.hpp"
 #include "ui/app_ui.hpp"
 #include "ui/ui_layout.hpp"
+#include "task/camera_render_state.hpp"
 
 #include <gtest/gtest.h>
 
@@ -19,6 +20,75 @@ struct FakeModels final : public uai::ai::task::ModelControl {
     void SetModelMask(std::uint8_t value) override { mask = value; }
     uai::ai::task::PipelineStats Stats() const override { return stats; }
 };
+
+TEST(
+    CameraRenderState,
+    PreservesInitialUiAndResultOwnership
+)
+{
+    FakeModels models;
+    uai::ai::inference::BoxSet initial{};
+    initial.person_valid = true;
+    initial.person.count = 1U;
+    initial.person.boxes[0U].confidence = 0.75F;
+    uai::ai::task::CameraRenderState state(models, initial, 100U);
+    initial.person.count = 0U;
+    EXPECT_EQ(state.results.boxes.person.count, 1U);
+    EXPECT_EQ(state.ui.MinConfidencePercent(), 50);
+    EXPECT_EQ(state.ui.StatusPeriod(), 500U);
+    EXPECT_EQ(state.previous_exposure_enabled, state.ui.AiExposureEnabled());
+    EXPECT_EQ(state.schedule.FrameStride(), 1U);
+    EXPECT_TRUE(state.schedule.TouchDue(100U));
+    EXPECT_EQ(state.loop_count, 0U);
+    EXPECT_EQ(state.last_exposure_error_tick, 0U);
+    state.ui.SetShowBoxes(false);
+    EXPECT_EQ(state.ui.VisibleBoxes(state.results.boxes).person.count, 0U);
+    EXPECT_EQ(state.results.boxes.person.count, 1U);
+}
+
+TEST(
+    CameraRenderState,
+    SettingsCanRepaintWithoutCaptureAndLiveCameraCannotReuseReturnedFrame
+)
+{
+    FakeModels models;
+    uai::ai::task::CameraRenderState state(models, {}, 0U);
+    EXPECT_FALSE(state.ShouldPresent(false, true, false));
+    state.ui.ShowScreen(uai::ai::app_ui::ScreenId::kMenu);
+    EXPECT_TRUE(state.ShouldPresent(false, true, false));
+    EXPECT_FALSE(state.ShouldPresent(false, false, false));
+    EXPECT_FALSE(state.ShouldPresent(true, true, true));
+    EXPECT_TRUE(state.ShouldPresent(true, false, false));
+}
+
+TEST(
+    CameraRenderState,
+    DisabledTouchStillKeepsExposureAndStatusDeadline
+)
+{
+    struct Camera {
+        uai::ai::common::Error ReadState(uai::ai::camera::State *state)
+        {
+            *state = {};
+            return {};
+        }
+        uai::ai::common::Error GetGeometry(uai::ai::camera::Geometry *geometry)
+        {
+            *geometry = {};
+            return {};
+        }
+        uai::ai::common::Error AutoExposure(bool) { return {}; }
+        uai::ai::common::Error Statistics(uai::ai::camera::Rect) { return {}; }
+    } camera;
+    FakeModels models;
+    uai::ai::task::CameraRenderState state(models, {}, 100U);
+    state.ui.UpdateStatus(100U);
+    EXPECT_TRUE(state.exposure.Process(camera, 100U).Ok());
+    state.schedule.TouchPolled(100U);
+    EXPECT_EQ(state.RemainingWait(100U, true), 10U);
+    EXPECT_EQ(state.RemainingWait(100U, false), 250U);
+    EXPECT_EQ(state.RemainingWait(350U, false), 0U);
+}
 
 TEST(
     AppUiExposure,

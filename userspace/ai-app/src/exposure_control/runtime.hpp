@@ -3,6 +3,7 @@
 #include "exposure_control/controller.hpp"
 #include "driver/camera_driver/capture_configuration.hpp"
 #include "middleware/foundation/error.hpp"
+#include "middleware/task/periodic.hpp"
 
 namespace uai::ai::exposure_control {
 
@@ -17,6 +18,18 @@ public:
     }
 
     const Values &DisplayValues() const { return controller_.DisplayValues(); }
+    void Reset()
+    {
+        controller_ = Controller{};
+        period_.Reset();
+    }
+    std::uint32_t RemainingWait(
+        std::uint32_t now,
+        bool enabled = true
+    ) const
+    {
+        return enabled_ != enabled ? 0U : period_.RemainingWait(now);
+    }
 
     template <typename Camera>
     common::Error Process(
@@ -29,14 +42,14 @@ public:
     {
         if (enabled_ != enabled) {
             enabled_ = enabled;
-            have_tick_ = false;
+            period_.Reset();
             if (!enabled)
                 controller_ = Controller{};
         }
-        if (have_tick_ && now - last_tick_ < 250U)
+        if (period_.Period() == 0U)
+            period_.Configure(250U, now);
+        if (!period_.Take(now))
             return {};
-        have_tick_ = true;
-        last_tick_ = now;
         camera::State state{};
         camera::Geometry geometry{};
         auto status = camera.ReadState(&state);
@@ -82,8 +95,7 @@ public:
 
 private:
     Controller controller_;
-    std::uint32_t last_tick_ = 0;
-    bool have_tick_ = false;
+    common::TimePeriod period_;
     bool enabled_ = true;
 };
 

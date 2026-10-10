@@ -350,7 +350,6 @@ common::Error Future::Preprocess()
         || frame_.buffer.size < context_.info->inputs[0].size_bytes) {
         return {common::ErrorCode::kInvalidArgument};
     }
-    frame_.input_prepared_by_cpu = false;
     // The person network is generated for the 480x480 Pipe2 tensor. Keep its
     // input on the DMA-owned inference buffer, as in experiment-ai; the copied
     // source buffer is reserved for models that need CPU resizing.
@@ -456,7 +455,7 @@ common::Error Future::Postprocess()
     status = ConvertResult(decoded, &boxes);
     if (!status.Ok())
         return status;
-    context_.publish(context_.publish_context, boxes);
+    context_.publish(context_.publish_context, boxes, context_.generation);
     if (!postprocess_stage_logged_) {
         UAI_LOG_INFO(
             "ai: person postprocess done seq=%u boxes=%u\n",

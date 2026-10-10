@@ -87,6 +87,7 @@ std::uintptr_t g_inference_dma_offset = 0U;
 volatile std::uint32_t g_inference_sequence = 0U;
 uai::ai::memory_manager::MemoryManager *g_pipe2_memory = nullptr;
 ID g_pipe2_frame_event_flag = 0;
+uai::ai::camera::Notifications g_camera_notifications;
 volatile std::uint32_t g_last_frame_tick = 0U;
 volatile std::uint32_t g_last_pipe2_frame_tick = 0U;
 volatile std::uint32_t g_last_csi_error_tick = 0U;
@@ -644,6 +645,7 @@ void RecordAnomaly(
     g_camera_last_anomaly = static_cast<std::uint32_t>(anomaly);
     g_camera_last_anomaly_tick = HAL_GetTick();
     g_camera_last_anomaly_detail = detail;
+    g_camera_notifications.anomaly.Notify();
 }
 
 void LogCameraLinkState(const sensor::registers::Imx335RegisterLayer &sensor_registers)
@@ -1145,6 +1147,65 @@ common::Error CameraDriver::Recover(const Writer &writer)
     return ReadState(&saved_controls_, writer);
 }
 
+common::Error CameraDriver::SetNotifications(
+    const Notifications &notifications,
+    const Writer &writer
+)
+{
+    const auto ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return ownership;
+    const auto mask = __get_PRIMASK();
+    __disable_irq();
+    g_camera_notifications = notifications;
+    __DMB();
+    __set_PRIMASK(mask);
+    return {};
+}
+
+common::Error CameraDriver::GetServiceWait(
+    std::uint32_t *remaining_ms,
+    const Writer &writer
+) const
+{
+    const auto ownership = management_->Validate(writer);
+    if (!ownership.Ok())
+        return ownership;
+    if (remaining_ms == nullptr)
+        return {common::ErrorCode::kInvalidArgument};
+    const auto now = HAL_GetTick();
+    *remaining_ms = UINT32_MAX;
+    if (!started_) {
+        if (capture_.automatic_recovery && g_camera_recovery_attempted) {
+            const auto age = now - g_last_recovery_tick;
+            *remaining_ms = age >= kRecoveryRetryMs ? 0U : kRecoveryRetryMs - age;
+        }
+        return {};
+    }
+    if (g_camera_vsync_event_count != g_last_vsync_count) {
+        *remaining_ms = 0U;
+        return {};
+    }
+    const std::uint32_t ages[] = {now - g_last_frame_tick, now - g_last_pipe2_frame_tick};
+    const bool reported[] = {g_pipe1_timeout_reported, g_pipe2_timeout_reported};
+    for (std::size_t index = 0U; index < 2U; ++index) {
+        const auto wait = ages[index] < kFrameTimeoutMs ? kFrameTimeoutMs - ages[index]
+            : reported[index]                           ? UINT32_MAX
+                                                        : 0U;
+        if (wait < *remaining_ms)
+            *remaining_ms = wait;
+    }
+    if (capture_.automatic_recovery && (ages[0U] >= kFrameTimeoutMs || ages[1U] >= kFrameTimeoutMs)) {
+        const auto age = now - g_last_recovery_tick;
+        const auto wait = !g_camera_recovery_attempted || age >= kRecoveryRetryMs ? 0U : kRecoveryRetryMs - age;
+        if (wait < *remaining_ms)
+            *remaining_ms = wait;
+    }
+    if (uai::ai::config::kCamera.raw_dump && g_raw_dump_started && !g_raw_dump_reported && *remaining_ms > 1U)
+        *remaining_ms = 1U;
+    return {};
+}
+
 uai::ai::common::Error CameraDriver::Process()
 {
     Writer writer;
@@ -1237,11 +1298,18 @@ uai::ai::common::Error CameraDriver::TakeCompletedCapture(
         return {uai::ai::common::ErrorCode::kNotInitialized};
     if (frame == nullptr)
         return {uai::ai::common::ErrorCode::kInvalidArgument};
+    const auto mask = __get_PRIMASK();
+    __disable_irq();
     const std::uintptr_t address = g_completed_frame;
+    const std::uint32_t completed_ms = g_last_frame_tick;
     g_completed_frame = 0U;
+    __set_PRIMASK(mask);
     if (address == 0U)
         return {uai::ai::common::ErrorCode::kNoFrame};
-    return memory_->ImportCompletedCapture(address, frame);
+    const auto status = memory_->ImportCompletedCapture(address, frame);
+    if (status.Ok())
+        frame->completed_ms = completed_ms;
+    return status;
 }
 
 uai::ai::common::Error CameraDriver::TakeCompletedInference(pipeline::InferenceFrame *frame)
@@ -1275,10 +1343,13 @@ uai::ai::common::Error CameraDriver::TakeCompletedInference(
             return {uai::ai::common::ErrorCode::kNoFrame};
         }
     }
+    const auto mask = __get_PRIMASK();
+    __disable_irq();
     const std::uintptr_t address = g_completed_inference;
     const std::uint32_t sequence = g_completed_inference_sequence;
     g_completed_inference = 0U;
     g_completed_inference_sequence = 0U;
+    __set_PRIMASK(mask);
     if (address == 0U) {
         return {uai::ai::common::ErrorCode::kNoFrame};
     }
@@ -1373,12 +1444,14 @@ extern "C" void BSP_CAMERA_FrameEventCallback(uint32_t Instance)
     g_completed_frame = g_active_frame;
     g_active_frame = g_next_frame;
     g_next_frame = g_next_frame == g_frame_buffer0 ? g_frame_buffer1 : g_frame_buffer0;
+    g_camera_notifications.capture.Notify();
 }
 
 extern "C" void BSP_CAMERA_VsyncEventCallback(uint32_t Instance)
 {
     (void)Instance;
     ++g_camera_vsync_event_count;
+    g_camera_notifications.vsync.Notify();
 }
 extern "C" void BSP_CAMERA_PipeErrorCallback(uint32_t Instance)
 {
@@ -1480,6 +1553,7 @@ extern "C" void AiCameraPipe2FrameEventCallback(void)
             break;
         }
     }
+    g_camera_notifications.inference.Notify();
 }
 
 extern "C" void DCMIPP_IRQHandler(void)

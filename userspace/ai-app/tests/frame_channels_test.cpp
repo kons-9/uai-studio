@@ -1,4 +1,8 @@
 #include "task/pipeline_task.hpp"
+#include "task/camera_render_state.hpp"
+#include "task/pipeline_state.hpp"
+#include "task/camera_render_wake.hpp"
+#include <functional>
 
 #include <cstring>
 #include <deque>
@@ -35,6 +39,8 @@ SZ capacity_override = 0;
 std::deque<ER> send_failures;
 std::deque<INT> receive_results;
 std::size_t send_calls = 0U;
+std::vector<UINT> event_flags;
+std::function<void()> wait_notification;
 
 } // namespace
 
@@ -45,6 +51,45 @@ ID tk_cre_mbf(const T_CMBF *config)
     const SZ slot_size = sizeof(INT) + (config->maxmsz + sizeof(INT) - 1U) / sizeof(INT) * sizeof(INT);
     buffers.push_back({config->maxmsz, capacity_override ? capacity_override : config->bufsz / slot_size, {}});
     return static_cast<ID>(buffers.size());
+}
+
+ID tk_cre_flg(const T_CFLG *configuration)
+{
+    event_flags.push_back(configuration->iflgptn);
+    return static_cast<ID>(event_flags.size());
+}
+ER tk_del_flg(ID)
+{
+    return E_OK;
+}
+ER tk_set_flg(
+    ID flag,
+    UINT pattern
+)
+{
+    event_flags.at(static_cast<std::size_t>(flag - 1)) |= pattern;
+    return E_OK;
+}
+ER tk_wai_flg(
+    ID flag,
+    UINT pattern,
+    UINT mode,
+    UINT *result,
+    TMO
+)
+{
+    if (wait_notification) {
+        const auto notify = std::move(wait_notification);
+        wait_notification = {};
+        notify();
+    }
+    auto &bits = event_flags.at(static_cast<std::size_t>(flag - 1));
+    *result = bits & pattern;
+    if (*result == 0U)
+        return E_TMOUT;
+    if ((mode & TWF_BITCLR) != 0U)
+        bits &= ~*result;
+    return E_OK;
 }
 
 ER tk_snd_mbf(
@@ -94,6 +139,349 @@ namespace uai::ai::task {
 
 namespace {
 
+struct DiagnosticSnapshot {
+    std::uint32_t dcmipp_error_count = 0U;
+    std::uint32_t camera_error_count = 0U;
+    std::uint32_t csi_error_count = 0U;
+    std::uint32_t isp_error_count = 0U;
+    std::uint32_t pipe1_timeout_count = 0U;
+    std::uint32_t pipe2_timeout_count = 0U;
+    std::uint32_t last_anomaly_tick = 0U;
+    std::uint32_t recovery_count = 0U;
+    std::uint32_t recovery_error_count = 0U;
+};
+
+TEST(
+    CameraDiagnosticState,
+    ReportsEachHealthChangeButNotUnchangedSnapshots
+)
+{
+    std::uint32_t DiagnosticSnapshot::*const fields[] = {
+        &DiagnosticSnapshot::dcmipp_error_count,
+        &DiagnosticSnapshot::camera_error_count,
+        &DiagnosticSnapshot::csi_error_count,
+        &DiagnosticSnapshot::isp_error_count,
+        &DiagnosticSnapshot::pipe1_timeout_count,
+        &DiagnosticSnapshot::pipe2_timeout_count,
+        &DiagnosticSnapshot::last_anomaly_tick,
+    };
+    for (const auto field : fields) {
+        CameraDiagnosticState state(100U);
+        DiagnosticSnapshot snapshot;
+        EXPECT_FALSE(state.ShouldReport(snapshot, 100U));
+        snapshot.*field = 1U;
+        EXPECT_TRUE(state.ShouldReport(snapshot, 101U));
+        state.MarkReported(snapshot, 101U);
+        EXPECT_FALSE(state.ShouldReport(snapshot, 1101U));
+    }
+}
+
+TEST(
+    CameraRenderWake,
+    CoalescesReasonsWithoutLosingWaitBoundaryNotification
+)
+{
+    event_flags.clear();
+    CameraRenderWake wake;
+    ASSERT_TRUE(wake.Create().Ok());
+    wake.Bind(CameraRenderWake::kCapture).Notify();
+    wait_notification = [&] {
+        wake.Bind(CameraRenderWake::kResult).Notify();
+    };
+    UINT reasons = 0U;
+    ASSERT_TRUE(wake.Wait(UINT32_MAX, &reasons).Ok());
+    EXPECT_EQ(reasons, CameraRenderWake::kCapture | CameraRenderWake::kResult);
+    ASSERT_TRUE(wake.Wait(0U, &reasons).Ok());
+    EXPECT_EQ(reasons, 0U);
+    wake.Close();
+    EXPECT_FALSE(wake.Wait(0U, &reasons).Ok());
+}
+
+TEST(
+    CameraDiagnosticState,
+    SuppressesRepeatedHardwareErrorsUntilOneSecond
+)
+{
+    CameraDiagnosticState state(100U);
+    DiagnosticSnapshot snapshot;
+    snapshot.camera_error_count = 1U;
+    ASSERT_TRUE(state.ShouldReport(snapshot, 101U));
+    state.MarkReported(snapshot, 101U);
+    snapshot.camera_error_count = 2U;
+    EXPECT_FALSE(state.ShouldReport(snapshot, 1100U));
+    EXPECT_TRUE(state.ShouldReport(snapshot, 1101U));
+}
+
+TEST(
+    CameraDiagnosticState,
+    PreservesImmediateTimeoutReportsBeforeHardwareErrors
+)
+{
+    CameraDiagnosticState state(100U);
+    DiagnosticSnapshot snapshot;
+    snapshot.pipe1_timeout_count = 1U;
+    state.MarkReported(snapshot, 101U);
+    snapshot.pipe2_timeout_count = 1U;
+    EXPECT_TRUE(state.ShouldReport(snapshot, 102U));
+}
+
+TEST(
+    CameraDiagnosticState,
+    ReportIntervalSurvivesClockWrap
+)
+{
+    CameraDiagnosticState state(0U);
+    DiagnosticSnapshot snapshot;
+    snapshot.csi_error_count = 1U;
+    state.MarkReported(snapshot, UINT32_MAX - 500U);
+    snapshot.csi_error_count = 2U;
+    EXPECT_FALSE(state.ShouldReport(snapshot, 498U));
+    EXPECT_TRUE(state.ShouldReport(snapshot, 499U));
+}
+
+TEST(
+    CameraDiagnosticState,
+    ReadsClockOnlyWhenHealthSuppressionRequiresIt
+)
+{
+    CameraDiagnosticState state(100U);
+    DiagnosticSnapshot snapshot;
+    std::size_t clock_reads = 0U;
+    const auto clock = [&] {
+        ++clock_reads;
+        return 1100U;
+    };
+    EXPECT_FALSE(state.ShouldReport(snapshot, clock));
+    snapshot.camera_error_count = 1U;
+    EXPECT_TRUE(state.ShouldReport(snapshot, clock));
+    EXPECT_EQ(clock_reads, 0U);
+    state.MarkReported(snapshot, 100U);
+    EXPECT_FALSE(state.ShouldReport(snapshot, clock));
+    EXPECT_EQ(clock_reads, 0U);
+    snapshot.camera_error_count = 2U;
+    EXPECT_TRUE(state.ShouldReport(snapshot, clock));
+    EXPECT_EQ(clock_reads, 1U);
+}
+
+TEST(
+    CameraDiagnosticState,
+    RecoveryReportsAreIndependentFromHealthSuppression
+)
+{
+    CameraDiagnosticState state(100U);
+    DiagnosticSnapshot snapshot;
+    snapshot.camera_error_count = 1U;
+    state.MarkReported(snapshot, 100U);
+    EXPECT_FALSE(state.ShouldReportRecovery(snapshot));
+    snapshot.recovery_count = 1U;
+    EXPECT_TRUE(state.ShouldReportRecovery(snapshot));
+    state.MarkRecoveryReported(snapshot);
+    EXPECT_FALSE(state.ShouldReportRecovery(snapshot));
+    snapshot.recovery_error_count = 1U;
+    EXPECT_TRUE(state.ShouldReportRecovery(snapshot));
+}
+
+TEST(
+    RenderSchedule,
+    PreservesPhaseAndSelectsActualFrameSequence
+)
+{
+    RenderSchedule schedule(100U);
+    EXPECT_FALSE(schedule.TouchDue(99U));
+    EXPECT_TRUE(schedule.TouchDue(100U));
+    schedule.TouchPolled(105U);
+    EXPECT_FALSE(schedule.TouchDue(109U));
+    EXPECT_TRUE(schedule.TouchDue(110U));
+    ASSERT_TRUE(schedule.ConfigureFrames(3U, 10U));
+    EXPECT_FALSE(schedule.TakeInference(9U, 30U));
+    EXPECT_EQ(schedule.TakeInference(10U, 30U).due_count, 1U);
+    EXPECT_EQ(schedule.TakeInference(23U, 30U).due_count, 4U);
+    EXPECT_EQ(schedule.Stats(RenderOperation::kSubmit).skipped, 3U);
+    EXPECT_FALSE(schedule.ConfigureFrames(0U, 0U));
+}
+
+TEST(
+    TimePeriod,
+    SkipsMissedExecutionsWithoutMovingPhase
+)
+{
+    common::TimePeriod period;
+    EXPECT_FALSE(period.Configure(0U, 100U));
+    ASSERT_TRUE(period.Configure(10U, 100U));
+    EXPECT_FALSE(period.Take(99U));
+    const auto decision = period.Take(135U);
+    EXPECT_EQ(decision.due_count, 4U);
+    EXPECT_EQ(decision.lateness, 35U);
+    EXPECT_EQ(period.RemainingWait(135U), 5U);
+    EXPECT_FALSE(period.Take(139U));
+    EXPECT_EQ(period.Take(140U).due_count, 1U);
+}
+
+TEST(
+    FramePeriod,
+    HandlesSequenceJumpsAndWrap
+)
+{
+    common::FramePeriod period;
+    ASSERT_TRUE(period.Configure(3U, UINT32_MAX - 2U));
+    EXPECT_EQ(period.Take(UINT32_MAX - 2U).due_count, 1U);
+    EXPECT_FALSE(period.Take(UINT32_MAX));
+    EXPECT_EQ(period.Take(0U).due_count, 1U);
+    EXPECT_EQ(period.Take(10U).due_count, 3U);
+    EXPECT_FALSE(period.Configure(0U, 0U));
+}
+
+TEST(
+    RenderSchedule,
+    DeadlinesSurviveClockWrap
+)
+{
+    RenderSchedule schedule(UINT32_MAX - 5U);
+    schedule.TouchPolled(UINT32_MAX - 5U);
+    EXPECT_FALSE(schedule.TouchDue(UINT32_MAX));
+    EXPECT_FALSE(schedule.TouchDue(3U));
+    EXPECT_TRUE(schedule.TouchDue(4U));
+    EXPECT_EQ(schedule.RemainingWait(3U, true), 1U);
+}
+
+TEST(
+    PipelineSubmitState,
+    CandidateOrderChangesOnlyAfterSuccessfulSubmission
+)
+{
+    PipelineSubmitState<3U, 4U> state;
+    EXPECT_EQ(state.CandidateIndex(0U), 0U);
+    EXPECT_EQ(state.CandidateIndex(2U), 2U);
+    EXPECT_EQ(state.CandidateIndex(0U), 0U);
+    state.CommitSubmission(2U, 2U);
+    EXPECT_EQ(state.submitted_count[0U], 0U);
+    EXPECT_EQ(state.submitted_count[2U], 1U);
+    EXPECT_EQ(state.CandidateIndex(0U), 3U);
+    EXPECT_EQ(state.CandidateIndex(1U), 0U);
+    state.CommitSubmission(1U, 3U);
+    EXPECT_EQ(state.submitted_count[1U], 1U);
+    EXPECT_EQ(state.CandidateIndex(0U), 0U);
+}
+
+TEST(
+    PostprocessState,
+    KeepsOtherModelsAndCopiesFreshResultsByValue
+)
+{
+    PostprocessState state;
+    inference::BoxSet person{};
+    person.person_valid = true;
+    person.person.count = 1U;
+    person.person.boxes[0U].confidence = 0.75F;
+    person.capture_sequence = 10U;
+    state.Merge(person);
+    person.person.count = 0U;
+    inference::BoxSet face{};
+    face.face_valid = true;
+    face.face.count = 2U;
+    face.capture_sequence = 11U;
+    state.Merge(face);
+    inference::BoxSet segmentation{};
+    segmentation.segmentation_valid = true;
+    segmentation.segmentation.mask_foreground_pixels = 23U;
+    segmentation.capture_sequence = 12U;
+    const auto &merged = state.Merge(segmentation);
+    EXPECT_EQ(merged.person.count, 1U);
+    EXPECT_FLOAT_EQ(merged.person.boxes[0U].confidence, 0.75F);
+    EXPECT_EQ(merged.face.count, 2U);
+    EXPECT_EQ(merged.segmentation.mask_foreground_pixels, 23U);
+    EXPECT_TRUE(merged.person_valid && merged.face_valid && merged.segmentation_valid);
+    EXPECT_EQ(merged.capture_sequence, 12U);
+    EXPECT_EQ(merged.model_sequence, 3U);
+    EXPECT_EQ(state.completed_count, 3U);
+}
+
+TEST(
+    PostprocessState,
+    EmptyDetectionClearsOnlyTheUpdatedModel
+)
+{
+    PostprocessState state;
+    inference::BoxSet result{};
+    result.person_valid = true;
+    result.person.count = 2U;
+    result.face_valid = true;
+    result.face.count = 1U;
+    state.Merge(result);
+    result = {};
+    result.face_valid = true;
+    const auto &merged = state.Merge(result);
+    EXPECT_EQ(merged.person.count, 2U);
+    EXPECT_TRUE(merged.face_valid);
+    EXPECT_EQ(merged.face.count, 0U);
+    EXPECT_EQ(merged.model_sequence, 2U);
+}
+
+TEST(
+    PostprocessState,
+    PublicationSequencePreservesUnsignedWrap
+)
+{
+    PostprocessState state;
+    state.latest_boxes.model_sequence = UINT32_MAX;
+    state.completed_count = UINT32_MAX;
+    inference::BoxSet result{};
+    result.capture_sequence = 7U;
+    EXPECT_EQ(state.Merge(result).model_sequence, 0U);
+    EXPECT_EQ(state.latest_boxes.capture_sequence, 7U);
+    EXPECT_EQ(state.completed_count, 0U);
+}
+
+TEST(
+    DisplayResultState,
+    ModelsExpireIndependentlyAndDuplicatesCannotReviveThem
+)
+{
+    PostprocessState producer;
+    DisplayResultState display;
+    inference::BoxSet result{};
+    result.person_valid = true;
+    result.person.count = 1U;
+    producer.Merge(result, 0U);
+    ASSERT_TRUE(display.Accept(producer.Snapshot()));
+    result = {};
+    result.face_valid = true;
+    result.face.count = 1U;
+    producer.Merge(result, 2000U);
+    ASSERT_TRUE(display.Accept(producer.Snapshot()));
+    EXPECT_EQ(display.RemainingWait(2999U), 1U);
+    EXPECT_FALSE(display.Expire(2999U));
+    EXPECT_TRUE(display.Expire(3000U));
+    EXPECT_FALSE(display.boxes.person_valid);
+    EXPECT_TRUE(display.boxes.face_valid);
+    EXPECT_FALSE(display.Accept(producer.Snapshot()));
+    EXPECT_FALSE(display.boxes.person_valid);
+    EXPECT_TRUE(display.Expire(5000U));
+    EXPECT_EQ(display.RemainingWait(5000U), UINT32_MAX);
+}
+
+TEST(
+    DisplayResultState,
+    ExpiryAndGenerationRemainCorrectAcrossWrap
+)
+{
+    PostprocessState producer;
+    DisplayResultState display;
+    inference::BoxSet result{};
+    result.segmentation_valid = true;
+    producer.Merge(result, UINT32_MAX - 500U);
+    const auto old = producer.Snapshot();
+    ASSERT_TRUE(display.Accept(old));
+    EXPECT_FALSE(display.Expire(2498U));
+    EXPECT_TRUE(display.Expire(2499U));
+    display.Reset(1U);
+    EXPECT_FALSE(display.Accept(old));
+    producer.Reset(1U);
+    producer.Merge(result, 2500U);
+    EXPECT_TRUE(display.Accept(producer.Snapshot()));
+    EXPECT_TRUE(display.boxes.segmentation_valid);
+}
+
 class FrameChannelsTest : public ::testing::Test {
 protected:
     void SetUp() override
@@ -131,7 +519,9 @@ TEST_F(
     channel.Send(second);
     EXPECT_TRUE(memory.IsInferenceBufferFree(first_buffer.address));
     EXPECT_FALSE(memory.IsInferenceBufferFree(second_buffer.address));
-    ASSERT_TRUE(channel.Receive(&received).Ok());
+    std::uint32_t generation = UINT32_MAX;
+    ASSERT_TRUE(channel.Receive(&received, &generation).Ok());
+    EXPECT_EQ(generation, 0U);
     EXPECT_EQ(received.lease_token, second.lease_token);
     EXPECT_EQ(channel.Receive(&received).Code(), common::ErrorCode::kNoFrame);
     EXPECT_TRUE(memory.ReleaseInferenceBuffer(received).Ok());
@@ -193,6 +583,63 @@ TEST_F(
     });
     EXPECT_TRUE(drained.error.Ok());
     EXPECT_EQ(sequences, (std::vector<std::uint32_t>{1, 2, 3}));
+}
+
+TEST_F(
+    FrameChannelsTest,
+    ExposureIgnoresQueuedResultsFromPreviousGeneration
+)
+{
+    ExposureResultChannel channel;
+    ASSERT_TRUE(channel.Create().Ok());
+    inference::BoxSet result{};
+    result.capture_sequence = 10U;
+    ASSERT_TRUE(channel.PublishLatest(result, 1U).Ok());
+    result.capture_sequence = 20U;
+    ASSERT_TRUE(channel.PublishLatest(result, 2U).Ok());
+    std::vector<std::uint32_t> received;
+    const auto drained = channel.Consume(
+        [&](const inference::BoxSet &boxes) {
+            received.push_back(boxes.capture_sequence);
+        },
+        2U
+    );
+    EXPECT_TRUE(drained.error.Ok());
+    EXPECT_EQ(received, (std::vector<std::uint32_t>{20U}));
+}
+
+TEST_F(
+    FrameChannelsTest,
+    SnapshotReplacementRetainsEachModelStampAndNotifiesAfterPublish
+)
+{
+    capacity_override = 1;
+    ModelResultChannel channel;
+    PostprocessState producer;
+    ASSERT_TRUE(channel.Create().Ok());
+    std::uint32_t notifications = 0U;
+    channel.SetNotification(
+        {&notifications,
+         [](void *context, std::uint32_t) {
+             ++*static_cast<std::uint32_t *>(context);
+             EXPECT_FALSE(buffers.front().messages.empty());
+         },
+         0U}
+    );
+    inference::BoxSet result{};
+    result.person_valid = true;
+    producer.Merge(result, 0U);
+    ASSERT_TRUE(channel.PublishLatest(producer.Snapshot()).Ok());
+    result = {};
+    result.face_valid = true;
+    producer.Merge(result, 100U);
+    ASSERT_TRUE(channel.PublishLatest(producer.Snapshot()).Ok());
+    ModelResultSnapshot snapshot;
+    ASSERT_TRUE(channel.DrainLatest(&snapshot).error.Ok());
+    EXPECT_EQ(notifications, 2U);
+    EXPECT_TRUE(snapshot.stamps[0U].valid);
+    EXPECT_EQ(snapshot.stamps[0U].completed_ms, 0U);
+    EXPECT_EQ(snapshot.stamps[1U].completed_ms, 100U);
 }
 
 TEST_F(

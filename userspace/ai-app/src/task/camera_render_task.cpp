@@ -16,6 +16,7 @@
 #include "middleware/pipeline/image_format.hpp"
 #include "middleware/ui/touch_point.hpp"
 #include "task/camera_render_task.hpp"
+#include "task/camera_render_state.hpp"
 #include "middleware/task/task.hpp"
 #include "task/task_context.hpp"
 #include "ui/app_ui.hpp"
@@ -30,6 +31,55 @@ extern "C" {
 namespace uai::ai::task {
 
 namespace {
+
+struct RenderFeatures {
+    bool input_display = false;
+    bool inference_trace = false;
+    bool frame_trace = false;
+    bool brightness = false;
+    bool display_trace = false;
+    bool shows_camera = true;
+    bool ai_exposure = false;
+    std::uint8_t model_mask = 0U;
+};
+
+struct FrameCycleContext {
+    explicit FrameCycleContext(const camera::Diagnostics &snapshot) : diagnostics(snapshot) {}
+    FrameCycleContext(const FrameCycleContext &) = delete;
+    FrameCycleContext &operator=(const FrameCycleContext &) = delete;
+
+    const camera::Diagnostics diagnostics;
+    std::uint32_t now = 0U;
+    pipeline::InferenceFrame pipe2{};
+    pipeline::CaptureFrame capture{};
+    RenderFeatures features{};
+};
+
+void ReportSchedules(const CameraRenderState &state)
+{
+    constexpr const char *names[] = {"touch", "pipe2", "submit", "results", "exposure", "display"};
+    for (std::size_t index = 0U; index < state.schedule.stats.size(); ++index) {
+        const auto &sample = state.schedule.stats[index];
+        UAI_LOG_INFO(
+            "cpu: schedule name=%s due=%u started=%u completed=%u failed=%u skipped=%u dropped=%u "
+            "late_ms=%u frame_ms=%u idle=%u drop_stride=%u drop_inactive=%u drop_source=%u drop_queue=%u\n",
+            names[index],
+            static_cast<unsigned int>(sample.due),
+            static_cast<unsigned int>(sample.started),
+            static_cast<unsigned int>(sample.completed),
+            static_cast<unsigned int>(sample.failed),
+            static_cast<unsigned int>(sample.skipped),
+            static_cast<unsigned int>(sample.dropped),
+            static_cast<unsigned int>(sample.max_lateness_ms),
+            static_cast<unsigned int>(sample.max_frame_delay_ms),
+            static_cast<unsigned int>(state.idle_wakeups),
+            static_cast<unsigned int>(sample.dropped_stride),
+            static_cast<unsigned int>(sample.dropped_inactive),
+            static_cast<unsigned int>(sample.dropped_source),
+            static_cast<unsigned int>(sample.dropped_queue)
+        );
+    }
+}
 
 void InspectCaptureBrightness(
     const CameraRenderContext &context,
@@ -189,6 +239,20 @@ void CameraRenderTask::Start(middleware::cpu_task_monitor::CpuTaskMonitor &monit
 void CameraRenderTask::Run(CameraRenderContext context)
 {
     common::Error status{};
+    status = wake_.Create();
+    if (status.Ok())
+        status = context.camera.SetNotifications(
+            {wake_.Bind(CameraRenderWake::kCapture),
+             wake_.Bind(CameraRenderWake::kPipe2),
+             wake_.Bind(CameraRenderWake::kVsync),
+             wake_.Bind(CameraRenderWake::kError)}
+        );
+    if (!status.Ok()) {
+        status.LogStatus("camera: wake registration");
+        common::Task::Halt("ai: camera wake registration failed\n");
+    }
+    context.pipeline_task.SetResultNotification(wake_.Bind(CameraRenderWake::kResult));
+    context.shell_mailbox.SetNotification(wake_.Bind(CameraRenderWake::kRequest));
 
     const inference::BoxSet initial{};
 
@@ -392,64 +456,72 @@ void CameraRenderTask::Run(CameraRenderContext context)
         static_cast<unsigned int>(NVIC_GetPendingIRQ(CSI_IRQn))
     );
 
-    inference::BoxSet active_boxes = initial;
-    exposure_control::Runtime exposure;
-    shell::ExposureMode exposure_mode{};
-    std::uint32_t last_exposure_error_tick = 0;
-    std::uint32_t next_inference = common::Task::Now() + kInferencePeriod;
-
-    app_ui::AppUi screen_ui(context.pipeline_task);
-    bool previous_exposure_enabled = screen_ui.AiExposureEnabled();
-    std::uint32_t next_touch_poll = common::Task::Now();
+    CameraRenderState state(context.pipeline_task, initial, common::Task::Now());
+    auto &active_boxes = state.results.boxes;
+    auto &exposure = state.exposure;
+    auto &exposure_mode = state.exposure_mode;
+    auto &screen_ui = state.ui;
+    status = context.camera.GetGeometry(&state.geometry);
+    if (!status.Ok())
+        common::Task::Halt("ai: camera geometry unavailable\n");
     UAI_LOG_INFO(
         "ui: touch=%s screens=%u\n",
         context.touch_ready ? "ready" : "disabled",
         static_cast<unsigned int>(app_ui::kScreenCount)
     );
 
-    std::uint32_t loop_count = 0U;
-    unsigned int reported_pipe_errors = 0U;
-    unsigned int reported_camera_errors = 0U;
-    unsigned int reported_csi_errors = 0U;
-    unsigned int reported_recoveries = 0U;
-    unsigned int reported_recovery_errors = 0U;
-    unsigned int reported_isp_errors = 0U;
-    unsigned int reported_pipe1_timeouts = 0U;
-    unsigned int reported_pipe2_timeouts = 0U;
-    unsigned int reported_anomaly_tick = 0U;
-    std::uint32_t last_async_error_log_tick = common::Task::Now();
+    state.diagnostics = CameraDiagnosticState(common::Task::Now());
+    UINT wake_reasons = 0U;
     common::Task::RunForever(
         context.cpu_task_monitor,
         "camera_render",
-        [] {
-            tk_dly_tsk(1);
+        [&] {
+            const auto now = common::Task::Now();
+            auto wait = state.RemainingWait(now, context.touch_ready);
+            std::uint32_t service_wait = UINT32_MAX;
+            const auto service_status = context.camera.GetServiceWait(&service_wait);
+            if (!service_status.Ok())
+                common::Task::Halt("ai: camera service deadline failed\n");
+            if (service_wait < wait)
+                wait = service_wait;
+            if (context.shell_mailbox.Pending())
+                wait = 0U;
+            const auto wake_status = wake_.Wait(wait, &wake_reasons);
+            if (!wake_status.Ok())
+                common::Task::Halt("ai: camera wake wait failed\n");
         },
         [&] {
-            ++loop_count;
+            ++state.loop_count;
             status = context.camera.Process();
             if (!status.Ok()) {
                 status.LogStatus("camera");
                 common::Task::Halt("ai: camera process failed\n");
             }
-            const camera::Diagnostics snapshot = context.camera.GetDiagnostics();
-            const bool async_error_changed = reported_pipe_errors != snapshot.dcmipp_error_count
-                || reported_camera_errors != snapshot.camera_error_count
-                || reported_csi_errors != snapshot.csi_error_count || reported_isp_errors != snapshot.isp_error_count
-                || reported_pipe1_timeouts != snapshot.pipe1_timeout_count
-                || reported_pipe2_timeouts != snapshot.pipe2_timeout_count
-                || reported_anomaly_tick != snapshot.last_anomaly_tick;
-            if (async_error_changed
-                && ((reported_pipe_errors == 0U && reported_camera_errors == 0U && reported_csi_errors == 0U
-                     && reported_isp_errors == 0U)
-                    || common::Task::Now() - last_async_error_log_tick >= 1000U)) {
-                reported_pipe_errors = snapshot.dcmipp_error_count;
-                reported_camera_errors = snapshot.camera_error_count;
-                reported_csi_errors = snapshot.csi_error_count;
-                reported_isp_errors = snapshot.isp_error_count;
-                reported_pipe1_timeouts = snapshot.pipe1_timeout_count;
-                reported_pipe2_timeouts = snapshot.pipe2_timeout_count;
-                reported_anomaly_tick = snapshot.last_anomaly_tick;
-                last_async_error_log_tick = common::Task::Now();
+            FrameCycleContext cycle(context.camera.GetDiagnostics());
+            const auto &snapshot = cycle.diagnostics;
+            bool did_work = (wake_reasons & (CameraRenderWake::kVsync | CameraRenderWake::kError)) != 0U;
+            bool ui_dirty = false;
+            const auto reset_results = [&] {
+                state.results.Reset(context.pipeline_task.AdvanceGeneration());
+                exposure.Reset();
+                state.schedule.ConfigureFrames(
+                    kInferenceFrameStride,
+                    context.camera.GetDiagnostics().pipe2_latest_capture_sequence + kInferenceFrameStride
+                );
+                ui_dirty = true;
+                did_work = true;
+            };
+            if (state.observed_recovery_count != snapshot.recovery_count) {
+                state.observed_recovery_count = snapshot.recovery_count;
+                reset_results();
+            }
+            auto &pipe_stats = state.schedule.Stats(RenderOperation::kPipe2);
+            pipe_stats.dropped += snapshot.pipe2_drop_count - state.observed_pipe2_drops;
+            state.observed_pipe2_drops = snapshot.pipe2_drop_count;
+            if (state.diagnostics.ShouldReport(snapshot, [] {
+                    return common::Task::Now();
+                })) {
+                state.diagnostics.MarkReported(snapshot, common::Task::Now());
                 UAI_LOG_WARN(
                     "camera: health anomaly=%s tick=%u detail=%x timeout=%u/%u age_ms=%u/%u "
                     "errors pipe=%u sensor=%u csi=%u isp=%u dcmipp=%x csi0=%x csi1=%x pend0=%x pend1=%x "
@@ -457,14 +529,14 @@ void CameraRenderTask::Run(CameraRenderContext context)
                     camera::AnomalyName(snapshot.last_anomaly),
                     snapshot.last_anomaly_tick,
                     snapshot.last_anomaly_detail,
-                    reported_pipe1_timeouts,
-                    reported_pipe2_timeouts,
+                    snapshot.pipe1_timeout_count,
+                    snapshot.pipe2_timeout_count,
                     snapshot.pipe1_frame_age_ms,
                     snapshot.pipe2_frame_age_ms,
-                    reported_pipe_errors,
-                    reported_camera_errors,
-                    reported_csi_errors,
-                    reported_isp_errors,
+                    snapshot.dcmipp_error_count,
+                    snapshot.camera_error_count,
+                    snapshot.csi_error_count,
+                    snapshot.isp_error_count,
                     snapshot.dcmipp_last_status,
                     snapshot.csi_last_status,
                     snapshot.csi_last_status1,
@@ -477,14 +549,12 @@ void CameraRenderTask::Run(CameraRenderContext context)
                     snapshot.csi_sot_dl1_count
                 );
             }
-            if (reported_recoveries != snapshot.recovery_count
-                || reported_recovery_errors != snapshot.recovery_error_count) {
-                reported_recoveries = snapshot.recovery_count;
-                reported_recovery_errors = snapshot.recovery_error_count;
+            if (state.diagnostics.ShouldReportRecovery(snapshot)) {
+                state.diagnostics.MarkRecoveryReported(snapshot);
                 UAI_LOG_WARN(
                     "camera: recovery attempts=%u failed=%u frames=%u vsync=%u pipe2=%u drops=%u\n",
-                    reported_recoveries,
-                    reported_recovery_errors,
+                    snapshot.recovery_count,
+                    snapshot.recovery_error_count,
                     snapshot.frame_event_count,
                     snapshot.vsync_event_count,
                     snapshot.pipe2_frame_event_count,
@@ -492,9 +562,12 @@ void CameraRenderTask::Run(CameraRenderContext context)
                 );
             }
 
-            const std::uint32_t now = common::Task::Now();
+            cycle.now = common::Task::Now();
+            const std::uint32_t now = cycle.now;
             shell::Request shell_request{};
             if (context.shell_mailbox.Take(&shell_request)) {
+                did_work = true;
+                ui_dirty = true;
                 shell::Reply reply{};
                 if (shell_request.action == shell::Action::kDiagnostics) {
                     std::atomic<bool> *option = nullptr;
@@ -549,58 +622,33 @@ void CameraRenderTask::Run(CameraRenderContext context)
                     reply = shell::Apply(shell_request, context.camera, screen_ui, exposure_mode);
                 }
                 context.shell_mailbox.Complete(reply);
-            }
-            if constexpr (kAiExposureControl) {
-                const bool ai_exposure_enabled = screen_ui.AiExposureEnabled();
-                const auto auto_status = shell::FollowUiExposure(
-                    ai_exposure_enabled, previous_exposure_enabled, context.camera, exposure_mode
-                );
-                if (!auto_status.Ok())
-                    auto_status.LogStatus("shell: restore ae");
-                const auto exposure_results =
-                    context.pipeline_task.ConsumeExposureResults([&](const inference::BoxSet &result) {
-                        if (ai_exposure_enabled && previous_exposure_enabled)
-                            exposure.Observe(result, now);
-                    });
-                previous_exposure_enabled = ai_exposure_enabled;
-                if (!exposure_results.error.Ok() && exposure_results.error.Code() != common::ErrorCode::kNoFrame)
-                    exposure_results.error.LogStatus("exposure-results");
-                const auto previous_area = exposure.DisplayValues().applied;
-                const auto exposure_status = exposure.Process(
-                    context.camera, now, ai_exposure_enabled, !exposure_mode.manual, !exposure_mode.custom_statistics
-                );
-                const auto &values = exposure.DisplayValues();
-                if (exposure_status.Ok() && values.available
-                    && (previous_area.x != values.applied.x || previous_area.y != values.applied.y
-                        || previous_area.width != values.applied.width
-                        || previous_area.height != values.applied.height)) {
-                    UAI_LOG_INFO(
-                        "exposure: source=%u area=%u/%u/%u/%u exposure_us=%d gain_mdB=%d ae=%u\n",
-                        static_cast<unsigned int>(values.source),
-                        static_cast<unsigned int>(values.applied.x),
-                        static_cast<unsigned int>(values.applied.y),
-                        static_cast<unsigned int>(values.applied.width),
-                        static_cast<unsigned int>(values.applied.height),
-                        static_cast<int>(values.exposure_us),
-                        static_cast<int>(values.gain_mdB),
-                        static_cast<unsigned int>(values.auto_exposure)
-                    );
-                }
-                if (!exposure_status.Ok()
-                    && (last_exposure_error_tick == 0 || now - last_exposure_error_tick >= 1000)) {
-                    exposure_status.LogStatus("exposure");
-                    last_exposure_error_tick = now;
+                if (shell_request.action == shell::Action::kCameraFps
+                    || shell_request.action == shell::Action::kCameraFlip
+                    || shell_request.action == shell::Action::kCameraCrop) {
+                    camera::Geometry geometry{};
+                    const auto geometry_status = context.camera.GetGeometry(&geometry);
+                    if (geometry_status.Ok()
+                        && (geometry.fps != state.geometry.fps || geometry.horizontal != state.geometry.horizontal
+                            || geometry.vertical != state.geometry.vertical || geometry.crop.x != state.geometry.crop.x
+                            || geometry.crop.y != state.geometry.crop.y
+                            || geometry.crop.width != state.geometry.crop.width
+                            || geometry.crop.height != state.geometry.crop.height)) {
+                        state.geometry = geometry;
+                        reset_results();
+                    }
                 }
             }
-            screen_ui.UpdateStatus(now, kAiExposureControl ? &exposure.DisplayValues() : nullptr);
-            if (context.touch_ready && static_cast<std::int32_t>(now - next_touch_poll) >= 0) {
-                next_touch_poll = now + kTouchPollPeriod;
+            if (context.touch_ready && state.schedule.TouchDue(now)) {
+                state.schedule.TouchPolled(now);
+                did_work = true;
                 ui::TouchPoint sample{};
                 const common::Error touch_status = context.touch.Read(&sample);
+                state.schedule.Stats(RenderOperation::kTouch).Finish(touch_status.Ok());
                 if (!touch_status.Ok()) {
                     touch_status.LogStatus("touch");
                 } else {
                     const ui::Event event = screen_ui.HandleTouch(sample);
+                    ui_dirty = ui_dirty || event.type != ui::EventType::kNone;
                     shell::Reply touch_reply{};
                     if (shell::ApplyTouch(event, context.camera, screen_ui, exposure_mode, &touch_reply)
                         && touch_reply.code != 0)
@@ -615,17 +663,44 @@ void CameraRenderTask::Run(CameraRenderContext context)
                     }
                 }
             }
-            const bool inference_due = kCopyInferenceFrames
+            cycle.features = {
+                context.diagnostics.inference_input_display.load(std::memory_order_relaxed),
+                context.diagnostics.inference_trace.load(std::memory_order_relaxed),
+                context.diagnostics.camera_frame_trace.load(std::memory_order_relaxed),
+                context.diagnostics.camera_brightness.load(std::memory_order_relaxed),
+                context.diagnostics.display_trace.load(std::memory_order_relaxed),
+                screen_ui.ShowsCamera(),
+                screen_ui.AiExposureEnabled(),
+                screen_ui.ModelMask()
+            };
+            const auto &features = cycle.features;
+            const bool inference_enabled = kCopyInferenceFrames
                 && (kInferenceMode == InferenceMode::kCopyOnly || context.external_nor_ready)
-                && static_cast<std::int32_t>(now - next_inference) >= 0;
-
-            /* Pipe2 is a separate RGB888 producer. Drain it on every camera-task
-         * iteration so the two DMA buffers are returned quickly even when the
-         * inference period is intentionally slow. */
-            pipeline::InferenceFrame pipe2_frame{};
-            const common::Error pipe2_status = context.camera.TakeCompletedInference(&pipe2_frame);
-            if (pipe2_status.Ok()) {
-                if (context.diagnostics.inference_input_display) {
+                && !features.input_display;
+            const auto release_inference = [&](const pipeline::InferenceFrame &frame) {
+                const auto released = context.memory.ReleaseInferenceBuffer(frame);
+                if (!released.Ok()) {
+                    released.LogStatus("memory");
+                    common::Task::Halt("ai: inference lease release failed\n");
+                }
+                return released;
+            };
+            auto &pipe2_frame = cycle.pipe2;
+            for (std::size_t drained = 0U; drained < memory_manager::kInferenceBufferCount; ++drained) {
+                pipe2_frame = {};
+                const auto pipe2_status = context.camera.TakeCompletedInference(&pipe2_frame);
+                if (!pipe2_status.Ok()) {
+                    if (pipe2_status.Code() != common::ErrorCode::kNoFrame
+                        && pipe2_status.Code() != common::ErrorCode::kNoBuffer)
+                        pipe2_status.LogStatus("camera");
+                    break;
+                }
+                did_work = true;
+                state.schedule.StartEvent(RenderOperation::kPipe2);
+                if (features.input_display) {
+                    auto &submit = state.schedule.Stats(RenderOperation::kSubmit);
+                    ++submit.dropped;
+                    ++submit.dropped_inactive;
                     status = context.memory.ClaimInferenceBuffer(pipe2_frame);
                     if (!status.Ok()) {
                         status.LogStatus("memory");
@@ -645,42 +720,90 @@ void CameraRenderTask::Run(CameraRenderContext context)
                     if (!status.Ok() && (!status.IsRoutine() || log_input)) {
                         status.LogStatus("lcd");
                     }
-                    const common::Error release_status = context.memory.ReleaseInferenceBuffer(pipe2_frame);
-                    if (!release_status.Ok()) {
-                        release_status.LogStatus("memory");
-                        common::Task::Halt("ai: diagnostic inference release failed\n");
+                    (void)release_inference(pipe2_frame);
+                } else if (inference_enabled
+                           && state.schedule.TakeInference(pipe2_frame.capture_sequence, state.geometry.fps)) {
+                    auto &submit = state.schedule.Stats(RenderOperation::kSubmit);
+                    ++submit.started;
+                    if (kInferenceMode == InferenceMode::kNpu) {
+                        status = context.camera.SnapshotInferenceSource(&pipe2_frame);
+                        if (!status.Ok()) {
+                            status.LogStatus("camera");
+                            (void)release_inference(pipe2_frame);
+                            ++submit.dropped;
+                            ++submit.dropped_source;
+                        } else {
+                            status = context.pipeline_task.InferenceFrames().Send(
+                                pipe2_frame, context.pipeline_task.Generation()
+                            );
+                        }
+                    } else {
+                        status = release_inference(pipe2_frame);
                     }
-                } else if (inference_due && kInferenceMode == InferenceMode::kNpu) {
-                    status = context.camera.SnapshotInferenceSource(&pipe2_frame);
-                    if (!status.Ok()) {
-                        status.LogStatus("camera");
-                        const common::Error release_status = context.memory.ReleaseInferenceBuffer(pipe2_frame);
-                        release_status.LogStatus("memory");
-                        next_inference = now + kInferencePeriod;
-                        return;
-                    }
-                    if (context.diagnostics.inference_trace) {
-                        UAI_LOG_DEBUG(
-                            "ai: pipe2 frame queued sequence=%u buffer=%x events=%u drops=%u\n",
-                            static_cast<unsigned int>(pipe2_frame.capture_sequence),
-                            static_cast<unsigned int>(pipe2_frame.buffer.address),
-                            snapshot.pipe2_frame_event_count,
-                            snapshot.pipe2_drop_count
-                        );
-                    }
-                    context.pipeline_task.InferenceFrames().Send(pipe2_frame);
-                    next_inference = now + kInferencePeriod;
+                    submit.Finish(status.Ok());
                 } else {
-                    const common::Error release_status = context.memory.ReleaseInferenceBuffer(pipe2_frame);
-                    if (!release_status.Ok()) {
-                        release_status.LogStatus("memory");
+                    status = release_inference(pipe2_frame);
+                    auto &submit = state.schedule.Stats(RenderOperation::kSubmit);
+                    ++submit.dropped;
+                    if (inference_enabled)
+                        ++submit.dropped_stride;
+                    else
+                        ++submit.dropped_inactive;
+                }
+                pipe_stats.Finish(status.Ok());
+                if (drained + 1U == memory_manager::kInferenceBufferCount)
+                    wake_.Notify(CameraRenderWake::kPipe2);
+            }
+            const auto queue_drops = context.pipeline_task.InferenceFrames().Dropped();
+            state.schedule.Stats(RenderOperation::kSubmit).dropped += queue_drops - state.observed_queue_drops;
+            state.schedule.Stats(RenderOperation::kSubmit).dropped_queue = queue_drops;
+            state.observed_queue_drops = queue_drops;
+            ModelResultSnapshot incoming{};
+            const message_channel::DrainResult drain_result = context.pipeline_task.TryGetLatestResult(&incoming);
+            if (drain_result.updated) {
+                state.schedule.StartEvent(RenderOperation::kResults);
+                auto &results = state.schedule.Stats(RenderOperation::kResults);
+                if (state.results.Accept(incoming))
+                    results.Finish(true);
+                else
+                    ++results.skipped;
+                did_work = true;
+            }
+            if (drain_result.error.Code() == common::ErrorCode::kTimeout)
+                wake_.Notify(CameraRenderWake::kResult);
+            ui_dirty = state.results.Expire(now) || ui_dirty;
+            if constexpr (kAiExposureControl) {
+                const auto exposure_results =
+                    context.pipeline_task.ConsumeExposureResults([&](const inference::BoxSet &result) {
+                        if (features.ai_exposure && state.previous_exposure_enabled)
+                            exposure.Observe(result, now);
+                    });
+                if (exposure_results.error.Code() == common::ErrorCode::kTimeout)
+                    wake_.Notify(CameraRenderWake::kResult);
+                if (!exposure_results.error.Ok() && exposure_results.error.Code() != common::ErrorCode::kNoFrame
+                    && exposure_results.error.Code() != common::ErrorCode::kTimeout)
+                    exposure_results.error.LogStatus("exposure-results");
+                state.previous_exposure_enabled = features.ai_exposure;
+                if (exposure.RemainingWait(now, features.ai_exposure) == 0U) {
+                    state.schedule.StartEvent(RenderOperation::kExposure);
+                    const auto exposure_status = exposure.Process(
+                        context.camera,
+                        now,
+                        features.ai_exposure,
+                        !exposure_mode.manual,
+                        !exposure_mode.custom_statistics
+                    );
+                    state.schedule.Stats(RenderOperation::kExposure).Finish(exposure_status.Ok());
+                    did_work = true;
+                    if (!exposure_status.Ok()
+                        && (state.last_exposure_error_tick == 0U || now - state.last_exposure_error_tick >= 1000U)) {
+                        exposure_status.LogStatus("exposure");
+                        state.last_exposure_error_tick = now;
                     }
                 }
-            } else if (pipe2_status.Code() != common::ErrorCode::kNoFrame
-                       && pipe2_status.Code() != common::ErrorCode::kNoBuffer) {
-                pipe2_status.LogStatus("camera");
             }
-            const message_channel::DrainResult drain_result = context.pipeline_task.TryGetLatestResult(&active_boxes);
+            ui_dirty =
+                screen_ui.UpdateStatus(now, kAiExposureControl ? &exposure.DisplayValues() : nullptr) || ui_dirty;
             if (!drain_result.error.Ok() && drain_result.error.Code() != common::ErrorCode::kNoFrame) {
                 drain_result.error.LogStatus("results");
             }
@@ -703,16 +826,16 @@ void CameraRenderTask::Run(CameraRenderContext context)
              * keep presenting the previous result so model switching does not
              * create a blank frame. */
             }
-            uai::ai::pipeline::CaptureFrame capture{};
+            auto &capture = cycle.capture;
             status = context.camera.TakeCompletedCapture(&capture);
+            const bool capture_ready = status.Ok();
             if (!status.Ok()) {
                 if (status.Code() != common::ErrorCode::kNoFrame) {
                     status.LogStatus("camera");
                 }
-                return;
             }
 
-            if (context.diagnostics.camera_frame_trace) {
+            if (capture_ready && features.frame_trace) {
                 if (capture.sequence <= 3U || (capture.sequence % 10U) == 0U) {
                     UAI_LOG_DEBUG(
                         "camera: frame captured sequence=%u buffer=%x event=%u aton_irq=%u last=%x\n",
@@ -724,22 +847,31 @@ void CameraRenderTask::Run(CameraRenderContext context)
                     );
                 }
             }
-            if (context.diagnostics.camera_brightness) {
+            if (capture_ready && features.brightness) {
                 InspectCaptureBrightness(context, capture);
             }
 
             /* In the live Pipe2 diagnostic mode, the LCD is reserved for the
          * actual inference input. Capture buffers are still drained below. */
-            const bool display_due = !context.diagnostics.inference_input_display;
+            const bool display_due = state.ShouldPresent(capture_ready, ui_dirty, features.input_display);
             if (display_due) {
+                state.schedule.StartEvent(RenderOperation::kDisplay);
+                did_work = true;
                 if (context.diagnostics.display_trace && (capture.sequence <= 3U || (capture.sequence % 10U) == 0U)) {
                     UAI_LOG_DEBUG("lcd: compose begin sequence=%u\n", static_cast<unsigned int>(capture.sequence));
                 }
                 /* Screens without the camera repaint from scratch; the capture
              * is still taken above so its buffer returns to the pool. */
-                status = screen_ui.ShowsCamera()
+                status = features.shows_camera
                     ? context.lcd.ComposeAndPresent(capture, screen_ui.VisibleBoxes(active_boxes), &screen_ui.Overlay())
                     : context.lcd.PresentOverlay(screen_ui.Overlay());
+                auto &display = state.schedule.Stats(RenderOperation::kDisplay);
+                display.Finish(status.Ok());
+                if (status.Ok() && capture_ready) {
+                    const auto delay = HAL_GetTick() - capture.completed_ms;
+                    if (delay > display.max_frame_delay_ms)
+                        display.max_frame_delay_ms = delay;
+                }
                 if (!status.Ok()) {
                     status.LogStatus("lcd");
                     if (!status.IsRoutine()) {
@@ -763,10 +895,16 @@ void CameraRenderTask::Run(CameraRenderContext context)
                 }
             }
 
-            if (context.diagnostics.camera_frame_trace && (loop_count % 1000U) == 0U) {
+            if (!did_work && !ui_dirty)
+                ++state.idle_wakeups;
+            if (state.schedule.ReportDue(common::Task::Now())) {
+                ReportSchedules(state);
+                state.schedule.Reported(common::Task::Now());
+            }
+            if (features.frame_trace && capture_ready && (state.loop_count % 1000U) == 0U) {
                 UAI_LOG_DEBUG(
                     "camera: heartbeat loop=%u sequence=%u pipe2=%u drops=%u aton_irq=%u last=%x\n",
-                    static_cast<unsigned int>(loop_count),
+                    static_cast<unsigned int>(state.loop_count),
                     static_cast<unsigned int>(capture.sequence),
                     snapshot.pipe2_frame_event_count,
                     snapshot.pipe2_drop_count,

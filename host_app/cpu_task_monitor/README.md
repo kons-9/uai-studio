@@ -35,6 +35,14 @@ uv run --project host_app python host_app/cpu_task_monitor/cpu_task_monitor.py \
 
 図は上から、タスク別の積み上げCPU使用率、ガント図、タスクごとのループ平均・最大時間です。ガント図は`Task::RunForever()`が計測したループ本体の区間で、イベント待ちは含みません。UARTログとversion 2以前のdumpにはループ時刻がないため、ガント図は描きません。
 
+## スケジュール統計
+
+ai-appは5秒ごとに`cpu: schedule name=...`をUARTへ出します。`touch`、`pipe2`、`submit`、`results`、`exposure`、`display`ごとの発火・開始・完了・失敗・間引き・ドロップ理由・最大遅延と、空転起床回数を記録します。`submit.completed`は入力キューへの送信成功で、推論完了数はAIモニタで確認します。
+
+この行を含むUARTログは、JSONの`reports[].schedules`とCSVの`schedule_*`列へ出力し、グラフに最大遅延・完了率のパネルを追加します。統計行だけのログも描画できます。カウンタは32bitの累積値、遅延はmsです。通常CPU情報の横軸と異なり、統計パネルの横軸はレポート番号です。
+
+旧binary ringのrecord・版は変更していないため、raw dumpには追加スケジュール統計は含まれません。統計も必要な場合はUARTログを入力にします。
+
 ## サンプル
 
 [sample/](sample/)には実機のai-appから採取したraw dump、UARTログ、JSON、CSV、PNGがあります。更新する場合:

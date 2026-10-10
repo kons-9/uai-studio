@@ -17,6 +17,7 @@
 #include "middleware/ai_runtime/inference_result_types.hpp"
 #include "middleware/memory/generated/memory_config.hpp"
 #include "task/task_context.hpp"
+#include "task/pipeline_state.hpp"
 #include "middleware/task/task.hpp"
 
 extern "C" {
@@ -147,13 +148,11 @@ struct PipelineApplication {
     models::person::Future person_futures[memory_manager::kInferenceBufferCount]{};
     models::face::Future face_futures[memory_manager::kInferenceBufferCount]{};
     models::segmentation::Future segmentation_futures[memory_manager::kInferenceBufferCount]{};
-    std::uint32_t model_sequence = 0U;
-    std::uint32_t submitted_count[kRegisteredModelCount]{};
+    PipelineSubmitState<kRegisteredModelCount, kModelScheduleLength> submission;
+    PostprocessState postprocess;
     /* Read by the camera task for the on-screen rate display. */
     std::atomic<std::uint32_t> completed_count[kRegisteredModelCount]{};
-    std::uint32_t postprocess_count = 0U;
     std::atomic<std::uint32_t> last_detection_count{0U};
-    std::uint32_t last_capture_sequence = 0U;
     std::uint32_t report_tick = 0U;
     std::uint32_t report_submitted = 0U;
     std::uint32_t report_completed = 0U;
@@ -162,11 +161,6 @@ struct PipelineApplication {
     std::uint32_t report_segmentation_submitted = 0U;
     std::uint32_t report_segmentation_completed = 0U;
     std::uint32_t report_postprocess = 0U;
-    /* Keep the requested submission order. If the next model has no free
-     * Future, the frame task advances to the next available entry so a busy
-     * model cannot stop the other pipelines from making progress. */
-    std::size_t next_schedule_index = 0U;
-    inference::BoxSet latest_boxes{};
     std::atomic<bool> enabled{false};
     /* The NPU context is shared, but the NPU dispatcher is a single worker.
      * Multiple futures may therefore be queued safely: CPU preprocess can
@@ -189,27 +183,27 @@ struct PipelineApplication {
             "ai: model stats person=%u/%u face=%u/%u "
             "seg=%u/%u post=%u boxes=%u capture=%u pipe2=%u "
             "drops=%u csi=%u\n",
-            static_cast<unsigned int>(submitted_count[kPersonModel] - report_submitted),
+            static_cast<unsigned int>(submission.submitted_count[kPersonModel] - report_submitted),
             static_cast<unsigned int>(completed_count[kPersonModel].load() - report_completed),
-            static_cast<unsigned int>(submitted_count[kFaceModel] - report_face_submitted),
+            static_cast<unsigned int>(submission.submitted_count[kFaceModel] - report_face_submitted),
             static_cast<unsigned int>(completed_count[kFaceModel].load() - report_face_completed),
-            static_cast<unsigned int>(submitted_count[kSegmentationModel] - report_segmentation_submitted),
+            static_cast<unsigned int>(submission.submitted_count[kSegmentationModel] - report_segmentation_submitted),
             static_cast<unsigned int>(completed_count[kSegmentationModel].load() - report_segmentation_completed),
-            static_cast<unsigned int>(postprocess_count - report_postprocess),
+            static_cast<unsigned int>(postprocess.completed_count - report_postprocess),
             static_cast<unsigned int>(last_detection_count.load()),
-            static_cast<unsigned int>(last_capture_sequence),
+            static_cast<unsigned int>(postprocess.latest_boxes.capture_sequence),
             static_cast<unsigned int>(camera.pipe2_frame_event_count),
             static_cast<unsigned int>(camera.pipe2_drop_count),
             static_cast<unsigned int>(camera.csi_error_count)
         );
         report_tick = now;
-        report_submitted = submitted_count[kPersonModel];
+        report_submitted = submission.submitted_count[kPersonModel];
         report_completed = completed_count[kPersonModel].load();
-        report_face_submitted = submitted_count[kFaceModel];
+        report_face_submitted = submission.submitted_count[kFaceModel];
         report_face_completed = completed_count[kFaceModel].load();
-        report_segmentation_submitted = submitted_count[kSegmentationModel];
+        report_segmentation_submitted = submission.submitted_count[kSegmentationModel];
         report_segmentation_completed = completed_count[kSegmentationModel].load();
-        report_postprocess = postprocess_count;
+        report_postprocess = postprocess.completed_count;
     }
 
     common::Error Initialize(PipelineFrameContext &context)
@@ -376,32 +370,21 @@ namespace {
 
 void PublishBoxes(
     void *context,
-    const inference::BoxSet &source
+    const inference::BoxSet &source,
+    std::uint32_t generation
 )
 {
     auto &task = *static_cast<PipelineFrameContext *>(context);
     auto &application = App();
-    auto &boxes = application.latest_boxes;
-    if (source.person_valid) {
-        boxes.person = source.person;
-        boxes.person_valid = true;
-    }
-    if (source.face_valid) {
-        boxes.face = source.face;
-        boxes.face_valid = true;
-    }
-    if (source.segmentation_valid) {
-        boxes.segmentation = source.segmentation;
-        boxes.segmentation_valid = true;
-    }
-    boxes.model_sequence = ++application.model_sequence;
-    boxes.capture_sequence = source.capture_sequence;
-    ++application.postprocess_count;
+    if (generation != task.pipeline_task.Generation())
+        return;
+    if (application.postprocess.Generation() != generation)
+        application.postprocess.Reset(generation);
+    const auto &boxes = application.postprocess.Merge(source, common::Task::Now());
     application.last_detection_count.store(boxes.person.count + boxes.face.count);
-    application.last_capture_sequence = boxes.capture_sequence;
-    const common::Error publish_status = task.pipeline_task.PublishResult(boxes);
+    const common::Error publish_status = task.pipeline_task.PublishResult(application.postprocess.Snapshot());
     publish_status.LogStatus("results");
-    task.pipeline_task.PublishExposureResult(source).LogStatus("exposure-results");
+    task.pipeline_task.PublishExposureResult(source, generation).LogStatus("exposure-results");
     application.Report(task);
 }
 
@@ -487,12 +470,17 @@ void PipelineTask::FrameEntry()
     }
     for (;;) {
         pipeline::InferenceFrame frame{};
-        const common::Error receive_status = task.pipeline_task.InferenceFrames().Receive(&frame);
+        std::uint32_t generation = 0U;
+        const common::Error receive_status = task.pipeline_task.InferenceFrames().Receive(&frame, &generation);
         if (receive_status.Code() == common::ErrorCode::kNoFrame)
             continue;
         if (!receive_status.Ok()) {
             receive_status.LogStatus("pipeline.frame.receive");
             common::Task::Halt("ai: pipeline frame receive failed\n");
+        }
+        if (generation != task.pipeline_task.Generation()) {
+            task.memory.ReleaseInferenceBuffer(frame).LogStatus("memory");
+            continue;
         }
         common::Error status = task.memory.ClaimInferenceBuffer(frame);
         if (!status.Ok()) {
@@ -507,7 +495,7 @@ void PipelineTask::FrameEntry()
             models::segmentation::Future *segmentation_available = nullptr;
             models::person::Future *person_available = nullptr;
             for (std::size_t offset = 0U; offset < kModelScheduleLength; ++offset) {
-                const std::size_t schedule_index = (g_app.next_schedule_index + offset) % kModelScheduleLength;
+                const std::size_t schedule_index = g_app.submission.CandidateIndex(offset);
                 const std::size_t candidate = kModelSchedule[schedule_index];
                 if ((model_mask & (1U << candidate)) == 0U) {
                     continue;
@@ -550,6 +538,7 @@ void PipelineTask::FrameEntry()
                 future_context.info = &g_app.registered_models[kFaceModel].info;
                 future_context.publish = &PublishBoxes;
                 future_context.publish_context = &task;
+                future_context.generation = generation;
                 face_available->Reset(future_context, frame);
                 status = g_app.scheduler.Submit(*face_available);
             } else if (model_index == kSegmentationModel) {
@@ -562,6 +551,7 @@ void PipelineTask::FrameEntry()
                 future_context.info = &g_app.registered_models[kSegmentationModel].info;
                 future_context.publish = &PublishBoxes;
                 future_context.publish_context = &task;
+                future_context.generation = generation;
                 segmentation_available->Reset(future_context, frame);
                 status = g_app.scheduler.Submit(*segmentation_available);
             } else {
@@ -574,12 +564,13 @@ void PipelineTask::FrameEntry()
                 future_context.info = &g_app.registered_models[kPersonModel].info;
                 future_context.publish = &PublishBoxes;
                 future_context.publish_context = &task;
+                future_context.generation = generation;
                 person_available->Reset(future_context, frame);
                 status = g_app.scheduler.Submit(*person_available);
             }
             if (status.Ok()) {
-                ++g_app.submitted_count[model_index];
-                if (g_app.submitted_count[model_index] == 1U) {
+                g_app.submission.CommitSubmission(model_index, selected_schedule_index);
+                if (g_app.submission.submitted_count[model_index] == 1U) {
                     UAI_LOG_INFO(
                         "ai: %s submit ok seq=%u\n",
                         model_index == kFaceModel               ? "face"
@@ -589,7 +580,6 @@ void PipelineTask::FrameEntry()
                     );
                 }
                 g_app.Report(task);
-                g_app.next_schedule_index = (selected_schedule_index + 1U) % kModelScheduleLength;
                 continue;
             }
             if (model_index == kFaceModel) {

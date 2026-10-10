@@ -353,7 +353,6 @@ common::Error Future::Preprocess()
         status = image_processing::Resize(source, destination);
         if (!status.Ok())
             return status;
-        frame_.input_prepared_by_cpu = true;
         status = context_.cache->PrepareForPeripheralRead(
             {input.address, InputBytes(), input.index, buffer::Region::kInference}
         );
@@ -362,7 +361,6 @@ common::Error Future::Preprocess()
     } else {
         /* Keep the same fallback contract as person: a caller that supplies
          * an already prepared input may use the inference buffer directly. */
-        frame_.input_prepared_by_cpu = false;
         const buffer::Buffer range{input.address, InputBytes(), input.index, buffer::Region::kInference};
         const common::Error status = context_.cache->PrepareForCpuRead(range);
         if (!status.Ok())
@@ -458,7 +456,7 @@ common::Error Future::Postprocess()
     status = ConvertResult(decoded, &boxes);
     if (!status.Ok())
         return status;
-    context_.publish(context_.publish_context, boxes);
+    context_.publish(context_.publish_context, boxes, context_.generation);
     if (!postprocess_stage_logged_) {
         UAI_LOG_INFO(
             "ai: face postprocess done seq=%u boxes=%u\n",

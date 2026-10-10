@@ -13,6 +13,7 @@ namespace uai::ai::pipeline {
 struct CaptureFrame {
     buffer::Buffer buffer{};
     std::uint32_t sequence = 0U;
+    std::uint32_t completed_ms = 0U;
 
     explicit operator bool() const { return static_cast<bool>(buffer); }
 };
@@ -25,12 +26,8 @@ struct DisplayBuffer {
     explicit operator bool() const { return static_cast<bool>(buffer); }
 };
 
-/* The runtime state transported from Pipe2 through preprocessing, NPU, and
- * postprocessing. It combines allocator buffers with pipeline ownership and
- * model-preparation metadata, so it does not belong to the allocator layer. */
+/* The buffers and lease transported from Pipe2 through the inference lanes. */
 struct InferenceFrame {
-    static constexpr std::uint8_t kUnknownModelKindId = 0xFFU;
-
     buffer::Buffer buffer{};
     buffer::Buffer source{};
     buffer::Buffer scratch{};
@@ -43,12 +40,6 @@ struct InferenceFrame {
     std::uint64_t lease_token = 0U;
     bool from_pipe2 = false;
     bool source_valid = false;
-    bool input_prepared_by_cpu = false;
-    bool input_prepared = false;
-    std::uint8_t prepared_model_kind_id = kUnknownModelKindId;
-    std::uint32_t input_preparation_start_ms = 0U;
-    std::uint32_t input_preparation_end_ms = 0U;
-    std::uint32_t input_preparation_elapsed_ms = 0U;
 
     explicit operator bool() const { return static_cast<bool>(buffer); }
 };
