@@ -3,7 +3,11 @@
 
 namespace experiment::model {
 
-enum class Progress { kRunning, kDone, kError };
+enum class Progress {
+    kRunning,
+    kDone,
+    kError
+};
 
 class Backend {
 public:
@@ -12,15 +16,30 @@ public:
     virtual Progress Poll() = 0;
     virtual const std::uint8_t *Output(std::size_t &bytes) = 0;
     virtual bool Stop() = 0;
-    virtual std::uint8_t *Input(std::size_t &bytes) { bytes = 0; return nullptr; }
+    virtual std::uint8_t *Input(std::size_t &bytes)
+    {
+        bytes = 0;
+        return nullptr;
+    }
     virtual bool AdoptInput(std::size_t) { return false; }
 };
 
 class Execution {
 public:
-    enum class State { kIdle, kRunning, kDone, kError };
+    enum class State {
+        kIdle,
+        kRunning,
+        kDone,
+        kError
+    };
 
-    Execution(Staging &staging, Backend &backend) : staging_(staging), backend_(backend) {}
+    Execution(
+        Staging &staging,
+        Backend &backend
+    )
+        : staging_(staging),
+          backend_(backend)
+    {}
 
     bool Run(std::uint32_t now)
     {
@@ -98,7 +117,10 @@ public:
         return true;
     }
 
-    bool InputBegin(std::uint32_t bytes, std::uint32_t crc)
+    bool InputBegin(
+        std::uint32_t bytes,
+        std::uint32_t crc
+    )
     {
         if (staging_.InUse() || !staging_.Verified() || bytes != staging_.Verified()->input_bytes) {
             return false;
@@ -117,10 +139,14 @@ public:
         return true;
     }
 
-    bool InputChunk(std::uint32_t offset, const std::uint8_t *data, std::size_t bytes)
+    bool InputChunk(
+        std::uint32_t offset,
+        const std::uint8_t *data,
+        std::size_t bytes
+    )
     {
-        if (!input_receiving_ || staging_.InUse() || !data || !bytes || bytes > 512
-            || offset != input_offset_ || bytes > input_bytes_ - input_offset_) {
+        if (!input_receiving_ || staging_.InUse() || !data || !bytes || bytes > 512 || offset != input_offset_
+            || bytes > input_bytes_ - input_offset_) {
             input_receiving_ = false;
             input_ready_ = false;
             return false;
@@ -137,7 +163,10 @@ public:
         return input_ready_;
     }
 
-    bool InputAdopt(std::uint32_t bytes, std::uint32_t crc)
+    bool InputAdopt(
+        std::uint32_t bytes,
+        std::uint32_t crc
+    )
     {
         if (!InputBegin(bytes, crc) || !backend_.AdoptInput(bytes)) {
             InputCancel();
@@ -153,7 +182,12 @@ public:
         return bytes ? result_ : nullptr;
     }
     bool InputReceiving() const { return input_receiving_; }
-    void InputCancel() { input_ready_ = false; input_receiving_ = false; input_offset_ = 0; }
+    void InputCancel()
+    {
+        input_ready_ = false;
+        input_receiving_ = false;
+        input_offset_ = 0;
+    }
 
     State Status() const { return state_; }
     std::uint32_t Crc() const { return crc_; }
@@ -162,10 +196,14 @@ public:
     const char *Name() const
     {
         switch (state_) {
-        case State::kRunning: return "running";
-        case State::kDone: return "done";
-        case State::kError: return "faulted";
-        default: return staging_.Ready() ? "ready" : "waiting";
+        case State::kRunning:
+            return "running";
+        case State::kDone:
+            return "done";
+        case State::kError:
+            return "faulted";
+        default:
+            return staging_.Ready() ? "ready" : "waiting";
         }
     }
 

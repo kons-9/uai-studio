@@ -12,14 +12,26 @@ int32_t __real_MX66UW1G45G_ReadStatusRegister(
     MX66UW1G45G_Transfer_t,
     uint8_t *
 );
-int32_t __real_MX66UW1G45G_ResetEnable(XSPI_HandleTypeDef *, MX66UW1G45G_Interface_t, MX66UW1G45G_Transfer_t);
-int32_t __real_MX66UW1G45G_ResetMemory(XSPI_HandleTypeDef *, MX66UW1G45G_Interface_t, MX66UW1G45G_Transfer_t);
+int32_t __real_MX66UW1G45G_ResetEnable(
+    XSPI_HandleTypeDef *,
+    MX66UW1G45G_Interface_t,
+    MX66UW1G45G_Transfer_t
+);
+int32_t __real_MX66UW1G45G_ResetMemory(
+    XSPI_HandleTypeDef *,
+    MX66UW1G45G_Interface_t,
+    MX66UW1G45G_Transfer_t
+);
 HAL_StatusTypeDef __real_HAL_XSPI_Command(
     XSPI_HandleTypeDef *,
     const XSPI_RegularCmdTypeDef *,
     uint32_t
 );
-HAL_StatusTypeDef __real_HAL_XSPI_Receive(XSPI_HandleTypeDef *, uint8_t *, uint32_t);
+HAL_StatusTypeDef __real_HAL_XSPI_Receive(
+    XSPI_HandleTypeDef *,
+    uint8_t *,
+    uint32_t
+);
 }
 
 #include <cstdio>
@@ -96,7 +108,8 @@ void TraceDriverDiagnostic(const Context &context)
     std::snprintf(
         line,
         sizeof(line),
-        "TRACE nor diag=%s stage=%s/%lu result=%ld err=%08lx state=%lu sr=%08lx cr=%08lx ccr=%08lx dlr=%08lx ir=%08lx ar=%08lx xspim=%08lx",
+        "TRACE nor diag=%s stage=%s/%lu result=%ld err=%08lx state=%lu sr=%08lx cr=%08lx ccr=%08lx dlr=%08lx ir=%08lx "
+        "ar=%08lx xspim=%08lx",
         DiagnosticName(uai_nor_diag_code),
         DiagnosticStageName(uai_nor_diag_stage),
         static_cast<unsigned long>(uai_nor_diag_stage),
@@ -139,7 +152,8 @@ void TraceComponentCall(
         std::snprintf(
             line,
             sizeof(line),
-            "TRACE nor cmd=%s phase=%s mode=%s rate=%s rc=%ld state=%lu err=%08lx sr=%08lx cr=%08lx ccr=%08lx val=%02x%02x",
+            "TRACE nor cmd=%s phase=%s mode=%s rate=%s rc=%ld state=%lu err=%08lx sr=%08lx cr=%08lx ccr=%08lx "
+            "val=%02x%02x",
             operation,
             phase,
             ModeName(mode),
@@ -197,7 +211,8 @@ void TraceHalCall(
         std::snprintf(
             line,
             sizeof(line),
-            "TRACE nor hal=%s phase=%s rc=%d timeout=%lu instr=%08lx im=%lu iw=%lu idtr=%lu am=%lu dm=%lu len=%lu ddtr=%lu dummy=%lu dqs=%lu state=%lu err=%08lx sr=%08lx cr=%08lx ccr=%08lx dlr=%08lx",
+            "TRACE nor hal=%s phase=%s rc=%d timeout=%lu instr=%08lx im=%lu iw=%lu idtr=%lu am=%lu dm=%lu len=%lu "
+            "ddtr=%lu dummy=%lu dqs=%lu state=%lu err=%08lx sr=%08lx cr=%08lx ccr=%08lx dlr=%08lx",
             operation,
             phase,
             static_cast<int>(status),
@@ -223,7 +238,8 @@ void TraceHalCall(
         std::snprintf(
             line,
             sizeof(line),
-            "TRACE nor hal=%s phase=%s rc=%d timeout=%lu state=%lu err=%08lx sr=%08lx cr=%08lx ccr=%08lx dlr=%08lx data=%02x%02x",
+            "TRACE nor hal=%s phase=%s rc=%d timeout=%lu state=%lu err=%08lx sr=%08lx cr=%08lx ccr=%08lx dlr=%08lx "
+            "data=%02x%02x",
             operation,
             phase,
             static_cast<int>(status),
@@ -235,9 +251,7 @@ void TraceHalCall(
             ccr,
             dlr,
             data ? static_cast<unsigned>(data[0]) : 0U,
-            data && handle && handle->Instance && handle->Instance->DLR >= 1U
-                ? static_cast<unsigned>(data[1])
-                : 0U
+            data && handle && handle->Instance && handle->Instance->DLR >= 1U ? static_cast<unsigned>(data[1]) : 0U
         );
     }
     trace_context->Trace(line);
@@ -326,7 +340,8 @@ Result Run(const Context &context)
     std::snprintf(
         line,
         sizeof(line),
-        "TRACE nor stage=bsp-init status=%ld ms=%lu ctx=%u mode=%u rate=%u hal_err=%08lx hal_state=%lu sr=%08lx cr=%08lx ccr=%08lx",
+        "TRACE nor stage=bsp-init status=%ld ms=%lu ctx=%u mode=%u rate=%u hal_err=%08lx hal_state=%lu sr=%08lx "
+        "cr=%08lx ccr=%08lx",
         static_cast<long>(init_status),
         static_cast<unsigned long>(init_ms),
         static_cast<unsigned>(XSPI_Nor_Ctx[0].IsInitialized),
@@ -346,8 +361,8 @@ Result Run(const Context &context)
         const auto xspi_error = hxspi_nor[0].ErrorCode;
         const char *xspi_error_name = (xspi_error & HAL_XSPI_ERROR_TIMEOUT) != 0U ? "timeout" : "other";
         const char *context_name = XSPI_Nor_Ctx[0].IsInitialized == XSPI_ACCESS_NONE
-                                       ? "none"
-                                       : (XSPI_Nor_Ctx[0].IsInitialized == XSPI_ACCESS_INDIRECT ? "indirect" : "mapped");
+            ? "none"
+            : (XSPI_Nor_Ctx[0].IsInitialized == XSPI_ACCESS_INDIRECT ? "indirect" : "mapped");
         const char *mode_name = XSPI_Nor_Ctx[0].InterfaceMode == BSP_XSPI_NOR_SPI_MODE ? "spi" : "opi";
         const char *rate_name = XSPI_Nor_Ctx[0].TransferRate == BSP_XSPI_NOR_STR_TRANSFER ? "str" : "dtr";
         std::snprintf(

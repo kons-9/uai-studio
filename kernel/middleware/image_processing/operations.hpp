@@ -41,11 +41,14 @@ inline bool Validate(const Request &request)
     if (request.operation == Operation::kBlit) {
         return true;
     }
-    return request.operation == Operation::kBlend
-        && BuildTransfer(request.background, request.destination, transfer);
+    return request.operation == Operation::kBlend && BuildTransfer(request.background, request.destination, transfer);
 }
 
-inline std::uint32_t ReadPixel(const Image &image, std::uint32_t column, std::uint32_t row)
+inline std::uint32_t ReadPixel(
+    const Image &image,
+    std::uint32_t column,
+    std::uint32_t row
+)
 {
     const auto *pixel = image.data + std::size_t(row) * image.stride + column * PixelBytes(image.format);
     if (image.format == Format::kRgb888) {
@@ -55,11 +58,15 @@ inline std::uint32_t ReadPixel(const Image &image, std::uint32_t column, std::ui
     const auto red = (value >> 11) & 31;
     const auto green = (value >> 5) & 63;
     const auto blue = value & 31;
-    return (((red << 3) | (red >> 2)) << 16) | (((green << 2) | (green >> 4)) << 8)
-        | (blue << 3) | (blue >> 2);
+    return (((red << 3) | (red >> 2)) << 16) | (((green << 2) | (green >> 4)) << 8) | (blue << 3) | (blue >> 2);
 }
 
-inline void WritePixel(const Image &image, std::uint32_t column, std::uint32_t row, std::uint32_t color)
+inline void WritePixel(
+    const Image &image,
+    std::uint32_t column,
+    std::uint32_t row,
+    std::uint32_t color
+)
 {
     auto *pixel = image.data + std::size_t(row) * image.stride + column * PixelBytes(image.format);
     if (image.format == Format::kRgb888) {
@@ -89,15 +96,17 @@ inline bool Reference(const Request &request)
                     / (std::uint64_t(request.destination.width) * 2);
                 const auto source_row = (std::uint64_t(row) * 2 + 1) * request.source.height
                     / (std::uint64_t(request.destination.height) * 2);
-                color = ReadPixel(request.source, static_cast<std::uint32_t>(source_column),
-                    static_cast<std::uint32_t>(source_row));
+                color = ReadPixel(
+                    request.source, static_cast<std::uint32_t>(source_column), static_cast<std::uint32_t>(source_row)
+                );
             } else if (request.operation == Operation::kBlend) {
                 const auto foreground = ReadPixel(request.source, column, row);
                 const auto background = ReadPixel(request.background, column, row);
                 color = 0;
                 for (unsigned shift = 0; shift <= 16; shift += 8) {
                     const auto channel = (((foreground >> shift) & 255) * request.alpha
-                        + ((background >> shift) & 255) * (255 - request.alpha)) / 255;
+                                          + ((background >> shift) & 255) * (255 - request.alpha))
+                        / 255;
                     color |= channel << shift;
                 }
             }

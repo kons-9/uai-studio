@@ -21,7 +21,17 @@ Result CameraControl(const Context &context);
 Result TouchRead(const Context &context);
 Result TouchInteractive(const Context &context);
 Result Dma2dSuite(const Context &context);
-console::Status Control(void *, int, const char *const *, const console::Writer &);
-console::Status Capture(void *, int, const char *const *, const console::Writer &);
+console::Status Control(
+    void *,
+    int,
+    const char *const *,
+    const console::Writer &
+);
+console::Status Capture(
+    void *,
+    int,
+    const char *const *,
+    const console::Writer &
+);
 
 }

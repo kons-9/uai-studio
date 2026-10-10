@@ -17,25 +17,54 @@ public:
     graphics::Result Run(const graphics::Case &test) override
     {
         const graphics::VerificationCache cache{
-            [](void *address, std::int32_t bytes) { SCB_CleanInvalidateDCache_by_Addr(address, bytes); __DSB(); },
-            [](void *address, std::int32_t bytes) { __DSB(); SCB_InvalidateDCache_by_Addr(address, bytes); __DSB(); }
+            [](void *address, std::int32_t bytes) {
+                SCB_CleanInvalidateDCache_by_Addr(address, bytes);
+                __DSB();
+            },
+            [](void *address, std::int32_t bytes) {
+                __DSB();
+                SCB_InvalidateDCache_by_Addr(address, bytes);
+                __DSB();
+            }
         };
-        return verification_.Run(test, dma_, [] { return DWT->CYCCNT; }, cache);
+        return verification_.Run(
+            test,
+            dma_,
+            [] {
+                return DWT->CYCCNT;
+            },
+            cache
+        );
     }
     void Reset()
     {
         passed_ = failed_ = reported_ = 0;
         transfers_ = 0;
     }
-    void Report(const char *name, const graphics::Result &result) override
+    void Report(
+        const char *name,
+        const graphics::Result &result
+    ) override
     {
         char line[192];
-        std::snprintf(line, sizeof(line), "TRACE dma2d case=%s %s cycles=%lu max_channel_error=%u corrupted_bytes=%u",
-            name, result.passed ? "PASS" : "FAIL", static_cast<unsigned long>(result.cycles), result.maximum_error, result.corrupted_bytes);
+        std::snprintf(
+            line,
+            sizeof(line),
+            "TRACE dma2d case=%s %s cycles=%lu max_channel_error=%u corrupted_bytes=%u",
+            name,
+            result.passed ? "PASS" : "FAIL",
+            static_cast<unsigned long>(result.cycles),
+            result.maximum_error,
+            result.corrupted_bytes
+        );
         context_.Trace(line);
         context_.Progress(++reported_, static_cast<unsigned>(graphics::kCaseCount + 1));
     }
-    void Summary(unsigned passed, unsigned failed, std::uint32_t transfers) override
+    void Summary(
+        unsigned passed,
+        unsigned failed,
+        std::uint32_t transfers
+    ) override
     {
         passed_ = passed;
         failed_ = failed;
@@ -70,9 +99,17 @@ Result Dma2dSuite(const Context &context)
         scenario.Tick(context.clock());
         context.wait(10);
     }
-    std::snprintf(detail, sizeof(detail), "cases_pass=%u cases_fail=%u transfers=%lu gpu2d=not-tested visual=required",
-        backend.passed_, backend.failed_, static_cast<unsigned long>(backend.transfers_));
-    return {backend.passed_ == graphics::kCaseCount + 1 && backend.failed_ == 0 ? Outcome::kPass : Outcome::kFail, detail};
+    std::snprintf(
+        detail,
+        sizeof(detail),
+        "cases_pass=%u cases_fail=%u transfers=%lu gpu2d=not-tested visual=required",
+        backend.passed_,
+        backend.failed_,
+        static_cast<unsigned long>(backend.transfers_)
+    );
+    return {
+        backend.passed_ == graphics::kCaseCount + 1 && backend.failed_ == 0 ? Outcome::kPass : Outcome::kFail, detail
+    };
 }
 
 }

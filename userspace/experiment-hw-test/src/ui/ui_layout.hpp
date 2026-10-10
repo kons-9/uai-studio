@@ -217,19 +217,27 @@ inline constexpr ui::LabelSpec kMainLabels[] = {
 inline constexpr ui::ScreenSpec kScreens[] = {
     {
         static_cast<std::uint16_t>(ScreenId::kMain),
-        ui::Background::kCamera, 0U,
-        kMainButtons, sizeof(kMainButtons) / sizeof(kMainButtons[0]),
-        kMainLabels, sizeof(kMainLabels) / sizeof(kMainLabels[0]),
-        nullptr, 0U,
-        nullptr, 0U,
-        nullptr, 0U,
-        nullptr, 0U,
-        nullptr, 0U,
-        nullptr, 0U,
+        ui::Background::kCamera,
+        0U,
+        kMainButtons,
+        sizeof(kMainButtons) / sizeof(kMainButtons[0]),
+        kMainLabels,
+        sizeof(kMainLabels) / sizeof(kMainLabels[0]),
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
     },
 };
-inline constexpr std::size_t kScreenCount =
-    sizeof(kScreens) / sizeof(kScreens[0]);
+inline constexpr std::size_t kScreenCount = sizeof(kScreens) / sizeof(kScreens[0]);
 
 /* Handler methods the application must provide on its Handlers type:
  *   void OnCompare(const ui::Event &event);
@@ -241,7 +249,10 @@ inline constexpr std::size_t kScreenCount =
  *   void OnStop(const ui::Event &event);
  */
 template <typename Handlers>
-bool Dispatch(Handlers &handlers, const ui::Event &event)
+bool Dispatch(
+    Handlers &handlers,
+    const ui::Event &event
+)
 {
     if (event.type == ui::EventType::kTap) {
         switch (static_cast<WidgetId>(event.widget_id)) {

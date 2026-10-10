@@ -6,7 +6,10 @@
 
 namespace experiment::hwtest::tests {
 
-inline Result CheckDmaCopy(DMA_Channel_TypeDef *channel, const Context &context)
+inline Result CheckDmaCopy(
+    DMA_Channel_TypeDef *channel,
+    const Context &context
+)
 {
     alignas(32) static std::uint8_t source[320];
     alignas(32) static std::uint8_t destination[320];
@@ -30,16 +33,14 @@ inline Result CheckDmaCopy(DMA_Channel_TypeDef *channel, const Context &context)
         && HAL_DMA_ConfigChannelAttributes(
                &handle, DMA_CHANNEL_PRIV | DMA_CHANNEL_SEC | DMA_CHANNEL_SRC_SEC | DMA_CHANNEL_DEST_SEC
            ) == HAL_OK) {
-        constexpr std::uint32_t kCtr1Mask = DMA_CTR1_DINC | DMA_CTR1_DDW_LOG2 | DMA_CTR1_SINC
-                                            | DMA_CTR1_SDW_LOG2 | DMA_CTR1_DAP | DMA_CTR1_SAP
-                                            | DMA_CTR1_DBL_1 | DMA_CTR1_SBL_1;
+        constexpr std::uint32_t kCtr1Mask = DMA_CTR1_DINC | DMA_CTR1_DDW_LOG2 | DMA_CTR1_SINC | DMA_CTR1_SDW_LOG2
+            | DMA_CTR1_DAP | DMA_CTR1_SAP | DMA_CTR1_DBL_1 | DMA_CTR1_SBL_1;
         constexpr std::uint32_t kCtr2Mask = DMA_CTR2_TCEM | DMA_CTR2_BREQ | DMA_CTR2_REQSEL | DMA_CTR2_DREQ
-                                            | DMA_CTR2_SWREQ | DMA_CTR2_TRIGPOL | DMA_CTR2_TRIGSEL
-                                            | DMA_CTR2_TRIGM | DMA_CTR2_PFREQ;
+            | DMA_CTR2_SWREQ | DMA_CTR2_TRIGPOL | DMA_CTR2_TRIGSEL | DMA_CTR2_TRIGM | DMA_CTR2_PFREQ;
         const auto expected_ctr1 = handle.Init.DestInc | handle.Init.DestDataWidth | handle.Init.SrcInc
-                                   | handle.Init.SrcDataWidth | handle.Init.TransferAllocatedPort;
+            | handle.Init.SrcDataWidth | handle.Init.TransferAllocatedPort;
         const auto expected_ctr2 = handle.Init.BlkHWRequest | (handle.Init.Request & DMA_CTR2_REQSEL)
-                                   | handle.Init.TransferEventMode | handle.Init.Mode | DMA_CTR2_SWREQ;
+            | handle.Init.TransferEventMode | handle.Init.Mode | DMA_CTR2_SWREQ;
         const auto ccr = channel->CCR;
         const auto ctr1 = channel->CTR1;
         const auto ctr2 = channel->CTR2;
@@ -54,8 +55,7 @@ inline Result CheckDmaCopy(DMA_Channel_TypeDef *channel, const Context &context)
         );
         context.Trace(register_trace);
         if ((ccr & DMA_CCR_PRIO) != handle.Init.Priority || (ccr & DMA_CCR_EN) != 0U
-            || (ctr1 & kCtr1Mask) != (expected_ctr1 & kCtr1Mask)
-            || (ctr2 & kCtr2Mask) != (expected_ctr2 & kCtr2Mask)) {
+            || (ctr1 & kCtr1Mask) != (expected_ctr1 & kCtr1Mask) || (ctr2 & kCtr2Mask) != (expected_ctr2 & kCtr2Mask)) {
             static char detail[112];
             std::snprintf(
                 detail,
@@ -116,8 +116,9 @@ inline Result CheckDmaCopy(DMA_Channel_TypeDef *channel, const Context &context)
                 if (result.outcome == Outcome::kFail) {
                     break;
                 }
-                context.Progress(static_cast<unsigned>(scenario + 1),
-                                 static_cast<unsigned>(sizeof(lengths) / sizeof(lengths[0])));
+                context.Progress(
+                    static_cast<unsigned>(scenario + 1), static_cast<unsigned>(sizeof(lengths) / sizeof(lengths[0]))
+                );
             }
         }
     }

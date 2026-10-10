@@ -11,15 +11,28 @@ void Require(bool value)
 
 class FakeBackend : public experiment::model::Backend {
 public:
-    bool Start(const experiment::model::Manifest &manifest) override { ++starts; kind = manifest.kind; return can_start; }
+    bool Start(const experiment::model::Manifest &manifest) override
+    {
+        ++starts;
+        kind = manifest.kind;
+        return can_start;
+    }
     experiment::model::Progress Poll() override { return progress; }
     const std::uint8_t *Output(std::size_t &bytes) override
     {
         bytes = output_bytes;
         return output.data();
     }
-    bool Stop() override { ++stops; return can_stop; }
-    std::uint8_t *Input(std::size_t &bytes) override { bytes = input.size(); return input.data(); }
+    bool Stop() override
+    {
+        ++stops;
+        return can_stop;
+    }
+    std::uint8_t *Input(std::size_t &bytes) override
+    {
+        bytes = input.size();
+        return input.data();
+    }
     unsigned starts = 0, stops = 0;
     std::uint32_t kind = 0;
     bool can_start = true, can_stop = true;
@@ -65,15 +78,16 @@ int main()
     experiment::model::Execution execution(staging, backend);
     session.execution = &execution;
     static unsigned discards = 0;
-    session.discard = []() { ++discards; };
+    session.discard = []() {
+        ++discards;
+    };
     const char *run[] = {"model", "run"};
     const char *verify[] = {"model", "verify"};
     const char *abort[] = {"model", "abort"};
     Require(experiment::model::Command(&session, 2, run, writer) == experiment::console::Status::kInvalidState);
     std::array<std::uint8_t, 52> header{'U', 'A', 'I', 'M', 1, 0, 52, 0};
     const std::array<std::uint32_t, 10> fields{
-        1, 1, 4, 4, expected.weights.address, 2, expected.weights.crc,
-        expected.blob.address, 2, expected.blob.crc
+        1, 1, 4, 4, expected.weights.address, 2, expected.weights.crc, expected.blob.address, 2, expected.blob.crc
     };
     const auto store = [&header](std::size_t offset, std::uint32_t value) {
         for (unsigned byte = 0; byte < 4; ++byte) {
@@ -153,7 +167,9 @@ int main()
     Require(experiment::model::Command(&session, 4, header_chunk, writer) == experiment::console::Status::kOk);
     Require(session.header_bytes == 4 && !staging.Ready());
     const char *bad_header[] = {"model", "header", "8", "0102"};
-    Require(experiment::model::Command(&session, 4, bad_header, writer) == experiment::console::Status::kInvalidArgument);
+    Require(
+        experiment::model::Command(&session, 4, bad_header, writer) == experiment::console::Status::kInvalidArgument
+    );
     Require(session.header_bytes == 0);
     std::array<std::array<std::uint8_t, 168>, 3> headers{};
     std::array<experiment::model::Manifest, 3> models{};
@@ -173,8 +189,10 @@ int main()
         for (const auto offset : {72U, 76U, 80U, 108U, 148U}) {
             put(offset, 0x3f800000);
         }
-        encoded[84] = 1; encoded[86] = 1;
-        encoded[124] = 2; encoded[126] = 1;
+        encoded[84] = 1;
+        encoded[86] = 1;
+        encoded[124] = 2;
+        encoded[126] = 1;
         for (const auto offset : {88U, 104U, 128U, 144U}) {
             put(offset, 4);
         }

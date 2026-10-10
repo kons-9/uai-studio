@@ -20,7 +20,11 @@ struct Context {
     void (*wait)(std::uint32_t);
     void (*trace)(const char *);
     bool (*cancelled)() = nullptr;
-    void (*progress)(const char *, unsigned, unsigned) = nullptr;
+    void (*progress)(
+        const char *,
+        unsigned,
+        unsigned
+    ) = nullptr;
     const char *test_name = nullptr;
 
     bool Cancelled() const { return cancelled && cancelled(); }
@@ -32,7 +36,10 @@ struct Context {
         }
     }
 
-    void Progress(unsigned current, unsigned total) const
+    void Progress(
+        unsigned current,
+        unsigned total
+    ) const
     {
         if (progress && test_name) {
             progress(test_name, current, total);
@@ -85,15 +92,27 @@ inline bool ValidName(const char *name)
     return true;
 }
 
-inline void WriteSummary(Output output, const Summary &summary)
+inline void WriteSummary(
+    Output output,
+    const Summary &summary
+)
 {
     char line[112];
-    std::snprintf(line, sizeof(line), "HWTEST SUMMARY pass=%u fail=%u total=%u skip=0\n",
-                  summary.passed, summary.failed, summary.total);
+    std::snprintf(
+        line,
+        sizeof(line),
+        "HWTEST SUMMARY pass=%u fail=%u total=%u skip=0\n",
+        summary.passed,
+        summary.failed,
+        summary.total
+    );
     output.write(output.context, line);
 }
 
-inline Summary FailSelection(Output output, const char *reason)
+inline Summary FailSelection(
+    Output output,
+    const char *reason
+)
 {
     char line[128];
     std::snprintf(line, sizeof(line), "HWTEST selection FAIL %s\n", reason);
@@ -103,7 +122,10 @@ inline Summary FailSelection(Output output, const char *reason)
     return summary;
 }
 
-inline bool Selected(const Case &test, const char *selection)
+inline bool Selected(
+    const Case &test,
+    const char *selection
+)
 {
     if (!selection || std::strcmp(selection, "all") == 0) {
         return !test.interactive && !test.stress;
@@ -114,7 +136,11 @@ inline bool Selected(const Case &test, const char *selection)
     return std::strcmp(selection, test.name) == 0;
 }
 
-inline unsigned CountSelected(const Case *cases, std::size_t count, const char *selection)
+inline unsigned CountSelected(
+    const Case *cases,
+    std::size_t count,
+    const char *selection
+)
 {
     unsigned selected = 0;
     for (std::size_t index = 0; index < count; ++index) {
@@ -133,7 +159,10 @@ Run(const Case *cases,
     bool allow_destructive,
     Output output,
     const Context &context,
-    Output progress = {nullptr, nullptr})
+    Output progress = {
+        nullptr,
+        nullptr
+    })
 {
     Summary summary;
     bool matched = false;

@@ -2,7 +2,10 @@
 #include "execution.hpp"
 
 extern "C" {
-bool experiment_npu_start(std::uint32_t input_bytes, std::uint32_t output_bytes);
+bool experiment_npu_start(
+    std::uint32_t input_bytes,
+    std::uint32_t output_bytes
+);
 int experiment_npu_poll(void);
 const std::uint8_t *experiment_npu_output(std::size_t *bytes);
 bool experiment_npu_stop(void);

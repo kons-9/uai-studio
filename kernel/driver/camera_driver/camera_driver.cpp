@@ -1193,8 +1193,8 @@ uai::ai::common::Error CameraDriver::Process(const Writer &writer)
     }
     if (new_pipe1_timeout || new_pipe2_timeout) {
         const auto anomaly = new_pipe1_timeout && new_pipe2_timeout ? Diagnostics::Anomaly::kBothPipeFrameTimeout
-            : new_pipe1_timeout ? Diagnostics::Anomaly::kPipe1FrameTimeout
-                                : Diagnostics::Anomaly::kPipe2FrameTimeout;
+            : new_pipe1_timeout                                     ? Diagnostics::Anomaly::kPipe1FrameTimeout
+                                                                    : Diagnostics::Anomaly::kPipe2FrameTimeout;
         const std::uint32_t detail = (pipe1_timed_out ? 1U : 0U) | (pipe2_timed_out ? 2U : 0U);
         RecordAnomaly(anomaly, detail);
     }

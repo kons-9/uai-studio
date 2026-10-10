@@ -20,11 +20,18 @@ namespace experiment::hwtest::integrated {
 namespace {
 camera::BspDevice device;
 camera::IspCamera control;
-camera::Runtime camera(device, control);
+camera::Runtime camera(
+    device,
+    control
+);
 console::Writer output{};
 std::atomic<std::uint32_t> errors{0}, recoveries{0}, touch_errors{0}, touch_reads{0};
 std::atomic<bool> running{false}, owner_done{true}, abort_requested{false};
-enum class Request : unsigned { kNone, kCamera, kTouch };
+enum class Request : unsigned {
+    kNone,
+    kCamera,
+    kTouch
+};
 std::atomic<Request> request{Request::kNone};
 Result owner_result{Outcome::kFail, "not-started"};
 char owner_detail[128]{};
@@ -40,12 +47,22 @@ camera::Frames Frames()
     return {camera_pipe2_pipe1_vsync_count, camera_pipe2_pipe2_frame_count, errors.load()};
 }
 
-void ScenarioWrite(void *, const char *text, std::size_t size)
+void ScenarioWrite(
+    void *,
+    const char *text,
+    std::size_t size
+)
 {
     output.write(output.context, text, size);
 }
 
-camera::Scenario scenario(camera, {nullptr, ScenarioWrite}, HAL_GetTick, Frames);
+camera::Scenario scenario(
+    camera,
+    {nullptr,
+     ScenarioWrite},
+    HAL_GetTick,
+    Frames
+);
 
 void Finish(Result result)
 {
@@ -55,7 +72,10 @@ void Finish(Result result)
     owner_done.store(true, std::memory_order_release);
 }
 
-Result Wait(Request operation, const Context &context)
+Result Wait(
+    Request operation,
+    const Context &context
+)
 {
     if (!owner_done.load(std::memory_order_acquire)) {
         return {Outcome::kFail, "owner-busy"};
@@ -94,9 +114,8 @@ bool InitializeTouch()
     bus.WriteReg = BSP_I2C2_WriteReg16;
     bus.GetTick = BSP_GetTick;
     std::uint32_t identifier = 0;
-    return GT911_RegisterBusIO(&controller, &bus) == GT911_OK
-        && GT911_ReadID(&controller, &identifier) == GT911_OK && identifier == GT911_ID
-        && GT911_Init(&controller) == GT911_OK;
+    return GT911_RegisterBusIO(&controller, &bus) == GT911_OK && GT911_ReadID(&controller, &identifier) == GT911_OK
+        && identifier == GT911_ID && GT911_Init(&controller) == GT911_OK;
 }
 
 void PollTouch(std::uint32_t now)
@@ -111,7 +130,9 @@ void PollTouch(std::uint32_t now)
         touch = {};
     } else {
         ++touch_reads;
-        touch = {state.TouchDetected != 0, static_cast<std::uint16_t>(state.TouchX), static_cast<std::uint16_t>(state.TouchY)};
+        touch = {
+            state.TouchDetected != 0, static_cast<std::uint16_t>(state.TouchX), static_cast<std::uint16_t>(state.TouchY)
+        };
         if (touch.active && (touch.x >= 800 || touch.y >= 480)) {
             ++touch_errors;
             touch = {};
@@ -121,8 +142,8 @@ void PollTouch(std::uint32_t now)
         constexpr std::uint16_t centers[][2] = {{444, 64}, {756, 64}, {444, 436}, {756, 436}, {600, 240}};
         if (touch.active && !previous_touch) {
             const auto center_x = centers[touch_target][0], center_y = centers[touch_target][1];
-            pressed_target = touch.x >= center_x - 24 && touch.x < center_x + 24
-                && touch.y >= center_y - 24 && touch.y < center_y + 24;
+            pressed_target = touch.x >= center_x - 24 && touch.x < center_x + 24 && touch.y >= center_y - 24
+                && touch.y < center_y + 24;
         }
         if (!touch.active && previous_touch && pressed_target) {
             pressed_target = false;
@@ -217,7 +238,13 @@ void Service()
         const auto total = camera::Scenario::StepCount();
         display_log::Progress("camera-control", completed < total ? completed : total, total);
         if (!scenario.Active()) {
-            std::snprintf(owner_detail, sizeof(owner_detail), "stages_pass=%u stages_fail=%u readback=driver-state visual=required", scenario.Passed(), scenario.Failed());
+            std::snprintf(
+                owner_detail,
+                sizeof(owner_detail),
+                "stages_pass=%u stages_fail=%u readback=driver-state visual=required",
+                scenario.Passed(),
+                scenario.Failed()
+            );
             Finish({scenario.Passed() == 32 && scenario.Failed() == 0 ? Outcome::kPass : Outcome::kFail, owner_detail});
         }
     }
@@ -228,12 +255,20 @@ void Service()
 
 Observation Observe()
 {
-    return {camera_pipe2_pipe1_vsync_count, camera_pipe2_pipe2_frame_count, errors.load(), recoveries.load(), running.load()};
+    return {
+        camera_pipe2_pipe1_vsync_count, camera_pipe2_pipe2_frame_count, errors.load(), recoveries.load(), running.load()
+    };
 }
 
-void DisplayFailure() { ++errors; }
+void DisplayFailure()
+{
+    ++errors;
+}
 
-uai::ai::ui::TouchPoint Touch() { return touch; }
+uai::ai::ui::TouchPoint Touch()
+{
+    return touch;
+}
 
 Result CameraPipes(const Context &context)
 {
@@ -251,8 +286,12 @@ Result CameraPipes(const Context &context)
         }
         const auto now = context.clock();
         const auto current = Observe();
-        if (current.pipe1 != previous.pipe1) { first_progress = now; }
-        if (current.pipe2 != previous.pipe2) { second_progress = now; }
+        if (current.pipe1 != previous.pipe1) {
+            first_progress = now;
+        }
+        if (current.pipe2 != previous.pipe2) {
+            second_progress = now;
+        }
         if (!current.running || current.errors != baseline.errors || current.recoveries != baseline.recoveries
             || now - first_progress >= 1500 || now - second_progress >= 1500) {
             return {Outcome::kFail, "pipe-stall-camera-display-error-or-recovery"};
@@ -261,13 +300,25 @@ Result CameraPipes(const Context &context)
         context.wait(20);
     }
     static char detail[128];
-    std::snprintf(detail, sizeof(detail), "pipe1=%lu pipe2=%lu elapsed_ms=60000 visual=required", static_cast<unsigned long>(previous.pipe1 - baseline.pipe1), static_cast<unsigned long>(previous.pipe2 - baseline.pipe2));
+    std::snprintf(
+        detail,
+        sizeof(detail),
+        "pipe1=%lu pipe2=%lu elapsed_ms=60000 visual=required",
+        static_cast<unsigned long>(previous.pipe1 - baseline.pipe1),
+        static_cast<unsigned long>(previous.pipe2 - baseline.pipe2)
+    );
     context.Progress(1, 1);
     return {Outcome::kPass, detail};
 }
 
-Result CameraControl(const Context &context) { return Wait(Request::kCamera, context); }
-Result TouchInteractive(const Context &context) { return Wait(Request::kTouch, context); }
+Result CameraControl(const Context &context)
+{
+    return Wait(Request::kCamera, context);
+}
+Result TouchInteractive(const Context &context)
+{
+    return Wait(Request::kTouch, context);
+}
 
 Result TouchRead(const Context &context)
 {
@@ -278,14 +329,24 @@ Result TouchRead(const Context &context)
         : Result{Outcome::kFail, "GT911-init-read-or-coordinate-error"};
 }
 
-console::Status Control(void *, int count, const char *const *arguments, const console::Writer &writer)
+console::Status Control(
+    void *,
+    int count,
+    const char *const *arguments,
+    const console::Writer &writer
+)
 {
     if (camera_test || touch_test || !owner_done.load()) {
         return console::Status::kInvalidState;
     }
     return camera::Runtime::ControlCommand(&camera, count, arguments, writer);
 }
-console::Status Capture(void *, int count, const char *const *arguments, const console::Writer &writer)
+console::Status Capture(
+    void *,
+    int count,
+    const char *const *arguments,
+    const console::Writer &writer
+)
 {
     if (camera_test || touch_test || !owner_done.load()) {
         return console::Status::kInvalidState;

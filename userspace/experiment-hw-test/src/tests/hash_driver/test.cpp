@@ -37,7 +37,7 @@ Result Run(const Context &context)
             std::snprintf(detail, sizeof(detail), "hash-config cr=%08lx", static_cast<unsigned long>(control));
             result = {Outcome::kFail, detail};
         } else if (HAL_HASH_Start(&handle, short_input, 3, digest, 100) != HAL_OK
-            || std::memcmp(digest, short_digest, sizeof(digest)) != 0) {
+                   || std::memcmp(digest, short_digest, sizeof(digest)) != 0) {
             result = {Outcome::kFail, "sha256-short-vector"};
         } else {
             context.Progress(1, 2);

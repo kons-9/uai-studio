@@ -156,13 +156,14 @@ inline console::Status Command(
         }
         std::int32_t offset = 0;
         if (count == 5 && (!std::strcmp(arguments[2], "begin") || !std::strcmp(arguments[2], "adopt"))) {
-            if (!camera::ParseInteger(arguments[3], offset) || offset <= 0 || !Hex(arguments[4], bytes, 4, length) || length != 4) {
+            if (!camera::ParseInteger(arguments[3], offset) || offset <= 0 || !Hex(arguments[4], bytes, 4, length)
+                || length != 4) {
                 return console::Status::kInvalidArgument;
             }
             const auto crc = (std::uint32_t(bytes[0]) << 24) | (std::uint32_t(bytes[1]) << 16)
                 | (std::uint32_t(bytes[2]) << 8) | bytes[3];
-                 if (!(std::strcmp(arguments[2], "adopt") == 0 ? session.execution->InputAdopt(offset, crc)
-                     : session.execution->InputBegin(offset, crc))) {
+            if (!(std::strcmp(arguments[2], "adopt") == 0 ? session.execution->InputAdopt(offset, crc)
+                                                          : session.execution->InputBegin(offset, crc))) {
                 return console::Status::kInvalidState;
             }
         } else if (count == 5 && !std::strcmp(arguments[2], "chunk")) {
@@ -192,7 +193,8 @@ inline console::Status Command(
             stage.Cancel();
             session.header_bytes = 0;
         }
-        if (static_cast<std::size_t>(offset) != session.header_bytes || length > sizeof(session.header) - session.header_bytes) {
+        if (static_cast<std::size_t>(offset) != session.header_bytes
+            || length > sizeof(session.header) - session.header_bytes) {
             session.header_bytes = 0;
             return console::Status::kInvalidArgument;
         }

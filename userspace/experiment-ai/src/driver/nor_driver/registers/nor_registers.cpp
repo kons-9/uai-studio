@@ -30,7 +30,8 @@ int NorRegisterLayer::Initialize()
     (void)std::snprintf(
         message,
         sizeof(message),
-        "boot: nor bsp init=%ld stage=%ld reset=%ld/%ld err=%lx sr=%lx cr=%lx iom=%lx diag=%lu/%lu d_err=%lx d_sr=%lx d_ccr=%lx\r\n",
+        "boot: nor bsp init=%ld stage=%ld reset=%ld/%ld err=%lx sr=%lx cr=%lx iom=%lx diag=%lu/%lu d_err=%lx d_sr=%lx "
+        "d_ccr=%lx\r\n",
         static_cast<long>(status),
         static_cast<long>(uai_nor_bsp_stage),
         static_cast<long>(uai_nor_reset_stage),

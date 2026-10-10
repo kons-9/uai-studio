@@ -47,8 +47,8 @@ Result Run(const Context &context)
         const auto control = RTC->CR;
         const auto status = RTC->ICSR;
         const auto prer_mask = RTC_PRER_PREDIV_A | RTC_PRER_PREDIV_S;
-        const auto expected_prer = (handle.Init.AsynchPrediv << RTC_PRER_PREDIV_A_Pos)
-                                   | (handle.Init.SynchPrediv << RTC_PRER_PREDIV_S_Pos);
+        const auto expected_prer =
+            (handle.Init.AsynchPrediv << RTC_PRER_PREDIV_A_Pos) | (handle.Init.SynchPrediv << RTC_PRER_PREDIV_S_Pos);
         char trace[128];
         std::snprintf(
             trace,

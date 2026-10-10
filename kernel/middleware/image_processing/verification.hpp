@@ -46,18 +46,19 @@ inline constexpr VerificationCase kVerificationCases[] = {
     {"blend-565-alpha255", Operation::kBlend, Format::kRgb888, Format::kRgb565, 255},
     {"blend-888-alpha128", Operation::kBlend, Format::kRgb888, Format::kRgb888, 128},
     {"blend-padded", Operation::kBlend, Format::kRgb565, Format::kRgb888, 128, 0, true},
-    {"reject-overlap", Operation::kBlit, Format::kRgb888, Format::kRgb888,
-        255, 0, false, Rejection::kOverlap},
-    {"reject-background-overlap", Operation::kBlend, Format::kRgb888, Format::kRgb888,
-        128, 0, false, Rejection::kBackgroundOverlap},
-    {"reject-short-buffer", Operation::kBlit, Format::kRgb888, Format::kRgb888,
-        255, 0, false, Rejection::kShortBuffer},
-    {"reject-stride", Operation::kBlit, Format::kRgb888, Format::kRgb888,
-        255, 0, false, Rejection::kStride},
-    {"reject-unaligned", Operation::kBlit, Format::kRgb888, Format::kRgb888,
-        255, 0, false, Rejection::kUnaligned},
-    {"reject-resize", Operation::kResize, Format::kRgb888, Format::kRgb565,
-        255, 0, false, Rejection::kResize},
+    {"reject-overlap", Operation::kBlit, Format::kRgb888, Format::kRgb888, 255, 0, false, Rejection::kOverlap},
+    {"reject-background-overlap",
+     Operation::kBlend,
+     Format::kRgb888,
+     Format::kRgb888,
+     128,
+     0,
+     false,
+     Rejection::kBackgroundOverlap},
+    {"reject-short-buffer", Operation::kBlit, Format::kRgb888, Format::kRgb888, 255, 0, false, Rejection::kShortBuffer},
+    {"reject-stride", Operation::kBlit, Format::kRgb888, Format::kRgb888, 255, 0, false, Rejection::kStride},
+    {"reject-unaligned", Operation::kBlit, Format::kRgb888, Format::kRgb888, 255, 0, false, Rejection::kUnaligned},
+    {"reject-resize", Operation::kResize, Format::kRgb888, Format::kRgb565, 255, 0, false, Rejection::kResize},
     {"reuse-after-rejection", Operation::kBlit, Format::kRgb888, Format::kRgb565}
 };
 
@@ -69,14 +70,25 @@ struct VerificationResult {
 };
 
 struct VerificationCache {
-    void (*prepare)(void *, std::int32_t) = nullptr;
-    void (*inspect)(void *, std::int32_t) = nullptr;
+    void (*prepare)(
+        void *,
+        std::int32_t
+    ) = nullptr;
+    void (*inspect)(
+        void *,
+        std::int32_t
+    ) = nullptr;
 };
 
 class Verification {
 public:
-    template <typename Device, typename Clock>
-    VerificationResult Run(const VerificationCase &test, Device &device, Clock clock,
+    template <
+        typename Device,
+        typename Clock>
+    VerificationResult
+    Run(const VerificationCase &test,
+        Device &device,
+        Clock clock,
         VerificationCache cache = {})
     {
         ++generation_;
@@ -136,8 +148,8 @@ public:
                 cache.inspect(buffer->storage, sizeof(buffer->storage));
             }
         }
-        const bool approximate = !rejected && test.operation == Operation::kBlend
-            && test.alpha != 0 && test.alpha != 255;
+        const bool approximate =
+            !rejected && test.operation == Operation::kBlend && test.alpha != 0 && test.alpha != 255;
         for (std::size_t index = 0; index < sizeof(actual_.storage); ++index) {
             const bool pixel = index >= 32 && index < 32 + height * request.destination.stride
                 && (index - 32) % request.destination.stride < width * PixelBytes(test.destination);
@@ -179,13 +191,18 @@ private:
         std::uint8_t *Data() { return storage + 32; }
     };
 
-    static std::uint8_t Pattern(std::size_t index, std::uint32_t seed)
+    static std::uint8_t Pattern(
+        std::size_t index,
+        std::uint32_t seed
+    )
     {
-        return index < 32 || index >= kBytes + 32 ? 0x5a
-            : static_cast<std::uint8_t>((index - 32) * 37 + seed);
+        return index < 32 || index >= kBytes + 32 ? 0x5a : static_cast<std::uint8_t>((index - 32) * 37 + seed);
     }
 
-    static void Initialize(Buffer &buffer, std::uint32_t seed)
+    static void Initialize(
+        Buffer &buffer,
+        std::uint32_t seed
+    )
     {
         for (std::size_t index = 0; index < sizeof(buffer.storage); ++index) {
             buffer.storage[index] = Pattern(index, seed);

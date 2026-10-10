@@ -30,10 +30,14 @@ public:
                 progress_current_ = progress_total_ = 0;
             } else if (std::strcmp(outcome, "PASS") == 0) {
                 ++passed_;
-                if (!expected_total_set_) { ++total_; }
+                if (!expected_total_set_) {
+                    ++total_;
+                }
             } else if (std::strcmp(outcome, "FAIL") == 0) {
                 ++failed_;
-                if (!expected_total_set_) { ++total_; }
+                if (!expected_total_set_) {
+                    ++total_;
+                }
             }
         }
         unsigned passed = 0, failed = 0, total = 0;
@@ -80,7 +84,11 @@ public:
         std::snprintf(status_, sizeof(status_), "RUNNING");
     }
 
-    void Progress(const char *name, unsigned current, unsigned total)
+    void Progress(
+        const char *name,
+        unsigned current,
+        unsigned total
+    )
     {
         if (!name || total == 0) {
             return;

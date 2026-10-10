@@ -29,328 +29,303 @@ LL_ATON_DECLARE_NAMED_NN_INTERFACE(network);
 
 /* Helper macros & functions */
 #define __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_interface_ptr, ctx)                                                  \
-  do                                                                                                                   \
-  {                                                                                                                    \
-    if ((nn_interface_ptr) != &NN_Interface_network)                                                     \
-      __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((ctx), STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE);                   \
-  } while (0)
+    do {                                                                                                               \
+        if ((nn_interface_ptr) != &NN_Interface_network)                                                               \
+            __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((ctx), STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE);             \
+    } while (0)
 
-static inline stai_return_code __ll_aton_stai_network_get_inputs_or_weights(stai_network *network,
-                                                                                          stai_ptr *pointers,
-                                                                                          stai_size *n_ptrs,
-                                                                                          bool inputs)
+static inline stai_return_code __ll_aton_stai_network_get_inputs_or_weights(
+    stai_network *network,
+    stai_ptr *pointers,
+    stai_size *n_ptrs,
+    bool inputs
+)
 {
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
 
-  /* check parameters */
-  if (!n_ptrs)
-    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network,
-                                                STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS);
+    /* check parameters */
+    if (!n_ptrs)
+        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+            (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS
+        );
 
-  /* get input buffers */
-  const LL_Buffer_InfoTypeDef *input_buffers = nn_i_ptr->input_buffers_info();
+    /* get input buffers */
+    const LL_Buffer_InfoTypeDef *input_buffers = nn_i_ptr->input_buffers_info();
 
-  /* copy buffer addresses */
-  unsigned int cnt = 0;
-  if (input_buffers != NULL)
-  {
-    for (unsigned int idx = 0; input_buffers[idx].name != NULL; idx++)
-    {
-      const LL_Buffer_InfoTypeDef *buffer_info = &input_buffers[idx];
-      if (inputs == !buffer_info->is_param)
-      {
-        if (pointers)
-        {
-          if (buffer_info->is_user_allocated) // is it an user allocatable buffer
-          {
-            LL_ATON_ASSERT(buffer_info->offset_start ==
-                           0); // user allocated buffers always have an offset equal to zero
-            pointers[cnt] = LL_Buffer_addr_start(buffer_info); // user allocated buffers are saved with virtual address
-            LL_ATON_ASSERT(((uintptr_t)pointers[cnt] % STAI_CACHE_USER_BUFFER_ALIGNMENT) == 0);
-          }
-          else // buffer is not user allocatable
-          {
-            pointers[cnt] = ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(LL_Buffer_addr_start(buffer_info));
-          }
+    /* copy buffer addresses */
+    unsigned int cnt = 0;
+    if (input_buffers != NULL) {
+        for (unsigned int idx = 0; input_buffers[idx].name != NULL; idx++) {
+            const LL_Buffer_InfoTypeDef *buffer_info = &input_buffers[idx];
+            if (inputs == !buffer_info->is_param) {
+                if (pointers) {
+                    if (buffer_info->is_user_allocated) // is it an user allocatable buffer
+                    {
+                        LL_ATON_ASSERT(
+                            buffer_info->offset_start == 0
+                        ); // user allocated buffers always have an offset equal to zero
+                        pointers[cnt] =
+                            LL_Buffer_addr_start(buffer_info); // user allocated buffers are saved with virtual address
+                        LL_ATON_ASSERT(((uintptr_t)pointers[cnt] % STAI_CACHE_USER_BUFFER_ALIGNMENT) == 0);
+                    } else // buffer is not user allocatable
+                    {
+                        pointers[cnt] = ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(LL_Buffer_addr_start(buffer_info));
+                    }
+                }
+                cnt++;
+            }
         }
-        cnt++;
-      }
+    } else {
+        STAI_ASSERT((inputs ? STAI_NETWORK_IN_NUM : STAI_NETWORK_WEIGHTS_NUM) == 0);
     }
-  }
-  else
-  {
-    STAI_ASSERT((inputs ? STAI_NETWORK_IN_NUM : STAI_NETWORK_WEIGHTS_NUM) == 0);
-  }
 #ifndef NDEBUG
-  if (inputs)
-  {
-    STAI_ASSERT(cnt == STAI_NETWORK_IN_NUM);
-  }
-  else
-  {
-    STAI_ASSERT(cnt == STAI_NETWORK_WEIGHTS_NUM);
-  }
+    if (inputs) {
+        STAI_ASSERT(cnt == STAI_NETWORK_IN_NUM);
+    } else {
+        STAI_ASSERT(cnt == STAI_NETWORK_WEIGHTS_NUM);
+    }
 #endif // !NDEBUG
 
-  /* save number of elements return value */
-  if (inputs)
-  {
-    *n_ptrs = STAI_NETWORK_IN_NUM;
-  }
-  else
-  {
-    *n_ptrs = STAI_NETWORK_WEIGHTS_NUM;
-  }
+    /* save number of elements return value */
+    if (inputs) {
+        *n_ptrs = STAI_NETWORK_IN_NUM;
+    } else {
+        *n_ptrs = STAI_NETWORK_WEIGHTS_NUM;
+    }
 
-  return STAI_SUCCESS;
+    return STAI_SUCCESS;
 }
 
-static inline stai_return_code __ll_aton_stai_network_get_outputs_or_activations(stai_network *network,
-                                                                                               stai_ptr *pointers,
-                                                                                               stai_size *n_ptrs,
-                                                                                               bool outputs)
+static inline stai_return_code __ll_aton_stai_network_get_outputs_or_activations(
+    stai_network *network,
+    stai_ptr *pointers,
+    stai_size *n_ptrs,
+    bool outputs
+)
 {
-  /* check context & network interface handle */
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    /* check context & network interface handle */
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
 
-  /* check parameters */
-  if (!n_ptrs)
-    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network,
-                                                STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS);
+    /* check parameters */
+    if (!n_ptrs)
+        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+            (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS
+        );
 
-  /* get output buffers */
-  const LL_Buffer_InfoTypeDef *out_activ_buffers;
-  if (outputs)
-  {
-    out_activ_buffers = nn_i_ptr->output_buffers_info();
-  }
-  else
-  {
-    out_activ_buffers = nn_i_ptr->internal_buffers_info();
-  }
-
-  /* copy buffer addresses */
-  unsigned int cnt = 0;
-  if (out_activ_buffers != NULL)
-  {
-    for (unsigned int idx = 0; out_activ_buffers[idx].name != NULL; idx++)
-    {
-      const LL_Buffer_InfoTypeDef *buffer_info = &out_activ_buffers[idx];
-      STAI_ASSERT(!buffer_info->is_param); // may never happen
-      if (pointers)
-      {
-        if (buffer_info->is_user_allocated) // is it a user allocatable buffer
-        {
-          LL_ATON_ASSERT(buffer_info->offset_start == 0); // user allocated buffers always have an offset equal to zero
-          pointers[cnt] = LL_Buffer_addr_start(buffer_info); // user allocated buffers are saved with virtual address
-          LL_ATON_ASSERT(((uintptr_t)pointers[cnt] % STAI_CACHE_USER_BUFFER_ALIGNMENT) == 0);
-        }
-        else // buffer is not user allocatable
-        {
-          pointers[cnt] = ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(LL_Buffer_addr_start(buffer_info));
-        }
-      }
-      cnt++;
+    /* get output buffers */
+    const LL_Buffer_InfoTypeDef *out_activ_buffers;
+    if (outputs) {
+        out_activ_buffers = nn_i_ptr->output_buffers_info();
+    } else {
+        out_activ_buffers = nn_i_ptr->internal_buffers_info();
     }
-  }
-  else
-  {
-    STAI_ASSERT((outputs ? STAI_NETWORK_OUT_NUM : STAI_NETWORK_ACTIVATIONS_NUM) == 0);
-  }
+
+    /* copy buffer addresses */
+    unsigned int cnt = 0;
+    if (out_activ_buffers != NULL) {
+        for (unsigned int idx = 0; out_activ_buffers[idx].name != NULL; idx++) {
+            const LL_Buffer_InfoTypeDef *buffer_info = &out_activ_buffers[idx];
+            STAI_ASSERT(!buffer_info->is_param); // may never happen
+            if (pointers) {
+                if (buffer_info->is_user_allocated) // is it a user allocatable buffer
+                {
+                    LL_ATON_ASSERT(
+                        buffer_info->offset_start == 0
+                    ); // user allocated buffers always have an offset equal to zero
+                    pointers[cnt] =
+                        LL_Buffer_addr_start(buffer_info); // user allocated buffers are saved with virtual address
+                    LL_ATON_ASSERT(((uintptr_t)pointers[cnt] % STAI_CACHE_USER_BUFFER_ALIGNMENT) == 0);
+                } else // buffer is not user allocatable
+                {
+                    pointers[cnt] = ATON_LIB_PHYSICAL_TO_VIRTUAL_ADDR(LL_Buffer_addr_start(buffer_info));
+                }
+            }
+            cnt++;
+        }
+    } else {
+        STAI_ASSERT((outputs ? STAI_NETWORK_OUT_NUM : STAI_NETWORK_ACTIVATIONS_NUM) == 0);
+    }
 #ifndef NDEBUG
-  if (outputs)
-  {
-    STAI_ASSERT(cnt == STAI_NETWORK_OUT_NUM);
-  }
-  else
-  {
-    STAI_ASSERT(cnt == STAI_NETWORK_ACTIVATIONS_NUM);
-  }
+    if (outputs) {
+        STAI_ASSERT(cnt == STAI_NETWORK_OUT_NUM);
+    } else {
+        STAI_ASSERT(cnt == STAI_NETWORK_ACTIVATIONS_NUM);
+    }
 #endif // !NDEBUG
 
-  /* save number of elements return value */
-  if (outputs)
-  {
-    *n_ptrs = STAI_NETWORK_OUT_NUM;
-  }
-  else
-  {
-    *n_ptrs = STAI_NETWORK_ACTIVATIONS_NUM;
-  }
+    /* save number of elements return value */
+    if (outputs) {
+        *n_ptrs = STAI_NETWORK_OUT_NUM;
+    } else {
+        *n_ptrs = STAI_NETWORK_ACTIVATIONS_NUM;
+    }
 
-  return STAI_SUCCESS;
+    return STAI_SUCCESS;
 }
 
-static inline stai_return_code __ll_aton_stai_network_set_inputs_or_weights(stai_network *network,
-                                                                                          const stai_ptr *pointers,
-                                                                                          const stai_size n_ptrs,
-                                                                                          bool inputs)
+static inline stai_return_code __ll_aton_stai_network_set_inputs_or_weights(
+    stai_network *network,
+    const stai_ptr *pointers,
+    const stai_size n_ptrs,
+    bool inputs
+)
 {
-  /* check context & network interface handle */
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    /* check context & network interface handle */
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
 
-  /* get input buffers */
-  const LL_Buffer_InfoTypeDef *input_buffers = nn_i_ptr->input_buffers_info();
+    /* get input buffers */
+    const LL_Buffer_InfoTypeDef *input_buffers = nn_i_ptr->input_buffers_info();
 
-  /* check values & addresses */
-  LL_ATON_ASSERT(input_buffers != NULL);
-  if (input_buffers && !pointers)
-    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network,
-                                                STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS);
+    /* check values & addresses */
+    LL_ATON_ASSERT(input_buffers != NULL);
+    if (input_buffers && !pointers)
+        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+            (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS
+        );
 
-  if (inputs)
-  {
-    if (n_ptrs != STAI_NETWORK_IN_NUM)
-      __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_IN_NUM);
-  }
-  else
-  {
-    if (n_ptrs != STAI_NETWORK_WEIGHTS_NUM)
-      __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network,
-                                                  STAI_ERROR_NETWORK_INVALID_WEIGHTS_NUM);
-  }
-
-  unsigned int cnt = 0;
-  if (input_buffers != NULL)
-  {
-    for (unsigned int idx = 0; input_buffers[idx].name != NULL; idx++)
-    {
-      const LL_Buffer_InfoTypeDef *buffer_info = &input_buffers[idx];
-      if (inputs == !buffer_info->is_param)
-      {
-        if (buffer_info->is_user_allocated) // is it an user allocatable buffer
-        {
-          LL_ATON_ASSERT(buffer_info->offset_start == 0); // user allocated buffers always have an offset equal to zero
-          unsigned char **address_location = (unsigned char **)buffer_info->addr_base.p;
-          unsigned char *new_address = pointers[cnt];
-
-          if (((uintptr_t)new_address % STAI_CACHE_USER_BUFFER_ALIGNMENT) != 0) // check new address alignment
-          {                                                                     // new address is not aligned
-            __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network,
-                                                        STAI_ERROR_INVALID_BUFFER_ALIGNMENT);
-          }
-          else // new address is aligned
-          {
-            LL_ATON_ASSERT(address_location != NULL);
-            *address_location = new_address;
-          }
-        }
-        else // buffer is not user allocatable
-        {
-          if (ATON_LIB_VIRTUAL_TO_PHYSICAL_ADDR(pointers[cnt]) != LL_Buffer_addr_start(buffer_info))
-            __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network,
-                                                        STAI_ERROR_NETWORK_INVALID_IN_PTR);
-        }
-        cnt++;
-      }
+    if (inputs) {
+        if (n_ptrs != STAI_NETWORK_IN_NUM)
+            __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+                (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_IN_NUM
+            );
+    } else {
+        if (n_ptrs != STAI_NETWORK_WEIGHTS_NUM)
+            __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+                (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_WEIGHTS_NUM
+            );
     }
-  }
-  else
-  {
-    STAI_ASSERT((inputs ? STAI_NETWORK_IN_NUM : STAI_NETWORK_WEIGHTS_NUM) == 0);
-  }
+
+    unsigned int cnt = 0;
+    if (input_buffers != NULL) {
+        for (unsigned int idx = 0; input_buffers[idx].name != NULL; idx++) {
+            const LL_Buffer_InfoTypeDef *buffer_info = &input_buffers[idx];
+            if (inputs == !buffer_info->is_param) {
+                if (buffer_info->is_user_allocated) // is it an user allocatable buffer
+                {
+                    LL_ATON_ASSERT(
+                        buffer_info->offset_start == 0
+                    ); // user allocated buffers always have an offset equal to zero
+                    unsigned char **address_location = (unsigned char **)buffer_info->addr_base.p;
+                    unsigned char *new_address = pointers[cnt];
+
+                    if (((uintptr_t)new_address % STAI_CACHE_USER_BUFFER_ALIGNMENT) != 0) // check new address alignment
+                    {                                                                     // new address is not aligned
+                        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+                            (_stai_aton_context *)network, STAI_ERROR_INVALID_BUFFER_ALIGNMENT
+                        );
+                    } else // new address is aligned
+                    {
+                        LL_ATON_ASSERT(address_location != NULL);
+                        *address_location = new_address;
+                    }
+                } else // buffer is not user allocatable
+                {
+                    if (ATON_LIB_VIRTUAL_TO_PHYSICAL_ADDR(pointers[cnt]) != LL_Buffer_addr_start(buffer_info))
+                        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+                            (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_IN_PTR
+                        );
+                }
+                cnt++;
+            }
+        }
+    } else {
+        STAI_ASSERT((inputs ? STAI_NETWORK_IN_NUM : STAI_NETWORK_WEIGHTS_NUM) == 0);
+    }
 #ifndef NDEBUG
-  if (inputs)
-  {
-    STAI_ASSERT(cnt == STAI_NETWORK_IN_NUM);
-  }
-  else
-  {
-    STAI_ASSERT(cnt == STAI_NETWORK_WEIGHTS_NUM);
-  }
+    if (inputs) {
+        STAI_ASSERT(cnt == STAI_NETWORK_IN_NUM);
+    } else {
+        STAI_ASSERT(cnt == STAI_NETWORK_WEIGHTS_NUM);
+    }
 #endif // !NDEBUG
 
-  return STAI_SUCCESS;
+    return STAI_SUCCESS;
 }
 
-static inline stai_return_code __ll_aton_stai_network_set_outputs_or_activations(stai_network *network,
-                                                                                               const stai_ptr *pointers,
-                                                                                               const stai_size n_ptrs,
-                                                                                               bool outputs)
+static inline stai_return_code __ll_aton_stai_network_set_outputs_or_activations(
+    stai_network *network,
+    const stai_ptr *pointers,
+    const stai_size n_ptrs,
+    bool outputs
+)
 {
-  /* check context & network interface handle */
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    /* check context & network interface handle */
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
 
-  /* get output buffers */
-  const LL_Buffer_InfoTypeDef *out_activ_buffers;
-  if (outputs)
-  {
-    out_activ_buffers = nn_i_ptr->output_buffers_info();
-  }
-  else
-  {
-    out_activ_buffers = nn_i_ptr->output_buffers_info();
-  }
-
-  /* check values & addresses */
-  if (out_activ_buffers && !pointers)
-    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network,
-                                                STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS);
-
-  if (outputs)
-  {
-    if (n_ptrs != STAI_NETWORK_OUT_NUM)
-      __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_OUT_NUM);
-  }
-  else
-  {
-    if (n_ptrs != STAI_NETWORK_ACTIVATIONS_NUM)
-      __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_OUT_NUM);
-  }
-
-  unsigned int cnt = 0;
-  if (out_activ_buffers != NULL)
-  {
-    for (unsigned int idx = 0; out_activ_buffers[idx].name != NULL; idx++)
-    {
-      const LL_Buffer_InfoTypeDef *buffer_info = &out_activ_buffers[idx];
-      if (buffer_info->is_user_allocated) // is it an user allocatable buffer
-      {
-        LL_ATON_ASSERT(buffer_info->offset_start == 0); // user allocated buffers always have an offset equal to zero
-        unsigned char **address_location = (unsigned char **)buffer_info->addr_base.p;
-        unsigned char *new_address = pointers[cnt];
-
-        if (((uintptr_t)new_address % STAI_CACHE_USER_BUFFER_ALIGNMENT) != 0) // check new address alignment
-        {                                                                     // new address is not aligned
-          __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network,
-                                                      STAI_ERROR_INVALID_BUFFER_ALIGNMENT);
-        }
-        else // new address is aligned
-        {
-          LL_ATON_ASSERT(address_location != NULL);
-          *address_location = new_address;
-        }
-      }
-      else // buffer is not user allocatable
-      {
-        STAI_ASSERT(!buffer_info->is_param);
-        if (ATON_LIB_VIRTUAL_TO_PHYSICAL_ADDR(pointers[cnt]) != LL_Buffer_addr_start(out_activ_buffers))
-          __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network,
-                                                      STAI_ERROR_NETWORK_INVALID_OUT_PTR);
-      }
-      cnt++;
+    /* get output buffers */
+    const LL_Buffer_InfoTypeDef *out_activ_buffers;
+    if (outputs) {
+        out_activ_buffers = nn_i_ptr->output_buffers_info();
+    } else {
+        out_activ_buffers = nn_i_ptr->output_buffers_info();
     }
-  }
-  else
-  {
-    STAI_ASSERT((outputs ? STAI_NETWORK_OUT_NUM : STAI_NETWORK_ACTIVATIONS_NUM) == 0);
-  }
+
+    /* check values & addresses */
+    if (out_activ_buffers && !pointers)
+        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+            (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS
+        );
+
+    if (outputs) {
+        if (n_ptrs != STAI_NETWORK_OUT_NUM)
+            __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+                (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_OUT_NUM
+            );
+    } else {
+        if (n_ptrs != STAI_NETWORK_ACTIVATIONS_NUM)
+            __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+                (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_OUT_NUM
+            );
+    }
+
+    unsigned int cnt = 0;
+    if (out_activ_buffers != NULL) {
+        for (unsigned int idx = 0; out_activ_buffers[idx].name != NULL; idx++) {
+            const LL_Buffer_InfoTypeDef *buffer_info = &out_activ_buffers[idx];
+            if (buffer_info->is_user_allocated) // is it an user allocatable buffer
+            {
+                LL_ATON_ASSERT(
+                    buffer_info->offset_start == 0
+                ); // user allocated buffers always have an offset equal to zero
+                unsigned char **address_location = (unsigned char **)buffer_info->addr_base.p;
+                unsigned char *new_address = pointers[cnt];
+
+                if (((uintptr_t)new_address % STAI_CACHE_USER_BUFFER_ALIGNMENT) != 0) // check new address alignment
+                {                                                                     // new address is not aligned
+                    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+                        (_stai_aton_context *)network, STAI_ERROR_INVALID_BUFFER_ALIGNMENT
+                    );
+                } else // new address is aligned
+                {
+                    LL_ATON_ASSERT(address_location != NULL);
+                    *address_location = new_address;
+                }
+            } else // buffer is not user allocatable
+            {
+                STAI_ASSERT(!buffer_info->is_param);
+                if (ATON_LIB_VIRTUAL_TO_PHYSICAL_ADDR(pointers[cnt]) != LL_Buffer_addr_start(out_activ_buffers))
+                    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+                        (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_OUT_PTR
+                    );
+            }
+            cnt++;
+        }
+    } else {
+        STAI_ASSERT((outputs ? STAI_NETWORK_OUT_NUM : STAI_NETWORK_ACTIVATIONS_NUM) == 0);
+    }
 #ifndef NDEBUG
-  if (outputs)
-  {
-    STAI_ASSERT(cnt == STAI_NETWORK_OUT_NUM);
-  }
-  else
-  {
-    STAI_ASSERT(cnt == STAI_NETWORK_ACTIVATIONS_NUM);
-  }
+    if (outputs) {
+        STAI_ASSERT(cnt == STAI_NETWORK_OUT_NUM);
+    } else {
+        STAI_ASSERT(cnt == STAI_NETWORK_ACTIVATIONS_NUM);
+    }
 #endif // !NDEBUG
 
-  return STAI_SUCCESS;
+    return STAI_SUCCESS;
 }
 
 /*****************************************************************************/
@@ -358,205 +333,251 @@ static inline stai_return_code __ll_aton_stai_network_set_outputs_or_activations
 STAI_API_ENTRY
 stai_return_code stai_network_init(stai_network *network)
 {
-  /* check context handle */
-  if (!network)
-    return STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE;
+    /* check context handle */
+    if (!network)
+        return STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE;
 
-  _stai_aton_context *ctx = (_stai_aton_context *)network;
-  if (ctx->network_instance.network != NULL) // already initialized
-    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(ctx, STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE);
+    _stai_aton_context *ctx = (_stai_aton_context *)network;
+    if (ctx->network_instance.network != NULL) // already initialized
+        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(ctx, STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE);
 
-  ctx->network_instance.network = (const NN_Interface_TypeDef *)&NN_Interface_network;
-  ctx->exec_status = STAI_SUCCESS;
-  ctx->first_error = STAI_SUCCESS;
+    ctx->network_instance.network = (const NN_Interface_TypeDef *)&NN_Interface_network;
+    ctx->exec_status = STAI_SUCCESS;
+    ctx->first_error = STAI_SUCCESS;
 
-  __ll_aton_stai_init_network_instance(ctx);
+    __ll_aton_stai_init_network_instance(ctx);
 
-  return STAI_SUCCESS;
+    return STAI_SUCCESS;
 }
 
 STAI_API_ENTRY
 stai_return_code stai_network_deinit(stai_network *network)
 {
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
-  _stai_aton_context *ctx = (_stai_aton_context *)network;
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    _stai_aton_context *ctx = (_stai_aton_context *)network;
 
-  if (ctx->exec_status != STAI_DONE && ctx->exec_status != STAI_SUCCESS)
-  {
-    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(ctx, STAI_ERROR_NETWORK_STILL_RUNNING);
-  }
+    if (ctx->exec_status != STAI_DONE && ctx->exec_status != STAI_SUCCESS) {
+        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(ctx, STAI_ERROR_NETWORK_STILL_RUNNING);
+    }
 
-  __ll_aton_stai_deinit_network_instance(ctx);
+    __ll_aton_stai_deinit_network_instance(ctx);
 
-  ctx->network_instance.network = NULL;
+    ctx->network_instance.network = NULL;
 
-  ctx->callback = NULL;
-  ctx->callback_cookie = NULL;
-  LL_ATON_RT_SetNetworkCallback(&ctx->network_instance, NULL);
+    ctx->callback = NULL;
+    ctx->callback_cookie = NULL;
+    LL_ATON_RT_SetNetworkCallback(&ctx->network_instance, NULL);
 
-  ctx->exec_status = STAI_SUCCESS;
-  ctx->first_error = STAI_SUCCESS;
+    ctx->exec_status = STAI_SUCCESS;
+    ctx->first_error = STAI_SUCCESS;
 
-  return STAI_SUCCESS;
+    return STAI_SUCCESS;
 }
 
 STAI_API_ENTRY
-stai_return_code stai_network_run(stai_network *network, const stai_run_mode mode)
+stai_return_code stai_network_run(
+    stai_network *network,
+    const stai_run_mode mode
+)
 {
-  /* check context & network interface handle */
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    /* check context & network interface handle */
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
 
-  return __ll_aton_stai_run(network, mode);
+    return __ll_aton_stai_run(network, mode);
 }
 
 STAI_API_ENTRY
-stai_return_code stai_network_train(stai_network *network, const stai_run_mode mode)
+stai_return_code stai_network_train(
+    stai_network *network,
+    const stai_run_mode mode
+)
 {
-  LL_ATON_LIB_UNUSED(mode);
+    LL_ATON_LIB_UNUSED(mode);
 
-  /* check context & network interface handle */
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    /* check context & network interface handle */
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
 
-  __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network, STAI_ERROR_NOT_IMPLEMENTED);
+    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network, STAI_ERROR_NOT_IMPLEMENTED);
 }
 
 /*****************************************************************************/
 /*  Getters APIs  */
 STAI_API_ENTRY
-stai_return_code stai_network_get_inputs(stai_network *network, stai_ptr *inputs, stai_size *n_inputs)
+stai_return_code stai_network_get_inputs(
+    stai_network *network,
+    stai_ptr *inputs,
+    stai_size *n_inputs
+)
 {
-  return __ll_aton_stai_network_get_inputs_or_weights(network, inputs, n_inputs, true);
+    return __ll_aton_stai_network_get_inputs_or_weights(network, inputs, n_inputs, true);
 }
 
 STAI_API_ENTRY
-stai_return_code stai_network_get_weights(stai_network *network, stai_ptr *weights, stai_size *n_weights)
+stai_return_code stai_network_get_weights(
+    stai_network *network,
+    stai_ptr *weights,
+    stai_size *n_weights
+)
 {
-  return __ll_aton_stai_network_get_inputs_or_weights(network, weights, n_weights, false);
+    return __ll_aton_stai_network_get_inputs_or_weights(network, weights, n_weights, false);
 }
 
 STAI_API_ENTRY
-stai_return_code stai_network_get_outputs(stai_network *network, stai_ptr *outputs, stai_size *n_outputs)
+stai_return_code stai_network_get_outputs(
+    stai_network *network,
+    stai_ptr *outputs,
+    stai_size *n_outputs
+)
 {
-  return __ll_aton_stai_network_get_outputs_or_activations(network, outputs, n_outputs, true);
+    return __ll_aton_stai_network_get_outputs_or_activations(network, outputs, n_outputs, true);
 }
 
 STAI_API_ENTRY
-stai_return_code stai_network_get_activations(stai_network *network, stai_ptr *activations,
-                                                            stai_size *n_activations)
+stai_return_code stai_network_get_activations(
+    stai_network *network,
+    stai_ptr *activations,
+    stai_size *n_activations
+)
 {
-  return __ll_aton_stai_network_get_outputs_or_activations(network, activations, n_activations, false);
+    return __ll_aton_stai_network_get_outputs_or_activations(network, activations, n_activations, false);
 }
 
 static const stai_network_info __stai_network_network_info;
 STAI_API_ENTRY
-stai_return_code stai_network_get_info(stai_network *network, stai_network_info *info)
+stai_return_code stai_network_get_info(
+    stai_network *network,
+    stai_network_info *info
+)
 {
-  /* check context & network interface handle */
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    /* check context & network interface handle */
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
 
-  // Copy of network info struct
-  *info = __stai_network_network_info;
+    // Copy of network info struct
+    *info = __stai_network_network_info;
 
-  return STAI_SUCCESS;
+    return STAI_SUCCESS;
 }
 
 STAI_API_ENTRY
-stai_return_code stai_network_get_states(stai_network *network, stai_ptr *states, stai_size *n_states)
+stai_return_code stai_network_get_states(
+    stai_network *network,
+    stai_ptr *states,
+    stai_size *n_states
+)
 {
-  LL_ATON_LIB_UNUSED(states);
+    LL_ATON_LIB_UNUSED(states);
 
-  /* check context & network interface handle */
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    /* check context & network interface handle */
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
 
-  *n_states = 0;
-  return STAI_SUCCESS;
+    *n_states = 0;
+    return STAI_SUCCESS;
 }
 
 STAI_API_ENTRY
 stai_return_code stai_network_get_error(stai_network *network)
 {
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
-  _stai_aton_context *ctx = (_stai_aton_context *)network;
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    _stai_aton_context *ctx = (_stai_aton_context *)network;
 
-  // return 1st generated error or STAI_SUCCESS if no errors so far
-  return ctx->first_error;
+    // return 1st generated error or STAI_SUCCESS if no errors so far
+    return ctx->first_error;
 }
 
 /*****************************************************************************/
 /*  Setters APIs  */
 STAI_API_ENTRY
-stai_return_code stai_network_set_inputs(stai_network *network, const stai_ptr *inputs,
-                                                       const stai_size n_inputs)
+stai_return_code stai_network_set_inputs(
+    stai_network *network,
+    const stai_ptr *inputs,
+    const stai_size n_inputs
+)
 {
-  return __ll_aton_stai_network_set_inputs_or_weights(network, inputs, n_inputs, true);
+    return __ll_aton_stai_network_set_inputs_or_weights(network, inputs, n_inputs, true);
 }
 
 STAI_API_ENTRY
-stai_return_code stai_network_set_weights(stai_network *network, const stai_ptr *weights,
-                                                        const stai_size n_weights)
+stai_return_code stai_network_set_weights(
+    stai_network *network,
+    const stai_ptr *weights,
+    const stai_size n_weights
+)
 {
-  return __ll_aton_stai_network_set_inputs_or_weights(network, weights, n_weights, false);
+    return __ll_aton_stai_network_set_inputs_or_weights(network, weights, n_weights, false);
 }
 
 STAI_API_ENTRY
-stai_return_code stai_network_set_outputs(stai_network *network, const stai_ptr *outputs,
-                                                        const stai_size n_outputs)
+stai_return_code stai_network_set_outputs(
+    stai_network *network,
+    const stai_ptr *outputs,
+    const stai_size n_outputs
+)
 {
-  return __ll_aton_stai_network_set_outputs_or_activations(network, outputs, n_outputs, true);
+    return __ll_aton_stai_network_set_outputs_or_activations(network, outputs, n_outputs, true);
 }
 
 STAI_API_ENTRY
-stai_return_code stai_network_set_activations(stai_network *network, const stai_ptr *activations,
-                                                            const stai_size n_activations)
+stai_return_code stai_network_set_activations(
+    stai_network *network,
+    const stai_ptr *activations,
+    const stai_size n_activations
+)
 {
-  return __ll_aton_stai_network_set_outputs_or_activations(network, activations, n_activations, false);
+    return __ll_aton_stai_network_set_outputs_or_activations(network, activations, n_activations, false);
 }
 
 STAI_API_ENTRY
-stai_return_code stai_network_set_states(stai_network *network, const stai_ptr *states,
-                                                       const stai_size n_states)
+stai_return_code stai_network_set_states(
+    stai_network *network,
+    const stai_ptr *states,
+    const stai_size n_states
+)
 {
-  LL_ATON_LIB_UNUSED(states);
+    LL_ATON_LIB_UNUSED(states);
 
-  /* check context & network interface handle */
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    /* check context & network interface handle */
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
 
-  if (n_states != 0)
-    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_STATES_NUM);
-  else
+    if (n_states != 0)
+        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+            (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_STATES_NUM
+        );
+    else
+        return STAI_SUCCESS;
+}
+
+STAI_API_ENTRY
+stai_return_code stai_network_set_callback(
+    stai_network *network,
+    const stai_event_cb cb,
+    void *cb_cookie
+)
+{
+    if (network == NULL) {
+        return STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE;
+    }
+
+    _stai_aton_context *nn_ctx = (_stai_aton_context *)network;
+
+    if ((nn_ctx->network_instance.network != NULL) && (nn_ctx->network_instance.network != &NN_Interface_network)) {
+        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(nn_ctx, STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE);
+    }
+
+    nn_ctx->callback = cb;
+    nn_ctx->callback_cookie = cb_cookie;
+
+    LL_ATON_RT_SetNetworkCallback(
+        &nn_ctx->network_instance, (cb != NULL) ? _stai_aton_internal_epoch_block_callback : NULL
+    );
+
     return STAI_SUCCESS;
-}
-
-STAI_API_ENTRY
-stai_return_code stai_network_set_callback(stai_network *network, const stai_event_cb cb, void *cb_cookie)
-{
-  if (network == NULL)
-  {
-    return STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE;
-  }
-
-  _stai_aton_context *nn_ctx = (_stai_aton_context *)network;
-
-  if ((nn_ctx->network_instance.network != NULL) &&
-      (nn_ctx->network_instance.network != &NN_Interface_network))
-  {
-    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(nn_ctx, STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE);
-  }
-
-  nn_ctx->callback = cb;
-  nn_ctx->callback_cookie = cb_cookie;
-
-  LL_ATON_RT_SetNetworkCallback(&nn_ctx->network_instance,
-                                (cb != NULL) ? _stai_aton_internal_epoch_block_callback : NULL);
-
-  return STAI_SUCCESS;
 }
 
 /***************************************************************************/
@@ -564,44 +585,43 @@ stai_return_code stai_network_set_callback(stai_network *network, const stai_eve
 STAI_API_ENTRY
 stai_return_code stai_ext_network_run_continue(stai_network *network)
 {
-  _stai_aton_context *nn_ctx = (_stai_aton_context *)network;
-  if (nn_ctx == NULL)
-  {
-    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN((_stai_aton_context *)network,
-                                                STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE);
-  }
+    _stai_aton_context *nn_ctx = (_stai_aton_context *)network;
+    if (nn_ctx == NULL) {
+        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(
+            (_stai_aton_context *)network, STAI_ERROR_NETWORK_INVALID_CONTEXT_HANDLE
+        );
+    }
 
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, nn_ctx);
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, nn_ctx);
 
-  if (nn_ctx->network_instance.exec_state.current_epoch_block == NULL)
-  {
-    __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(nn_ctx, STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS);
-  }
+    if (nn_ctx->network_instance.exec_state.current_epoch_block == NULL) {
+        __LL_ATON_STAI_SET_1ST_CTX_ERROR_AND_RETURN(nn_ctx, STAI_ERROR_NETWORK_INVALID_API_ARGUMENTS);
+    }
 
-  __LL_ATON_START_CONT_EXEC(&nn_ctx->network_instance);
+    __LL_ATON_START_CONT_EXEC(&nn_ctx->network_instance);
 }
 
 STAI_API_ENTRY
 stai_return_code stai_ext_network_get_nn_run_status(stai_network *network)
 {
-  /* check context & network interface handle */
-  __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
-  __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
+    /* check context & network interface handle */
+    __LL_ATON_STAI_ACQUIRE_INTERFACE(nn_i_ptr, network);
+    __LL_ATON_STAI_CHECK_NETWORK_INTERFACE(nn_i_ptr, (_stai_aton_context *)network);
 
-  /* get current execution status */
-  STAI_ASSERT(network != NULL);
-  _stai_aton_context *stai_nn_ctx =
-      (_stai_aton_context *)((void *)network) - offsetof(_stai_aton_context, network_instance);
-  stai_return_code current_exec_status = __ll_aton_stai_get_execution_status(stai_nn_ctx);
+    /* get current execution status */
+    STAI_ASSERT(network != NULL);
+    _stai_aton_context *stai_nn_ctx =
+        (_stai_aton_context *)((void *)network) - offsetof(_stai_aton_context, network_instance);
+    stai_return_code current_exec_status = __ll_aton_stai_get_execution_status(stai_nn_ctx);
 
-  return current_exec_status;
+    return current_exec_status;
 }
 
 STAI_API_ENTRY
 stai_return_code stai_ext_network_new_inference(stai_network *network)
 {
-  return __ll_aton_stai_reset(network);
+    return __ll_aton_stai_reset(network);
 }
 
 // clang-format off

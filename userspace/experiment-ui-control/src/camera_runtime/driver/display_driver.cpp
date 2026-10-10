@@ -95,30 +95,17 @@ void ComposeDisplayFrame()
         std::memcpy(destination + destination_offset, camera_source + source_offset, kFrameBytesPerLine);
         auto *panel_row = destination + destination_offset + kFrameBytesPerLine;
         if (g_ui_panel_buffer != nullptr) {
-            std::memcpy(
-                panel_row,
-                g_ui_panel_buffer + y * kFrameWidth,
-                kFrameBytesPerLine
-            );
+            std::memcpy(panel_row, g_ui_panel_buffer + y * kFrameWidth, kFrameBytesPerLine);
         } else {
             std::memset(panel_row, 0, kFrameBytesPerLine);
         }
 #else
 #if defined(EXPERIMENT_GPU_VISUAL)
         if (g_visual_overlay_preserved) {
-            ComposeVisualRow(
-                destination + destination_offset,
-                camera_source + source_offset,
-                nullptr,
-                y
-            );
+            ComposeVisualRow(destination + destination_offset, camera_source + source_offset, nullptr, y);
         } else {
             CopyDisplaySegment(
-                destination + destination_offset,
-                camera_source + source_offset,
-                nullptr,
-                0U,
-                kDisplayWidth
+                destination + destination_offset, camera_source + source_offset, nullptr, 0U, kDisplayWidth
             );
         }
 #else
@@ -128,9 +115,9 @@ void ComposeDisplayFrame()
     }
 
 #if PIPE2_PIPE_DUAL
-    if (g_result_visible && g_result_width != 0U && g_result_height != 0U
-        && g_result_x < kFrameWidth && g_result_width <= kFrameWidth - g_result_x
-        && g_result_y < kFrameHeight && g_result_height <= kFrameHeight - g_result_y) {
+    if (g_result_visible && g_result_width != 0U && g_result_height != 0U && g_result_x < kFrameWidth
+        && g_result_width <= kFrameWidth - g_result_x && g_result_y < kFrameHeight
+        && g_result_height <= kFrameHeight - g_result_y) {
         auto *display_pixels = reinterpret_cast<std::uint16_t *>(destination);
         const auto right = g_result_x + g_result_width - 1U;
         const auto bottom = g_result_y + g_result_height - 1U;

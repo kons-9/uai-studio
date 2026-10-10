@@ -5,9 +5,9 @@ bool experiment_npu_prepare(void);
 bool experiment_npu_stop(void);
 void experiment_npu_registered(void);
 void experiment_npu_completed(void);
-#define DECLARE_MODEL(name) \
-    bool experiment_##name##_start(std::uint8_t *, std::uint32_t, std::uint8_t **, std::uint32_t); \
-    int experiment_##name##_poll(void); \
+#define DECLARE_MODEL(name)                                                                                            \
+    bool experiment_##name##_start(std::uint8_t *, std::uint32_t, std::uint8_t **, std::uint32_t);                     \
+    int experiment_##name##_poll(void);                                                                                \
     bool experiment_##name##_deinit(void);
 DECLARE_MODEL(person)
 DECLARE_MODEL(face)
@@ -20,7 +20,12 @@ DECLARE_MODEL(seg)
 
 namespace {
 struct Api {
-    bool (*start)(std::uint8_t *, std::uint32_t, std::uint8_t **, std::uint32_t);
+    bool (*start)(
+        std::uint8_t *,
+        std::uint32_t,
+        std::uint8_t **,
+        std::uint32_t
+    );
     int (*poll)();
     bool (*deinit)();
 };
@@ -94,8 +99,15 @@ const std::uint8_t *MultiBackend::Output(std::size_t &bytes)
     return output;
 }
 
-bool MultiBackend::Stop() { return experiment_npu_stop(); }
-std::uint8_t *MultiBackend::Input(std::size_t &bytes) { bytes = 0x200000; return input; }
+bool MultiBackend::Stop()
+{
+    return experiment_npu_stop();
+}
+std::uint8_t *MultiBackend::Input(std::size_t &bytes)
+{
+    bytes = 0x200000;
+    return input;
+}
 bool MultiBackend::AdoptInput(std::size_t bytes)
 {
     if (bytes > 0x200000) {

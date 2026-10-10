@@ -93,8 +93,8 @@ public:
             return false;
         }
         pending_ = candidate;
-        if (prepare_adopt_ && !prepare_adopt_(context_, weights_.data, candidate.weights.bytes,
-                                             blob_.data, candidate.blob.bytes)) {
+        if (prepare_adopt_
+            && !prepare_adopt_(context_, weights_.data, candidate.weights.bytes, blob_.data, candidate.blob.bytes)) {
             Cancel();
             return false;
         }
@@ -103,8 +103,7 @@ public:
             Cancel();
             return false;
         }
-        if (publish_ && !publish_(context_, weights_.data, candidate.weights.bytes,
-                                 blob_.data, candidate.blob.bytes)) {
+        if (publish_ && !publish_(context_, weights_.data, candidate.weights.bytes, blob_.data, candidate.blob.bytes)) {
             Cancel();
             return false;
         }
@@ -152,7 +151,10 @@ public:
     void Release() { in_use_ = false; }
     std::uint32_t Received(bool is_blob) const { return is_blob ? blob_offset_ : weights_offset_; }
     const Manifest *Verified() const { return ready_ ? &pending_ : nullptr; }
-    void Catalog(const Manifest *models, std::size_t count)
+    void Catalog(
+        const Manifest *models,
+        std::size_t count
+    )
     {
         catalog_ = models;
         catalog_count_ = count;

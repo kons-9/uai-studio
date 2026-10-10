@@ -10,7 +10,10 @@ namespace {
 
 namespace graphics = uai::ai::image_processing;
 
-TEST(ImageTransfer, ValidatesCapacityStrideFormatAndAddressOverflow)
+TEST(
+    ImageTransfer,
+    ValidatesCapacityStrideFormatAndAddressOverflow
+)
 {
     std::array<std::uint8_t, 32> storage{};
     graphics::Image image{storage.data(), 14, 2, 2, 8, graphics::Format::kRgb888};
@@ -35,7 +38,10 @@ TEST(ImageTransfer, ValidatesCapacityStrideFormatAndAddressOverflow)
     EXPECT_FALSE(graphics::Valid(image));
 }
 
-TEST(ImageTransfer, BuildsPixelOffsetsAndRejectsOverlappingRanges)
+TEST(
+    ImageTransfer,
+    BuildsPixelOffsetsAndRejectsOverlappingRanges
+)
 {
     std::array<std::uint8_t, 64> storage{};
     graphics::Image source{storage.data(), 16, 2, 2, 8, graphics::Format::kRgb565};
@@ -52,7 +58,10 @@ TEST(ImageTransfer, BuildsPixelOffsetsAndRejectsOverlappingRanges)
     EXPECT_FALSE(graphics::BuildTransfer(source, destination, transfer));
 }
 
-TEST(ImageOperations, ConvertsBothFormatsAndPreservesPaddingAndGuards)
+TEST(
+    ImageOperations,
+    ConvertsBothFormatsAndPreservesPaddingAndGuards
+)
 {
     const std::array<std::uint8_t, 12> original{255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255};
     auto source_pixels = original;
@@ -75,15 +84,21 @@ TEST(ImageOperations, ConvertsBothFormatsAndPreservesPaddingAndGuards)
     EXPECT_EQ(roundtrip, original);
 }
 
-TEST(ImageOperations, RejectsInvalidRequestsWithoutWriting)
+TEST(
+    ImageOperations,
+    RejectsInvalidRequestsWithoutWriting
+)
 {
     std::array<std::uint8_t, 32> source_pixels{};
     std::array<std::uint8_t, 32> destination_pixels;
     destination_pixels.fill(0xa5);
     const auto original = destination_pixels;
-    graphics::Request request{graphics::Operation::kBlit,
-        {source_pixels.data(), source_pixels.size(), 2, 2, 6, graphics::Format::kRgb888}, {},
-        {destination_pixels.data(), 11, 2, 2, 6, graphics::Format::kRgb888}};
+    graphics::Request request{
+        graphics::Operation::kBlit,
+        {source_pixels.data(), source_pixels.size(), 2, 2, 6, graphics::Format::kRgb888},
+        {},
+        {destination_pixels.data(), 11, 2, 2, 6, graphics::Format::kRgb888}
+    };
     EXPECT_FALSE(graphics::Reference(request));
     EXPECT_EQ(destination_pixels, original);
     request.destination.bytes = destination_pixels.size();
@@ -104,13 +119,21 @@ TEST(ImageOperations, RejectsInvalidRequestsWithoutWriting)
     EXPECT_EQ(destination_pixels, original);
 }
 
-TEST(ImageOperations, FillsAndBlendsAtAlphaEndpointsAndMidpoint)
+TEST(
+    ImageOperations,
+    FillsAndBlendsAtAlphaEndpointsAndMidpoint
+)
 {
     std::array<std::uint8_t, 3> foreground{255, 0, 0};
     std::array<std::uint8_t, 3> background{0, 0, 255};
     std::array<std::uint8_t, 3> destination{};
-    graphics::Request request{graphics::Operation::kFill, {}, {},
-        {destination.data(), destination.size(), 1, 1, 3, graphics::Format::kRgb888}, 0x12ab34};
+    graphics::Request request{
+        graphics::Operation::kFill,
+        {},
+        {},
+        {destination.data(), destination.size(), 1, 1, 3, graphics::Format::kRgb888},
+        0x12ab34
+    };
     ASSERT_TRUE(graphics::Reference(request));
     EXPECT_EQ(graphics::ReadPixel(request.destination, 0, 0), 0x12ab34U);
     request.operation = graphics::Operation::kBlend;
@@ -127,19 +150,27 @@ TEST(ImageOperations, FillsAndBlendsAtAlphaEndpointsAndMidpoint)
     EXPECT_EQ(graphics::ReadPixel(request.destination, 0, 0), 0x80007fU);
 }
 
-TEST(ImageOperations, ResizeUsesPixelCenters)
+TEST(
+    ImageOperations,
+    ResizeUsesPixelCenters
+)
 {
     std::array<std::uint8_t, 12> source{255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255};
     std::array<std::uint8_t, 3> destination{};
-    graphics::Request request{graphics::Operation::kResize,
-        {source.data(), source.size(), 2, 2, 6, graphics::Format::kRgb888}, {},
-        {destination.data(), destination.size(), 1, 1, 3, graphics::Format::kRgb888}};
+    graphics::Request request{
+        graphics::Operation::kResize,
+        {source.data(), source.size(), 2, 2, 6, graphics::Format::kRgb888},
+        {},
+        {destination.data(), destination.size(), 1, 1, 3, graphics::Format::kRgb888}
+    };
     ASSERT_TRUE(graphics::Reference(request));
     EXPECT_EQ(graphics::ReadPixel(request.destination, 0, 0), 0xffffffU);
 }
 
 struct ReferenceDevice {
-    bool Run(const graphics::Request &request, std::uint32_t timeout)
+    bool
+    Run(const graphics::Request &request,
+        std::uint32_t timeout)
     {
         EXPECT_EQ(timeout, 100U);
         if (request.operation == graphics::Operation::kResize
@@ -150,7 +181,10 @@ struct ReferenceDevice {
     }
 };
 
-TEST(ImageVerification, RunsAllHardwareCasesAndHandlesClockWrap)
+TEST(
+    ImageVerification,
+    RunsAllHardwareCasesAndHandlesClockWrap
+)
 {
     graphics::Verification verification;
     ReferenceDevice device;
@@ -170,10 +204,20 @@ TEST(ImageVerification, RunsAllHardwareCasesAndHandlesClockWrap)
 }
 
 struct CorruptingDevice {
-    enum class Fault { kPixel, kInput, kBackground, kGuard, kPadding, kFalseSuccess, kFalseFailure };
+    enum class Fault {
+        kPixel,
+        kInput,
+        kBackground,
+        kGuard,
+        kPadding,
+        kFalseSuccess,
+        kFalseFailure
+    };
     Fault fault;
 
-    bool Run(const graphics::Request &request, std::uint32_t)
+    bool
+    Run(const graphics::Request &request,
+        std::uint32_t)
     {
         if (fault == Fault::kFalseSuccess) {
             request.destination.data[0] ^= 1;
@@ -207,17 +251,27 @@ struct CorruptingDevice {
     }
 };
 
-TEST(ImageVerification, DetectsPixelInputBackgroundGuardAndPaddingCorruption)
+TEST(
+    ImageVerification,
+    DetectsPixelInputBackgroundGuardAndPaddingCorruption
+)
 {
     graphics::Verification verification;
-    const graphics::VerificationCase test{"padded-blend", graphics::Operation::kBlend,
-        graphics::Format::kRgb888, graphics::Format::kRgb888, 128, 0, true};
-    for (const auto fault : {CorruptingDevice::Fault::kPixel, CorruptingDevice::Fault::kInput,
-             CorruptingDevice::Fault::kBackground, CorruptingDevice::Fault::kGuard,
-             CorruptingDevice::Fault::kPadding, CorruptingDevice::Fault::kFalseFailure}) {
+    const graphics::VerificationCase test{
+        "padded-blend", graphics::Operation::kBlend, graphics::Format::kRgb888, graphics::Format::kRgb888, 128, 0, true
+    };
+    for (const auto fault :
+         {CorruptingDevice::Fault::kPixel,
+          CorruptingDevice::Fault::kInput,
+          CorruptingDevice::Fault::kBackground,
+          CorruptingDevice::Fault::kGuard,
+          CorruptingDevice::Fault::kPadding,
+          CorruptingDevice::Fault::kFalseFailure}) {
         SCOPED_TRACE(static_cast<int>(fault));
         CorruptingDevice device{fault};
-        const auto result = verification.Run(test, device, [] { return 0U; });
+        const auto result = verification.Run(test, device, [] {
+            return 0U;
+        });
         EXPECT_FALSE(result.passed);
         if (fault == CorruptingDevice::Fault::kPixel) {
             EXPECT_GT(result.maximum_error, 1U);
@@ -227,19 +281,34 @@ TEST(ImageVerification, DetectsPixelInputBackgroundGuardAndPaddingCorruption)
     }
 }
 
-TEST(ImageVerification, RejectingAfterWritingStillFails)
+TEST(
+    ImageVerification,
+    RejectingAfterWritingStillFails
+)
 {
     graphics::Verification verification;
     CorruptingDevice device{CorruptingDevice::Fault::kFalseSuccess};
-    const graphics::VerificationCase test{"short", graphics::Operation::kBlit,
-        graphics::Format::kRgb888, graphics::Format::kRgb888,
-        255, 0, false, graphics::Rejection::kShortBuffer};
-    const auto result = verification.Run(test, device, [] { return 0U; });
+    const graphics::VerificationCase test{
+        "short",
+        graphics::Operation::kBlit,
+        graphics::Format::kRgb888,
+        graphics::Format::kRgb888,
+        255,
+        0,
+        false,
+        graphics::Rejection::kShortBuffer
+    };
+    const auto result = verification.Run(test, device, [] {
+        return 0U;
+    });
     EXPECT_FALSE(result.passed);
     EXPECT_GT(result.corrupted_bytes, 0U);
 }
 
-TEST(ImageVerification, CacheHooksCoverAlignedBuffersBeforeAndAfterTransfer)
+TEST(
+    ImageVerification,
+    CacheHooksCoverAlignedBuffersBeforeAndAfterTransfer
+)
 {
     static unsigned stage;
     stage = 0;
@@ -257,7 +326,9 @@ TEST(ImageVerification, CacheHooksCoverAlignedBuffersBeforeAndAfterTransfer)
         }
     };
     struct Device {
-        bool Run(const graphics::Request &request, std::uint32_t)
+        bool
+        Run(const graphics::Request &request,
+            std::uint32_t)
         {
             EXPECT_EQ(stage, 3U);
             ++stage;
@@ -265,7 +336,16 @@ TEST(ImageVerification, CacheHooksCoverAlignedBuffersBeforeAndAfterTransfer)
         }
     } device;
     graphics::Verification verification;
-    EXPECT_TRUE(verification.Run(graphics::kVerificationCases[0], device, [] { return 0U; }, cache).passed);
+    EXPECT_TRUE(verification
+                    .Run(
+                        graphics::kVerificationCases[0],
+                        device,
+                        [] {
+                            return 0U;
+                        },
+                        cache
+                    )
+                    .passed);
     EXPECT_EQ(stage, 7U);
 }
 

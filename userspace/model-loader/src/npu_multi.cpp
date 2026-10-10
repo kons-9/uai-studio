@@ -28,8 +28,8 @@ namespace experiment::model {
 
 bool MultiBackend::Start(const Manifest &manifest)
 {
-    if (!manifest.tag || !manifest.output_count
-        || manifest.output_count > kMaxOutputs || manifest.input_bytes > 0x200000 || manifest.output_bytes > 0x400000) {
+    if (!manifest.tag || !manifest.output_count || manifest.output_count > kMaxOutputs
+        || manifest.input_bytes > 0x200000 || manifest.output_bytes > 0x400000) {
         return false;
     }
     static_assert(model_loader::registry_count == catalog_count, "model registry and catalog disagree");
@@ -90,8 +90,15 @@ const std::uint8_t *MultiBackend::Output(std::size_t &bytes)
     return output;
 }
 
-bool MultiBackend::Stop() { return experiment_npu_stop(); }
-std::uint8_t *MultiBackend::Input(std::size_t &bytes) { bytes = 0x200000; return input; }
+bool MultiBackend::Stop()
+{
+    return experiment_npu_stop();
+}
+std::uint8_t *MultiBackend::Input(std::size_t &bytes)
+{
+    bytes = 0x200000;
+    return input;
+}
 bool MultiBackend::AdoptInput(std::size_t bytes)
 {
     if (bytes > 0x200000) {

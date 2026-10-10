@@ -89,10 +89,7 @@ private:
         }
 
         __HAL_RCC_RIFSC_CLK_ENABLE();
-        HAL_RIF_RISC_SetSlaveSecureAttributes(
-            RIF_RISC_PERIPH_INDEX_DMA2D,
-            RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV
-        );
+        HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_DMA2D, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
         RIMC_MasterConfig_t master{};
         master.MasterCID = RIF_CID_1;
         master.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV;

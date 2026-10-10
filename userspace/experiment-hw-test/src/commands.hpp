@@ -43,8 +43,7 @@ inline console::Status Execute(
     }
     const char *selection = nullptr;
     bool destructive = false;
-    if (count == 2 && (std::strcmp(arguments[1], "all") == 0
-                       || std::strcmp(arguments[1], "all-stress") == 0)) {
+    if (count == 2 && (std::strcmp(arguments[1], "all") == 0 || std::strcmp(arguments[1], "all-stress") == 0)) {
         selection = arguments[1];
     } else if ((count == 3 || count == 4) && std::strcmp(arguments[1], "run") == 0) {
         selection = arguments[2];
@@ -66,8 +65,7 @@ inline console::Status Execute(
              display_log::Write(line);
          }},
         registry.context,
-        {nullptr,
-         [](void *, const char *line) {
+        {nullptr, [](void *, const char *line) {
              display_log::Write(line);
          }});
     return console::Status::kOk;

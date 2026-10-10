@@ -18,12 +18,16 @@ public:
     Dma2dDriver(const Dma2dDriver &) = delete;
     Dma2dDriver &operator=(const Dma2dDriver &) = delete;
 
-    static bool ValidateRequest(const Request &request, std::uint32_t timeout_ms)
+    static bool ValidateRequest(
+        const Request &request,
+        std::uint32_t timeout_ms
+    )
     {
         using namespace image_processing;
         if (!Validate(request) || request.operation == Operation::kResize || timeout_ms == 0 || timeout_ms > 1000
             || request.destination.width > 0x3fff || request.destination.height > 0xffff
-            || request.destination.stride / PixelBytes(request.destination.format) - request.destination.width > 0x3fff) {
+            || request.destination.stride / PixelBytes(request.destination.format) - request.destination.width
+                > 0x3fff) {
             return false;
         }
         const auto accessible = [](const Image &image) {
@@ -33,12 +37,15 @@ public:
                 && image.bytes <= std::numeric_limits<std::uint32_t>::max()
                 && address <= std::numeric_limits<std::uint32_t>::max() - image.bytes;
         };
-        return accessible(request.destination)
-            && (request.operation == Operation::kFill || accessible(request.source))
+        return accessible(request.destination) && (request.operation == Operation::kFill || accessible(request.source))
             && (request.operation != Operation::kBlend || accessible(request.background));
     }
 
-    common::Error Transfer(const Request &request, std::uint32_t timeout_ms, const Writer &writer);
+    common::Error Transfer(
+        const Request &request,
+        std::uint32_t timeout_ms,
+        const Writer &writer
+    );
     void KeepClocksOnSleep(const Writer &writer) const;
 
 private:
@@ -71,7 +78,10 @@ public:
         return status.Ok() ? driver_.Initialize(accessor.Ownership()) : status;
     }
 
-    common::Error Acquire(Accessor *accessor, TMO timeout = TMO_FEVR)
+    common::Error Acquire(
+        Accessor *accessor,
+        TMO timeout = TMO_FEVR
+    )
     {
         if (accessor == nullptr) {
             return {common::ErrorCode::kInvalidArgument};
@@ -87,7 +97,10 @@ public:
 
     common::Error Validate(const Writer &writer) const { return ownership_.Validate(writer); }
 
-    common::Error Transfer(const Dma2dDriver::Request &request, std::uint32_t timeout_ms = 100)
+    common::Error Transfer(
+        const Dma2dDriver::Request &request,
+        std::uint32_t timeout_ms = 100
+    )
     {
         if (!Dma2dDriver::ValidateRequest(request, timeout_ms)) {
             return {common::ErrorCode::kInvalidArgument};
@@ -97,7 +110,9 @@ public:
         return status.Ok() ? accessor.Get()->Transfer(request, timeout_ms, accessor.Ownership()) : status;
     }
 
-    bool Run(const Dma2dDriver::Request &request, std::uint32_t timeout_ms)
+    bool
+    Run(const Dma2dDriver::Request &request,
+        std::uint32_t timeout_ms)
     {
         return Transfer(request, timeout_ms).Ok();
     }

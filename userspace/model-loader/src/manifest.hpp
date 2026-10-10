@@ -95,9 +95,8 @@ inline bool Decode(
     Manifest &output
 )
 {
-    if (!data || size < kManifestBytes || size > kHeaderMaxBytes
-        || data[0] != 'U' || data[1] != 'A' || data[2] != 'I' || data[3] != 'M'
-        || (data[4] != 1 && data[4] != 2 && data[4] != 3) || data[5] != 0
+    if (!data || size < kManifestBytes || size > kHeaderMaxBytes || data[0] != 'U' || data[1] != 'A' || data[2] != 'I'
+        || data[3] != 'M' || (data[4] != 1 && data[4] != 2 && data[4] != 3) || data[5] != 0
         || (std::size_t(data[6]) | (std::size_t(data[7]) << 8)) != size) {
         return false;
     }
@@ -143,7 +142,8 @@ inline bool Decode(
         for (unsigned index = 0; index < 3; ++index) {
             value.mean[index] = real(60 + index * 4);
             value.divisor[index] = real(72 + index * 4);
-            if (!std::isfinite(value.mean[index]) || !std::isfinite(value.divisor[index]) || value.divisor[index] <= 0) {
+            if (!std::isfinite(value.mean[index]) || !std::isfinite(value.divisor[index])
+                || value.divisor[index] <= 0) {
                 return false;
             }
         }
@@ -151,8 +151,10 @@ inline bool Decode(
         for (unsigned index = 0; index <= value.output_count; ++index) {
             const auto offset = 84 + index * 40;
             auto &tensor = index == 0 ? value.input : value.outputs[index - 1];
-            tensor.type = data[offset]; tensor.layout = data[offset + 1];
-            tensor.rank = data[offset + 2]; tensor.role = data[offset + 3];
+            tensor.type = data[offset];
+            tensor.layout = data[offset + 1];
+            tensor.rank = data[offset + 2];
+            tensor.role = data[offset + 3];
             for (unsigned axis = 0; axis < 4; ++axis) {
                 tensor.shape[axis] = read(offset + 4 + axis * 4);
             }
@@ -207,7 +209,8 @@ inline bool Matches(
 {
     if (std::memcmp(actual.contract_digest, expected.contract_digest, sizeof(actual.contract_digest)) != 0
         || actual.tag != expected.tag || actual.output_count != expected.output_count
-        || actual.preprocessing != expected.preprocessing || actual.color != expected.color || actual.padding != expected.padding) {
+        || actual.preprocessing != expected.preprocessing || actual.color != expected.color
+        || actual.padding != expected.padding) {
         return false;
     }
     if (actual.tag) {
@@ -219,8 +222,9 @@ inline bool Matches(
         for (unsigned index = 0; index <= actual.output_count; ++index) {
             const auto &left = index ? actual.outputs[index - 1] : actual.input;
             const auto &right = index ? expected.outputs[index - 1] : expected.input;
-            if (left.type != right.type || left.layout != right.layout || left.rank != right.rank || left.role != right.role
-                || left.bytes != right.bytes || left.scale != right.scale || left.zero != right.zero || left.offset != right.offset) {
+            if (left.type != right.type || left.layout != right.layout || left.rank != right.rank
+                || left.role != right.role || left.bytes != right.bytes || left.scale != right.scale
+                || left.zero != right.zero || left.offset != right.offset) {
                 return false;
             }
             for (unsigned axis = 0; axis < 4; ++axis) {

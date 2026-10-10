@@ -38,7 +38,9 @@ Result Run(const Context &context)
     const auto open_status = uai::ai::nor::NorManagement::Instance().OpenReadOnly(&accessor, 100);
     if (!open_status.Ok()) {
         char stage[64];
-        std::snprintf(stage, sizeof(stage), "nor-initialization status=%s", uai::ai::common::ErrorCodeName(open_status.Code()));
+        std::snprintf(
+            stage, sizeof(stage), "nor-initialization status=%s", uai::ai::common::ErrorCodeName(open_status.Code())
+        );
         return Failure(accessor, stage);
     }
     const auto init_ms = context.clock() - init_begin;

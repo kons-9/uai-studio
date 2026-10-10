@@ -192,39 +192,17 @@ void Label(
         std::uint8_t rows[7];
     };
     static constexpr Glyph glyphs[] = {
-        {'A', {14, 17, 17, 31, 17, 17, 17}},
-        {'B', {30, 17, 17, 30, 17, 17, 30}},
-        {'C', {14, 17, 16, 16, 16, 17, 14}},
-        {'D', {30, 17, 17, 17, 17, 17, 30}},
-        {'E', {31, 16, 16, 30, 16, 16, 31}},
-        {'F', {31, 16, 16, 30, 16, 16, 16}},
-        {'G', {14, 17, 16, 23, 17, 17, 15}},
-        {'H', {17, 17, 17, 31, 17, 17, 17}},
-        {'I', {31, 4, 4, 4, 4, 4, 31}},
-        {'K', {17, 18, 20, 24, 20, 18, 17}},
-        {'L', {16, 16, 16, 16, 16, 16, 31}},
-        {'M', {17, 27, 21, 21, 17, 17, 17}},
-        {'N', {17, 25, 25, 21, 19, 19, 17}},
-        {'O', {14, 17, 17, 17, 17, 17, 14}},
-        {'P', {30, 17, 17, 30, 16, 16, 16}},
-        {'R', {30, 17, 17, 30, 20, 18, 17}},
-        {'S', {15, 16, 16, 14, 1, 1, 30}},
-        {'T', {31, 4, 4, 4, 4, 4, 4}},
-        {'U', {17, 17, 17, 17, 17, 17, 14}},
-        {'V', {17, 17, 17, 17, 17, 10, 4}},
-        {'W', {17, 17, 17, 21, 21, 21, 10}},
-        {'X', {17, 17, 10, 4, 10, 17, 17}},
-        {'Y', {17, 17, 10, 4, 4, 4, 4}},
-        {'0', {14, 17, 19, 21, 25, 17, 14}},
-        {'1', {4, 12, 4, 4, 4, 4, 14}},
-        {'2', {14, 17, 1, 2, 4, 8, 31}},
-        {'3', {30, 1, 1, 14, 1, 1, 30}},
-        {'4', {2, 6, 10, 18, 31, 2, 2}},
-        {'5', {31, 16, 16, 30, 1, 1, 30}},
-        {'6', {14, 16, 16, 30, 17, 17, 14}},
-        {'7', {31, 1, 2, 4, 8, 8, 8}},
-        {'8', {14, 17, 17, 14, 17, 17, 14}},
-        {'9', {14, 17, 17, 15, 1, 1, 14}}
+        {'A', {14, 17, 17, 31, 17, 17, 17}}, {'B', {30, 17, 17, 30, 17, 17, 30}}, {'C', {14, 17, 16, 16, 16, 17, 14}},
+        {'D', {30, 17, 17, 17, 17, 17, 30}}, {'E', {31, 16, 16, 30, 16, 16, 31}}, {'F', {31, 16, 16, 30, 16, 16, 16}},
+        {'G', {14, 17, 16, 23, 17, 17, 15}}, {'H', {17, 17, 17, 31, 17, 17, 17}}, {'I', {31, 4, 4, 4, 4, 4, 31}},
+        {'K', {17, 18, 20, 24, 20, 18, 17}}, {'L', {16, 16, 16, 16, 16, 16, 31}}, {'M', {17, 27, 21, 21, 17, 17, 17}},
+        {'N', {17, 25, 25, 21, 19, 19, 17}}, {'O', {14, 17, 17, 17, 17, 17, 14}}, {'P', {30, 17, 17, 30, 16, 16, 16}},
+        {'R', {30, 17, 17, 30, 20, 18, 17}}, {'S', {15, 16, 16, 14, 1, 1, 30}},   {'T', {31, 4, 4, 4, 4, 4, 4}},
+        {'U', {17, 17, 17, 17, 17, 17, 14}}, {'V', {17, 17, 17, 17, 17, 10, 4}},  {'W', {17, 17, 17, 21, 21, 21, 10}},
+        {'X', {17, 17, 10, 4, 10, 17, 17}},  {'Y', {17, 17, 10, 4, 4, 4, 4}},     {'0', {14, 17, 19, 21, 25, 17, 14}},
+        {'1', {4, 12, 4, 4, 4, 4, 14}},      {'2', {14, 17, 1, 2, 4, 8, 31}},     {'3', {30, 1, 1, 14, 1, 1, 30}},
+        {'4', {2, 6, 10, 18, 31, 2, 2}},     {'5', {31, 16, 16, 30, 1, 1, 30}},   {'6', {14, 16, 16, 30, 17, 17, 14}},
+        {'7', {31, 1, 2, 4, 8, 8, 8}},       {'8', {14, 17, 17, 14, 17, 17, 14}}, {'9', {14, 17, 17, 15, 1, 1, 14}}
     };
     for (; *text && left + 5 * scale < kPanelWidth; ++text, left += 6 * scale) {
         for (const auto &glyph : glyphs) {
@@ -273,7 +251,8 @@ console::Status Command(
         std::snprintf(
             line,
             sizeof(line),
-            "UI display=%s boxes=%s frame=%lu touch=%u/%u seen=%u xy=%u,%u hit=%d ready=%u updates=%lu skipped=%llu transaction=%s faulted=%u failure=%s denied=%s\n",
+            "UI display=%s boxes=%s frame=%lu touch=%u/%u seen=%u xy=%u,%u hit=%d ready=%u updates=%lu skipped=%llu "
+            "transaction=%s faulted=%u failure=%s denied=%s\n",
             features::Value(state.Features(), 0),
             features::Value(state.Features(), 1),
             static_cast<unsigned long>(sequence),
@@ -403,8 +382,10 @@ std::size_t Register(
         Command,
         nullptr
     };
-    services.output.Write(ready ? (touch_ready ? "UI READY touch=ready\n" : "UI READY touch=error\n")
-                                : "UI ERROR display-initialization\n");
+    services.output.Write(
+        ready ? (touch_ready ? "UI READY touch=ready\n" : "UI READY touch=error\n")
+              : "UI ERROR display-initialization\n"
+    );
     return 1;
 }
 
@@ -434,15 +415,15 @@ void Tick(
         return;
     }
     Fill(0, 0, kPanelWidth, kPanelHeight, 0x2104);
-    const auto camera_color =
-        state.Render().pressed == static_cast<int>(features::Action::kShowCamera) ? 0xffe0
-        : !state.Render().faulted && !std::strcmp(features::Value(state.Features(), 0), "camera") ? 0x0588 : 0x4208;
-    const auto pipe_color =
-        state.Render().pressed == static_cast<int>(features::Action::kShowPipe2) ? 0xffe0
-        : !state.Render().faulted && !std::strcmp(features::Value(state.Features(), 0), "pipe2") ? 0x0588 : 0x4208;
-    const auto box_color =
-        state.Render().pressed == static_cast<int>(features::Action::kToggleBoxes) ? 0xffe0
-        : !state.Render().faulted && !std::strcmp(features::Value(state.Features(), 1), "on") ? 0x0588 : 0x4208;
+    const auto camera_color = state.Render().pressed == static_cast<int>(features::Action::kShowCamera) ? 0xffe0
+        : !state.Render().faulted && !std::strcmp(features::Value(state.Features(), 0), "camera")       ? 0x0588
+                                                                                                        : 0x4208;
+    const auto pipe_color = state.Render().pressed == static_cast<int>(features::Action::kShowPipe2) ? 0xffe0
+        : !state.Render().faulted && !std::strcmp(features::Value(state.Features(), 0), "pipe2")     ? 0x0588
+                                                                                                     : 0x4208;
+    const auto box_color = state.Render().pressed == static_cast<int>(features::Action::kToggleBoxes) ? 0xffe0
+        : !state.Render().faulted && !std::strcmp(features::Value(state.Features(), 1), "on")         ? 0x0588
+                                                                                                      : 0x4208;
     Fill(20, 50, 160, 60, camera_color);
     Label(40, 70, "CAM");
     Fill(210, 50, 160, 60, pipe_color);
@@ -460,18 +441,16 @@ void Tick(
     }
     Label(20, 292, value, 2);
     const char *hit_label = last_hit == static_cast<int>(features::Action::kShowCamera) ? "HIT CAMERA"
-        : last_hit == static_cast<int>(features::Action::kShowPipe2) ? "HIT PIPE2"
-        : last_hit == static_cast<int>(features::Action::kToggleBoxes) ? "HIT BOX"
-                                                                       : "HIT NONE";
+        : last_hit == static_cast<int>(features::Action::kShowPipe2)                    ? "HIT PIPE2"
+        : last_hit == static_cast<int>(features::Action::kToggleBoxes)                  ? "HIT BOX"
+                                                                                        : "HIT NONE";
     Label(20, 326, hit_label, 2);
     Label(20, 362, DiagnosticMessage(), 2);
     std::snprintf(value, sizeof(value), "UPD %lu", static_cast<unsigned long>(state.Render().updates));
     Label(20, 402, value, 2);
     if (const auto *result = state.Visible(milliseconds)) {
         const auto &rectangle = result->bounds;
-        uai::camera_pipe2::driver::SetResultOverlay(
-            true, rectangle.x, rectangle.y, rectangle.width, rectangle.height
-        );
+        uai::camera_pipe2::driver::SetResultOverlay(true, rectangle.x, rectangle.y, rectangle.width, rectangle.height);
     } else {
         uai::camera_pipe2::driver::SetResultOverlay(false, 0, 0, 0, 0);
     }

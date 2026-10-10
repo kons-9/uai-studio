@@ -29,7 +29,7 @@ model::Staging stage(
      sizeof(weights),
      weights},
     {0x91a00000,
-        blob_capacity,
+     blob_capacity,
      blob},
     expected
 );
@@ -41,7 +41,10 @@ model::MultiBackend backend;
 #else
 model::NpuBackend backend;
 #endif
-model::Execution execution(stage, backend);
+model::Execution execution(
+    stage,
+    backend
+);
 #endif
 console::Writer output{};
 bool ready = false;
@@ -66,9 +69,15 @@ console::Status Execute(
                 digest_text[byte * 2 + 1] = hex[catalog[index].contract_digest[byte] & 15];
             }
             char line[256];
-            std::snprintf(line, sizeof(line), "MODEL CATALOG id=%s kind=%lu tag=%08lx contract=%s\n",
-                          model_loader::registry[index].name, static_cast<unsigned long>(catalog[index].kind),
-                          static_cast<unsigned long>(catalog[index].tag), digest_text);
+            std::snprintf(
+                line,
+                sizeof(line),
+                "MODEL CATALOG id=%s kind=%lu tag=%08lx contract=%s\n",
+                model_loader::registry[index].name,
+                static_cast<unsigned long>(catalog[index].kind),
+                static_cast<unsigned long>(catalog[index].tag),
+                digest_text
+            );
             writer.Write(line);
         }
 #else
@@ -106,14 +115,14 @@ std::size_t Register(
     session.execution = &execution;
 #endif
     output = provided.output;
-        session.discard = []() {
+    session.discard = []() {
         SCB_CleanInvalidateDCache_by_Addr(weights, sizeof(weights));
         SCB_CleanInvalidateDCache_by_Addr(blob, blob_capacity);
-    #ifdef MODEL_LOADER_MULTI
+#ifdef MODEL_LOADER_MULTI
         SCB_CleanInvalidateDCache_by_Addr(reinterpret_cast<std::uint8_t *>(0x91000000), 0x200000);
-    #endif
+#endif
         __DSB();
-        };
+    };
     stage.BeforePublish(
         nullptr,
         [](void *,
@@ -131,8 +140,11 @@ std::size_t Register(
     );
     stage.BeforeAdopt(
         nullptr,
-        [](void *, const std::uint8_t *weight_data, std::size_t weight_bytes,
-           const std::uint8_t *blob_data, std::size_t blob_bytes) {
+        [](void *,
+           const std::uint8_t *weight_data,
+           std::size_t weight_bytes,
+           const std::uint8_t *blob_data,
+           std::size_t blob_bytes) {
             const auto aligned_weights = (weight_bytes + 31U) & ~std::size_t(31U);
             const auto aligned_blob = (blob_bytes + 31U) & ~std::size_t(31U);
             SCB_InvalidateDCache_by_Addr(const_cast<std::uint8_t *>(weight_data), aligned_weights);
@@ -146,7 +158,11 @@ std::size_t Register(
         return 0;
     }
     commands[0] = {
-        "model", "model list|stat|header <offset> <hex>|begin|adopt|chunk weights|blob <offset> <hex>|commit|input begin|chunk|commit|run|result <offset> <bytes>|abort", Execute, &session
+        "model",
+        "model list|stat|header <offset> <hex>|begin|adopt|chunk weights|blob <offset> <hex>|commit|input "
+        "begin|chunk|commit|run|result <offset> <bytes>|abort",
+        Execute,
+        &session
     };
     provided.output.Write(ready ? "MODEL READY\n" : "MODEL ERROR psram-initialization\n");
     return 1;
@@ -161,16 +177,23 @@ void Tick(
         stage.Cancel();
         session.header_bytes = 0;
     }
-    if (session.execution && session.execution->InputReceiving() && milliseconds - session.last_input > session.timeout_ms) {
+    if (session.execution && session.execution->InputReceiving()
+        && milliseconds - session.last_input > session.timeout_ms) {
         session.execution->InputCancel();
     }
     if (session.execution && session.execution->Tick(milliseconds)) {
         char line[128];
         const auto *model = stage.Verified();
-        std::snprintf(line, sizeof(line), "MODEL RESULT npu=%s output_crc=%08lx elapsed_ms=%lu kind=%lu input=%s\n",
-                      session.execution->Name(), static_cast<unsigned long>(session.execution->Crc()),
-                  static_cast<unsigned long>(session.execution->Elapsed()), static_cast<unsigned long>(model ? model->kind : 0),
-                  model && model->tag ? "uploaded" : "zeros");
+        std::snprintf(
+            line,
+            sizeof(line),
+            "MODEL RESULT npu=%s output_crc=%08lx elapsed_ms=%lu kind=%lu input=%s\n",
+            session.execution->Name(),
+            static_cast<unsigned long>(session.execution->Crc()),
+            static_cast<unsigned long>(session.execution->Elapsed()),
+            static_cast<unsigned long>(model ? model->kind : 0),
+            model && model->tag ? "uploaded" : "zeros"
+        );
         output.Write(line);
     }
 }

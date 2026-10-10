@@ -18,14 +18,27 @@
 #error "experiment-model-load requires one input and one output"
 #endif
 
-_Static_assert(STAI_NETWORK_IN_1_SIZE_BYTES > 0 && STAI_NETWORK_IN_1_SIZE_BYTES <= 0x80000,
-               "input exceeds experiment buffer");
-_Static_assert(STAI_NETWORK_OUT_1_SIZE_BYTES > 0 && STAI_NETWORK_OUT_1_SIZE_BYTES <= 0x80000,
-               "output exceeds experiment buffer");
-_Static_assert(STAI_NETWORK_IN_1_SIZE_BYTES == EXPERIMENT_MODEL_INPUT_BYTES, "input contract mismatch");
-_Static_assert(STAI_NETWORK_OUT_1_SIZE_BYTES == EXPERIMENT_MODEL_OUTPUT_BYTES, "output contract mismatch");
+_Static_assert(
+    STAI_NETWORK_IN_1_SIZE_BYTES > 0 && STAI_NETWORK_IN_1_SIZE_BYTES <= 0x80000,
+    "input exceeds experiment buffer"
+);
+_Static_assert(
+    STAI_NETWORK_OUT_1_SIZE_BYTES > 0 && STAI_NETWORK_OUT_1_SIZE_BYTES <= 0x80000,
+    "output exceeds experiment buffer"
+);
+_Static_assert(
+    STAI_NETWORK_IN_1_SIZE_BYTES == EXPERIMENT_MODEL_INPUT_BYTES,
+    "input contract mismatch"
+);
+_Static_assert(
+    STAI_NETWORK_OUT_1_SIZE_BYTES == EXPERIMENT_MODEL_OUTPUT_BYTES,
+    "output contract mismatch"
+);
 
-STAI_NETWORK_CONTEXT_DECLARE(model_context, STAI_NETWORK_CONTEXT_SIZE)
+STAI_NETWORK_CONTEXT_DECLARE(
+    model_context,
+    STAI_NETWORK_CONTEXT_SIZE
+)
 static uint8_t input[(STAI_NETWORK_IN_1_SIZE_BYTES + 31U) & ~31U] __attribute__((aligned(32)));
 static uint8_t output[(STAI_NETWORK_OUT_1_SIZE_BYTES + 31U) & ~31U] __attribute__((aligned(32)));
 #endif
@@ -62,10 +75,7 @@ static void configure_npu_security(void)
         .SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV,
     };
     HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_NPU, &master);
-    HAL_RIF_RISC_SetSlaveSecureAttributes(
-        RIF_RISC_PERIPH_INDEX_NPU,
-        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV
-    );
+    HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_NPU, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
 
     const RISAF_BaseRegionConfig_t region_template = {
         .Filtering = RISAF_FILTER_ENABLE,
@@ -79,11 +89,11 @@ static void configure_npu_security(void)
         RISAF_TypeDef *instance;
         uint32_t end_address;
     } protected_spaces[] = {
-        {RISAF4_S, RISAF4_LIMIT_ADDRESS_SPACE_SIZE},  // NPU master 0
-        {RISAF5_S, RISAF5_LIMIT_ADDRESS_SPACE_SIZE},  // NPU master 1
-        {RISAF6_S, RISAF6_LIMIT_ADDRESS_SPACE_SIZE},  // AXI SRAM3/4/5/6
-        {RISAF7_S, RISAF7_LIMIT_ADDRESS_SPACE_SIZE},  // FLEXRAM
-        {RISAF8_S, RISAF8_LIMIT_ADDRESS_SPACE_SIZE},  // NPU cache RAM
+        {RISAF4_S, RISAF4_LIMIT_ADDRESS_SPACE_SIZE},   // NPU master 0
+        {RISAF5_S, RISAF5_LIMIT_ADDRESS_SPACE_SIZE},   // NPU master 1
+        {RISAF6_S, RISAF6_LIMIT_ADDRESS_SPACE_SIZE},   // AXI SRAM3/4/5/6
+        {RISAF7_S, RISAF7_LIMIT_ADDRESS_SPACE_SIZE},   // FLEXRAM
+        {RISAF8_S, RISAF8_LIMIT_ADDRESS_SPACE_SIZE},   // NPU cache RAM
         {RISAF11_S, RISAF11_LIMIT_ADDRESS_SPACE_SIZE}, // XSPI1 PSRAM
         {RISAF15_S, RISAF15_LIMIT_ADDRESS_SPACE_SIZE}, // NPU cache config
     };
@@ -107,10 +117,7 @@ static void configure_npu_security(void)
         RIF_RCC_PERIPH_INDEX_FLEXRAM,
     };
     for (size_t index = 0; index < sizeof(secure_memories) / sizeof(secure_memories[0]); ++index) {
-        HAL_RIF_RISC_SetSlaveSecureAttributes(
-            secure_memories[index],
-            RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV
-        );
+        HAL_RIF_RISC_SetSlaveSecureAttributes(secure_memories[index], RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
     }
 }
 
@@ -174,8 +181,8 @@ bool experiment_npu_prepare(void)
     __HAL_RCC_AXISRAM4_MEM_CLK_SLEEP_ENABLE();
     __HAL_RCC_CACHEAXIRAM_MEM_CLK_SLEEP_ENABLE();
     configure_npu_security();
-    RCC->MEMENR |= RCC_MEMENR_AXISRAM3EN | RCC_MEMENR_AXISRAM4EN
-        | RCC_MEMENR_AXISRAM5EN | RCC_MEMENR_AXISRAM6EN | RCC_MEMENR_CACHEAXIRAMEN;
+    RCC->MEMENR |= RCC_MEMENR_AXISRAM3EN | RCC_MEMENR_AXISRAM4EN | RCC_MEMENR_AXISRAM5EN | RCC_MEMENR_AXISRAM6EN
+        | RCC_MEMENR_CACHEAXIRAMEN;
     RAMCFG_SRAM3_AXI->CR &= ~RAMCFG_CR_SRAMSD;
     RAMCFG_SRAM4_AXI->CR &= ~RAMCFG_CR_SRAMSD;
     RAMCFG_SRAM5_AXI->CR &= ~RAMCFG_CR_SRAMSD;
@@ -204,11 +211,20 @@ bool experiment_npu_prepare(void)
     return true;
 }
 
-void experiment_npu_registered(void) { model_initialized = true; }
-void experiment_npu_completed(void) { completed = true; }
+void experiment_npu_registered(void)
+{
+    model_initialized = true;
+}
+void experiment_npu_completed(void)
+{
+    completed = true;
+}
 
 #ifndef EXPERIMENT_MODEL_MULTI
-bool experiment_npu_start(uint32_t input_bytes, uint32_t output_bytes)
+bool experiment_npu_start(
+    uint32_t input_bytes,
+    uint32_t output_bytes
+)
 {
     if (input_bytes != STAI_NETWORK_IN_1_SIZE_BYTES || output_bytes != STAI_NETWORK_OUT_1_SIZE_BYTES
         || !experiment_npu_prepare()) {

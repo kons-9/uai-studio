@@ -44,8 +44,7 @@ Result Run(const Context &context)
             static_cast<unsigned long>(DMA2D->FGPFCCR)
         );
         context.Trace(line);
-        if ((control & DMA2D_CR_MODE) != DMA2D_M2M
-            || (output_format & DMA2D_OPFCCR_CM) != DMA2D_OUTPUT_ARGB8888) {
+        if ((control & DMA2D_CR_MODE) != DMA2D_M2M || (output_format & DMA2D_OPFCCR_CM) != DMA2D_OUTPUT_ARGB8888) {
             static char detail[64];
             std::snprintf(
                 detail,
@@ -56,13 +55,13 @@ Result Run(const Context &context)
             );
             result = {Outcome::kFail, detail};
         } else if (HAL_DMA2D_Start(
-                &handle,
-                static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(source + 8)),
-                static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(destination + 8)),
-                8,
-                8
-            ) != HAL_OK
-            || HAL_DMA2D_PollForTransfer(&handle, 100) != HAL_OK) {
+                       &handle,
+                       static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(source + 8)),
+                       static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(destination + 8)),
+                       8,
+                       8
+                   ) != HAL_OK
+                   || HAL_DMA2D_PollForTransfer(&handle, 100) != HAL_OK) {
             HAL_DMA2D_Abort(&handle);
             result = {Outcome::kFail, "dma2d-transfer-or-timeout"};
         } else {

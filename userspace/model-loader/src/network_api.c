@@ -11,37 +11,78 @@
 #define API(name) JOIN(MODEL_PREFIX, name)
 #define MODEL_CONTEXT JOIN(MODEL_PREFIX, model_context)
 
-_Static_assert(STAI_NETWORK_IN_NUM == 1, "only one input tensor is supported");
-_Static_assert(STAI_NETWORK_IN_1_SIZE_BYTES == MODEL_INPUT_BYTES, "input descriptor mismatch");
-_Static_assert(STAI_NETWORK_OUT_NUM == MODEL_OUTPUT_COUNT, "output count mismatch");
-_Static_assert(STAI_NETWORK_OUT_1_SIZE_BYTES == MODEL_OUTPUT_1_BYTES, "output 1 mismatch");
+_Static_assert(
+    STAI_NETWORK_IN_NUM == 1,
+    "only one input tensor is supported"
+);
+_Static_assert(
+    STAI_NETWORK_IN_1_SIZE_BYTES == MODEL_INPUT_BYTES,
+    "input descriptor mismatch"
+);
+_Static_assert(
+    STAI_NETWORK_OUT_NUM == MODEL_OUTPUT_COUNT,
+    "output count mismatch"
+);
+_Static_assert(
+    STAI_NETWORK_OUT_1_SIZE_BYTES == MODEL_OUTPUT_1_BYTES,
+    "output 1 mismatch"
+);
 #if MODEL_OUTPUT_COUNT > 1
-_Static_assert(STAI_NETWORK_OUT_2_SIZE_BYTES == MODEL_OUTPUT_2_BYTES, "output 2 mismatch");
+_Static_assert(
+    STAI_NETWORK_OUT_2_SIZE_BYTES == MODEL_OUTPUT_2_BYTES,
+    "output 2 mismatch"
+);
 #endif
 #if MODEL_OUTPUT_COUNT > 2
-_Static_assert(STAI_NETWORK_OUT_3_SIZE_BYTES == MODEL_OUTPUT_3_BYTES, "output 3 mismatch");
+_Static_assert(
+    STAI_NETWORK_OUT_3_SIZE_BYTES == MODEL_OUTPUT_3_BYTES,
+    "output 3 mismatch"
+);
 #endif
 #if MODEL_OUTPUT_COUNT > 3
-_Static_assert(STAI_NETWORK_OUT_4_SIZE_BYTES == MODEL_OUTPUT_4_BYTES, "output 4 mismatch");
+_Static_assert(
+    STAI_NETWORK_OUT_4_SIZE_BYTES == MODEL_OUTPUT_4_BYTES,
+    "output 4 mismatch"
+);
 #endif
 #if MODEL_OUTPUT_COUNT > 4
-_Static_assert(STAI_NETWORK_OUT_5_SIZE_BYTES == MODEL_OUTPUT_5_BYTES, "output 5 mismatch");
+_Static_assert(
+    STAI_NETWORK_OUT_5_SIZE_BYTES == MODEL_OUTPUT_5_BYTES,
+    "output 5 mismatch"
+);
 #endif
 #if MODEL_OUTPUT_COUNT > 5
-_Static_assert(STAI_NETWORK_OUT_6_SIZE_BYTES == MODEL_OUTPUT_6_BYTES, "output 6 mismatch");
+_Static_assert(
+    STAI_NETWORK_OUT_6_SIZE_BYTES == MODEL_OUTPUT_6_BYTES,
+    "output 6 mismatch"
+);
 #endif
 #if MODEL_OUTPUT_COUNT > 6
-_Static_assert(STAI_NETWORK_OUT_7_SIZE_BYTES == MODEL_OUTPUT_7_BYTES, "output 7 mismatch");
+_Static_assert(
+    STAI_NETWORK_OUT_7_SIZE_BYTES == MODEL_OUTPUT_7_BYTES,
+    "output 7 mismatch"
+);
 #endif
 #if MODEL_OUTPUT_COUNT > 7
-_Static_assert(STAI_NETWORK_OUT_8_SIZE_BYTES == MODEL_OUTPUT_8_BYTES, "output 8 mismatch");
+_Static_assert(
+    STAI_NETWORK_OUT_8_SIZE_BYTES == MODEL_OUTPUT_8_BYTES,
+    "output 8 mismatch"
+);
 #endif
 
-STAI_NETWORK_CONTEXT_DECLARE(MODEL_CONTEXT, STAI_NETWORK_CONTEXT_SIZE)
+STAI_NETWORK_CONTEXT_DECLARE(
+    MODEL_CONTEXT,
+    STAI_NETWORK_CONTEXT_SIZE
+)
 static bool initialized;
 extern bool experiment_npu_event(void);
 
-bool API(start)(uint8_t *input, uint32_t input_bytes, uint8_t **outputs, uint32_t output_count)
+bool API(start)(
+    uint8_t *input,
+    uint32_t input_bytes,
+    uint8_t **outputs,
+    uint32_t output_count
+)
 {
     if (initialized || input_bytes != STAI_NETWORK_IN_1_SIZE_BYTES || output_count != STAI_NETWORK_OUT_NUM) {
         return false;

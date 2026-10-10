@@ -180,7 +180,11 @@ static uint32_t XSPIRam_IsMspCbValid[XSPI_RAM_INSTANCES_NUMBER] = {0};
 static void XSPI_NOR_MspInit(const XSPI_HandleTypeDef *hxspi);
 static void XSPI_NOR_MspDeInit(const XSPI_HandleTypeDef *hxspi);
 static int32_t XSPI_NOR_ResetMemory(uint32_t Instance);
-static void XSPI_NOR_CaptureDiagnostic(uint32_t stage, XSPI_HandleTypeDef *handle, int32_t component_result);
+static void XSPI_NOR_CaptureDiagnostic(
+    uint32_t stage,
+    XSPI_HandleTypeDef *handle,
+    int32_t component_result
+);
 static int32_t XSPI_NOR_EnterDOPIMode(uint32_t Instance);
 static int32_t XSPI_NOR_EnterSOPIMode(uint32_t Instance);
 static int32_t XSPI_NOR_ExitOPIMode(uint32_t Instance);
@@ -284,7 +288,9 @@ int32_t BSP_XSPI_NOR_Init(
                 /* PLL1 is 1200 MHz in the camera clock profile: /6 = 200 MHz. */
                 clock.ICSelection[RCC_IC3].ClockDivider = 6U;
                 if (HAL_RCCEx_PeriphCLKConfig(&clock) != HAL_OK) {
-                    XSPI_NOR_CaptureDiagnostic(UAI_NOR_DIAG_STAGE_CLOCK_CONFIG, &hxspi_nor[Instance], (int32_t)HAL_ERROR);
+                    XSPI_NOR_CaptureDiagnostic(
+                        UAI_NOR_DIAG_STAGE_CLOCK_CONFIG, &hxspi_nor[Instance], (int32_t)HAL_ERROR
+                    );
                     ret = BSP_ERROR_PERIPH_FAILURE;
                 } else {
                     XSPIM_CfgTypeDef crossbar = {0};
@@ -292,7 +298,9 @@ int32_t BSP_XSPI_NOR_Init(
                     crossbar.IOPort = HAL_XSPIM_IOPORT_2;
                     crossbar.Req2AckTime = 1U;
                     if (HAL_XSPIM_Config(&hxspi_nor[Instance], &crossbar, HAL_XSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) {
-                        XSPI_NOR_CaptureDiagnostic(UAI_NOR_DIAG_STAGE_XSPIM_CONFIG, &hxspi_nor[Instance], (int32_t)HAL_ERROR);
+                        XSPI_NOR_CaptureDiagnostic(
+                            UAI_NOR_DIAG_STAGE_XSPIM_CONFIG, &hxspi_nor[Instance], (int32_t)HAL_ERROR
+                        );
                         ret = BSP_ERROR_PERIPH_FAILURE;
                     }
                 }
@@ -316,7 +324,9 @@ int32_t BSP_XSPI_NOR_Init(
             /* Configure the memory */
             else if ((uai_nor_bsp_stage = 5,
                       BSP_XSPI_NOR_ConfigFlash(Instance, Init->InterfaceMode, Init->TransferRate) != BSP_ERROR_NONE)) {
-                XSPI_NOR_CaptureDiagnostic(UAI_NOR_DIAG_STAGE_FLASH_CONFIG, &hxspi_nor[Instance], BSP_ERROR_COMPONENT_FAILURE);
+                XSPI_NOR_CaptureDiagnostic(
+                    UAI_NOR_DIAG_STAGE_FLASH_CONFIG, &hxspi_nor[Instance], BSP_ERROR_COMPONENT_FAILURE
+                );
                 ret = BSP_ERROR_COMPONENT_FAILURE;
             } else {
                 uai_nor_bsp_stage = 6;
@@ -1661,7 +1671,11 @@ static int32_t XSPI_NOR_ResetMemory(uint32_t Instance)
  * timeout means the controller waited for a response that never arrived. It
  * can point to a NOR protocol mismatch, clock/routing issue, CS, or power; XSPI
  * registers alone cannot identify which external condition caused it. */
-static void XSPI_NOR_CaptureDiagnostic(uint32_t stage, XSPI_HandleTypeDef *handle, int32_t component_result)
+static void XSPI_NOR_CaptureDiagnostic(
+    uint32_t stage,
+    XSPI_HandleTypeDef *handle,
+    int32_t component_result
+)
 {
     uint32_t sr = 0U;
     uint32_t error = 0U;
@@ -1687,8 +1701,7 @@ static void XSPI_NOR_CaptureDiagnostic(uint32_t stage, XSPI_HandleTypeDef *handl
     if ((error & HAL_XSPI_ERROR_TIMEOUT) != 0U) {
         /* This tests the controller's observed timeout signature, independent
          * of whether the failed component operation was a command or receive. */
-        if (((sr & HAL_XSPI_FLAG_BUSY) != 0U) &&
-            ((sr & (HAL_XSPI_FLAG_FT | HAL_XSPI_FLAG_TC)) == 0U)) {
+        if (((sr & HAL_XSPI_FLAG_BUSY) != 0U) && ((sr & (HAL_XSPI_FLAG_FT | HAL_XSPI_FLAG_TC)) == 0U)) {
             uai_nor_diag_code = UAI_NOR_DIAG_TIMEOUT_BUSY_NO_EVENT;
         } else if ((sr & HAL_XSPI_FLAG_BUSY) != 0U) {
             uai_nor_diag_code = UAI_NOR_DIAG_TIMEOUT_BUSY_WITH_EVENT;

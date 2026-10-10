@@ -10,7 +10,10 @@ namespace experiment::hwtest::tests::tim_driver {
 
 namespace {
 
-void TraceClock(const Context &context, std::uint32_t timer_hz)
+void TraceClock(
+    const Context &context,
+    std::uint32_t timer_hz
+)
 {
     char line[160];
     std::snprintf(
@@ -102,8 +105,8 @@ Result Run(const Context &context)
             const auto started_arr = TIM2->ARR;
             const auto expected_psc = handle.Init.Prescaler;
             const auto expected_arr = handle.Init.Period;
-            const bool started_registers_ok = (started_cr1 & TIM_CR1_CEN) != 0U && started_psc == expected_psc
-                                              && started_arr == expected_arr;
+            const bool started_registers_ok =
+                (started_cr1 & TIM_CR1_CEN) != 0U && started_psc == expected_psc && started_arr == expected_arr;
 
             const auto saved_demcr = CoreDebug->DEMCR;
             const auto saved_dwt_ctrl = DWT->CTRL;
@@ -133,13 +136,10 @@ Result Run(const Context &context)
                 const auto elapsed = context.clock() - begin;
                 const auto ticks = static_cast<std::uint32_t>(__HAL_TIM_GET_COUNTER(&handle) - initial);
                 const auto expected = dwt_enabled
-                                          ? static_cast<std::uint64_t>(cycles) * timer_hz / SystemCoreClock
-                                                / (handle.Init.Prescaler + 1U)
-                                          : static_cast<std::uint64_t>(elapsed) * timer_hz
-                                                / (handle.Init.Prescaler + 1U) / 1000U;
-                const auto measured_core_ms = dwt_enabled
-                                                  ? static_cast<std::uint64_t>(cycles) * 1000U / SystemCoreClock
-                                                  : 0U;
+                    ? static_cast<std::uint64_t>(cycles) * timer_hz / SystemCoreClock / (handle.Init.Prescaler + 1U)
+                    : static_cast<std::uint64_t>(elapsed) * timer_hz / (handle.Init.Prescaler + 1U) / 1000U;
+                const auto measured_core_ms =
+                    dwt_enabled ? static_cast<std::uint64_t>(cycles) * 1000U / SystemCoreClock : 0U;
                 std::snprintf(
                     line,
                     sizeof(line),
@@ -153,8 +153,8 @@ Result Run(const Context &context)
                 );
                 context.Trace(line);
 
-                if ((dwt_enabled ? cycles == 0U : elapsed == 0U)
-                    || ticks + 2000U < expected || ticks > expected + 2000U) {
+                if ((dwt_enabled ? cycles == 0U : elapsed == 0U) || ticks + 2000U < expected
+                    || ticks > expected + 2000U) {
                     static char detail[112];
                     std::snprintf(
                         detail,

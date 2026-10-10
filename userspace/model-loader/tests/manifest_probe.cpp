@@ -21,7 +21,9 @@ int main(
         if (!experiment::model::Decode(data.data(), data.size(), value)) {
             return 1;
         }
-        std::printf("%u %u %u %u %u\n", value.tag, value.input.type, value.input_bytes, value.output_count, value.output_bytes);
+        std::printf(
+            "%u %u %u %u %u\n", value.tag, value.input.type, value.input_bytes, value.output_count, value.output_bytes
+        );
         return 0;
     }
     if (count != 4) {

@@ -101,19 +101,10 @@ void ComposeDisplayFrame()
 #endif
 #if defined(EXPERIMENT_GPU_VISUAL)
         if (g_visual_overlay_preserved) {
-            ComposeVisualRow(
-                destination + destination_offset,
-                main_source + source_offset,
-                ancillary_row,
-                y
-            );
+            ComposeVisualRow(destination + destination_offset, main_source + source_offset, ancillary_row, y);
         } else {
             CopyDisplaySegment(
-                destination + destination_offset,
-                main_source + source_offset,
-                ancillary_row,
-                0U,
-                kDisplayWidth
+                destination + destination_offset, main_source + source_offset, ancillary_row, 0U, kDisplayWidth
             );
         }
 #else

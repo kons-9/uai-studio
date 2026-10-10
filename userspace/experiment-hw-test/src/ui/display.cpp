@@ -40,12 +40,19 @@ constexpr int kLogLeft = 336, kLogRight = 792, kLogTop = 132, kLogBottom = 417, 
 
 const char *ChoiceName(std::size_t index)
 {
-    if (index == 0) { return "ALL QUICK"; }
-    if (index == 1) { return "ALL-STRESS"; }
+    if (index == 0) {
+        return "ALL QUICK";
+    }
+    if (index == 1) {
+        return "ALL-STRESS";
+    }
     return experiment::hwtest::tests::cases[index - 2].name;
 }
 
-void KeepChoiceVisible(std::size_t selected, std::size_t count)
+void KeepChoiceVisible(
+    std::size_t selected,
+    std::size_t count
+)
 {
     if (selected < first_choice) {
         first_choice = selected;
@@ -89,7 +96,11 @@ struct Handlers {
     void OnCompare(const ui::Event &) { compare = true; }
 };
 
-void CopyCamera(std::uint16_t *destination, unsigned x, const std::uint16_t *source)
+void CopyCamera(
+    std::uint16_t *destination,
+    unsigned x,
+    const std::uint16_t *source
+)
 {
     if (!source) {
         return;
@@ -110,10 +121,15 @@ bool Initialize()
     master.SecPriv = RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV;
     HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC1, &master);
     HAL_RIF_RIMC_ConfigMasterAttributes(RIF_MASTER_INDEX_LTDC2, &master);
-    for (const auto peripheral : {RIF_RISC_PERIPH_INDEX_LTDC, RIF_RISC_PERIPH_INDEX_LTDCL1,
-                                  RIF_RISC_PERIPH_INDEX_LTDCL2, RIF_RCC_PERIPH_INDEX_CACHEAXIRAM,
-                                  RIF_RCC_PERIPH_INDEX_CACHECONFIG, RIF_RCC_PERIPH_INDEX_AXISRAM1,
-                                  RIF_RCC_PERIPH_INDEX_AXISRAM2, RIF_RCC_PERIPH_INDEX_FLEXRAM}) {
+    for (const auto peripheral :
+         {RIF_RISC_PERIPH_INDEX_LTDC,
+          RIF_RISC_PERIPH_INDEX_LTDCL1,
+          RIF_RISC_PERIPH_INDEX_LTDCL2,
+          RIF_RCC_PERIPH_INDEX_CACHEAXIRAM,
+          RIF_RCC_PERIPH_INDEX_CACHECONFIG,
+          RIF_RCC_PERIPH_INDEX_AXISRAM1,
+          RIF_RCC_PERIPH_INDEX_AXISRAM2,
+          RIF_RCC_PERIPH_INDEX_FLEXRAM}) {
         HAL_RIF_RISC_SetSlaveSecureAttributes(peripheral, RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
     }
     T_CMTX mutex{};
@@ -131,19 +147,26 @@ bool Initialize()
     layer.PixelFormat = LCD_PIXEL_FORMAT_RGB565;
     layer.X1 = 800;
     layer.Y1 = 480;
-    if (BSP_LCD_ConfigLayer(0, 0, &layer) != BSP_ERROR_NONE
-        || BSP_LCD_SetLayerVisible(0, 1, DISABLE) != BSP_ERROR_NONE
-        || BSP_LCD_SetLayerVisible(0, 0, ENABLE) != BSP_ERROR_NONE
-        || BSP_LCD_DisplayOn(0) != BSP_ERROR_NONE) {
+    if (BSP_LCD_ConfigLayer(0, 0, &layer) != BSP_ERROR_NONE || BSP_LCD_SetLayerVisible(0, 1, DISABLE) != BSP_ERROR_NONE
+        || BSP_LCD_SetLayerVisible(0, 0, ENABLE) != BSP_ERROR_NONE || BSP_LCD_DisplayOn(0) != BSP_ERROR_NONE) {
         return false;
     }
     ready = true;
     return true;
 }
 
-bool Ready() { return ready; }
-bool SelfTest() { return ready && IsFramebuffer(FramebufferAddress()); }
-std::uintptr_t FramebufferAddress() { return hlcd_ltdc.LayerCfg[0].FBStartAdress; }
+bool Ready()
+{
+    return ready;
+}
+bool SelfTest()
+{
+    return ready && IsFramebuffer(FramebufferAddress());
+}
+std::uintptr_t FramebufferAddress()
+{
+    return hlcd_ltdc.LayerCfg[0].FBStartAdress;
+}
 bool IsFramebuffer(std::uintptr_t address)
 {
     return address == reinterpret_cast<std::uintptr_t>(Page(0)) || address == reinterpret_cast<std::uintptr_t>(Page(1));
@@ -171,18 +194,31 @@ void Selection(const char *name)
     std::snprintf(selection, sizeof(selection), "%s", name);
 }
 
-void Progress(const char *name, unsigned current, unsigned total)
+void Progress(
+    const char *name,
+    unsigned current,
+    unsigned total
+)
 {
     tk_loc_mtx(log_mutex, TMO_FEVR);
     logs.Progress(name, current, total);
     tk_unl_mtx(log_mutex);
 }
 
-void Target(unsigned index) { target = index; }
+void Target(unsigned index)
+{
+    target = index;
+}
 
-Action Process(const std::uint16_t *pipe1, const std::uint16_t *pipe2,
-               const ui::TouchPoint &touch, std::uint32_t first, std::uint32_t second,
-               std::size_t selected, std::size_t choice_count)
+Action Process(
+    const std::uint16_t *pipe1,
+    const std::uint16_t *pipe2,
+    const ui::TouchPoint &touch,
+    std::uint32_t first,
+    std::uint32_t second,
+    std::size_t selected,
+    std::size_t choice_count
+)
 {
     if (!ready) {
         return {};
@@ -203,11 +239,9 @@ Action Process(const std::uint16_t *pipe1, const std::uint16_t *pipe2,
     if (!compare && action.kind == ActionKind::kNone) {
         if (touch.active) {
             if (!was_active) {
-                list_touch = touch.x >= kChoiceLeft && touch.x < kChoiceRight
-                    && touch.y >= kChoiceTop
+                list_touch = touch.x >= kChoiceLeft && touch.x < kChoiceRight && touch.y >= kChoiceTop
                     && touch.y < kChoiceTop + kChoiceRowHeight * kChoiceVisible;
-                log_touch = touch.x >= kLogLeft && touch.x < kLogRight
-                    && touch.y >= kLogTop && touch.y < kLogBottom;
+                log_touch = touch.x >= kLogLeft && touch.x < kLogRight && touch.y >= kLogTop && touch.y < kLogBottom;
                 list_moved = false;
                 list_drag = 0;
                 log_drag = 0;
@@ -218,8 +252,9 @@ Action Process(const std::uint16_t *pipe1, const std::uint16_t *pipe2,
                 const int steps = list_drag / kChoiceRowHeight;
                 if (steps != 0) {
                     list_drag -= steps * kChoiceRowHeight;
-                    const auto candidate = static_cast<std::size_t>(std::clamp(
-                        static_cast<int>(selected) + steps, 0, static_cast<int>(choice_count - 1)));
+                    const auto candidate = static_cast<std::size_t>(
+                        std::clamp(static_cast<int>(selected) + steps, 0, static_cast<int>(choice_count - 1))
+                    );
                     if (candidate != selected) {
                         list_moved = true;
                         KeepChoiceVisible(candidate, choice_count);
@@ -298,16 +333,24 @@ Action Process(const std::uint16_t *pipe1, const std::uint16_t *pipe2,
 
         canvas.FillRect({8, 112, 312, 304}, ui::Rgb565(16, 20, 20));
         char test_count[48];
-        std::snprintf(test_count, sizeof(test_count), "TESTS %u - SWIPE OR TAP",
-                      static_cast<unsigned>(experiment::hwtest::tests::case_count));
+        std::snprintf(
+            test_count,
+            sizeof(test_count),
+            "TESTS %u - SWIPE OR TAP",
+            static_cast<unsigned>(experiment::hwtest::tests::case_count)
+        );
         canvas.DrawText(12, 118, test_count, 1, ui::Rgb565(80, 220, 152));
         for (std::size_t row = 0; row < kChoiceVisible; ++row) {
             const auto index = first_choice + row;
-            if (index >= choice_count) { break; }
+            if (index >= choice_count) {
+                break;
+            }
             const int y = kChoiceTop + static_cast<int>(row) * kChoiceRowHeight;
             if (index == selected) {
-                canvas.FillRect({8, static_cast<std::uint16_t>(y - 2), 304,
-                                 static_cast<std::uint16_t>(kChoiceRowHeight)}, ui::Rgb565(24, 92, 60));
+                canvas.FillRect(
+                    {8, static_cast<std::uint16_t>(y - 2), 304, static_cast<std::uint16_t>(kChoiceRowHeight)},
+                    ui::Rgb565(24, 92, 60)
+                );
             }
             char choice[64];
             std::snprintf(choice, sizeof(choice), "%s", ChoiceName(index));
@@ -315,25 +358,35 @@ Action Process(const std::uint16_t *pipe1, const std::uint16_t *pipe2,
                 && std::strcmp(progress_name, experiment::hwtest::tests::cases[index - 2].name) == 0) {
                 std::snprintf(choice, sizeof(choice), "%s %u/%u", progress_name, progress_current, progress_total);
             }
-            canvas.DrawText(16, y, choice, 1,
-                index == selected ? 0xffff : ui::Rgb565(208, 220, 220));
+            canvas.DrawText(16, y, choice, 1, index == selected ? 0xffff : ui::Rgb565(208, 220, 220));
         }
-        canvas.FillRect({316, kChoiceTop, 4, kChoiceRowHeight * static_cast<int>(kChoiceVisible)},
-                        ui::Rgb565(48, 56, 56));
+        canvas.FillRect(
+            {316, kChoiceTop, 4, kChoiceRowHeight * static_cast<int>(kChoiceVisible)}, ui::Rgb565(48, 56, 56)
+        );
         const auto choice_limit = choice_count > kChoiceVisible ? choice_count - kChoiceVisible : 0;
         const int thumb_height = choice_count > kChoiceVisible
             ? (kChoiceRowHeight * static_cast<int>(kChoiceVisible) * static_cast<int>(kChoiceVisible))
                 / static_cast<int>(choice_count)
             : kChoiceRowHeight * static_cast<int>(kChoiceVisible);
         const int thumb_travel = kChoiceRowHeight * static_cast<int>(kChoiceVisible) - thumb_height;
-        const int thumb_y = choice_limit == 0 ? kChoiceTop
+        const int thumb_y = choice_limit == 0
+            ? kChoiceTop
             : kChoiceTop + thumb_travel * static_cast<int>(first_choice) / static_cast<int>(choice_limit);
-        canvas.FillRect({316, static_cast<std::uint16_t>(thumb_y), 4,
-                         static_cast<std::uint16_t>(thumb_height)}, ui::Rgb565(80, 220, 152));
+        canvas.FillRect(
+            {316, static_cast<std::uint16_t>(thumb_y), 4, static_cast<std::uint16_t>(thumb_height)},
+            ui::Rgb565(80, 220, 152)
+        );
         canvas.DrawText(336, 118, "RESULTS", 1, ui::Rgb565(80, 220, 152));
         for (std::size_t index = 0; index < LogBuffer::kVisible; ++index) {
-            canvas.DrawText(336, 132 + index * 15, lines[index].text, 1,
-                lines[index].failed ? 0xf980 : lines[index].passed ? 0x56d3 : 0xffff);
+            canvas.DrawText(
+                336,
+                132 + index * 15,
+                lines[index].text,
+                1,
+                lines[index].failed       ? 0xf980
+                    : lines[index].passed ? 0x56d3
+                                          : 0xffff
+            );
         }
     }
     static std::uint32_t fps_tick = 0, fps_first = 0, fps_second = 0;
@@ -348,17 +401,28 @@ Action Process(const std::uint16_t *pipe1, const std::uint16_t *pipe2,
         fps_tick = now;
     }
     char frames[64];
-    std::snprintf(frames, sizeof(frames), "P1 %uFPS %lu P2 %uFPS %lu", first_fps, static_cast<unsigned long>(first), second_fps, static_cast<unsigned long>(second));
+    std::snprintf(
+        frames,
+        sizeof(frames),
+        "P1 %uFPS %lu P2 %uFPS %lu",
+        first_fps,
+        static_cast<unsigned long>(first),
+        second_fps,
+        static_cast<unsigned long>(second)
+    );
     canvas.FillRect({400, 0, 400, 24}, 0);
     canvas.DrawText(408, 6, frames, 1, 0xffff);
     if (target < 5) {
-        constexpr ui::Rect targets[] = {{420, 40, 48, 48}, {732, 40, 48, 48}, {420, 412, 48, 48},
-                                      {732, 412, 48, 48}, {576, 216, 48, 48}};
+        constexpr ui::Rect targets[] = {
+            {420, 40, 48, 48}, {732, 40, 48, 48}, {420, 412, 48, 48}, {732, 412, 48, 48}, {576, 216, 48, 48}
+        };
         canvas.FillRect(targets[target], 0xffe0);
     }
     SCB_CleanDCache_by_Addr(back, 800 * 480 * 2);
     __DSB();
-    if (HAL_LTDC_SetAddress_NoReload(&hlcd_ltdc, static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(back)), LTDC_LAYER_1) != HAL_OK
+    if (HAL_LTDC_SetAddress_NoReload(
+            &hlcd_ltdc, static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(back)), LTDC_LAYER_1
+        ) != HAL_OK
         || HAL_LTDC_Reload(&hlcd_ltdc, LTDC_RELOAD_VERTICAL_BLANKING) != HAL_OK) {
         ready = false;
         return action;

@@ -49,8 +49,8 @@ Result Run(const Context &context)
             const auto first = HAL_CRC_Calculate(&handle, reinterpret_cast<std::uint32_t *>(input), 9);
             const auto second = HAL_CRC_Calculate(&handle, reinterpret_cast<std::uint32_t *>(input), 9);
             result = first == 0x0376e6e7U && second == first
-                         ? Result{Outcome::kPass, "crc32-register-config-known-vector-and-reset"}
-                         : Result{Outcome::kFail, "crc32-known-vector-mismatch"};
+                ? Result{Outcome::kPass, "crc32-register-config-known-vector-and-reset"}
+                : Result{Outcome::kFail, "crc32-known-vector-mismatch"};
         }
     }
     if (HAL_CRC_DeInit(&handle) != HAL_OK) {

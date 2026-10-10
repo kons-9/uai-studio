@@ -31,9 +31,8 @@ Result Run(const Context &context)
     context.Trace(line);
 
     const auto expected_framebuffer = static_cast<std::uint32_t>(display_log::FramebufferAddress());
-    if ((gcr & LTDC_GCR_LTDCEN) == 0U || (layer_cr & LTDC_LxCR_LEN) == 0U
-        || pixel_format != LTDC_PIXEL_FORMAT_RGB565 || !display_log::IsFramebuffer(framebuffer)
-        || (line_count & LTDC_LxCFBLNR_CFBLNBR) != kHeight) {
+    if ((gcr & LTDC_GCR_LTDCEN) == 0U || (layer_cr & LTDC_LxCR_LEN) == 0U || pixel_format != LTDC_PIXEL_FORMAT_RGB565
+        || !display_log::IsFramebuffer(framebuffer) || (line_count & LTDC_LxCFBLNR_CFBLNBR) != kHeight) {
         std::snprintf(
             line,
             sizeof(line),
