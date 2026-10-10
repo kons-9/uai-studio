@@ -274,11 +274,17 @@ async function initialize() {
     const session = await response.json();
     token = session.token;
     tools = session.tools;
+    const available = new Set(tools.map((tool) => tool.id));
+    for (const tab of document.querySelectorAll("[data-tool]")) {
+      if (available.has(tab.dataset.tool)) continue;
+      byId(tab.dataset.tool).remove();
+      tab.remove();
+    }
     byId("root-path").textContent = session.root;
     byId("session-status").textContent = "Ready";
     for (const state of Object.values(states)) if (state.runButton) state.runButton.disabled = false;
     const initial = location.hash.slice(1);
-    selectTool(states[initial] ? initial : "ui-designer");
+    selectTool(available.has(initial) ? initial : "ui-designer");
   } catch (error) {
     byId("session-status").textContent = error.message;
     byId("session-status").classList.add("error");

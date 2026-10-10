@@ -601,6 +601,10 @@ void CameraRenderTask::Run(CameraRenderContext context)
                     touch_status.LogStatus("touch");
                 } else {
                     const ui::Event event = screen_ui.HandleTouch(sample);
+                    shell::Reply touch_reply{};
+                    if (shell::ApplyTouch(event, context.camera, screen_ui, exposure_mode, &touch_reply)
+                        && touch_reply.code != 0)
+                        UAI_LOG_WARN("ui: exposure apply failed code=%d\n", static_cast<int>(touch_reply.code));
                     if (event.type == ui::EventType::kPress && context.diagnostics.display_trace) {
                         UAI_LOG_DEBUG(
                             "ui: press id=%u x=%u y=%u\n",

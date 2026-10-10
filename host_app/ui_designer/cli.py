@@ -25,6 +25,7 @@ from .schema import (
     WIDGET_TYPES,
     LayoutError,
     dump_layout,
+    load_feature_catalog,
     load_layout,
     parse_layout,
 )
@@ -62,8 +63,21 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def feature_catalog_path(layout: Path, catalog: Path | None) -> Path | None:
+    if catalog is not None:
+        return catalog
+    if layout.resolve() == _repo_root() / "userspace/ai-app/config/ui_layout.json":
+        return _repo_root() / "userspace/ai-app/config/ui_feature_catalog.json"
+    return None
+
+
+def _catalog(args: argparse.Namespace) -> dict[str, frozenset[str]] | None:
+    path = feature_catalog_path(args.layout, args.feature_catalog)
+    return load_feature_catalog(path) if path is not None else None
+
+
 def _command_validate(args: argparse.Namespace) -> int:
-    layout = load_layout(args.layout)
+    layout = load_layout(args.layout, _catalog(args))
     print(f"{args.layout}: {len(layout.screens)} screen(s), {len(layout.widgets)} widget(s), "
           f"{layout.width}x{layout.height}, namespace {layout.namespace}")
     if args.check_font:
@@ -78,7 +92,7 @@ def _command_validate(args: argparse.Namespace) -> int:
 
 
 def _command_render(args: argparse.Namespace) -> int:
-    layout = load_layout(args.layout)
+    layout = load_layout(args.layout, _catalog(args))
     pressed = frozenset(args.pressed or [])
     checked = frozenset(args.checked or [])
     button_ids = {w.id for w in layout.buttons()}
@@ -105,7 +119,7 @@ def _generated_files(layout, layout_path: Path, output: Path) -> dict[Path, str]
 
 
 def _command_generate(args: argparse.Namespace) -> int:
-    layout = load_layout(args.layout)
+    layout = load_layout(args.layout, _catalog(args))
     files = _generated_files(layout, args.layout, args.output)
     if args.check:
         stale = [path for path, text in files.items()
@@ -125,7 +139,8 @@ def _command_generate(args: argparse.Namespace) -> int:
 def _command_serve(args: argparse.Namespace) -> int:
     from .server import serve
 
-    return serve(args.layout, args.port, not args.no_browser)
+    return serve(args.layout, args.port, not args.no_browser,
+                 feature_catalog_path(args.layout, args.feature_catalog))
 
 
 # --- editing commands -------------------------------------------------------
@@ -147,7 +162,7 @@ def _read_document(path: Path) -> dict:
 
 def _save_document(args: argparse.Namespace, document: dict) -> int:
     """Validate, write the layout, and regenerate the header when requested."""
-    layout = parse_layout(document)
+    layout = parse_layout(document, _catalog(args))
     if args.header is not None:
         # Resolve bitmaps before writing so a missing PNG leaves both untouched.
         files = _generated_files(layout, args.layout, args.header)
@@ -262,6 +277,13 @@ def _apply_widget_options(widget: dict, args: argparse.Namespace) -> None:
             widget.pop(event, None)
         else:
             widget[event] = value
+    for key in ("feature", "operation"):
+        value = getattr(args, key)
+        if value is not None:
+            if value:
+                widget[key] = value
+            else:
+                widget.pop(key, None)
 
 
 def _command_init(args: argparse.Namespace) -> int:
@@ -278,7 +300,7 @@ def _command_init(args: argparse.Namespace) -> int:
 
 
 def _command_list(args: argparse.Namespace) -> int:
-    layout = load_layout(args.layout)
+    layout = load_layout(args.layout, _catalog(args))
     if args.json:
         print(json.dumps(layout.to_document(), indent=2))
         return 0
@@ -292,6 +314,8 @@ def _command_list(args: argparse.Namespace) -> int:
         for widget in screen.widgets:
             extra = [f"{event}={getattr(widget, event)}" for event in CALLBACK_EVENTS
                      if getattr(widget, event)]
+            extra += [f"{key}={getattr(widget, key)}" for key in ("feature", "operation")
+                      if getattr(widget, key)]
             if widget.is_button and widget.icon != "none":
                 extra.append(f"icon={widget.icon}")
             if widget.is_button and widget.navigate:
@@ -448,10 +472,14 @@ def _add_widget_options(parser: argparse.ArgumentParser) -> None:
         "callbacks", "handler method names called by Dispatch(); pass '' to clear")
     for event in CALLBACK_EVENTS:
         callbacks.add_argument("--" + event.replace("_", "-"), dest=event, metavar="METHOD")
+    binding = parser.add_argument_group("feature bindings")
+    binding.add_argument("--feature", metavar="ID", help="feature id; '' clears")
+    binding.add_argument("--operation", metavar="ID", help="operation id; '' clears")
 
 
 def _add_edit_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--layout", type=Path, required=True)
+    parser.add_argument("--feature-catalog", type=Path, help="feature ids and allowed operations")
     parser.add_argument("--header", type=Path,
                         help="also regenerate this C++ header after saving")
 
@@ -464,12 +492,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("validate", help="check a layout file")
     p.add_argument("--layout", type=Path, required=True)
+    p.add_argument("--feature-catalog", type=Path)
     p.add_argument("--check-font", action="store_true",
                    help="also verify the glyph table matches canvas.cpp")
     p.set_defaults(func=_command_validate)
 
     p = sub.add_parser("render", help="render a PNG preview of one screen")
     p.add_argument("--layout", type=Path, required=True)
+    p.add_argument("--feature-catalog", type=Path)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--screen", metavar="SCREEN_ID", help="screen to draw (default: first)")
     p.add_argument("--pressed", action="append", metavar="ID",
@@ -480,6 +510,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("generate", help="emit the C++ layout header")
     p.add_argument("--layout", type=Path, required=True)
+    p.add_argument("--feature-catalog", type=Path)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--check", action="store_true",
                    help="exit 1 instead of writing when the output is stale")
@@ -487,6 +518,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("serve", help="open the browser editor")
     p.add_argument("--layout", type=Path, required=True)
+    p.add_argument("--feature-catalog", type=Path)
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--no-browser", action="store_true")
     p.set_defaults(func=_command_serve)
@@ -501,6 +533,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("list", help="print the screens and widgets in a layout")
     p.add_argument("--layout", type=Path, required=True)
+    p.add_argument("--feature-catalog", type=Path)
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=_command_list)
 

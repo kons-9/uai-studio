@@ -1,0 +1,9 @@
+{
+  "features": [
+    {"id": "models", "operations": ["toggle"]},
+    {"id": "ai_exposure", "operations": ["toggle"]},
+    {"id": "boxes", "operations": ["toggle"]},
+    {"id": "confidence", "operations": ["set"]},
+    {"id": "status_period", "operations": ["set"]}
+  ]
+}

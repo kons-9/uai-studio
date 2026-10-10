@@ -238,6 +238,39 @@ TEST(
 }
 
 TEST(
+    ShellOwner,
+    TouchExposureCommitsOnlyAfterCameraAcceptsIt
+)
+{
+    FakeCamera camera;
+    FakeUi ui;
+    ui.enabled = false;
+    camera.state.auto_exposure = false;
+    camera.fail_auto = true;
+    uai::ai::shell::ExposureMode mode{true, true};
+    uai::ai::ui::Event event{};
+    event.type = uai::ai::ui::EventType::kTap;
+    event.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kAiExposure);
+    uai::ai::shell::Reply reply{};
+    EXPECT_TRUE(uai::ai::shell::ApplyTouch(event, camera, ui, mode, &reply));
+    EXPECT_NE(reply.code, 0);
+    EXPECT_FALSE(ui.AiExposureEnabled());
+    EXPECT_TRUE(mode.manual);
+    EXPECT_TRUE(mode.custom_statistics);
+
+    camera.fail_auto = false;
+    EXPECT_TRUE(uai::ai::shell::ApplyTouch(event, camera, ui, mode, &reply));
+    EXPECT_EQ(reply.code, 0);
+    EXPECT_TRUE(ui.AiExposureEnabled());
+    EXPECT_TRUE(camera.state.auto_exposure);
+    EXPECT_FALSE(mode.manual);
+    EXPECT_FALSE(mode.custom_statistics);
+
+    event.type = uai::ai::ui::EventType::kPress;
+    EXPECT_FALSE(uai::ai::shell::ApplyTouch(event, camera, ui, mode, &reply));
+}
+
+TEST(
     ShellCommands,
     ValidatesArgumentsAndRoutesRequests
 )

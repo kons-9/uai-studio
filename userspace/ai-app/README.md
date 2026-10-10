@@ -93,6 +93,8 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 
 メモリ配置はビルド時に`host_app/auto_static_memory_layout`が解決し、リンカスクリプトと`static_memory_layout`用ヘッダを`build-ai-app-person/generated/`へ生成します。
 
+UIの機能IDと操作IDは`config/ui_feature_catalog.json`に定義します。`config/ui_layout.json`の`feature`/`operation`はこれと照合され、`make ui-layout`でC++のバインディングを生成します。MakeまたはCMakeからのビルド時には`ui-layout-check`で生成物の一致も確認します。AI露出のタッチはカメラ所有タスクでシェルと同じHW適用経路を通り、失敗した場合は表示状態を切り替えません。現時点の機能カタログはID一覧であり、機能間制約や表示・操作可否を定義するものではありません。
+
 画面は2つあります。カメラ画面では下段の角丸の`PERSON`、`FACE`、`SEG`ボタンが各モデルの推論を有効/無効にし（有効なモデルは色付き）、カプセル形の`BOXES`は検出枠とマスクの表示を切り替えます。上端のラベルはモデルごとの推論レート（`PERSON 7.5  FACE 7.3  SEG --  FPS`）、右側の数値表示`DET`は直近の検出数です。右の十字パッドはカメラの背面ホイールのように使います。上下で最小信頼度を±5 %、左右でモデルの組み合わせ（プリセット）を前後に切り替え、中央で`BOXES`をトグル、指をリングに沿って回すと45°ごとに最小信頼度が5 %ずつ変わります。右上の丸いハンバーガーをタップすると単色背景の設定画面に切り替わり、スライダーで表示する枠の最小信頼度（`MIN CONFIDENCE %`。パッドでの変更も反映されます）、ダイヤルでステータスの更新周期（`STATUS MS`、100〜2000 ms）を変えられます。`MODELS`ホイールを上下にドラッグするか、その右の三角の矢印キーをタップするとモデルの組み合わせ（`ALL`、`PERSON`、`FACE`、`SEG`、`PERSON+FACE`）を一度に選べ、カメラ画面のボタンと互いに同期します。`PERSON FPS`は人物検出のレートを数値で出し、右上にはロゴ画像（`config/ui/logo.png`）を表示します。左上の丸い矢印でカメラ画面に戻ります。操作はUARTに`ui: tap id=4 models=6`、`ui: screen=1`、`ui: min confidence=35%`、`ui: wheel=FACE models=2`のように出ます。タッチコントローラ（GT911、I2C2）の初期化に失敗しても起動は続行し、`touch: controller unavailable; on-screen UI disabled`を出します。ウィジェットや画面の追加・変更は`make -C userspace/ai-app ui-designer`（または`host_app/ui_designer`のCLI）で行い、`make -C userspace/ai-app ui-layout`でヘッダを再生成します。ハンドラは`src/ui/app_ui.cpp`にあります（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。
 
 ## 主な生成物

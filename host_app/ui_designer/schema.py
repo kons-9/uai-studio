@@ -55,7 +55,7 @@ GEOMETRY_KEYS = ("x", "y", "width", "height")
 SLIDER_RANGE_KEYS = ("min", "max", "step", "value")
 WIDGET_KEYS = frozenset(
     ("type", "id", "label", "text", "style", "icon", "shape", "navigate",
-     "items", "unit", "decimals", "source", "transparent", "center")
+    "items", "unit", "decimals", "source", "transparent", "center", "feature", "operation")
     + GEOMETRY_KEYS + CALLBACK_EVENTS + SLIDER_RANGE_KEYS)
 SCREEN_KEYS = frozenset(("id", "background", "widgets"))
 ALIGNMENTS = ("left", "center", "right")
@@ -264,6 +264,8 @@ class Widget:
     on_tap: str = ""
     on_press: str = ""
     on_change: str = ""
+    feature: str = ""
+    operation: str = ""
     icon: str = "none"
     shape: str = "rectangle"
     navigate: str = ""
@@ -341,6 +343,10 @@ class Widget:
             name = getattr(self, event)
             if name:
                 entry[event] = name
+        if self.feature:
+            entry["feature"] = self.feature
+        if self.operation:
+            entry["operation"] = self.operation
         if not self.is_image:
             entry["style"] = self.style.to_document()
         return entry
@@ -603,6 +609,30 @@ def _identifier(value: Any, context: str) -> str:
     return value
 
 
+def parse_feature_catalog(document: Any) -> dict[str, frozenset[str]]:
+    if not isinstance(document, dict) or set(document) != {"features"} or not isinstance(document["features"], list):
+        raise LayoutError("feature catalog must contain a features list")
+    catalog: dict[str, frozenset[str]] = {}
+    for index, entry in enumerate(document["features"]):
+        context = f"features[{index}]"
+        if not isinstance(entry, dict) or set(entry) != {"id", "operations"} or not isinstance(entry["operations"], list):
+            raise LayoutError(f"{context} needs an id and operations list")
+        feature = _identifier(entry["id"], f"{context}.id")
+        operations = [_identifier(operation, f"{context}.operations") for operation in entry["operations"]]
+        if feature in catalog or len(operations) != len(set(operations)):
+            raise LayoutError(f"{context} contains duplicate feature or operation ids")
+        catalog[feature] = frozenset(operations)
+    return catalog
+
+
+def load_feature_catalog(path: Path) -> dict[str, frozenset[str]]:
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise LayoutError(f"could not read feature catalog {path}: {error}") from error
+    return parse_feature_catalog(document)
+
+
 def _parse_widget(raw: Any, context: str, width: int, height: int,
                   allowed: frozenset[str]) -> Widget:
     if not isinstance(raw, dict):
@@ -618,7 +648,18 @@ def _parse_widget(raw: Any, context: str, width: int, height: int,
     y = _int(raw.get("y"), f"{context}.y", 0, height - 1)
     w = _int(raw.get("width"), f"{context}.width", 1, width - x)
     h = _int(raw.get("height"), f"{context}.height", 1, height - y)
-    base = dict(type=widget_type, id=widget_id, x=x, y=y, width=w, height=h)
+    feature = raw.get("feature", "")
+    operation = raw.get("operation", "")
+    if feature != "":
+        feature = _identifier(feature, f"{context}.feature")
+    if operation != "":
+        operation = _identifier(operation, f"{context}.operation")
+    if operation and not feature:
+        raise LayoutError(f"{context}.operation requires a feature")
+    if operation and widget_type not in ("button", "slider", "dial", "wheel", "pad"):
+        raise LayoutError(f"{context}: {widget_type}s do not support operations")
+    base = dict(type=widget_type, id=widget_id, x=x, y=y, width=w, height=h,
+                feature=feature, operation=operation)
 
     if widget_type == "button":
         _reject_keys(raw, ("text", "items", "unit", "decimals", "source", "transparent", "center")
@@ -760,7 +801,7 @@ def _parse_screen(raw: Any, context: str, width: int, height: int,
     return Screen(id=screen_id, background=background, widgets=widgets)
 
 
-def parse_layout(document: Any) -> Layout:
+def parse_layout(document: Any, features: dict[str, frozenset[str]] | None = None) -> Layout:
     if not isinstance(document, dict):
         raise LayoutError("layout root must be an object")
     version = document.get("schema_version", SCHEMA_VERSION)
@@ -799,15 +840,22 @@ def parse_layout(document: Any) -> Layout:
         if widget.navigate and widget.navigate not in screen_ids:
             raise LayoutError(
                 f"widget {widget.id!r} navigates to unknown screen {widget.navigate!r}")
+        if widget.feature:
+            if features is None:
+                raise LayoutError(f"widget {widget.id!r} requires a feature catalog")
+            if widget.feature not in features:
+                raise LayoutError(f"widget {widget.id!r} references unknown feature {widget.feature!r}")
+            if widget.operation and widget.operation not in features[widget.feature]:
+                raise LayoutError(f"widget {widget.id!r} references unknown operation {widget.operation!r}")
     return Layout(width=width, height=height, namespace=namespace, screens=screens)
 
 
-def load_layout(path: Path) -> Layout:
+def load_layout(path: Path, features: dict[str, frozenset[str]] | None = None) -> Layout:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise LayoutError(f"could not read {path}: {error}") from error
-    return parse_layout(document)
+    return parse_layout(document, features)
 
 
 def dump_layout(layout: Layout) -> str:

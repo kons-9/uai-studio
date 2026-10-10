@@ -106,7 +106,7 @@ const uai::ai::ui::ButtonSpec &ButtonOf(uai::ai::app_ui::WidgetId id)
     return uai::ai::app_ui::kMainButtons[0];
 }
 
-void Tap(
+uai::ai::ui::Event Tap(
     uai::ai::app_ui::AppUi &ui,
     uai::ai::app_ui::WidgetId id
 )
@@ -117,7 +117,7 @@ void Tap(
          static_cast<std::uint16_t>(bounds.x + bounds.width / 2U),
          static_cast<std::uint16_t>(bounds.y + bounds.height / 2U)}
     );
-    ui.HandleTouch({false, 0U, 0U});
+    return ui.HandleTouch({false, 0U, 0U});
 }
 
 std::vector<std::uint16_t> PaintToPixels(
@@ -318,8 +318,10 @@ TEST(
         return PixelAt(pixels, static_cast<std::uint16_t>(bounds.x + 6U), static_cast<std::uint16_t>(bounds.y + 6U));
     };
     EXPECT_EQ(sample(), ButtonOf(uai::ai::app_ui::WidgetId::kAiExposure).style.checked_fill);
-    Tap(ui, uai::ai::app_ui::WidgetId::kAiExposure);
-    EXPECT_FALSE(ui.AiExposureEnabled());
+    const auto exposure_tap = Tap(ui, uai::ai::app_ui::WidgetId::kAiExposure);
+    EXPECT_EQ(exposure_tap.type, uai::ai::ui::EventType::kTap);
+    EXPECT_TRUE(ui.AiExposureEnabled());
+    ui.SetAiExposureEnabled(false);
     EXPECT_TRUE(ui.ShowBoxes());
     EXPECT_EQ(sample(), ButtonOf(uai::ai::app_ui::WidgetId::kAiExposure).style.fill);
     uai::ai::exposure_control::Values exposure{};
@@ -332,6 +334,8 @@ TEST(
     EXPECT_FALSE(ui.ShowBoxes());
     EXPECT_FALSE(ui.AiExposureEnabled());
     Tap(ui, uai::ai::app_ui::WidgetId::kAiExposure);
+    EXPECT_FALSE(ui.AiExposureEnabled());
+    ui.SetAiExposureEnabled(true);
     EXPECT_TRUE(ui.AiExposureEnabled());
     ui.UpdateStatus(2U, &exposure);
     EXPECT_STREQ(ui.ExposureText(), "AE FULL 12000us 0mdB");
@@ -452,7 +456,6 @@ TEST(
         std::int32_t last_value = 0;
         uai::ai::app_ui::ScreenId shown = uai::ai::app_ui::ScreenId::kMain;
         void OnToggleBoxesTap(const uai::ai::ui::Event &) { ++taps; }
-        void OnAiExposureTap(const uai::ai::ui::Event &) { ++taps; }
         void OnPersonTap(const uai::ai::ui::Event &) { ++taps; }
         void OnFaceTap(const uai::ai::ui::Event &) { ++taps; }
         void OnSegmentationTap(const uai::ai::ui::Event &) { ++taps; }
@@ -477,8 +480,8 @@ TEST(
     EXPECT_EQ(handlers.taps, 0);
 
     tap.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kAiExposure);
-    EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, tap));
-    EXPECT_EQ(handlers.taps, 1);
+    EXPECT_FALSE(uai::ai::app_ui::Dispatch(handlers, tap));
+    EXPECT_EQ(handlers.taps, 0);
 
     uai::ai::ui::Event change{};
     change.type = uai::ai::ui::EventType::kChange;

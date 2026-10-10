@@ -4,18 +4,21 @@ import base64
 import json
 import subprocess
 import sys
+import tempfile
 import threading
 import unittest
 from unittest.mock import patch
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from . import cli, gui
 
 
 class UnifiedGuiTest(unittest.TestCase):
     def setUp(self):
-        self.server = gui.create_server(gui.build_parser().parse_args(["--port", "0"]))
+        self.server = gui.create_server(gui.build_parser().parse_args([
+            "--port", "0", "--features", str(gui.ROOT / "userspace/experiment-ui-control/config/features.json")]))
         self.worker = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.worker.start()
         self.url = f"http://127.0.0.1:{self.server.server_port}"
@@ -44,6 +47,8 @@ class UnifiedGuiTest(unittest.TestCase):
         layout = self.get("/ui/api/layout")
         memory = self.get("/memory/api/inputs")
         constraints = self.get("/constraints/api/document")
+        self.assertEqual(layout["features"]["models"], ["toggle"])
+        self.assertEqual(layout["features"]["confidence"], ["set"])
         self.assertEqual(len({self.token, layout["token"], memory["token"], constraints["token"]}), 4)
         self.assertTrue(self.post(layout["layout"], layout["token"], "/ui/api/validate")["ok"])
         result = self.post({"document": constraints["document"]}, constraints["token"], "/constraints/api/check")
@@ -55,6 +60,57 @@ class UnifiedGuiTest(unittest.TestCase):
         for path in ("/memory/app.js", "/memory/style.css", "/constraints/app.js", "/lucide.min.js"):
             with urllib.request.urlopen(self.url + path) as response:
                 self.assertGreater(len(response.read()), 100)
+
+    def test_host_editors_start_without_userspace_code_or_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            layout = root / "ui.json"
+            layout.write_text(json.dumps({
+                "schema_version": 2, "screen": {"width": 320, "height": 240},
+                "screens": [{"id": "main", "background": "camera", "widgets": []}],
+            }))
+            for name in ("board", "application", "model_config"):
+                (root / f"{name}.json").write_text("{}")
+            args = gui.build_parser().parse_args([
+                "--port", "0", "--layout", str(layout),
+                "--board", str(root / "board.json"),
+                "--application", str(root / "application.json"),
+                "--model-config", str(root / "model_config.json"),
+                "--models-dir", str(root), "--linker-base", str(root / "base.ld"),
+            ])
+            with patch.object(gui, "import_module", side_effect=AssertionError("userspace import")):
+                server = gui.create_server(args)
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                url = f"http://127.0.0.1:{server.server_port}"
+                with urllib.request.urlopen(url + "/api/session") as response:
+                    session = json.load(response)
+                self.assertEqual({item["id"] for item in session["tools"]}, {
+                    "ui-designer", "memory-layout", "ai-model-monitor", "cpu-task-monitor"})
+                with urllib.request.urlopen(url + "/ui/api/layout") as response:
+                    self.assertEqual(json.load(response)["layout"]["screen"]["width"], 320)
+                with urllib.request.urlopen(url + "/memory/api/inputs") as response:
+                    self.assertEqual(json.load(response)["inputs"], {
+                        "board": {}, "application": {}, "model_config": {}})
+                with urllib.request.urlopen(url + "/lucide.min.js") as response:
+                    self.assertGreater(len(response.read()), 100)
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    urllib.request.urlopen(url + "/constraints/")
+                self.assertEqual(caught.exception.code, 404)
+                caught.exception.close()
+                request = urllib.request.Request(url + "/api/run", data=json.dumps({
+                    "tool": "feature-constraints", "arguments": ["--help"]}).encode(),
+                    headers={"X-Editor-Token": session["token"]})
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    urllib.request.urlopen(request)
+                self.assertEqual(caught.exception.code, 400)
+                caught.exception.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                worker.join()
+                server.session.temporary.cleanup()
 
     def test_upload_runs_cli_and_artifacts_match_direct_decode(self):
         sample = gui.ROOT / "host_app/ai_model_monitor/sample/ai_model_monitor.bin"

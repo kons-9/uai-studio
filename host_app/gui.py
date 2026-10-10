@@ -18,20 +18,20 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import import_module
 from urllib.parse import quote, unquote, urlsplit
-import webbrowser
 
 from .cli import TOOLS
+from .web_server import create_loopback_server, loopback_host, send_bytes, send_json, serve_loopback
 
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = Path(__file__).with_name("static")
-CONSTRAINTS = ROOT / "userspace/experiment-ui-control/tool/feature_constraints"
 CLI_TIMEOUT = 120
 MAX_BODY = 16 * 1024 * 1024
 
 
 class Session:
-    def __init__(self):
+    def __init__(self, tools: dict[str, tuple[str, str]]):
+        self.tools = tools
         self.token = secrets.token_urlsafe(32)
         self.temporary = tempfile.TemporaryDirectory(prefix="uai-host-")
         self.directory = Path(self.temporary.name)
@@ -39,7 +39,7 @@ class Session:
 
     def run(self, payload: dict) -> dict:
         tool = payload.get("tool")
-        if tool not in TOOLS:
+        if tool not in self.tools:
             raise ValueError("unknown CLI tool")
         arguments = payload.get("arguments", [])
         if isinstance(arguments, str):
@@ -108,7 +108,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=8768, help="localhost port; 0 chooses a free port")
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--layout", type=Path, default=app / "config/ui_layout.json")
-    parser.add_argument("--features", type=Path, default=ROOT / "userspace/experiment-ui-control/config/features.json")
+    parser.add_argument("--ui-feature-catalog", type=Path,
+                        help="feature ids and operations for the UI designer")
+    parser.add_argument("--features", type=Path, help="enable the optional feature constraints editor")
     parser.add_argument("--board", type=Path, default=app / "config/board_memory.json")
     parser.add_argument("--application", type=Path, default=app / "config/application_memory.json")
     parser.add_argument("--models-dir", type=Path, default=app / "models")
@@ -118,43 +120,40 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def create_server(args) -> ThreadingHTTPServer:
+    from .ui_designer.cli import feature_catalog_path
     from .ui_designer.server import EditorState, _make_handler
     from .auto_static_memory_layout.gui import Editor, make_handler
-    constraint_handler = import_module(TOOLS["feature-constraints"][0].rsplit(".", 1)[0] + ".gui").make_handler
 
     memory = Editor(ROOT, args.board, args.application, args.models_dir,
                     args.model_config, args.linker_base)
     mounts = {
-        "/ui/": _make_handler(EditorState(args.layout), embedded=True),
+        "/ui/": _make_handler(
+            EditorState(args.layout, feature_catalog_path(args.layout, args.ui_feature_catalog)), embedded=True),
         "/memory/": make_handler(memory, embedded=True),
-        "/constraints/": constraint_handler(args.features, embedded=True),
     }
-    session = Session()
+    if args.features is not None:
+        constraint_handler = import_module(TOOLS["feature-constraints"][0].rsplit(".", 1)[0] + ".gui").make_handler
+        mounts["/constraints/"] = constraint_handler(args.features, embedded=True)
+    available = {key: value for key, value in TOOLS.items() if value[0].startswith("host_app.")}
+    if args.features is not None:
+        available["feature-constraints"] = TOOLS["feature-constraints"]
+    session = Session(available)
+    csp = ("default-src 'self'; style-src 'self' https://fonts.googleapis.com; "
+           "font-src 'self' https://fonts.gstatic.com; img-src 'self' blob:; "
+           "frame-src 'self'; frame-ancestors 'none'; base-uri 'none'")
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *arguments):
             pass
 
         def send(self, status, body: bytes, content_type: str):
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Security-Policy",
-                             "default-src 'self'; style-src 'self' https://fonts.googleapis.com; "
-                             "font-src 'self' https://fonts.gstatic.com; img-src 'self' blob:; "
-                             "frame-src 'self'; frame-ancestors 'none'; base-uri 'none'")
-            self.end_headers()
-            self.wfile.write(body)
+            send_bytes(self, status, body, content_type, csp)
 
         def json(self, status, payload):
-            self.send(status, json.dumps(payload).encode(), "application/json; charset=utf-8")
+            send_json(self, status, payload, csp)
 
         def route(self, method: str) -> bool:
-            if self.headers.get("Host") not in {
-                f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}",
-            }:
+            if not loopback_host(self.headers.get("Host"), self.server.server_port):
                 self.json(HTTPStatus.FORBIDDEN, {"error": "loopback Host required"})
                 return True
             for prefix, handler_type in mounts.items():
@@ -173,12 +172,12 @@ def create_server(args) -> ThreadingHTTPServer:
             if path == "/api/session":
                 self.json(HTTPStatus.OK, {
                     "token": session.token, "root": str(ROOT),
-                    "tools": [{"id": key, "name": value[1]} for key, value in TOOLS.items()],
+                    "tools": [{"id": key, "name": value[1]} for key, value in session.tools.items()],
                 })
                 return
             assets = {"/": STATIC / "index.html", "/app.js": STATIC / "app.js",
                       "/style.css": STATIC / "style.css",
-                      "/lucide.min.js": CONSTRAINTS / "static/lucide.min.js"}
+                      "/lucide.min.js": STATIC / "lucide.min.js"}
             file = assets.get(path)
             if path.startswith("/artifacts/"):
                 file = (session.directory / path.removeprefix("/artifacts/")).resolve()
@@ -221,7 +220,7 @@ def create_server(args) -> ThreadingHTTPServer:
                 self.json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(error)})
 
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+        server = create_loopback_server(args.port, Handler)
     except OSError:
         session.temporary.cleanup()
         raise
@@ -236,15 +235,9 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError) as error:
         print(f"host_app: {error}", file=sys.stderr)
         return 2
-    url = f"http://127.0.0.1:{server.server_port}/"
-    print(f"UAI Studio: {url} (Ctrl-C to stop)", flush=True)
-    if not args.no_browser:
-        webbrowser.open(url)
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
+        serve_loopback(server, not args.no_browser,
+                       lambda url: print(f"UAI Studio: {url} (Ctrl-C to stop)", flush=True))
     finally:
-        server.server_close()
         server.session.temporary.cleanup()
     return 0

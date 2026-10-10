@@ -356,6 +356,17 @@ def generate_header(layout: Layout, source_name: str,
         lines.append(f"    k{pascal_case(widget.id)} = {index}U,")
     lines += ["};", ""]
 
+    bound = [widget for widget in layout.widgets if widget.feature]
+    if bound:
+        lines += [
+            "struct FeatureBinding { WidgetId widget; const char *feature; const char *operation; };",
+            "inline constexpr FeatureBinding kFeatureBindings[] = {",
+        ]
+        for widget in bound:
+            lines.append(f"    {{WidgetId::k{pascal_case(widget.id)}, "
+                         f"{_cpp_string(widget.feature)}, {_cpp_string(widget.operation)}}},")
+        lines += ["};", ""]
+
     for screen in layout.screens:
         lines += _screen_tables(screen, bitmaps or {})
 

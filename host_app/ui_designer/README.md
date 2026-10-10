@@ -165,6 +165,22 @@ bool Dispatch(Handlers &handlers, const ui::Event &event);   // 呼んだらtrue
 
 `schema_version: 1`（トップレベルに`widgets`）のファイルはカメラ背景の`main`画面1つとして読み込み、編集コマンドで保存すると2に更新します。
 
+### 機能参照（ホスト側）
+
+機能宣言のID一覧を`--feature-catalog`で渡すと、ウィジェットの`feature`（全種類）と`operation`（button/slider/dial/wheel/padのみ）を検証して編集できます。`operation`は同じ`feature`に宣言されている必要があり、機能ID・操作IDの未知値や一覧なしの参照は拒否されます。ブラウザのPropertiesにも選択欄を表示します。機能やHWの状態を変更する実装はここには含みません。
+
+```json
+{"features": [{"id": "boxes", "operations": ["enable", "disable"]}]}
+```
+
+```sh
+python3 host_app/ui_designer validate --layout ui_layout.json --feature-catalog feature_catalog.json
+python3 host_app/ui_designer serve --layout ui_layout.json --feature-catalog feature_catalog.json
+python3 host_app/ui_designer generate --layout ui_layout.json --feature-catalog feature_catalog.json --output ui_layout.hpp
+```
+
+このJSONはホスト用のID一覧です。将来の本番機能宣言から同じID一覧を生成・照合するまで、宣言の正本や操作の意味をこのファイルで重複定義しないでください。参照がある場合だけ、生成ヘッダに`kFeatureBindings`が追加されます。既存の参照なしレイアウトと生成ヘッダは変わりません。
+
 ## 生成されるヘッダ
 
 `namespace`の中に`kScreenWidth`、`kScreenHeight`、`enum class ScreenId`、`enum class WidgetId`（全画面）、ホイールの選択肢`k<Id>Items[]`、画面ごとの`k<Screen>Buttons[]`/`k<Screen>Labels[]`/`k<Screen>Sliders[]`/`k<Screen>Dials[]`/`k<Screen>Wheels[]`/`k<Screen>Numbers[]`/`k<Screen>Images[]`/`k<Screen>Pads[]`（空なら省略）、`ScreenId`で引く`constexpr ui::ScreenSpec kScreens[]`と`kScreenCount`、`Dispatch()`を出します。画像があるときは同じディレクトリに`<stem>_images.hpp`（`k<Id>Pixels[]`）も書き、ヘッダから`#include`します。ビットマップは`[[gnu::section(".ui_assets")]]`を付けて出すので、`.rodata`を太らせません。ai-appのリンカスクリプトは`.ui_assets`を固定アドレスの`uai_ram_entry`より後ろに置いています（独自のリンカスクリプトでも同様に出力セクションを足してください。無ければorphanセクションとして配置されます）。実機では`ui::Screen screen(kScreens[i])`として使い、カメラ背景の画面は`LcdManagement::ComposeAndPresent()`、単色の画面は`PresentOverlay()`に渡します（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。ヘッダは生成物ですがリポジトリに入れており、`generate --check`で両方が最新かどうかを確認できます。

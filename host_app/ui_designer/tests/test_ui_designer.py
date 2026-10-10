@@ -170,6 +170,66 @@ class SchemaTest(unittest.TestCase):
         with self.assertRaises(schema.LayoutError):
             schema.parse_layout(_document(_button(on_tab="OnBoxes")))
 
+    def test_feature_bindings_require_a_known_feature_and_operation(self):
+        catalog = {"boxes": frozenset({"toggle"})}
+        document = _document(_button(feature="boxes", operation="toggle"))
+        layout = schema.parse_layout(document, catalog)
+        self.assertEqual(layout.buttons()[0].operation, "toggle")
+        self.assertEqual(schema.parse_layout(json.loads(schema.dump_layout(layout)), catalog), layout)
+        with self.assertRaisesRegex(schema.LayoutError, "requires a feature catalog"):
+            schema.parse_layout(document)
+        with self.assertRaisesRegex(schema.LayoutError, "unknown feature"):
+            schema.parse_layout(document, {"other": frozenset()})
+        with self.assertRaisesRegex(schema.LayoutError, "unknown operation"):
+            schema.parse_layout(document, {"boxes": frozenset()})
+        with self.assertRaisesRegex(schema.LayoutError, "requires a feature"):
+            schema.parse_layout(_document(_button(operation="toggle")), catalog)
+        with self.assertRaisesRegex(schema.LayoutError, "do not support operations"):
+            schema.parse_layout(_document(_label(feature="boxes", operation="toggle")), catalog)
+        with self.assertRaisesRegex(schema.LayoutError, "must match"):
+            schema.parse_layout(_document(_button(feature=None)), catalog)
+
+    def test_feature_catalog_validates_ids_and_duplicates(self):
+        self.assertEqual(schema.parse_feature_catalog({"features": [
+            {"id": "boxes", "operations": ["toggle", "disable"]},
+        ]}), {"boxes": frozenset({"toggle", "disable"})})
+        for document in (
+            {"features": [{"id": "boxes", "operations": []}, {"id": "boxes", "operations": []}]},
+            {"features": [{"id": "boxes", "operations": ["toggle", "toggle"]}]},
+            {"features": [{"id": "BadId", "operations": []}]},
+            {"features": [{"id": "boxes", "operations": ["unsafe-op"]}]},
+            {"features": [{"id": "boxes"}]},
+        ):
+            with self.subTest(document=document), self.assertRaises(schema.LayoutError):
+                schema.parse_feature_catalog(document)
+
+    def test_feature_binding_header_and_cli_require_catalog(self):
+        from ui_designer.cli import main
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            layout_path = root / "ui.json"
+            catalog_path = root / "features.json"
+            header = root / "ui.hpp"
+            layout_path.write_text(json.dumps(_document(_button(feature="boxes", operation="toggle"))))
+            catalog_path.write_text(json.dumps({"features": [{"id": "boxes", "operations": ["toggle"]}]}))
+            self.assertEqual(main(["validate", "--layout", str(layout_path)]), 2)
+            args = ["--layout", str(layout_path), "--feature-catalog", str(catalog_path)]
+            self.assertEqual(main(["validate", *args]), 0)
+            self.assertEqual(main(["generate", *args, "--output", str(header)]), 0)
+            self.assertIn('{WidgetId::kToggleBoxes, "boxes", "toggle"}', header.read_text())
+            self.assertEqual(main(["generate", *args, "--output", str(header), "--check"]), 0)
+            catalog_path.write_text(json.dumps({"features": [{"id": "boxes", "operations": []}]}))
+            self.assertEqual(main(["generate", *args, "--output", str(header), "--check"]), 2)
+            catalog_path.write_text(json.dumps({"features": [{"id": "boxes", "operations": ["toggle"]}]}))
+            original = layout_path.read_text()
+            self.assertEqual(main(["set", *args, "--id", "toggle_boxes", "--operation", "bad"]), 2)
+            self.assertEqual(layout_path.read_text(), original)
+            self.assertEqual(main(["set", *args, "--id", "toggle_boxes", "--feature", "other"]), 2)
+            self.assertEqual(layout_path.read_text(), original)
+            self.assertEqual(main(["set", *args, "--id", "toggle_boxes", "--operation", ""]), 0)
+            self.assertNotIn("operation", json.loads(layout_path.read_text())["screens"][0]["widgets"][0])
+
     def test_rgb565_matches_device_formula(self):
         self.assertEqual(schema.rgb565("#FFFFFF"), 0xFFFF)
         self.assertEqual(schema.rgb565("#FF0000"), 0xF800)
@@ -655,10 +715,14 @@ class EmitTest(unittest.TestCase):
     def test_checked_in_header_is_current(self):
         layout_path = REPO_ROOT / "userspace/ai-app/config/ui_layout.json"
         header_path = REPO_ROOT / "userspace/ai-app/src/ui/ui_layout.hpp"
-        layout = schema.load_layout(layout_path)
+        catalog = schema.load_feature_catalog(
+            REPO_ROOT / "userspace/ai-app/config/ui_feature_catalog.json")
+        layout = schema.load_layout(layout_path, catalog)
         bitmaps = emit_cpp.load_bitmaps(layout, layout_path)
         images_path = emit_cpp.images_header_name(header_path)
         expected = emit_cpp.generate_header(layout, layout_path.name, bitmaps, images_path.name)
+        self.assertEqual(len([widget for widget in layout.widgets if widget.feature]), 7)
+        self.assertIn('{WidgetId::kToggleBoxes, "boxes", "toggle"}', expected)
         self.assertEqual(header_path.read_text(encoding="utf-8"), expected)
         self.assertEqual(images_path.read_text(encoding="utf-8"),
                          emit_cpp.generate_images_header(layout, bitmaps, layout_path.name))
@@ -961,6 +1025,42 @@ class CliTest(unittest.TestCase):
 
 
 class ServerTest(unittest.TestCase):
+    def test_feature_catalog_controls_browser_validation(self):
+        from ui_designer.server import EditorState, _make_handler
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            layout = root / "ui.json"
+            catalog = root / "features.json"
+            layout.write_text(json.dumps(_document()))
+            catalog.write_text(json.dumps({"features": [{"id": "boxes", "operations": ["toggle"]}]}))
+            server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(EditorState(layout, catalog)))
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                url = f"http://127.0.0.1:{server.server_port}"
+                with urllib.request.urlopen(url + "/api/layout") as response:
+                    reply = json.load(response)
+                self.assertEqual(reply["features"], {"boxes": ["toggle"]})
+                request = urllib.request.Request(
+                    url + "/api/layout", data=json.dumps(_document(_button(feature="boxes", operation="bad"))).encode(),
+                    headers={"X-Editor-Token": reply["token"]})
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    urllib.request.urlopen(request)
+                self.assertEqual(caught.exception.code, 422)
+                caught.exception.close()
+                self.assertEqual(json.loads(layout.read_text()), _document())
+                request = urllib.request.Request(
+                    url + "/api/layout", data=json.dumps(_document(_button(feature="boxes", operation="toggle"))).encode(),
+                    headers={"X-Editor-Token": reply["token"]})
+                with urllib.request.urlopen(request) as response:
+                    self.assertTrue(json.load(response)["ok"])
+                self.assertEqual(json.loads(layout.read_text())["screens"][0]["widgets"][0]["feature"], "boxes")
+            finally:
+                server.shutdown()
+                server.server_close()
+                worker.join()
+
     def test_writes_require_loopback_host_and_session_token(self):
         from ui_designer.server import EditorState, _make_handler
 

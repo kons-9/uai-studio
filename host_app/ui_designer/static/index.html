@@ -67,6 +67,8 @@
   <fieldset id="props"><legend>Properties</legend>
     <label>type <input type="text" id="p_type" disabled></label>
     <label>id <input type="text" id="p_id"></label>
+    <label id="feature_prop" class="k-button k-label k-slider k-dial k-wheel k-number k-image k-pad">feature <select id="p_feature"></select></label>
+    <label class="k-button k-slider k-dial k-wheel k-pad">operation <select id="p_operation"></select></label>
     <label class="k-button k-slider k-dial k-number">label <input type="text" id="p_label"></label>
     <label class="k-label">text <input type="text" id="p_text_value"></label>
     <label>x <input type="number" id="p_x" min="0"></label>
@@ -123,6 +125,7 @@
   let font = null;
   let layout = null;
   let token = '';
+  let featureCatalog = {};
   let screenIndex = 0;
   let selected = -1;
   let drag = null;
@@ -420,7 +423,7 @@
     const ul = $('widgets'); ul.textContent = '';
     widgets().forEach((w, i) => {
       const li = document.createElement('li');
-      const extra = [w.on_tap, w.on_press, w.on_change].filter(Boolean).map((h) => '-> ' + h).join(' ') + (w.navigate ? ` => ${w.navigate}` : '');
+      const extra = [w.on_tap, w.on_press, w.on_change].filter(Boolean).map((h) => '-> ' + h).join(' ') + (w.navigate ? ` => ${w.navigate}` : '') + (w.feature ? ` [${w.feature}${w.operation ? ':' + w.operation : ''}]` : '');
       li.textContent = `${kind(w)[0].toUpperCase()} ${w.id} (${w.x},${w.y} ${w.width}x${w.height}) "${captionOf(w) ?? ''}" ${extra}`;
       li.className = i === selected ? 'selected' : '';
       li.onclick = () => { selected = i; render(); };
@@ -440,9 +443,18 @@
     $('props').disabled = !has;
     const w = has ? widgets()[selected] : null;
     const k = has ? kind(w) : 'button';
-    document.querySelectorAll('#props label[class]').forEach((el) => { el.style.display = el.classList.contains('k-' + k) ? '' : 'none'; });
+    document.querySelectorAll('#props label[class]').forEach((el) => { el.style.display = el.classList.contains('k-' + k) && (el.id !== 'feature_prop' || Object.keys(featureCatalog).length) ? '' : 'none'; });
     $('p_type').value = has ? k : '';
     $('p_id').value = has ? w.id : '';
+    const setChoices = (element, choices, value) => {
+      element.replaceChildren(...choices.map((id) => {
+        const option = document.createElement('option'); option.value = id; option.textContent = id || '(none)'; return option;
+      }));
+      element.value = value;
+    };
+    setChoices($('p_feature'), ['', ...Object.keys(featureCatalog)], has ? (w.feature || '') : '');
+    setChoices($('p_operation'), ['', ...(has ? featureCatalog[w.feature] || [] : [])], has ? (w.operation || '') : '');
+    $('p_operation').disabled = !has || !w.feature;
     $('p_label').value = has && k !== 'label' ? (w.label ?? '') : '';
     $('p_text_value').value = has && k === 'label' ? w.text : '';
     geometryIds.forEach((g) => { $('p_' + g).value = has ? w[g] : ''; });
@@ -477,6 +489,19 @@
   function changed() { render(); refreshCpp(); }
   function bindProps() {
     $('p_id').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].id = e.target.value; changed(); } });
+    $('p_feature').addEventListener('change', (e) => {
+      if (selected < 0) return;
+      const w = widgets()[selected];
+      if (e.target.value) w.feature = e.target.value; else delete w.feature;
+      delete w.operation;
+      changed();
+    });
+    $('p_operation').addEventListener('change', (e) => {
+      if (selected < 0) return;
+      const w = widgets()[selected];
+      if (e.target.value) w.operation = e.target.value; else delete w.operation;
+      changed();
+    });
     geometryIds.forEach((g) => $('p_' + g).addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected][g] = Number(e.target.value); changed(); } }));
     $('p_label').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].label = e.target.value; changed(); } });
     $('p_text_value').addEventListener('change', (e) => { if (selected >= 0) { widgets()[selected].text = e.target.value; changed(); } });
@@ -627,7 +652,8 @@
     const [f, l] = await Promise.all([fetch('api/font').then((r) => r.json()), fetch('api/layout').then((r) => r.json())]);
     font = f;
     if (l.error) { setStatus('layout invalid: ' + l.error, false); return; }
-    layout = l.layout; token = l.token; $('path').textContent = l.path; screenIndex = 0; selected = -1;
+    layout = l.layout; token = l.token; featureCatalog = l.features || {};
+    $('path').textContent = l.path; screenIndex = 0; selected = -1;
     imageCache.clear();
     render(); refreshCpp();
   }

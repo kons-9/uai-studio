@@ -5,6 +5,7 @@
 #include "driver/camera_driver/capture_configuration.hpp"
 #include "middleware/foundation/error.hpp"
 #include "shell/mailbox.hpp"
+#include "ui/ui_layout.hpp"
 
 namespace uai::ai::shell {
 
@@ -190,6 +191,24 @@ Reply Apply(
             );
     }
     return reply;
+}
+
+template <typename Camera, typename Ui>
+bool ApplyTouch(
+    const ui::Event &event,
+    Camera &camera,
+    Ui &screen_ui,
+    ExposureMode &mode,
+    Reply *reply
+)
+{
+    if (event.type != ui::EventType::kTap
+        || event.widget_id != static_cast<std::uint16_t>(app_ui::WidgetId::kAiExposure))
+        return false;
+    *reply = Apply(
+        {Action::kAiExposure, {screen_ui.AiExposureEnabled() ? 0 : 1}}, camera, screen_ui, mode
+    );
+    return true;
 }
 
 } // namespace uai::ai::shell

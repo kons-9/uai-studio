@@ -38,7 +38,7 @@ generate: cubemx-generate
 configure: cubemx-generate
 	$(CMAKE) $(CMAKE_ARGS)
 
-build: configure
+build: $(if $(strip $(UI_LAYOUT_JSON)),ui-layout-check .WAIT) configure
 	$(CMAKE) --build "$(BUILD_DIR)" --target $(APP_TARGET)
 
 setup: $(if $(filter 1,$(ENABLE_AI)),ai-models .WAIT) configure
@@ -201,18 +201,19 @@ ifneq ($(strip $(UI_LAYOUT_JSON)),)
 HELP_TARGETS += ui-designer ui-layout
 HELP_ui-designer := Open the browser UI layout editor
 HELP_ui-layout := Regenerate the UI layout header
+UI_FEATURE_CATALOG_ARG := $(if $(strip $(UI_FEATURE_CATALOG)),--feature-catalog "$(UI_FEATURE_CATALOG)")
 
 ui-layout:
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" generate \
-		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)"
+		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)" $(UI_FEATURE_CATALOG_ARG)
 
 ui-layout-check:
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" validate \
-		--layout "$(UI_LAYOUT_JSON)" --check-font
+		--layout "$(UI_LAYOUT_JSON)" --check-font $(UI_FEATURE_CATALOG_ARG)
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" generate --check \
-		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)"
+		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)" $(UI_FEATURE_CATALOG_ARG)
 
 ui-designer:
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" serve \
-		--layout "$(UI_LAYOUT_JSON)" --port $(UI_DESIGNER_PORT)
+		--layout "$(UI_LAYOUT_JSON)" --port $(UI_DESIGNER_PORT) $(UI_FEATURE_CATALOG_ARG)
 endif

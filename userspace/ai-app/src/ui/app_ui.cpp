@@ -148,11 +148,6 @@ void AppUi::OnToggleBoxesTap(const ui::Event &)
     ToggleBoxes();
 }
 
-void AppUi::OnAiExposureTap(const ui::Event &)
-{
-    SetAiExposureEnabled(!ai_exposure_enabled_);
-}
-
 void AppUi::SetAiExposureEnabled(bool enabled)
 {
     ai_exposure_enabled_ = task::kAiExposureControl && enabled;

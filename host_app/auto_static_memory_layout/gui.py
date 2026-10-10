@@ -6,11 +6,12 @@ import io
 import json
 import secrets
 import tempfile
-import webbrowser
 import zipfile
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+
+from host_app.web_server import create_loopback_server, loopback_host, send_bytes, send_json, serve_loopback
 
 from .common import LayoutError, align_up, normalize_layout, read_document
 from .emitters import (
@@ -95,29 +96,21 @@ class Editor:
 
 
 def make_handler(editor: Editor, *, embedded: bool = False):
+    ancestors = "'self'" if embedded else "'none'"
+    csp = f"default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors {ancestors}; base-uri 'none'"
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args) -> None:
             pass
 
         def send(self, status: HTTPStatus, body: bytes, content_type: str) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            ancestors = "'self'" if embedded else "'none'"
-            self.send_header("Content-Security-Policy", f"default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors {ancestors}; base-uri 'none'")
-            self.end_headers()
-            self.wfile.write(body)
+            send_bytes(self, status, body, content_type, csp)
 
         def json(self, status: HTTPStatus, payload: dict) -> None:
-            self.send(status, json.dumps(payload).encode(), "application/json; charset=utf-8")
+            send_json(self, status, payload, csp)
 
         def allowed_host(self) -> bool:
-            return self.headers.get("Host") in {
-                f"127.0.0.1:{self.server.server_port}",
-                f"localhost:{self.server.server_port}",
-            }
+            return loopback_host(self.headers.get("Host"), self.server.server_port)
 
         def do_GET(self) -> None:
             if not self.allowed_host():
@@ -176,15 +169,7 @@ def serve(args) -> int:
         args.models_dir, args.model_config, args.linker_base,
     )
     editor.inputs()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(editor))
-    url = f"http://127.0.0.1:{server.server_port}/"
-    print(f"auto_static_memory_layout: {url} (Ctrl-C to stop)", flush=True)
-    if args.open_browser:
-        webbrowser.open(url)
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.server_close()
+    server = create_loopback_server(args.port, make_handler(editor))
+    serve_loopback(server, args.open_browser,
+                   lambda url: print(f"auto_static_memory_layout: {url} (Ctrl-C to stop)", flush=True))
     return 0

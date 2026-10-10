@@ -70,7 +70,6 @@ public:
     void OnFaceTap(const ui::Event &event);
     void OnSegmentationTap(const ui::Event &event);
     void OnToggleBoxesTap(const ui::Event &event);
-    void OnAiExposureTap(const ui::Event &event);
     void OnMinConfidenceChange(const ui::Event &event);
     void OnStatusPeriodChange(const ui::Event &event);
 

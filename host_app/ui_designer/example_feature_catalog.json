@@ -1,0 +1,6 @@
+{
+  "features": [
+    {"id": "boxes", "operations": ["enable", "disable"]},
+    {"id": "exposure", "operations": ["enable", "disable"]}
+  ]
+}

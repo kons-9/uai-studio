@@ -26,13 +26,13 @@ uv run --project host_app python -m host_app gui --no-browser
 
 既定URLは `http://127.0.0.1:8768/` です。使用中の場合は`gui --port 8769`、空きポートを選ぶ場合は`gui --port 0`を指定します。VS Codeのリモート環境では表示されたポートを転送します。標準ライブラリのみの`python3 -m host_app`でもエディタとCLIは起動できますが、モニタの図生成には上記の依存が必要です。
 
-- UI Designer / Memory Layout / Constraints: 既存の編集画面を同じアプリ内で操作できます。タブを切り替えても編集中の状態を保持します。
+- UI Designer / Memory Layout: 既存の編集画面を同じアプリ内で操作できます。タブを切り替えても編集中の状態を保持します。制約ツールは`--features PATH`で明示指定した場合だけタブに加わります。
 - AI Monitor: raw dump / JSONからdecode、analyze、visualize、allを実行し、タイムラインと出力を表示します。
 - CPU Monitor: raw dump / UARTログからPNG/SVG、JSON、CSVを生成します。
 - モニタの入力はサーバー上のパスまたはブラウザからのファイル選択（10 MiB以下）。サンプル入力も利用できます。
 - 全タブのCLI欄から個別ツールの任意の非対話コマンドを実行できます。実行コマンド、標準出力、標準エラー、終了コードを表示します。引数はシェルを介さず渡します。
 
-GUIの`--layout`、`--features`、`--board`、`--application`、`--models-dir`、`--model-config`、`--linker-base`で編集対象を指定できます。Constraintsの既定入力は`userspace/experiment-ui-control/config/features.json`です。UIのSaveは指定したレイアウトへ書き戻します。メモリ配置と制約エディタはブラウザから成果物をダウンロードし、入力ファイルを上書きしません。
+GUIの`--layout`、`--board`、`--application`、`--models-dir`、`--model-config`、`--linker-base`で編集対象を指定できます。既定値はai-appの入力ファイルですが、任意のホスト側ファイルに置き換えられます。標準のai-appレイアウトには`userspace/ai-app/config/ui_feature_catalog.json`の機能IDを自動適用します。独自レイアウトには必要に応じて`--ui-feature-catalog PATH`を指定します。制約エディタを使用する場合だけ`--features userspace/experiment-ui-control/config/features.json`を渡してください。このオプションを省略した統一GUIはuserspaceのツール実装を読み込まず、userspaceのCLIもGUIから実行できません。UIのSaveは指定したレイアウトへ書き戻します。メモリ配置と制約エディタはブラウザから成果物をダウンロードし、入力ファイルを上書きしません。
 
 モニタフォームの成果物はセッション専用の一時領域へ生成し、ダウンロードできます。GUI終了時に削除されるため、必要な成果物は終了前にダウンロードします。CLI欄から明示的な出力先を指定した場合は、そのパスへ書き込みます。CLI欄の`{output}`はセッションの出力領域、`{input}`は選択済み入力ファイルに置換されます。CLI実行は最大120秒、同時に2件までです。常駐サーバーの起動は個別CLIで行います。
 

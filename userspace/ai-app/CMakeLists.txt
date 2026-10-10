@@ -318,7 +318,16 @@ target_include_directories(${AI_APP_TARGET} PRIVATE
     "${AI_CUBE_ROOT}/Drivers/CMSIS/Include"
     "${AI_CUBE_ROOT}/Drivers/CMSIS/DSP/Include")
 
-add_dependencies(${AI_APP_TARGET} ${AI_APP_NAME}-memory-layout)
+add_custom_target(${AI_APP_NAME}-ui-layout-check
+    COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/host_app/ui_designer" validate
+        --layout "${CMAKE_CURRENT_SOURCE_DIR}/config/ui_layout.json"
+        --feature-catalog "${CMAKE_CURRENT_SOURCE_DIR}/config/ui_feature_catalog.json" --check-font
+    COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/host_app/ui_designer" generate --check
+        --layout "${CMAKE_CURRENT_SOURCE_DIR}/config/ui_layout.json"
+        --feature-catalog "${CMAKE_CURRENT_SOURCE_DIR}/config/ui_feature_catalog.json"
+        --output "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ui_layout.hpp"
+    VERBATIM)
+add_dependencies(${AI_APP_TARGET} ${AI_APP_NAME}-memory-layout ${AI_APP_NAME}-ui-layout-check)
 
 target_compile_definitions(${AI_APP_TARGET} PRIVATE
     STM32N6570_DK

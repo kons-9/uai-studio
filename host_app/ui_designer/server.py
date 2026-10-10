@@ -10,17 +10,18 @@ import json
 import secrets
 import threading
 import urllib.parse
-import webbrowser
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+
+from host_app.web_server import create_loopback_server, loopback_host, send_bytes, send_json, serve_loopback
 
 from . import png
 from .emit_cpp import generate_header, images_header_name, load_bitmaps
 from .font import GLYPHS, GLYPH_ADVANCE, GLYPH_HEIGHT, GLYPH_WIDTH
 from .images import load_bitmap
 from .render import encode_png, render_layout
-from .schema import LayoutError, dump_layout, load_layout, parse_layout, save_layout
+from .schema import LayoutError, dump_layout, load_feature_catalog, load_layout, parse_layout, save_layout
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -34,14 +35,23 @@ def _header_text(state: "EditorState", layout) -> str:
 
 
 class EditorState:
-    def __init__(self, layout_path: Path):
+    def __init__(self, layout_path: Path, feature_catalog_path: Path | None = None):
         self.layout_path = layout_path
+        self.feature_catalog_path = feature_catalog_path
         self.lock = threading.Lock()
         # Writes require this token so a page on another origin cannot save.
         self.token = secrets.token_urlsafe(32)
 
+    def catalog(self) -> dict[str, frozenset[str]] | None:
+        return load_feature_catalog(self.feature_catalog_path) if self.feature_catalog_path else None
+
 
 def _make_handler(state: EditorState, *, embedded: bool = False):
+    ancestors = "'self'" if embedded else "'none'"
+    csp = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
+           "style-src 'self' 'unsafe-inline'; img-src 'self'; "
+           f"frame-ancestors {ancestors}; base-uri 'none'")
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "uai-ui-designer/0.1"
 
@@ -49,27 +59,13 @@ def _make_handler(state: EditorState, *, embedded: bool = False):
             pass
 
         def _send(self, status: HTTPStatus, body: bytes, content_type: str) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            ancestors = "'self'" if embedded else "'none'"
-            self.send_header(
-                "Content-Security-Policy",
-                "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-                "style-src 'self' 'unsafe-inline'; img-src 'self'; "
-                f"frame-ancestors {ancestors}; base-uri 'none'")
-            self.end_headers()
-            self.wfile.write(body)
+            send_bytes(self, status, body, content_type, csp)
 
         def _json(self, status: HTTPStatus, payload) -> None:
-            self._send(status, json.dumps(payload).encode("utf-8"),
-                       "application/json; charset=utf-8")
+            send_json(self, status, payload, csp)
 
         def _loopback_host(self) -> bool:
-            port = self.server.server_address[1]
-            return self.headers.get("Host") in {f"127.0.0.1:{port}", f"localhost:{port}"}
+            return loopback_host(self.headers.get("Host"), self.server.server_port)
 
         def _read_body(self):
             length = int(self.headers.get("Content-Length", "0"))
@@ -89,7 +85,8 @@ def _make_handler(state: EditorState, *, embedded: bool = False):
             elif path == "/api/layout":
                 with state.lock:
                     try:
-                        layout = load_layout(state.layout_path)
+                        features = state.catalog()
+                        layout = load_layout(state.layout_path, features)
                     except LayoutError as error:
                         self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
                         return
@@ -97,6 +94,7 @@ def _make_handler(state: EditorState, *, embedded: bool = False):
                     "path": str(state.layout_path),
                     "token": state.token,
                     "layout": layout.to_document(),
+                    "features": {name: sorted(operations) for name, operations in (features or {}).items()},
                 })
             elif path == "/api/font":
                 self._json(HTTPStatus.OK, {
@@ -106,7 +104,7 @@ def _make_handler(state: EditorState, *, embedded: bool = False):
             elif path == "/api/cpp":
                 with state.lock:
                     try:
-                        layout = load_layout(state.layout_path)
+                        layout = load_layout(state.layout_path, state.catalog())
                         text = _header_text(state, layout)
                     except LayoutError as error:
                         self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
@@ -115,7 +113,7 @@ def _make_handler(state: EditorState, *, embedded: bool = False):
             elif path == "/api/preview.png":
                 with state.lock:
                     try:
-                        layout = load_layout(state.layout_path)
+                        layout = load_layout(state.layout_path, state.catalog())
                         screen_id = params.get("screen", [None])[0]
                         canvas = render_layout(layout, screen_id=screen_id,
                                                bitmaps=load_bitmaps(layout, state.layout_path))
@@ -129,7 +127,7 @@ def _make_handler(state: EditorState, *, embedded: bool = False):
                 widget_id = params.get("id", [""])[0]
                 with state.lock:
                     try:
-                        layout = load_layout(state.layout_path)
+                        layout = load_layout(state.layout_path, state.catalog())
                         widget = next(w for w in layout.images() if w.id == widget_id)
                         bitmap = load_bitmap(state.layout_path, widget)
                     except StopIteration:
@@ -155,7 +153,7 @@ def _make_handler(state: EditorState, *, embedded: bool = False):
             path = self.path.split("?", 1)[0]
             try:
                 document = self._read_body()
-                layout = parse_layout(document)
+                layout = parse_layout(document, state.catalog())
             except (LayoutError, ValueError) as error:
                 self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
                 return
@@ -178,20 +176,14 @@ def _make_handler(state: EditorState, *, embedded: bool = False):
     return Handler
 
 
-def serve(layout_path: Path, port: int, open_browser: bool) -> int:
+def serve(layout_path: Path, port: int, open_browser: bool,
+          feature_catalog_path: Path | None = None) -> int:
     if not layout_path.exists():
         raise LayoutError(f"layout file does not exist: {layout_path}")
-    load_layout(layout_path)
-    server = ThreadingHTTPServer(("127.0.0.1", port), _make_handler(EditorState(layout_path)))
-    url = f"http://127.0.0.1:{server.server_address[1]}/"
+    state = EditorState(layout_path, feature_catalog_path)
+    load_layout(layout_path, state.catalog())
+    server = create_loopback_server(port, _make_handler(state))
     print(f"ui_designer: editing {layout_path}")
-    print(f"ui_designer: open {url} (Ctrl-C to stop)")
-    if open_browser:
-        webbrowser.open(url)
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.server_close()
+    serve_loopback(server, open_browser,
+                   lambda url: print(f"ui_designer: open {url} (Ctrl-C to stop)"))
     return 0
