@@ -2,7 +2,7 @@ import argparse
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
 from host_app.auto_static_memory_layout.common import (
     generate_memory_regions,

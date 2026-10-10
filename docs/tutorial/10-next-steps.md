@@ -18,7 +18,7 @@ mini-ai-appは、ai-appから「1モデル・同期推論・UIなし」に削っ
 
 ## 機能を足すときの順番
 
-1. **2つ目のモデル**: `models/generate_model.sh <name>`で生成し、`model_layout.json`と`board_memory.json`（command blobの枠）に追加、`<name>_network.c`で名前を付け替えて取り込みます。推論タスクで`npu.Preload()`→`SelectModel()`で切り替えます（[NPU](../driver.md)）。入力サイズが480x480でなければ前処理（CPU縮小とcleanキャッシュ）が要ります。
+1. **2つ目のモデル**: `tool/generate_model.sh <name>`で生成し、`model_layout.json`と`board_memory.json`（command blobの枠）に追加、`<name>_network.c`で名前を付け替えて取り込みます。推論タスクで`npu.Preload()`→`SelectModel()`で切り替えます（[NPU](../driver.md)）。入力サイズが480x480でなければ前処理（CPU縮小とcleanキャッシュ）が要ります。
 2. **パイプライン化**: 推論が複数モデルになり、NPU待ちの間にCPUが遊ぶのが気になったら`ai_runtime`へ移します。`PersonDecoder`は後処理ステップにそのまま使えます。
 3. **UI**: `ui_designer`でボタンを置き、`ComposeAndPresent()`の`overlay`に`ButtonPanel`を渡します。タッチは`TouchManagement`をLCDの後に初期化します。
 4. **計測の拡張**: `ai_model_monitor`は`ai_runtime`のトレースフックから記録するので、2の後に有効になります。

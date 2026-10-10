@@ -168,7 +168,7 @@ make -C userspace/experiment-model-load model-package \
 	STEDGEAI_LIB_DIR=/opt/ST/STEdgeAI/4.0/Middlewares/ST/AI
 ```
 
-生成物は`models/generated/`へ置く。blobの実行アドレスは`0x91a00000`。モデルデータはNOLOADで、[tool/check_link.py](tool/check_link.py)がIRQのstrong定義と配置元・予約領域を監査する。
+生成物は`models/generated/`へ置く。blobの実行アドレスは`0x91a00000`。モデルデータはNOLOADで、起動後にアップローダから転送する。
 
 UARTを開く端末A。NPU有効時は起動を確認後、同じプロセスがST-Link HOTPLUGでバイナリをPSRAMへ直接書いてCRC検証と推論を行う:
 
@@ -212,11 +212,11 @@ NPU無効ビルドで任意の転送データを試す場合は、`EXPERIMENT_MO
 
 推論中もカメラ/ISP/コンソールのループを継続する。NPUの進行は1回のTickにつき最大1エポック、タイムアウトは5秒。正常終了または停止確認後だけスロットを解放する。停止APIが失敗した場合は`npu=faulted`のままロックを保持し、`model abort`で停止を再試行するまで再転送を許可しない。未ロード・転送途中・CRC不一致のデータを実行しない。電源断後は未ロード状態から始める。
 
-ホスト試験にはマニフェスト/生成契約/パッケージ、実オブジェクトのblob抽出と再配置拒否、実リンカでのスロット境界、非同期実行の正常/故障/停止失敗/時刻折り返し、アップローダのCRC比較とデバイスを開く前の拒否を含む。NPUのホスト試験は偽バックエンドで制御部分を確認するもので、ST API互換性やハードウェア動作の代用ではない。
+ホスト試験にはマニフェスト/生成契約/パッケージ、実オブジェクトのblob抽出と再配置拒否、複数モデルのblob配置、非同期実行の正常/故障/停止失敗/時刻折り返し、アップローダのCRC比較とデバイスを開く前の拒否を含む。NPUのホスト試験は偽バックエンドで制御部分を確認するもので、ST API互換性やハードウェア動作の代用ではない。
 
 ## pre-kernel等への接続要件（今は変更しない）
 
-- このexperiment内の`src/camera_runtime/`と`config/`を使う。実機ではXSPI初期化、PSRAM/NORのマッピング、キャッシュ、RIF、NPUクロック/IRQを確認する。HAL/BSPの採用元はこのexperimentのmapと[tool/check_link.py](tool/check_link.py)で監査する。
+- このexperiment内の`src/camera_runtime/`と`config/`を使う。実機ではXSPI初期化、PSRAM/NORのマッピング、キャッシュ、RIF、NPUクロック/IRQを確認する。
 - PSRAMへの転送は初期化完了後に行う。ロード後のram-runや再初期化で内容が失われない起動順を検証する。単に転送アドレスをNORから変えるだけでは成立しない。
 - ステージング領域は実験の生成メモリ配置で予約する。フレームバッファ・NPU作業領域・コードと重ならないことを生成時とロード時に検査する。
 - 重み参照先が生成コード/blobに固定される場合、PSRAM用に再生成する。ロード先だけを書き換えて代用しない。

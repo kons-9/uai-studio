@@ -65,19 +65,15 @@ monitor:
 
 ifeq ($(ENABLE_AI),1)
 AI_MODEL_TARGETS := $(addprefix ai-model-,$(sort person segmentation face $(AI_MODEL_NAMES)))
-.PHONY: ai-deps $(AI_MODEL_TARGETS) ai-models ai-build \
+.PHONY: $(AI_MODEL_TARGETS) ai-models ai-build \
 	ai-load-weights ai-load-blobs ai-load ai-init ai-run
-HELP_TARGETS += ai-deps ai-models ai-build ai-load ai-run
-HELP_ai-deps := Check AI dependencies
+HELP_TARGETS += ai-models ai-build ai-load ai-run
 HELP_ai-models := Download and generate AI models
 HELP_ai-build := Generate AI models and build
 HELP_ai-load := Write AI weights and blobs
 HELP_ai-run := Write AI data, then run in RAM
 
-ai-deps:
-	sh "$(AI_DEPS_SCRIPT)" $(if $(strip $(STEDGEAI_LIB_DIR)),"$(STEDGEAI_LIB_DIR)")
-
-$(AI_MODEL_TARGETS): ai-model-%: ai-deps
+$(AI_MODEL_TARGETS): ai-model-%:
 	PATH="$(STEDGEAI_BIN):$$PATH" sh "$(AI_MODEL_GENERATOR)" $*
 
 ai-models: $(AI_MODEL_BUILD_TARGETS)
@@ -147,15 +143,15 @@ ifneq ($(filter ai-app mini-ai-app,$(APP_TARGET)),)
 	@echo "ThreadMonitor PNG written: $(THREAD_MONITOR_PNG)"
 else
 	@mkdir -p "$(dir $(THREAD_MONITOR_JSON))"
-	$(THREAD_MONITOR_PYTHON) "$(SAMPLE_DIR)/tools/decode_thread_monitor.py" \
+	$(THREAD_MONITOR_PYTHON) "$(SAMPLE_DIR)/tool/decode_thread_monitor.py" \
 		"$(THREAD_MONITOR_DUMP)" --output "$(THREAD_MONITOR_JSON)"
-	$(THREAD_MONITOR_PYTHON) "$(SAMPLE_DIR)/tools/analyze_npu_trace.py" \
+	$(THREAD_MONITOR_PYTHON) "$(SAMPLE_DIR)/tool/analyze_npu_trace.py" \
 		"$(THREAD_MONITOR_JSON)" --cpu-hz "$(THREAD_MONITOR_CPU_HZ)"
 	@mkdir -p "$(dir $(THREAD_MONITOR_PNG))"
 	MPLCONFIGDIR="$(BUILD_DIR)/matplotlib" \
 	$(if $(strip $(THREAD_MONITOR_LD_PRELOAD)),LD_PRELOAD="$(THREAD_MONITOR_LD_PRELOAD)") \
-	$(THREAD_MONITOR_UV) run --project "$(SAMPLE_DIR)/tools" \
-		python "$(SAMPLE_DIR)/tools/visualize_thread_monitor.py" \
+	$(THREAD_MONITOR_UV) run --project "$(SAMPLE_DIR)/tool" \
+		python "$(SAMPLE_DIR)/tool/visualize_thread_monitor.py" \
 		"$(THREAD_MONITOR_JSON)" --output "$(THREAD_MONITOR_PNG)" \
 		--cpu-hz "$(THREAD_MONITOR_CPU_HZ)"
 	@echo "ThreadMonitor PNG written: $(THREAD_MONITOR_PNG)"

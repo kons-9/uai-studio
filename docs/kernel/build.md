@@ -62,12 +62,11 @@ include先は`common.mk`自身の場所から絶対パスで決めます。`BUIL
 
 | ターゲット | 内容 |
 | --- | --- |
-| `ai-deps` | STEdgeAIランタイムと後処理ライブラリの場所を確認します |
 | `ai-models` | モデルを取得し、`stedgeai`でNPU向けコードを生成します。`ai-model-<model>`で個別に実行できます |
 | `ai-load` | モデルの重みとcommand blobを外部NORへ書き込みます（`ai-load-weights`、`ai-load-blobs`） |
 | `ai-run` | `ai-load`の後に`ram-run`を実行します |
 
-モデル変換のオプション（`AI_MODEL_OPTIMIZATION`、`AI_MODEL_INPUT_DATA_TYPE`など）は`defaults.mk`に既定値があり、コマンドラインで上書きできます。`ai-model-<model>`は`ai-deps`に依存します。`ai-build`はモデル生成の後にビルドし、`ai-load`はビルド、重み、command blobの順に実行します。`ai-run`はその後にRAM実行します。`.WAIT`により、これらの複合ターゲットは`make -j`でも順序を保ち、同じビルドを再帰Makeで繰り返しません。
+モデル変換のオプション（`AI_MODEL_OPTIMIZATION`、`AI_MODEL_INPUT_DATA_TYPE`など）は`defaults.mk`に既定値があり、コマンドラインで上書きできます。依存関係はCMake構成時に確認します。`ai-build`はモデル生成の後にビルドし、`ai-load`はビルド、重み、command blobの順に実行します。`ai-run`はその後にRAM実行します。`.WAIT`により、これらの複合ターゲットは`make -j`でも順序を保ち、同じビルドを再帰Makeで繰り返しません。
 
 ### モニター（`ENABLE_THREAD_MONITOR=1`、`ENABLE_CPU_TASK_MONITOR=1`）
 

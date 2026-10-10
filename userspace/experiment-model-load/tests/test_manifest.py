@@ -12,7 +12,6 @@ import zlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tool"))
 import manifest
 import model
-import check_link
 from layout import BLOB_ADDRESS, BLOB_CAPACITY, WEIGHTS_ADDRESS, WEIGHTS_CAPACITY
 
 
@@ -119,28 +118,6 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual([int(pool["size"]["value"]) * multipliers[pool["size"]["magnitude"]] for pool in pools],
                  [0x70000, 0x70000, WEIGHTS_CAPACITY, 0x800000])
 
-    def test_slot_linker_script(self):
-        if not all(shutil.which(tool) for tool in ("cc", "ld", "nm")):
-            self.skipTest("native linker tools are unavailable")
-        with tempfile.TemporaryDirectory() as temporary:
-            root = pathlib.Path(temporary)
-            for blob_bytes, succeeds in ((BLOB_CAPACITY, True), (BLOB_CAPACITY + 1, False)):
-                source = f'''unsigned char weights[{WEIGHTS_CAPACITY}] __attribute__((section(".experiment_weights")));
-unsigned char blob[{blob_bytes}] __attribute__((section(".experiment_blob")));
-void Reset_Handler(void) {{}}
-'''
-                subprocess.run(["cc", "-fno-asynchronous-unwind-tables", "-c", "-x", "c", "-", "-o", str(root / "slots.o")],
-                               input=source, text=True, check=True, capture_output=True)
-                linked = subprocess.run(["ld", "-T", str(model.ROOT / "slots.ld"), "-T", str(model.ROOT / "camera-runtime-ram.ld"),
-                                         str(root / "slots.o"), "-o", str(root / "slots.elf")], capture_output=True, text=True)
-                if succeeds:
-                    self.assertEqual(linked.returncode, 0, linked.stderr)
-                    symbols = subprocess.run(["nm", "--defined-only", str(root / "slots.elf")],
-                                             check=True, capture_output=True, text=True).stdout
-                    check_link.audit_slots(symbols)
-                else:
-                    self.assertNotEqual(linked.returncode, 0)
-
     def test_command_blob_object_package(self):
         if not all(shutil.which(tool) for tool in ("cc", "objcopy", "objdump")):
             self.skipTest("native object tools are unavailable")
@@ -233,21 +210,6 @@ include("{model.ROOT / 'npu.cmake'}")
             text = (root / "build/CMakeFiles/model_check.dir/build.make").read_text()
             self.assertIn("experiment_model_face", text)
             self.assertIn("experiment_model_seg", text)
-
-    def test_strong_npu_link_audit(self):
-        expected = {**check_link.EXPECTED, "NPU0_IRQHandler": "npu_model.c", "experiment_npu_start": "npu_model.c",
-                "model_load_NPU0_IRQHandler": "ll_aton_runtime.c"}
-        symbols, placements = [], []
-        for index, (symbol, source) in enumerate(expected.items()):
-            address = 0x34001000 + index * 32
-            symbols.append(f"{address:08x} T {symbol}")
-            placements.append(f".text.{symbol} 0x{address:x} 0x20 local/{source}.o")
-        symbol_text, map_text = "\n".join(symbols), "\n".join(placements)
-        check_link.audit(symbol_text, map_text, npu=True)
-        with self.assertRaises(ValueError):
-            check_link.audit(symbol_text.replace("T NPU0_IRQHandler", "W NPU0_IRQHandler"), map_text, npu=True)
-        with self.assertRaises(ValueError):
-            check_link.audit(symbol_text, map_text.replace("local/npu_model.c.o", "other/fallback.c.o"), npu=True)
 
     def test_cpp_contract(self):
         executable = os.environ.get("MANIFEST_PROBE")

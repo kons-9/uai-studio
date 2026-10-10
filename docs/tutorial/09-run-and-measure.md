@@ -5,13 +5,13 @@
 初回は次の順です。2回目以降は`ram-run`だけで済みます（モデルを変えたときだけ`ai-load`）。
 
 ```sh
-make -C userspace/mini-ai-app setup      # ai-deps → ai-models → CubeMX生成 → CMake構成
+make -C userspace/mini-ai-app setup      # ai-models → CubeMX生成 → CMake構成
 make -C userspace/mini-ai-app monitor    # 別端末。UARTを開いたままにする
 make -C userspace/mini-ai-app ai-load    # ビルドして重みとblobをNORへ
 make -C userspace/mini-ai-app ram-run    # ビルドしてRAMへ書き、実行
 ```
 
-`setup`は`ENABLE_AI=1`なので、`ai-deps`（STEdgeAIランタイムと後処理ソースの確認）と`ai-models`（`AI_MODEL_NAMES`のモデル生成）を先に行います。CubeMXの生成は`CUBEMX_EXECUTABLE`（`local.mk`）で動かします。
+`setup`は`ENABLE_AI=1`なので、`ai-models`（`AI_MODEL_NAMES`のモデル生成）を先に行います。CubeMXの生成は`CUBEMX_EXECUTABLE`（`local.mk`）で動かします。STEdgeAIランタイムと後処理ソースの依存関係はCMake構成時に確認します。
 
 ## UARTの読み方
 

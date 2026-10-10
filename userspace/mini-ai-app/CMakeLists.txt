@@ -74,7 +74,7 @@ foreach(_mini_file IN LISTS _mini_required_files)
     if(NOT EXISTS "${_mini_file}")
         message(FATAL_ERROR
             "mini-ai-app dependency is missing: ${_mini_file}. Run "
-            "'make -C userspace/mini-ai-app setup' (ai-deps + ai-models).")
+            "'make -C userspace/mini-ai-app setup' (ai-models).")
     endif()
 endforeach()
 

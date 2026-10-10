@@ -1,6 +1,6 @@
 # ai-appのモデル生成
 
-`generate_model.sh`はSTEdgeAIで3モデルのNeural-ARTコードと重みイメージを生成します。通常は`make -C userspace/ai-app setup`（または`ai-models`）から呼ばれます。
+[tool/generate_model.sh](../tool/generate_model.sh)はSTEdgeAIで3モデルのNeural-ARTコードと重みイメージを生成します。通常は`make -C userspace/ai-app setup`（または`ai-models`）から呼ばれます。
 
 | モデル | 取得元 | 元モデル |
 | --- | --- | --- |
@@ -13,9 +13,9 @@
 ## 実行方法
 
 ```sh
-sh userspace/ai-app/models/generate_model.sh person
-sh userspace/ai-app/models/generate_model.sh segmentation
-sh userspace/ai-app/models/generate_model.sh face
+sh userspace/ai-app/tool/generate_model.sh person
+sh userspace/ai-app/tool/generate_model.sh segmentation
+sh userspace/ai-app/tool/generate_model.sh face
 ```
 
 第2引数を省略すると`models/source/<model>/`の元モデルを使い、なければ取得元からダウンロードします。任意のファイルを使う場合は第2引数にパスを渡します。`stedgeai`と`arm-none-eabi-objcopy`がPATHに必要です。

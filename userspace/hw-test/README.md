@@ -28,7 +28,7 @@ LCD表示の初期化確認に続いて、RNG、HASH、CRC、GPDMA、HPDMA、RTC
 | [src/tests/camera/buffers.cpp](src/tests/camera/buffers.cpp) | 400x480 RGB565の試験専用SRAMバッファ2面 |
 | [src/tests/dma2d_driver/suite.cpp](src/tests/dma2d_driver/suite.cpp) | DMA2Dの画素・guard/cache・併用負荷検査 |
 | [src/tests/graphics/scenario.hpp](src/tests/graphics/scenario.hpp) | 共有25検証ケースとカメラ/LCD同時負荷の試験進行 |
-| [generate_memory.py](generate_memory.py)、[config/memory_layout.json](config/memory_layout.json) | AIモデルなしの共有メモリ契約生成 |
+| [tool/generate_memory.py](tool/generate_memory.py)、[config/memory_layout.json](config/memory_layout.json) | AIモデルなしの共有メモリ契約生成 |
 | [src/tests/suite.cpp](src/tests/suite.cpp) | 実装済み試験だけの登録表、目的、タイムアウト |
 | [src/tests/suite.hpp](src/tests/suite.hpp) | 各`<hardware>_driver::Run`の宣言 |
 | [src/tests/board.hpp](src/tests/board.hpp) | 試験ContextへのHAL非依存の互換include |
@@ -37,7 +37,7 @@ LCD表示の初期化確認に続いて、RNG、HASH、CRC、GPDMA、HPDMA、RTC
 | [config/stm32n6xx_hal_conf.h](config/stm32n6xx_hal_conf.h) | CubeMX生成HAL設定へ試験対象モジュールを追加 |
 | [camera-runtime-ram.ld](camera-runtime-ram.ld) | コード・表示ページ・撮像バッファの独立したSRAM配置 |
 | [scratch.ld](scratch.ld) | PSRAMの`0x91000000`から4KiBを試験専用に予約 |
-| [runner.py](runner.py)、[uart.py](uart.py) | 実機UART結果の収集とJUnit変換。ホスト上でHW試験を実行するものではない |
+| [tool/runner.py](tool/runner.py)、[tool/uart.py](tool/uart.py) | 実機UART結果の収集とJUnit変換。ホスト上でHW試験を実行するものではない |
 
 ## 試験セット
 
@@ -140,15 +140,11 @@ hwtest all-stress
 自動収集を使う場合はmonitorを閉じ、代わりにUARTランナを先に起動する。
 
 ```sh
-python3 userspace/hw-test/runner.py --uart /dev/ttyACM0 \
+python3 userspace/hw-test/tool/runner.py --uart /dev/ttyACM0 \
 	--junit result.xml --log-dir logs --wait-ready --timeout 600
 ```
 
 `--wait-ready`を指定すると起動時に選んだ自動実行セットの結果をそのまま収集し、shellへコマンドを送らない。起動行（`camera: pipe1=started pipe2=started`を含む）は`logs/startup.log`へ保存する。通常モードでは`hwtest all`または`--test all-stress`、`--test <name>`をshellへ送る。ランナは実機のHWTEST結果だけを集計し、結果欠落・重複・SUMMARY不一致・通信断は不成功とする。終了値は0=PASSあり/FAILなし、1=FAILあり、2=入力不完全等。`total`も結果行数と照合する。
-
-## リンク監査
-
-最終ELFのビルド後は[check_link.py](check_link.py)がHAL／IRQのstrong実装に加え、カメラ開始・geometry・復旧・ISP制御・表示・タッチ・UART・UI・DMA2D・周辺driver・NOR・キャッシュ同期・時刻処理がkernelオブジェクトから配置されたことをnmとリンクマップで確認する。`npu_cache_enable`が最終ELFに残る場合もkernelターゲットのSTEdgeAI実装から配置されたことを検査する。
 
 ## 安全条件と確認範囲
 

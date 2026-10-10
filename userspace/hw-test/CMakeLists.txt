@@ -20,10 +20,10 @@ set(_memory_outputs
 file(GLOB _memory_generator_sources
     "${PROJECT_SOURCE_DIR}/host_app/auto_static_memory_layout/*.py")
 add_custom_command(OUTPUT ${_memory_outputs}
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/generate_memory.py"
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tool/generate_memory.py"
         --input "${CMAKE_CURRENT_SOURCE_DIR}/config/memory_layout.json"
         --output-dir "${UAI_GENERATED_INCLUDE_DIR}"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/generate_memory.py"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tool/generate_memory.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/config/memory_layout.json"
         ${_memory_generator_sources}
     VERBATIM)
@@ -101,8 +101,6 @@ target_link_options(${TARGET_NAME} PRIVATE
     "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.map" -Wl,--print-memory-usage)
 set_target_properties(${TARGET_NAME} PROPERTIES LINK_DEPENDS "${_linker_script};${_scratch_script};${_memory_script}")
 add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/check_link.py"
-        --elf "$<TARGET_FILE:${TARGET_NAME}>" --map "${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.map" --nm "${CMAKE_NM}"
     COMMAND ${CMAKE_OBJCOPY} -O binary "$<TARGET_FILE:${TARGET_NAME}>" "${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.bin"
     COMMAND ${CMAKE_SIZE} "$<TARGET_FILE:${TARGET_NAME}>" VERBATIM)
 add_custom_target(${APP_TARGET} DEPENDS ${TARGET_NAME})

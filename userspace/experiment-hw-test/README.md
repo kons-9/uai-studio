@@ -28,7 +28,7 @@ LCD表示の初期化確認に続いて、RNG、HASH、CRC、GPDMA、HPDMA、RTC
 | [config/stm32n6xx_hal_conf.h](config/stm32n6xx_hal_conf.h) | ローカルHAL設定へ試験対象モジュールを追加 |
 | [camera-runtime-ram.ld](camera-runtime-ram.ld) | コード・表示ページ・撮像バッファの独立したSRAM配置 |
 | [scratch.ld](scratch.ld) | PSRAMの`0x91000000`から4KiBを試験専用に予約 |
-| [runner.py](runner.py)、[uart.py](uart.py) | 実機UART結果の収集とJUnit変換。ホスト上でHW試験を実行するものではない |
+| [tool/runner.py](tool/runner.py)、[tool/uart.py](tool/uart.py) | 実機UART結果の収集とJUnit変換。ホスト上でHW試験を実行するものではない |
 
 ## 試験セット
 
@@ -127,7 +127,7 @@ hwtest all-stress
 自動収集を使う場合はmonitorを閉じ、代わりにUARTランナを先に起動する。
 
 ```sh
-python3 userspace/experiment-hw-test/runner.py --uart /dev/ttyACM0 \
+python3 userspace/experiment-hw-test/tool/runner.py --uart /dev/ttyACM0 \
 	--junit result.xml --log-dir logs --wait-ready --timeout 600
 ```
 

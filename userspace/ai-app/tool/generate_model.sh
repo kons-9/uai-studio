@@ -2,7 +2,7 @@
 
 set -eu
 
-models_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+models_dir=$(CDPATH= cd -- "$(dirname -- "$0")/../models" && pwd)
 model_name=${1:-}
 
 if [ -z "$model_name" ]; then

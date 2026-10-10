@@ -132,10 +132,9 @@ make -C userspace/ai-app build
 
 `setup`は次を順に行います。
 
-1. `ai-deps`: STEdgeAIランタイム（`ll_aton`、CM55向けの`NetworkRuntime`アーカイブ）と後処理ライブラリの場所を確認します。
-2. `ai-models`: 3モデルをSTの公式リポジトリから取得し、`stedgeai`でNPU向けコードを生成します。ダウンロードできない環境では、モデルを`userspace/ai-app/models/source/<model>/`に置いてから実行してください（[models/README.md](https://github.com/kons-9/uai-studio/blob/main/userspace/ai-app/models/README.md)）。
-3. `cubemx-generate`: IOCからHAL初期化コードを`<build>/cubemx`へ生成します。
-4. `configure`: CMakeを構成し、`compile_commands.json`を出力します。
+1. `ai-models`: 3モデルをSTの公式リポジトリから取得し、`stedgeai`でNPU向けコードを生成します。ダウンロードできない環境では、モデルを`userspace/ai-app/models/source/<model>/`に置いてから実行してください（[models/README.md](https://github.com/kons-9/uai-studio/blob/main/userspace/ai-app/models/README.md)）。
+2. `cubemx-generate`: IOCからHAL初期化コードを`<build>/cubemx`へ生成します。
+3. `configure`: CMakeを構成し、`compile_commands.json`を出力します。
 
 `build`では、コンパイルの前にメモリ配置を解決してヘッダとリンカスクリプトを生成します。生成物はすべてGit管理外で、ビルド先は`build-ai-app-person/`です。
 

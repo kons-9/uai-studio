@@ -21,10 +21,10 @@ ELFのシンボルから領域を求め、ST-LINKのHot Plug接続でCPUを一�
 個別に実行する場合:
 
 ```sh
-python3 userspace/experiment-ai/tools/decode_thread_monitor.py trace.bin --pretty
-python3 userspace/experiment-ai/tools/analyze_npu_trace.py trace.bin --top 20
-uv run --project userspace/experiment-ai/tools \
-  python userspace/experiment-ai/tools/visualize_thread_monitor.py \
+python3 userspace/experiment-ai/tool/decode_thread_monitor.py trace.bin --pretty
+python3 userspace/experiment-ai/tool/analyze_npu_trace.py trace.bin --top 20
+uv run --project userspace/experiment-ai/tool \
+  python userspace/experiment-ai/tool/visualize_thread_monitor.py \
   trace.bin --output thread_monitor.png
 ```
 

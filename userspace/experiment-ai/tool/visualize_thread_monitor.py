@@ -2,12 +2,12 @@
 """Plot a ThreadMonitor raw dump or decoded JSON trace.
 
 Examples:
-    uv run --project userspace/experiment-ai/tools \
-        python userspace/experiment-ai/tools/visualize_thread_monitor.py \
+    uv run --project userspace/experiment-ai/tool \
+        python userspace/experiment-ai/tool/visualize_thread_monitor.py \
         build/thread_monitor_final.bin
 
-    uv run --project userspace/experiment-ai/tools \
-        python userspace/experiment-ai/tools/visualize_thread_monitor.py \
+    uv run --project userspace/experiment-ai/tool \
+        python userspace/experiment-ai/tool/visualize_thread_monitor.py \
         build/thread_monitor_final.json --output build/thread_monitor.png \
         --cpu-hz 600000000
 """

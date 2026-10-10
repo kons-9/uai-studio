@@ -6,21 +6,19 @@ ST YOLOX nano（person）をSTEdgeAIでNeural-ART向けに変換し、生成さ�
 
 ## モデルの生成
 
-生成はai-appの`models/generate_model.sh`を使います。mini-ai-appの`Makefile`は`AI_MODELS_DIR`をai-appの`models`に向け、`AI_MODEL_NAMES := person`で対象を絞っています。
+生成はai-appの[tool/generate_model.sh](../../userspace/ai-app/tool/generate_model.sh)を使います。mini-ai-appの`Makefile`は`AI_MODELS_DIR`をai-appの`models`に向け、`AI_MODEL_NAMES := person`で対象を絞っています。
 
 ```make
 ENABLE_AI := 1
 AI_MODELS_DIR := $(PROJECT_ROOT)/userspace/ai-app/models
 AI_MODEL_NAMES := person
-AI_DEPS_SCRIPT := $(PROJECT_ROOT)/userspace/ai-app/scripts/setup_third_party.sh
 ```
 
 ```sh
-make -C userspace/mini-ai-app ai-deps      # STEdgeAIランタイムと後処理ソースの確認
 make -C userspace/mini-ai-app ai-models    # personモデルのダウンロードと生成
 ```
 
-`stedgeai generate`は次のオプションで動きます（[generate_model.sh](https://github.com/kons-9/uai-studio/blob/main/userspace/ai-app/models/generate_model.sh)）。
+`stedgeai generate`は次のオプションで動きます（[tool/generate_model.sh](../../userspace/ai-app/tool/generate_model.sh)）。
 
 | オプション | 意味 |
 | --- | --- |

@@ -1,6 +1,6 @@
 # experiment-aiのモデル生成
 
-`generate_model.sh`はSTEdgeAIでperson、segmentation、faceのNeural-ARTコードと重みイメージを生成します。モデル生成スクリプトとモデル固有の設定は、このexperiment内にあります。
+[tool/generate_model.sh](../tool/generate_model.sh)はSTEdgeAIでperson、segmentation、faceのNeural-ARTコードと重みイメージを生成します。モデル生成スクリプトとモデル固有の設定は、このexperiment内にあります。
 
 | モデル | 元モデル | 重みアドレス | command blobアドレス |
 | --- | --- | --- | --- |
@@ -13,9 +13,9 @@
 ## 実行方法
 
 ```sh
-sh userspace/experiment-ai/models/generate_model.sh person
-sh userspace/experiment-ai/models/generate_model.sh segmentation
-sh userspace/experiment-ai/models/generate_model.sh face
+sh userspace/experiment-ai/tool/generate_model.sh person
+sh userspace/experiment-ai/tool/generate_model.sh segmentation
+sh userspace/experiment-ai/tool/generate_model.sh face
 ```
 
 第2引数を省略すると`models/source/<model>/`の元モデルを使い、なければ取得元からダウンロードします。別のファイルを使う場合は第2引数にパスを渡すか、`AI_MODEL_SOURCE`を設定します。`stedgeai`と`arm-none-eabi-objcopy`がPATHに必要です。

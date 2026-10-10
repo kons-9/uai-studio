@@ -11,6 +11,5 @@ ENABLE_CPU_TASK_MONITOR := 1
 # with ai-app so both applications run the identical network image.
 AI_MODELS_DIR := $(PROJECT_ROOT)/userspace/ai-app/models
 AI_MODEL_NAMES := person
-AI_DEPS_SCRIPT := $(PROJECT_ROOT)/userspace/ai-app/scripts/setup_third_party.sh
 
 include $(PROJECT_ROOT)/project-tools/make/common.mk

@@ -115,7 +115,7 @@ foreach(_ai_generated_model_file IN LISTS _ai_generated_model_files)
     if(NOT EXISTS "${_ai_generated_model_file}")
         message(FATAL_ERROR
             "Generated model file is missing: ${_ai_generated_model_file}. "
-            "Run userspace/ai-app/models/generate_model.sh for person, "
+            "Run userspace/ai-app/tool/generate_model.sh for person, "
             "segmentation, and face before configuring ai-app.")
     endif()
 endforeach()

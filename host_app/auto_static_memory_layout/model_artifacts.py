@@ -161,7 +161,7 @@ def resolve_models(
             if not artifact.exists():
                 raise LayoutError(
                     f"generated model artifact is missing: {artifact}. "
-                    f"Run models/generate_model.sh {model_name} first."
+                    f"Run tool/generate_model.sh {model_name} first."
                 )
         if model_name not in addresses:
             raise LayoutError(f"weight_addresses is missing {model_name!r}")
