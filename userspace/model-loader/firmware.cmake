@@ -81,6 +81,7 @@ target_link_libraries(${TARGET_NAME} PRIVATE uai::utkernel uai::stm32n6570_dk
 set(LINKER_SCRIPT "${EXPERIMENT_RUNTIME}/camera-runtime-ram.ld")
 target_link_options(${TARGET_NAME} PRIVATE "-T${LINKER_SCRIPT}" -Wl,-u,uai_ram_entry
     "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/${APP_TARGET}.map" -Wl,--print-memory-usage)
+set_property(TARGET ${TARGET_NAME} PROPERTY UAI_RAM_ENTRY_SYMBOL uai_ram_entry)
 set_target_properties(${TARGET_NAME} PROPERTIES LINK_DEPENDS "${LINKER_SCRIPT}")
 add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary "--remove-section=.model_blob_*"

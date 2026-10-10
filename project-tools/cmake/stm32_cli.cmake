@@ -221,21 +221,57 @@ function(uai_add_stm32_cli_targets app_target)
     endif()
 
     if(STM32_PROGRAMMER_CLI AND STM32_RAM_IMAGE)
-        add_custom_target(ram-run
-            COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
-                    "${STM32_PROGRAMMER_CLI}"
-                    -c "${_programmer_connection}"
-                    -halt
-                    -d "${STM32_RAM_IMAGE}" "${STM32_RAM_ADDRESS}"
-                    -v
-                    -coreReg "MSP=${STM32_RAM_STACK}"
-                             "PC=${STM32_RAM_ENTRY}"
-                             "XPSR=${STM32_RAM_XPSR}"
-                    -run
-            DEPENDS "${app_target}"
-            USES_TERMINAL
-            VERBATIM
-        )
+        set(_stm32_ram_entry_symbol "")
+        if(TARGET "${app_target}.elf")
+            get_property(_stm32_has_ram_entry_symbol
+                TARGET "${app_target}.elf"
+                PROPERTY UAI_RAM_ENTRY_SYMBOL SET)
+            if(_stm32_has_ram_entry_symbol)
+                get_target_property(_stm32_ram_entry_symbol
+                    "${app_target}.elf" UAI_RAM_ENTRY_SYMBOL)
+            endif()
+        endif()
+        if(_stm32_ram_entry_symbol)
+            if(CMAKE_NM)
+                add_custom_target(ram-run
+                    COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                            ${CMAKE_COMMAND}
+                            "-DSTM32_RAM_NM=${CMAKE_NM}"
+                            "-DSTM32_RAM_ELF=$<TARGET_FILE:${app_target}.elf>"
+                            "-DSTM32_RAM_ENTRY_SYMBOL=${_stm32_ram_entry_symbol}"
+                            "-DSTM32_PROGRAMMER_CLI=${STM32_PROGRAMMER_CLI}"
+                            "-DSTM32_PROGRAMMER_CONNECTION=${_programmer_connection}"
+                            "-DSTM32_RAM_IMAGE=${STM32_RAM_IMAGE}"
+                            "-DSTM32_RAM_ADDRESS=${STM32_RAM_ADDRESS}"
+                            "-DSTM32_RAM_STACK=${STM32_RAM_STACK}"
+                            "-DSTM32_RAM_XPSR=${STM32_RAM_XPSR}"
+                            -P "${CMAKE_SOURCE_DIR}/project-tools/cmake/stm32_ram_run.cmake"
+                    DEPENDS "${app_target}"
+                    USES_TERMINAL
+                    VERBATIM
+                )
+            else()
+                uai_add_missing_tool_target(ram-run
+                    "ram-run needs CMAKE_NM to resolve ${_stm32_ram_entry_symbol} from the ELF"
+                )
+            endif()
+        else()
+            add_custom_target(ram-run
+                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                        "${STM32_PROGRAMMER_CLI}"
+                        -c "${_programmer_connection}"
+                        -halt
+                        -d "${STM32_RAM_IMAGE}" "${STM32_RAM_ADDRESS}"
+                        -v
+                        -coreReg "MSP=${STM32_RAM_STACK}"
+                                 "PC=${STM32_RAM_ENTRY}"
+                                 "XPSR=${STM32_RAM_XPSR}"
+                        -run
+                DEPENDS "${app_target}"
+                USES_TERMINAL
+                VERBATIM
+            )
+        endif()
     else()
         uai_add_missing_tool_target(ram-run
             "ram-run requires STM32_PROGRAMMER_CLI and a built RAM image"

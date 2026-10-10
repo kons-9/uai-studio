@@ -211,16 +211,17 @@ HELP_TARGETS += ui-designer ui-layout
 HELP_ui-designer := Open the browser UI layout editor
 HELP_ui-layout := Regenerate the UI layout header
 UI_FEATURE_CATALOG_ARG := $(if $(strip $(UI_FEATURE_CATALOG)),--feature-catalog "$(UI_FEATURE_CATALOG)")
+UI_LAYOUT_FORMAT_ARGS ?= --format
 
 ui-layout:
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" generate \
-		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)" --format $(UI_FEATURE_CATALOG_ARG)
+		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)" $(UI_LAYOUT_FORMAT_ARGS) $(UI_FEATURE_CATALOG_ARG)
 
 ui-layout-check:
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" validate \
 		--layout "$(UI_LAYOUT_JSON)" --check-font $(UI_FEATURE_CATALOG_ARG)
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" generate --check \
-		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)" --format $(UI_FEATURE_CATALOG_ARG)
+		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)" $(UI_LAYOUT_FORMAT_ARGS) $(UI_FEATURE_CATALOG_ARG)
 
 ui-designer:
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" serve \
