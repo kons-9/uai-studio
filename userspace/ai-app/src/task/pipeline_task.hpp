@@ -134,9 +134,15 @@ public:
         return status.Ok() ? exposure_results_.Create() : status;
     }
     common::Error PublishResult(const inference::BoxSet &boxes) { return results_.PublishLatest(boxes); }
-    common::Error PublishExposureResult(const inference::BoxSet &boxes) { return exposure_results_.PublishLatest(boxes); }
+    common::Error PublishExposureResult(const inference::BoxSet &boxes)
+    {
+        return exposure_results_.PublishLatest(boxes);
+    }
     template <typename Consumer>
-    message_channel::DrainResult ConsumeExposureResults(Consumer consumer) { return exposure_results_.Consume(consumer); }
+    message_channel::DrainResult ConsumeExposureResults(Consumer consumer)
+    {
+        return exposure_results_.Consume(consumer);
+    }
     message_channel::DrainResult TryGetLatestResult(inference::BoxSet *active) { return results_.DrainLatest(active); }
     void SetModelMask(std::uint8_t mask) override
     {

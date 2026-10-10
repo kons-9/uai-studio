@@ -27,7 +27,12 @@ struct Mapping {
     Rect detection_content{0, 0, 800, 480};
 };
 
-enum class Source { kFullFrame, kFace, kPerson, kForeground };
+enum class Source {
+    kFullFrame,
+    kFace,
+    kPerson,
+    kForeground
+};
 
 struct Values {
     Source source = Source::kFullFrame;
@@ -44,7 +49,10 @@ class Controller final {
 public:
     static constexpr std::uint32_t kHoldMs = 1000;
 
-    void Observe(const inference::BoxSet &result, std::uint32_t now)
+    void Observe(
+        const inference::BoxSet &result,
+        std::uint32_t now
+    )
     {
         if (result.face_valid && Accept(result.capture_sequence, face_sequence_, have_face_)) {
             if (result.face.count != 0) {
@@ -69,7 +77,10 @@ public:
         }
     }
 
-    bool Step(std::uint32_t now, const Mapping &mapping)
+    bool Step(
+        std::uint32_t now,
+        const Mapping &mapping
+    )
     {
         Rect selected{};
         Source source = Source::kFullFrame;
@@ -100,7 +111,12 @@ public:
     }
 
     const Values &DisplayValues() const { return values_; }
-    void Readback(Rect applied, std::int32_t exposure_us, std::int32_t gain_mdB, bool automatic)
+    void Readback(
+        Rect applied,
+        std::int32_t exposure_us,
+        std::int32_t gain_mdB,
+        bool automatic
+    )
     {
         values_.applied = applied;
         values_.exposure_us = exposure_us;
@@ -110,22 +126,39 @@ public:
         values_.error_code = 0;
     }
     void Failed(std::uint32_t code) { values_.error_code = code; }
-    static void Format(const Values &values, char *text, std::size_t capacity)
+    static void Format(
+        const Values &values,
+        char *text,
+        std::size_t capacity
+    )
     {
         if (values.error_code != 0) {
             std::snprintf(text, capacity, "AE ERROR %u", static_cast<unsigned int>(values.error_code));
         } else if (!values.available) {
             std::snprintf(text, capacity, "AE WAITING");
         } else {
-            const char *source = values.source == Source::kFace ? "FACE" : values.source == Source::kPerson ? "PERSON"
-                : values.source == Source::kForeground ? "MASK" : "FULL";
-            std::snprintf(text, capacity, "%s %s %ldus %ldmdB", values.auto_exposure ? "AE" : "MANUAL", source,
-                static_cast<long>(values.exposure_us), static_cast<long>(values.gain_mdB));
+            const char *source = values.source == Source::kFace ? "FACE"
+                : values.source == Source::kPerson              ? "PERSON"
+                : values.source == Source::kForeground          ? "MASK"
+                                                                : "FULL";
+            std::snprintf(
+                text,
+                capacity,
+                "%s %s %ldus %ldmdB",
+                values.auto_exposure ? "AE" : "MANUAL",
+                source,
+                static_cast<long>(values.exposure_us),
+                static_cast<long>(values.gain_mdB)
+            );
         }
     }
 
 private:
-    static bool Accept(std::uint32_t sequence, std::uint32_t &previous, bool have)
+    static bool Accept(
+        std::uint32_t sequence,
+        std::uint32_t &previous,
+        bool have
+    )
     {
         if (have && static_cast<std::int32_t>(sequence - previous) <= 0)
             return false;
@@ -133,19 +166,29 @@ private:
         return true;
     }
 
-    static bool Similar(const Rect &next, const Rect &previous)
+    static bool Similar(
+        const Rect &next,
+        const Rect &previous
+    )
     {
         if (previous.width == 0 || previous.height == 0)
             return false;
         const auto close = [](std::uint32_t next_value, std::uint32_t previous_value, std::uint32_t size) {
-            const auto difference = next_value > previous_value ? next_value - previous_value : previous_value - next_value;
+            const auto difference =
+                next_value > previous_value ? next_value - previous_value : previous_value - next_value;
             return difference <= std::max<std::uint32_t>(1U, size / 10U);
         };
         return close(next.x, previous.x, previous.width) && close(next.y, previous.y, previous.height)
-            && close(next.width, previous.width, previous.width) && close(next.height, previous.height, previous.height);
+            && close(next.width, previous.width, previous.width)
+            && close(next.height, previous.height, previous.height);
     }
 
-    static Rect Map(std::int32_t left, std::int32_t top, std::int32_t right, std::int32_t bottom, const Mapping &mapping)
+    static Rect
+    Map(std::int32_t left,
+        std::int32_t top,
+        std::int32_t right,
+        std::int32_t bottom,
+        const Mapping &mapping)
     {
         const auto &content = mapping.content;
         const auto &crop = mapping.crop;
@@ -174,7 +217,9 @@ private:
             vertical_end = content.height - previous;
         }
         const auto scale = [](std::uint32_t value, std::uint32_t extent, std::uint32_t size, bool ceiling) {
-            return static_cast<std::uint32_t>((static_cast<std::uint64_t>(value) * extent + (ceiling ? size - 1 : 0)) / size);
+            return static_cast<std::uint32_t>(
+                (static_cast<std::uint64_t>(value) * extent + (ceiling ? size - 1 : 0)) / size
+            );
         };
         const auto sensor_left = scale(horizontal_begin, crop.width, content.width, false);
         const auto sensor_right = scale(horizontal_end, crop.width, content.width, true);
@@ -183,18 +228,26 @@ private:
         return {crop.x + sensor_left, crop.y + sensor_top, sensor_right - sensor_left, sensor_bottom - sensor_top};
     }
 
-    static Rect Select(const inference::DetectionSet &detections, const Mapping &mapping)
+    static Rect Select(
+        const inference::DetectionSet &detections,
+        const Mapping &mapping
+    )
     {
         auto detection_mapping = mapping;
         detection_mapping.content = mapping.detection_content;
         Rect selected{};
         float confidence = 0.0F;
-        for (std::uint32_t index = 0; index < std::min<std::uint32_t>(detections.count, inference::kMaxBoxes); ++index) {
+        for (std::uint32_t index = 0; index < std::min<std::uint32_t>(detections.count, inference::kMaxBoxes);
+             ++index) {
             const auto &box = detections.boxes[index];
             if (!(box.confidence > confidence && box.confidence <= 1.0F) || box.width <= 0 || box.height <= 0)
                 continue;
-            const auto rectangle = Map(box.x - box.width / 4, box.y - box.height / 4,
-                box.x + box.width + box.width / 4, box.y + box.height + box.height / 4, detection_mapping);
+            const auto rectangle =
+                Map(box.x - box.width / 4,
+                    box.y - box.height / 4,
+                    box.x + box.width + box.width / 4,
+                    box.y + box.height + box.height / 4,
+                    detection_mapping);
             if (rectangle.width == 0)
                 continue;
             selected = rectangle;
@@ -203,7 +256,10 @@ private:
         return selected;
     }
 
-    static Rect Foreground(const inference::SegmentationSet &segmentation, const Mapping &mapping)
+    static Rect Foreground(
+        const inference::SegmentationSet &segmentation,
+        const Mapping &mapping
+    )
     {
         if (segmentation.mask_width == 0 || segmentation.mask_height == 0
             || segmentation.mask_width > inference::kSegmentationMaskWidth
@@ -223,9 +279,13 @@ private:
         }
         if (count < 4)
             return {};
-        return Map(left * mapping.input_width / segmentation.mask_width, top * mapping.input_height / segmentation.mask_height,
+        return Map(
+            left * mapping.input_width / segmentation.mask_width,
+            top * mapping.input_height / segmentation.mask_height,
             (right * mapping.input_width + segmentation.mask_width - 1) / segmentation.mask_width,
-            (bottom * mapping.input_height + segmentation.mask_height - 1) / segmentation.mask_height, mapping);
+            (bottom * mapping.input_height + segmentation.mask_height - 1) / segmentation.mask_height,
+            mapping
+        );
     }
 
     inference::BoxSet latest_{};

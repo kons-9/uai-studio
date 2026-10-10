@@ -23,7 +23,10 @@ inference::BoxSet Face(std::uint32_t sequence = 1)
     return result;
 }
 
-TEST(ExposureControl, MapsLetterboxAndExpiresWithoutResults)
+TEST(
+    ExposureControl,
+    MapsLetterboxAndExpiresWithoutResults
+)
 {
     exposure_control::Controller controller;
     controller.Observe(Face(), 100);
@@ -40,7 +43,10 @@ TEST(ExposureControl, MapsLetterboxAndExpiresWithoutResults)
     EXPECT_EQ(values.requested.width, 2000U);
 }
 
-TEST(ExposureControl, PreservesFacePriorityAcrossAlternatingModels)
+TEST(
+    ExposureControl,
+    PreservesFacePriorityAcrossAlternatingModels
+)
 {
     exposure_control::Controller controller;
     controller.Observe(Face(), 100);
@@ -55,7 +61,10 @@ TEST(ExposureControl, PreservesFacePriorityAcrossAlternatingModels)
     EXPECT_EQ(controller.DisplayValues().source, exposure_control::Source::kPerson);
 }
 
-TEST(ExposureControl, RejectsStaleResultsAndIgnoresSmallMovement)
+TEST(
+    ExposureControl,
+    RejectsStaleResultsAndIgnoresSmallMovement
+)
 {
     exposure_control::Controller controller;
     controller.Observe(Face(2), 100);
@@ -69,7 +78,10 @@ TEST(ExposureControl, RejectsStaleResultsAndIgnoresSmallMovement)
     EXPECT_EQ(controller.DisplayValues().source, exposure_control::Source::kFullFrame);
 }
 
-TEST(ExposureControl, TimeoutSurvivesClockWrap)
+TEST(
+    ExposureControl,
+    TimeoutSurvivesClockWrap
+)
 {
     exposure_control::Controller controller;
     controller.Observe(Face(), 0xffffff00U);
@@ -78,7 +90,10 @@ TEST(ExposureControl, TimeoutSurvivesClockWrap)
     EXPECT_TRUE(controller.Step(0x300U, Mapping()));
 }
 
-TEST(ExposureControl, MapsCropAndHorizontalFlip)
+TEST(
+    ExposureControl,
+    MapsCropAndHorizontalFlip
+)
 {
     exposure_control::Controller controller;
     auto mapping = Mapping();
@@ -90,7 +105,10 @@ TEST(ExposureControl, MapsCropAndHorizontalFlip)
     EXPECT_EQ(controller.DisplayValues().requested.y, 200U);
 }
 
-TEST(ExposureControl, UsesCaptureCoordinatesForDetections)
+TEST(
+    ExposureControl,
+    UsesCaptureCoordinatesForDetections
+)
 {
     exposure_control::Controller controller;
     auto mapping = Mapping();
@@ -102,7 +120,10 @@ TEST(ExposureControl, UsesCaptureCoordinatesForDetections)
     EXPECT_EQ(controller.DisplayValues().requested.width, 360U);
 }
 
-TEST(ExposureControl, EmptyResultsDoNotExtendSubjectLifetime)
+TEST(
+    ExposureControl,
+    EmptyResultsDoNotExtendSubjectLifetime
+)
 {
     exposure_control::Controller controller;
     controller.Observe(Face(), 100);
@@ -114,7 +135,10 @@ TEST(ExposureControl, EmptyResultsDoNotExtendSubjectLifetime)
     EXPECT_TRUE(controller.Step(1100, Mapping()));
 }
 
-TEST(ExposureControl, SelectsForegroundAndRejectsPadding)
+TEST(
+    ExposureControl,
+    SelectsForegroundAndRejectsPadding
+)
 {
     exposure_control::Controller controller;
     inference::BoxSet mask{};
@@ -137,7 +161,10 @@ TEST(ExposureControl, SelectsForegroundAndRejectsPadding)
     EXPECT_EQ(controller.DisplayValues().source, exposure_control::Source::kFullFrame);
 }
 
-TEST(ExposureControl, KeepsRequestedAndAppliedValuesSeparate)
+TEST(
+    ExposureControl,
+    KeepsRequestedAndAppliedValuesSeparate
+)
 {
     exposure_control::Controller controller;
     controller.Observe(Face(), 0);
@@ -165,8 +192,16 @@ struct FakeCamera {
         state.statistics = {0, 0, 2000, 1200};
         state.reported_exposure_us = 12000;
     }
-    common::Error ReadState(camera::State *out) { *out = state; return {}; }
-    common::Error GetGeometry(camera::Geometry *out) { *out = geometry; return {}; }
+    common::Error ReadState(camera::State *out)
+    {
+        *out = state;
+        return {};
+    }
+    common::Error GetGeometry(camera::Geometry *out)
+    {
+        *out = geometry;
+        return {};
+    }
     common::Error Statistics(camera::Rect rectangle)
     {
         ++writes;
@@ -177,7 +212,10 @@ struct FakeCamera {
     }
 };
 
-TEST(ExposureRuntime, RetriesFailedApplyAndRestoresFullFrame)
+TEST(
+    ExposureRuntime,
+    RetriesFailedApplyAndRestoresFullFrame
+)
 {
     exposure_control::Runtime runtime;
     FakeCamera camera;
@@ -193,7 +231,10 @@ TEST(ExposureRuntime, RetriesFailedApplyAndRestoresFullFrame)
     EXPECT_EQ(camera.state.statistics.width, 2000U);
 }
 
-TEST(ExposureRuntime, RespectsManualExposureAndReappliesAfterRecovery)
+TEST(
+    ExposureRuntime,
+    RespectsManualExposureAndReappliesAfterRecovery
+)
 {
     exposure_control::Runtime runtime;
     FakeCamera camera;

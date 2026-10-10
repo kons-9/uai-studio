@@ -20,7 +20,10 @@ struct FakeModels final : public uai::ai::task::ModelControl {
     uai::ai::task::PipelineStats Stats() const override { return stats; }
 };
 
-TEST(AppUiExposure, DisplaysControllerReadbackAndFailure)
+TEST(
+    AppUiExposure,
+    DisplaysControllerReadbackAndFailure
+)
 {
     FakeModels models;
     uai::ai::app_ui::AppUi ui(models);
@@ -206,7 +209,8 @@ TEST(
     for (std::uint16_t column = 0U; column < uai::ai::app_ui::kScreenWidth; ++column) {
         EXPECT_EQ(PixelAt(pixels, column, 0U), 0x0000U);
     }
-    const auto camera_start = pixels.begin() + static_cast<std::size_t>(menu_button.height) * uai::ai::app_ui::kScreenWidth;
+    const auto camera_start =
+        pixels.begin() + static_cast<std::size_t>(menu_button.height) * uai::ai::app_ui::kScreenWidth;
     EXPECT_EQ(std::count(camera_start, pixels.end(), camera_pixel), pixels.end() - camera_start);
 
     for (const auto id :

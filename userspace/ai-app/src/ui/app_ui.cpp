@@ -165,7 +165,10 @@ void AppUi::OnStatusPeriodChange(const ui::Event &event)
     UAI_LOG_INFO("ui: status period=%u ms\n", static_cast<unsigned int>(status_period_ms_));
 }
 
-void AppUi::UpdateStatus(std::uint32_t now_ms, const exposure_control::Values *exposure)
+void AppUi::UpdateStatus(
+    std::uint32_t now_ms,
+    const exposure_control::Values *exposure
+)
 {
     if (last_stats_tick_ != 0U && now_ms - last_stats_tick_ < status_period_ms_) {
         return;

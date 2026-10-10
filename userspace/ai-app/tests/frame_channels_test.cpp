@@ -161,7 +161,10 @@ TEST_F(
     EXPECT_EQ(active.model_sequence, 4U);
 }
 
-TEST_F(FrameChannelsTest, ExposureConsumerReceivesEachFreshModelAndEmptyResult)
+TEST_F(
+    FrameChannelsTest,
+    ExposureConsumerReceivesEachFreshModelAndEmptyResult
+)
 {
     InferenceResultChannel channel;
     ASSERT_TRUE(channel.Create().Ok());
