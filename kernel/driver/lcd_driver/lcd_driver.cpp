@@ -23,16 +23,7 @@ constexpr std::uint16_t kInferenceRegionColor = kSegmentationGreen;
 constexpr std::int32_t kLineWidth = 4;
 constexpr std::size_t kInferenceDisplaySize = pipeline::kInferenceFormat.width;
 constexpr std::size_t kInferenceDisplayX = (pipeline::kCaptureFormat.width - kInferenceDisplaySize) / 2U;
-constexpr std::uint16_t kInitialPattern[] = {
-    0xFFFFU,
-    0xFFE0U,
-    0x07FFU,
-    0x07E0U,
-    0xF81FU,
-    0xF800U,
-    0x001FU,
-    0x0000U,
-};
+constexpr std::uint16_t kInitialColor = 0x0000U;
 
 bool InRange(
     std::int32_t value,
@@ -158,9 +149,7 @@ void LcdDriver::FillInitialFrame(
                 pixels[y * pipeline::kCaptureFormat.width + x] = CoordinatePatternPixel(x, y);
                 continue;
             }
-            const std::size_t color =
-                x * (sizeof(kInitialPattern) / sizeof(kInitialPattern[0])) / pipeline::kCaptureFormat.width;
-            pixels[y * pipeline::kCaptureFormat.width + x] = kInitialPattern[color];
+            pixels[y * pipeline::kCaptureFormat.width + x] = kInitialColor;
         }
     }
     DrawBoxes(buffer, boxes);
