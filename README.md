@@ -165,6 +165,14 @@ bash project-tools/scripts/format.sh --check
 GitHub Actionsはpushごとに同じチェックを実行し、整形漏れがあれば失敗します。修正コミットは自動追加しません。
 実行ファイル名を変更する場合は`CLANG_FORMAT`で指定できます。
 
+ローカルのpush前にもチェックするには、リポジトリごとに次を一度実行します。
+
+```sh
+git config --local core.hooksPath .githooks
+```
+
+設定後は`.githooks/pre-push`が上記のformatチェックを実行し、失敗したpushを止めます。
+
 ## 外部Flashから起動する場合
 
 FSBL、署名済みアプリ、モデル重み、command blobを外部NORへ書き込み、リセット後にFSBLからアプリを起動します。`STM32_SigningTool_CLI`がPATHにない場合は`local.mk`の`STM32_SIGNING_TOOL_CLI`で指定します。
