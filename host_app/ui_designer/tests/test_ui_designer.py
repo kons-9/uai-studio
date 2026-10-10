@@ -723,9 +723,12 @@ class EmitTest(unittest.TestCase):
         expected = emit_cpp.generate_header(layout, layout_path.name, bitmaps, images_path.name)
         self.assertEqual(len([widget for widget in layout.widgets if widget.feature]), 7)
         self.assertIn('{WidgetId::kToggleBoxes, "boxes", "toggle"}', expected)
-        self.assertEqual(header_path.read_text(encoding="utf-8"), expected)
-        self.assertEqual(images_path.read_text(encoding="utf-8"),
-                         emit_cpp.generate_images_header(layout, bitmaps, layout_path.name))
+        from ui_designer.cli import main
+        self.assertEqual(main([
+            "generate", "--layout", str(layout_path),
+            "--feature-catalog", str(REPO_ROOT / "userspace/ai-app/config/ui_feature_catalog.json"),
+            "--output", str(header_path), "--format", "--check",
+        ]), 0)
 
     def test_new_widget_kinds_emission(self):
         with tempfile.TemporaryDirectory() as tmp:

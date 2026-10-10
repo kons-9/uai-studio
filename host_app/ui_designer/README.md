@@ -15,7 +15,7 @@ ai-appの画面（複数ページ）に出すボタン、ラベル、スライ�
 ```sh
 # ブラウザのエディタを開く（127.0.0.1:8765 にだけ待ち受けます）
 make -C userspace/ai-app ui-designer
-# ヘッダを再生成する
+# ヘッダを再生成する（clang-format-21で整形）
 make -C userspace/ai-app ui-layout
 # 整合性の確認（CIなどで）: フォント表の一致と、ヘッダが最新かどうか
 make -C userspace/ai-app ui-layout-check
@@ -28,7 +28,7 @@ L=userspace/ai-app/config/ui_layout.json
 python3 host_app/ui_designer validate --layout $L --check-font
 python3 host_app/ui_designer render   --layout $L --output /tmp/main.png --checked person --pressed face
 python3 host_app/ui_designer render   --layout $L --output /tmp/menu.png --screen menu
-python3 host_app/ui_designer generate --layout $L --output userspace/ai-app/src/ui/ui_layout.hpp
+python3 host_app/ui_designer generate --layout $L --output userspace/ai-app/src/ui/ui_layout.hpp --format
 python3 host_app/ui_designer serve    --layout $L --port 8765
 ```
 

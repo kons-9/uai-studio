@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -118,9 +121,40 @@ def _generated_files(layout, layout_path: Path, output: Path) -> dict[Path, str]
     return files
 
 
+def _format_generated_files(files: dict[Path, str]) -> dict[Path, str]:
+    """Apply the repository's clang-format version to generated headers."""
+    formatter = os.environ.get("CLANG_FORMAT", "clang-format-21")
+    try:
+        version = subprocess.run([formatter, "--version"], check=True, capture_output=True,
+                                 text=True).stdout
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise LayoutError(f"could not run {formatter}: {error}") from error
+    if not re.search(r"version\s+21\.", version):
+        raise LayoutError(f"clang-format 21 is required; found: {version.strip()}")
+
+    formatted: dict[Path, str] = {}
+    for path, source in files.items():
+        try:
+            result = subprocess.run(
+                [formatter, "--style=file", f"--assume-filename={path.resolve()}"],
+                input=source,
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=_repo_root(),
+            )
+        except (OSError, subprocess.CalledProcessError) as error:
+            detail = error.stderr.strip() if isinstance(error, subprocess.CalledProcessError) else str(error)
+            raise LayoutError(f"could not format {path}: {detail}") from error
+        formatted[path] = result.stdout
+    return formatted
+
+
 def _command_generate(args: argparse.Namespace) -> int:
     layout = load_layout(args.layout, _catalog(args))
     files = _generated_files(layout, args.layout, args.output)
+    if args.format:
+        files = _format_generated_files(files)
     if args.check:
         stale = [path for path, text in files.items()
                  if not path.exists() or path.read_text(encoding="utf-8") != text]
@@ -166,6 +200,8 @@ def _save_document(args: argparse.Namespace, document: dict) -> int:
     if args.header is not None:
         # Resolve bitmaps before writing so a missing PNG leaves both untouched.
         files = _generated_files(layout, args.layout, args.header)
+        if args.format:
+            files = _format_generated_files(files)
     elif layout.images():
         load_bitmaps(layout, args.layout)  # image sources must resolve
     args.layout.write_text(dump_layout(layout), encoding="utf-8")
@@ -482,6 +518,8 @@ def _add_edit_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--feature-catalog", type=Path, help="feature ids and allowed operations")
     parser.add_argument("--header", type=Path,
                         help="also regenerate this C++ header after saving")
+    parser.add_argument("--format", action="store_true",
+                        help="format a regenerated header with clang-format 21")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -514,6 +552,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--check", action="store_true",
                    help="exit 1 instead of writing when the output is stale")
+    p.add_argument("--format", action="store_true",
+                   help="format generated headers with clang-format 21 before writing/checking")
     p.set_defaults(func=_command_generate)
 
     p = sub.add_parser("serve", help="open the browser editor")

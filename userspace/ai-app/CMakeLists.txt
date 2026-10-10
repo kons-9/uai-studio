@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 set(AI_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(AI_APP_NAME ai-app)
 set(AI_APP_TARGET ${AI_APP_NAME}.elf)
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
+find_package(Python3 3.10 COMPONENTS Interpreter REQUIRED)
 
 # STEdgeAI's Neural-ART runtime is distributed separately from this sample.
 # Do not silently depend on the old, ignored copy under third_party: that made
@@ -325,7 +325,7 @@ add_custom_target(${AI_APP_NAME}-ui-layout-check
     COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/host_app/ui_designer" generate --check
         --layout "${CMAKE_CURRENT_SOURCE_DIR}/config/ui_layout.json"
         --feature-catalog "${CMAKE_CURRENT_SOURCE_DIR}/config/ui_feature_catalog.json"
-        --output "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ui_layout.hpp"
+        --output "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ui_layout.hpp" --format
     VERBATIM)
 add_dependencies(${AI_APP_TARGET} ${AI_APP_NAME}-memory-layout ${AI_APP_NAME}-ui-layout-check)
 

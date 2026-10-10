@@ -38,11 +38,12 @@ generate: cubemx-generate
 configure: cubemx-generate
 	$(CMAKE) $(CMAKE_ARGS)
 
-build: $(if $(strip $(UI_LAYOUT_JSON)),ui-layout-check .WAIT) configure
-	$(CMAKE) --build "$(BUILD_DIR)" --target $(APP_TARGET)
+ifneq ($(strip $(UI_LAYOUT_JSON)),)
+configure: ui-layout-check
+endif
 
-setup: $(if $(filter 1,$(ENABLE_AI)),ai-models .WAIT) configure
-init: setup
+build: configure
+	$(CMAKE) --build "$(BUILD_DIR)" --target $(APP_TARGET)
 
 ram-run: build
 	$(CMAKE) --build "$(BUILD_DIR)" --target ram-run
@@ -77,9 +78,13 @@ $(AI_MODEL_TARGETS): ai-model-%:
 	PATH="$(STEDGEAI_BIN):$$PATH" sh "$(AI_MODEL_GENERATOR)" $*
 
 ai-models: $(AI_MODEL_BUILD_TARGETS)
-ai-build: ai-models .WAIT build
+setup: ai-models
+	$(MAKE) configure
 
-ai-load-weights:
+ai-build: ai-models
+	$(MAKE) build
+
+ai-load-weights: build
 	@test -x "$(STM32_PROGRAMMER_CLI)" || { echo "STM32_PROGRAMMER_CLI is not executable: $(STM32_PROGRAMMER_CLI)" >&2; exit 2; }
 	@test -f "$(STM32_EXTERNAL_LOADER)" || { echo "STM32_EXTERNAL_LOADER is missing: $(STM32_EXTERNAL_LOADER)" >&2; exit 2; }
 	@set -eu; \
@@ -91,7 +96,7 @@ ai-load-weights:
 			$(STM32_PROGRAM_EXTRA_ARGS); \
 	done
 
-ai-load-blobs: build
+ai-load-blobs: ai-load-weights
 	@test -x "$(STM32_PROGRAMMER_CLI)" || { echo "STM32_PROGRAMMER_CLI is not executable: $(STM32_PROGRAMMER_CLI)" >&2; exit 2; }
 	@test -f "$(STM32_EXTERNAL_LOADER)" || { echo "STM32_EXTERNAL_LOADER is missing: $(STM32_EXTERNAL_LOADER)" >&2; exit 2; }
 	@set -eu; \
@@ -103,10 +108,14 @@ ai-load-blobs: build
 			$(STM32_PROGRAM_EXTRA_ARGS); \
 	done
 
-ai-load: build .WAIT ai-load-weights .WAIT ai-load-blobs
+ai-load: ai-load-blobs
 ai-init: ai-load
-ai-run: ai-load .WAIT ram-run
+ai-run: ai-load
+	$(CMAKE) --build "$(BUILD_DIR)" --target ram-run
+else
+setup: configure
 endif
+init: setup
 
 ifeq ($(ENABLE_THREAD_MONITOR),1)
 .PHONY: thread-monitor-dump thread-monitor
@@ -205,13 +214,13 @@ UI_FEATURE_CATALOG_ARG := $(if $(strip $(UI_FEATURE_CATALOG)),--feature-catalog 
 
 ui-layout:
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" generate \
-		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)" $(UI_FEATURE_CATALOG_ARG)
+		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)" --format $(UI_FEATURE_CATALOG_ARG)
 
 ui-layout-check:
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" validate \
 		--layout "$(UI_LAYOUT_JSON)" --check-font $(UI_FEATURE_CATALOG_ARG)
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" generate --check \
-		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)" $(UI_FEATURE_CATALOG_ARG)
+		--layout "$(UI_LAYOUT_JSON)" --output "$(UI_LAYOUT_HEADER)" --format $(UI_FEATURE_CATALOG_ARG)
 
 ui-designer:
 	$(UI_DESIGNER_PYTHON) "$(HOST_APP_DIR)/ui_designer" serve \
