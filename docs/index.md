@@ -22,7 +22,7 @@ kernel/middleware      ai_runtime、memory_manager、モニター、image_resize
 kernel/driver          カメラ、LCD、NPU、PSRAM、NOR、RIF、キャッシュ
 kernel/utkernel        μT-Kernel 3.0 BSP2
 kernel/pre_kernel      CubeMX生成コードとRAM起動
-build-system           CMake・Makeの共通定義、CubeMX生成とUARTのスクリプト、ホスト設定
+project-tools           CMake・Makeの共通定義、CubeMX生成とUARTのスクリプト、ホスト設定
 host_app               PCで動かすメモリ配置の生成とモニターの解析ツール
 ```
 

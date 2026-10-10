@@ -20,11 +20,7 @@ Thumbs.db
 .DS_Store
 
 # CMake build tree
-/build/
-/build-ai-app*/
-/build-hw-test/
-/build-experiment-*/
-/build-sample-*/
+build*/
 
 # Documentation site output
 /site/
@@ -33,7 +29,7 @@ Thumbs.db
 /.tools/
 
 # Per-workstation CubeProgrammer/ST-LINK settings
-/build-system/host-config/local.mk
+/project-tools/host-config/local.mk
 
 # CubeMX-generated projects live below the ignored build tree. Keep the
 # application IOC and local.mk.example under version control; regenerate board

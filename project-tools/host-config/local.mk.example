@@ -1,4 +1,4 @@
-# Copy this file to build-system/host-config/local.mk and adjust only host-specific values.
+# Copy this file to project-tools/host-config/local.mk and adjust only host-specific values.
 # Command-line assignments still override these settings.
 
 # Optional when arm-none-eabi-* is not on PATH.

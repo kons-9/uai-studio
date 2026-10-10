@@ -5,10 +5,10 @@ set -euo pipefail
 case "${1:---check}" in
     --check) format_args=(--dry-run --Werror) ;;
     --fix) format_args=(-i) ;;
-    *) printf 'Usage: bash build-system/scripts/format.sh [--check|--fix]\n' >&2; exit 2 ;;
+    *) printf 'Usage: bash project-tools/scripts/format.sh [--check|--fix]\n' >&2; exit 2 ;;
 esac
 if (( $# > 1 )); then
-    printf 'Usage: bash build-system/scripts/format.sh [--check|--fix]\n' >&2
+    printf 'Usage: bash project-tools/scripts/format.sh [--check|--fix]\n' >&2
     exit 2
 fi
 

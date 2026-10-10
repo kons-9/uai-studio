@@ -12,7 +12,7 @@ set_property(CACHE APP_TARGET PROPERTY STRINGS
 # Applications built on the kernel middleware and drivers. They generate the
 # memory contract that the kernel components include.
 set(UAI_KERNEL_APPS ai-app mini-ai-app hw-test)
-include("${CMAKE_CURRENT_SOURCE_DIR}/build-system/cmake/camera_board.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/project-tools/cmake/camera_board.cmake")
 
 option(CMAKE_EXPORT_COMPILE_COMMANDS
        "Generate compile_commands.json for IDEs"
@@ -33,11 +33,11 @@ endif()
 
 # This include must happen before project() so CMake uses the cross compiler
 # during compiler detection, without requiring a separate Makefile.
-include("${CMAKE_CURRENT_SOURCE_DIR}/build-system/cmake/toolchain.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/project-tools/cmake/toolchain.cmake")
 
 project(uai_studio LANGUAGES C CXX ASM)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/build-system/cmake/stm32_cli.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/project-tools/cmake/stm32_cli.cmake")
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)

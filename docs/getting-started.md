@@ -87,11 +87,11 @@ git submodule update --init --recursive
 
 ## ホスト設定（local.mk）
 
-ホストごとに変わる値は`build-system/host-config/local.mk`に集約しています。このファイルはGit管理外です。
+ホストごとに変わる値は`project-tools/host-config/local.mk`に集約しています。このファイルはGit管理外です。
 
 ```sh
-test -f build-system/host-config/local.mk || \
-  cp build-system/host-config/local.mk.example build-system/host-config/local.mk
+test -f project-tools/host-config/local.mk || \
+  cp project-tools/host-config/local.mk.example project-tools/host-config/local.mk
 ```
 
 インストール先と接続するボードに合わせて編集します。

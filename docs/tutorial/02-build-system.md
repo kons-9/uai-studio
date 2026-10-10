@@ -9,7 +9,7 @@
 | ファイル | 変更 |
 | --- | --- |
 | `CMakeLists.txt`（ルート） | `UAI_KERNEL_APPS`に`mini-ai-app`を加える |
-| `build-system/cmake/stm32_cli.cmake` | （`UAI_KERNEL_APPS`経由で）既定IOCの場所、`STM32_RAM_ENTRY`/`STACK`が決まる |
+| `project-tools/cmake/stm32_cli.cmake` | （`UAI_KERNEL_APPS`経由で）既定IOCの場所、`STM32_RAM_ENTRY`/`STACK`が決まる |
 | `kernel/pre_kernel/stm32n6570-dk/CMakeLists.txt` | （同上）アプリの`config/`をインクルードパスに加え、カメラ/LCDクロックを有効にする |
 | `userspace/mini-ai-app/Makefile` | `ENABLE_CPU_TASK_MONITOR := 1` |
 

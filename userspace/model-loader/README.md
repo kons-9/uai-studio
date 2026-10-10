@@ -73,7 +73,7 @@ make -C userspace/model-loader test MODEL_PYTHON="$PWD/build/model-loader-host/v
 
 ## モデル生成とビルド
 
-ホストのSDK/コンパイラ/STM32CubeProgrammer/UART設定は`build-system/host-config/local.mk`に置く。ベンダーSDKはアプリに複製しない。
+ホストのSDK/コンパイラ/STM32CubeProgrammer/UART設定は`project-tools/host-config/local.mk`に置く。ベンダーSDKはアプリに複製しない。
 
 ```sh
 make -C userspace/model-loader model-generate \

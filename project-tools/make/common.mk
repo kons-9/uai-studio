@@ -10,7 +10,7 @@
 
 HOST_APP_DIR := $(PROJECT_ROOT)/host_app
 
-CONFIG_FILE ?= $(PROJECT_ROOT)/build-system/host-config/local.mk
+CONFIG_FILE ?= $(PROJECT_ROOT)/project-tools/host-config/local.mk
 ifneq ($(filter /%,$(CONFIG_FILE)),)
 else
 CONFIG_FILE := $(PROJECT_ROOT)/$(CONFIG_FILE)
@@ -93,7 +93,7 @@ STM32_PROGRAMMER_CLI ?= $(STM32_PROGRAMMER_ROOT)/bin/STM32_Programmer_CLI
 STM32_EXTERNAL_LOADER ?= $(STM32_PROGRAMMER_ROOT)/bin/ExternalLoader/MX66UW1G45G_STM32N6570-DK.stldr
 endif
 
-# Keep host-specific values in build-system/host-config/local.mk while making them available to
+# Keep host-specific values in project-tools/host-config/local.mk while making them available to
 # CMake and the helper scripts.
 export ARM_NONE_EABI_TOOLCHAIN_PATH
 export STM32CUBE_N6_DIR
@@ -168,7 +168,7 @@ ifeq ($(CUBEMX_GENERATOR),script)
 	CUBEMX_EXECUTABLE="$(CUBEMX_EXECUTABLE)" \
 	CUBEMX_IOC="$(CUBEMX_IOC)" \
 	CUBEMX_OUTPUT_DIR="$(CUBEMX_OUTPUT_DIR)" \
-	sh "$(PROJECT_ROOT)/build-system/scripts/cubemx-generate.sh"
+	sh "$(PROJECT_ROOT)/project-tools/scripts/cubemx-generate.sh"
 	+$(MAKE) -f "$(SAMPLE_MAKEFILE)" configure
 else
 	+$(MAKE) -f "$(SAMPLE_MAKEFILE)" cubemx-generate
@@ -187,7 +187,7 @@ cubemx-generate:
 	CUBEMX_EXECUTABLE="$(CUBEMX_EXECUTABLE)" \
 	CUBEMX_IOC="$(CUBEMX_IOC)" \
 	CUBEMX_OUTPUT_DIR="$(CUBEMX_OUTPUT_DIR)" \
-	sh "$(PROJECT_ROOT)/build-system/scripts/cubemx-generate.sh"
+	sh "$(PROJECT_ROOT)/project-tools/scripts/cubemx-generate.sh"
 	+$(MAKE) -f "$(SAMPLE_MAKEFILE)" configure
 
 build: configure
@@ -251,7 +251,7 @@ ai-run: ai-load
 endif
 
 monitor:
-	sh "$(PROJECT_ROOT)/build-system/scripts/uart-monitor.sh"
+	sh "$(PROJECT_ROOT)/project-tools/scripts/uart-monitor.sh"
 
 ifeq ($(ENABLE_THREAD_MONITOR),1)
 thread-monitor-dump: build

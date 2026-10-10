@@ -98,7 +98,7 @@ fixtureと実行本体を整備した段階でstatic_assertを外し、同じRun
 
 ## 実機での実行
 
-ARMツールチェーン、STM32CubeN6、CubeMX、CubeProgrammerとST-LINK/VCPの接続を用意する。ホスト固有設定は[local.mk.example](../../build-system/host-config/local.mk.example)を参照。[本アプリのIOC](config/stm32n6570-dk-fullsecure.ioc)とローカルのボード設定を使用する。ビルド先は`build-hw-test`。共有コンポーネント用ヘッダーと予約領域はビルド時に生成する。NPU driverはこのアプリのビルドから除外する。
+ARMツールチェーン、STM32CubeN6、CubeMX、CubeProgrammerとST-LINK/VCPの接続を用意する。ホスト固有設定は[local.mk.example](../../project-tools/host-config/local.mk.example)を参照。[本アプリのIOC](config/stm32n6570-dk-fullsecure.ioc)とローカルのボード設定を使用する。ビルド先は`build-hw-test`。共有コンポーネント用ヘッダーと予約領域はビルド時に生成する。NPU driverはこのアプリのビルドから除外する。
 
 `STEDGEAI_LIB_DIR`にはai-appと同じ`Middlewares/ST/AI`ディレクトリを指定する。Make変数、同名の環境変数、CMakeの`-DSTEDGEAI_LIB_DIR=...`で設定できる。未指定の場合は`/opt/ST/STEdgeAI/*/Middlewares/ST/AI`から検出する。`npu_cache.h`または`npu_cache.c`が不足するとCMakeの設定時に停止する。
 

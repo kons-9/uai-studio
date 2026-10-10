@@ -20,7 +20,7 @@ STM32_Programmer_CLI        <app>.bin を 0x34000400 へ書き、MSP/PC を設�
 
 ## RAM配置の設定
 
-`STM32_RAM_ENTRY`と`STM32_RAM_STACK`の既定値はアプリごとに`build-system/host-config/local.mk.example`で決まります。
+`STM32_RAM_ENTRY`と`STM32_RAM_STACK`の既定値はアプリごとに`project-tools/host-config/local.mk.example`で決まります。
 
 | 変数 | 内容 | ai-appの値 |
 | --- | --- | --- |

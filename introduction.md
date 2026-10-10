@@ -85,7 +85,7 @@ TRONプログラミングコンテスト2026 開発環境・開発ツール部�
 | ホスト | ネイティブLinux。CMake、GNU Armツールチェーン、Python 3.10以上、uv、minicom |
 | STの無償ツール | STM32CubeMX 6.x、STM32CubeN6、STEdgeAI Core 4.0、STM32CubeProgrammer |
 
-- ツールのパスとボードのシリアル番号は`build-system/host-config/local.mk`の1ファイルに設定するだけ
+- ツールのパスとボードのシリアル番号は`project-tools/host-config/local.mk`の1ファイルに設定するだけ
 - 手順は開発ガイドの[はじめに](https://kons-9.github.io/uai-studio/getting-started/)、利用している既存ソフトウェアは`THIRD_PARTY_NOTICES.md`
 
 ---
@@ -120,7 +120,7 @@ make -C userspace/ai-app cpu-task-monitor
 
 - μT-Kernel 3.0本体、ドライバ、ミドルウェア、アプリをCMakeで一括ビルド
 - `compile_commands.json`を出力し、clangdなどLSPに対応したエディタでコード補完が効く
-- ホストごとの設定は`build-system/host-config/local.mk`の1ファイルに集約
+- ホストごとの設定は`project-tools/host-config/local.mk`の1ファイルに集約
 - **AIエージェントも参加できる**：AGENTS.mdの手順に従い、ビルドからUARTでの起動確認まで進められる
 - 完了条件は実機の起動ログ`camera: pipe1=started pipe2=started`で確認する
 

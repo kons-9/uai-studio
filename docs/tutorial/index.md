@@ -21,7 +21,7 @@ IMX335 ──CSI──▶ DCMIPP ─ Pipe1 (RGB565 800x480) ──▶ カメラ�
 
 ## 前提
 
-- [はじめに](../getting-started.md)の環境（ボード、ARMツールチェーン、STM32CubeN6、STEdgeAI、STM32CubeProgrammer、CubeMX）が揃っていること。`build-system/host-config/local.mk`を作ってあること。
+- [はじめに](../getting-started.md)の環境（ボード、ARMツールチェーン、STM32CubeN6、STEdgeAI、STM32CubeProgrammer、CubeMX）が揃っていること。`project-tools/host-config/local.mk`を作ってあること。
 - experiment-hello-worldが動くこと（[章1](01-minimal-app.md)で確認します）。
 - ai-appを一度動かしていると、モデル生成物と後処理ソースをそのまま使えます（mini-ai-appは`userspace/ai-app/models`と`userspace/ai-app/third_party`を共有します）。
 

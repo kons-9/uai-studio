@@ -21,4 +21,4 @@ jobs:
       - name: Check C/C++ formatting
         env:
           CLANG_FORMAT: clang-format
-        run: bash build-system/scripts/format.sh --check
+        run: bash project-tools/scripts/format.sh --check

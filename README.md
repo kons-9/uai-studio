@@ -53,13 +53,13 @@ cd uai-studio
 git submodule update --init --recursive
 ```
 
-ホスト固有設定ファイルを用意します。すでに`build-system/host-config/local.mk`がある場合はそのまま編集してください。
+ホスト固有設定ファイルを用意します。すでに`project-tools/host-config/local.mk`がある場合はそのまま編集してください。
 
 ```sh
-test -f build-system/host-config/local.mk || cp build-system/host-config/local.mk.example build-system/host-config/local.mk
+test -f project-tools/host-config/local.mk || cp project-tools/host-config/local.mk.example project-tools/host-config/local.mk
 ```
 
-`build-system/host-config/local.mk`で、インストール先と接続するボードに合わせて設定します。
+`project-tools/host-config/local.mk`で、インストール先と接続するボードに合わせて設定します。
 
 ```make
 STM32_PROGRAMMER_ROOT = /path/to/STM32CubeProgrammer/tools
@@ -86,7 +86,7 @@ UART_BAUD = 115200
 | `kernel/middleware` | AIランタイム、メモリ管理、モニターなどの共通処理 |
 | `userspace/ai-app` | 本アプリ |
 | `userspace/experiment-*` | ドライバーなどを実装する際に使った実験用ディレクトリ |
-| `build-system` | CMake・Makeの共通定義、CubeMX生成とUARTのスクリプト、ホスト設定 |
+| `project-tools` | CMake・Makeの共通定義、CubeMX生成とUARTのスクリプト、ホスト設定 |
 | `host_app` | PCで動かすトレース解析とメモリ配置生成ツール（[host_app/README.md](host_app/README.md)） |
 | `docs` | 開発ガイド（ハードウェアの前提とツールの取得、カーネル、ドライバー、ミドルウェア） |
 
@@ -158,8 +158,8 @@ clang-format 21で、Git管理対象のC/C++ソースを整形します。
 設定は[.clang-format](.clang-format)、外部コード・ビルド生成物などの除外対象は[.clang-format-ignore](.clang-format-ignore)で管理します。
 
 ```sh
-bash build-system/scripts/format.sh --fix
-bash build-system/scripts/format.sh --check
+bash project-tools/scripts/format.sh --fix
+bash project-tools/scripts/format.sh --check
 ```
 
 GitHub Actionsはpushごとに同じチェックを実行し、整形漏れがあれば失敗します。修正コミットは自動追加しません。

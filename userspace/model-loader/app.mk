@@ -23,7 +23,7 @@ ENABLE_AI := 0
 ENABLE_THREAD_MONITOR := 0
 ENABLE_CPU_TASK_MONITOR := 0
 EXPERIMENT_PREKERNEL_READY ?= ON
-include $(PROJECT_ROOT)/build-system/make/common.mk
+include $(PROJECT_ROOT)/project-tools/make/common.mk
 ifeq ($(strip $(STEDGEAI_LIB_DIR)),)
 STEDGEAI_LIB_DIR := /opt/ST/STEdgeAI/4.0/Middlewares/ST/AI
 CMAKE_ARGS += -DSTEDGEAI_LIB_DIR="$(STEDGEAI_LIB_DIR)"

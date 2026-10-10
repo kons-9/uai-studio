@@ -31,7 +31,7 @@ ENABLE_THREAD_MONITOR := 0
 ENABLE_CPU_TASK_MONITOR := 0
 CUBEMX_GENERATOR := script
 
-include $(PROJECT_ROOT)/build-system/make/common.mk
+include $(PROJECT_ROOT)/project-tools/make/common.mk
 ```
 
 ### IOC

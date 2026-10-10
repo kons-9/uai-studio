@@ -92,7 +92,7 @@ fixtureと実行本体を整備した段階でstatic_assertを外し、同じRun
 
 ## 実機での実行
 
-ARMツールチェーン、STM32CubeN6、CubeMX、CubeProgrammerとST-LINK/VCPの接続を用意する。ホスト固有設定は[local.mk.example](../../build-system/host-config/local.mk.example)を参照。[本experimentのIOC](config/stm32n6570-dk-fullsecure.ioc)とローカルのボード設定を使用する。カメラ・表示・タッチの継続処理と個別試験は本アプリ内で接続し、他experimentの実行コードはリンクしない。試験対象のクロックとRIF設定は各試験本体で行う。共有pre-kernelの変更は行わない。
+ARMツールチェーン、STM32CubeN6、CubeMX、CubeProgrammerとST-LINK/VCPの接続を用意する。ホスト固有設定は[local.mk.example](../../project-tools/host-config/local.mk.example)を参照。[本experimentのIOC](config/stm32n6570-dk-fullsecure.ioc)とローカルのボード設定を使用する。カメラ・表示・タッチの継続処理と個別試験は本アプリ内で接続し、他experimentの実行コードはリンクしない。試験対象のクロックとRIF設定は各試験本体で行う。共有pre-kernelの変更は行わない。
 
 ```sh
 make -C userspace/experiment-hw-test generate

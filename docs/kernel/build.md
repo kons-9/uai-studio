@@ -5,14 +5,14 @@
 ```text
 make -C userspace/<app> <target>
   -> userspace/<app>/Makefile         APP_TARGET、BUILD_DIR、ENABLE_* を決める
-  -> build-system/make/common.mk      共通ターゲット。local.mk を読み込む
+  -> project-tools/make/common.mk      共通ターゲット。local.mk を読み込む
   -> cmake -S . -B <build> -DAPP_TARGET=<app> ...
   -> CMakeLists.txt（ルート）         kernel/* と userspace/<app> を追加する
 ```
 
-ルートの`CMakeLists.txt`は`APP_TARGET`で選んだ`userspace/<APP_TARGET>/CMakeLists.txt`を読み込みます。各アプリの`Makefile`は`APP_TARGET`とビルド先を決めて`build-system/make/common.mk`を読み込むだけなので、通常は`make -C userspace/<app> <target>`で操作します。ホスト固有の値は`build-system/host-config/local.mk`に置きます（[はじめに](../getting-started.md)）。
+ルートの`CMakeLists.txt`は`APP_TARGET`で選んだ`userspace/<APP_TARGET>/CMakeLists.txt`を読み込みます。各アプリの`Makefile`は`APP_TARGET`とビルド先を決めて`project-tools/make/common.mk`を読み込むだけなので、通常は`make -C userspace/<app> <target>`で操作します。ホスト固有の値は`project-tools/host-config/local.mk`に置きます（[はじめに](../getting-started.md)）。
 
-ツールチェーンは`build-system/cmake/toolchain.cmake`で`arm-none-eabi-gcc`に固定しています。`project()`より前に読み込むため、CMakeを直接呼ぶ場合も`-DCMAKE_TOOLCHAIN_FILE`は不要です。`compile_commands.json`は既定で出力され、clangdなどのLSPから参照できます。
+ツールチェーンは`project-tools/cmake/toolchain.cmake`で`arm-none-eabi-gcc`に固定しています。`project()`より前に読み込むため、CMakeを直接呼ぶ場合も`-DCMAKE_TOOLCHAIN_FILE`は不要です。`compile_commands.json`は既定で出力され、clangdなどのLSPから参照できます。
 
 ## CMakeターゲット
 
@@ -72,7 +72,7 @@ make -C userspace/<app> <target>
 
 ## CubeMXの扱い
 
-HALの初期化コードはIOCから生成し、`<build>/cubemx`に置きます。`build-system/scripts/cubemx-generate.sh`がIOCをビルドツリーへコピーしてから`STM32CubeMX -q`で生成するため、ソースツリーに生成物は入りません。IOCはアプリの`config/`に置き、`Makefile`の`SAMPLE_DEFAULT_IOC`または`local.mk`の`CUBEMX_IOC`で指定します。
+HALの初期化コードはIOCから生成し、`<build>/cubemx`に置きます。`project-tools/scripts/cubemx-generate.sh`がIOCをビルドツリーへコピーしてから`STM32CubeMX -q`で生成するため、ソースツリーに生成物は入りません。IOCはアプリの`config/`に置き、`Makefile`の`SAMPLE_DEFAULT_IOC`または`local.mk`の`CUBEMX_IOC`で指定します。
 
 ## メモリ配置の生成（AIアプリ）
 
