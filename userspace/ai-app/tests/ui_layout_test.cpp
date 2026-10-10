@@ -21,6 +21,63 @@ struct FakeModels final : public uai::ai::task::ModelControl {
     uai::ai::task::PipelineStats Stats() const override { return stats; }
 };
 
+struct UiCamera {
+    uai::ai::camera::State state{};
+    uai::ai::camera::Geometry geometry{};
+    struct Counters {
+        unsigned frame_event_count = 0U;
+        unsigned pipe2_frame_event_count = 0U;
+        unsigned dcmipp_error_count = 0U;
+        unsigned csi_error_count = 0U;
+        unsigned isp_error_count = 0U;
+    };
+    Counters GetDiagnostics() const { return {}; }
+    uai::ai::common::Error ReadState(uai::ai::camera::State *output)
+    {
+        *output = state;
+        return {};
+    }
+    uai::ai::common::Error GetGeometry(uai::ai::camera::Geometry *output)
+    {
+        *output = geometry;
+        return {};
+    }
+    uai::ai::common::Error AutoExposure(bool enabled)
+    {
+        state.auto_exposure = enabled;
+        return {};
+    }
+    uai::ai::common::Error Compensation(int value)
+    {
+        state.compensation = value;
+        return {};
+    }
+    uai::ai::common::Error Manual(
+        std::int32_t exposure,
+        std::int32_t gain
+    )
+    {
+        state.reported_exposure_us = exposure;
+        state.reported_gain_mdB = gain;
+        return {};
+    }
+    uai::ai::common::Error Statistics(uai::ai::camera::Rect area)
+    {
+        state.statistics = area;
+        return {};
+    }
+    uai::ai::common::Error Configure(const uai::ai::camera::Geometry &next)
+    {
+        geometry = next;
+        return {};
+    }
+    uai::ai::common::Error ApplyState(const uai::ai::camera::State &previous)
+    {
+        state = previous;
+        return {};
+    }
+};
+
 TEST(
     CameraRenderState,
     PreservesInitialUiAndResultOwnership
@@ -44,6 +101,33 @@ TEST(
     state.ui.SetShowBoxes(false);
     EXPECT_EQ(state.ui.VisibleBoxes(state.results.boxes).person.count, 0U);
     EXPECT_EQ(state.results.boxes.person.count, 1U);
+}
+
+TEST(
+    ButtonAvailability,
+    DisablingPressedButtonCancelsTapAndDimsCheckedState
+)
+{
+    uai::ai::ui::ButtonSpec button;
+    button.id = 42U;
+    button.bounds = {0U, 0U, 40U, 40U};
+    button.label = "";
+    uai::ai::ui::ButtonPanel panel(&button, 1U);
+    panel.SetChecked(42U, true);
+    EXPECT_EQ(panel.Update({true, 20U, 20U}).type, uai::ai::ui::EventType::kPress);
+    panel.SetEnabled(42U, false);
+    EXPECT_FALSE(panel.IsPressed(42U));
+    EXPECT_FALSE(panel.IsEnabled(42U));
+    EXPECT_EQ(panel.Update({false, 0U, 0U}).type, uai::ai::ui::EventType::kNone);
+    EXPECT_EQ(panel.Update({true, 20U, 20U}).type, uai::ai::ui::EventType::kNone);
+    std::vector<std::uint16_t> pixels(40U * 40U);
+    uai::ai::ui::Canvas canvas(pixels.data(), 40U, 40U);
+    panel.Paint(canvas);
+    EXPECT_EQ(pixels[20U * 40U + 20U], (button.style.checked_fill & 0xF7DEU) >> 1U);
+    panel.Update({false, 0U, 0U});
+    panel.SetEnabled(42U, true);
+    EXPECT_TRUE(panel.IsChecked(42U));
+    EXPECT_EQ(panel.Update({true, 20U, 20U}).type, uai::ai::ui::EventType::kPress);
 }
 
 TEST(
@@ -178,7 +262,8 @@ const uai::ai::ui::ButtonSpec &ButtonOf(uai::ai::app_ui::WidgetId id)
 
 uai::ai::ui::Event
 Tap(uai::ai::app_ui::AppUi &ui,
-    uai::ai::app_ui::WidgetId id)
+    uai::ai::app_ui::WidgetId id,
+    bool apply = true)
 {
     const uai::ai::ui::Rect bounds = BoundsOf(id);
     ui.HandleTouch(
@@ -186,7 +271,17 @@ Tap(uai::ai::app_ui::AppUi &ui,
          static_cast<std::uint16_t>(bounds.x + bounds.width / 2U),
          static_cast<std::uint16_t>(bounds.y + bounds.height / 2U)}
     );
-    return ui.HandleTouch({false, 0U, 0U});
+    const auto event = ui.HandleTouch({false, 0U, 0U});
+    if (apply) {
+        UiCamera camera;
+        uai::ai::shell::ExposureMode mode;
+        uai::ai::shell::Reply reply;
+        if (uai::ai::shell::ApplyTouch(event, camera, ui, mode, &reply)) {
+            EXPECT_EQ(reply.code, 0);
+            ui.RecordOperationResult(reply.code);
+        }
+    }
+    return event;
 }
 
 std::vector<std::uint16_t> PaintToPixels(
@@ -209,6 +304,41 @@ std::uint16_t PixelAt(
 )
 {
     return pixels[static_cast<std::size_t>(y) * uai::ai::app_ui::kScreenWidth + x];
+}
+
+TEST(
+    AiAppUi,
+    TouchAndShellReachTheSameStateAndOperationDisplay
+)
+{
+    FakeModels touch_models;
+    FakeModels shell_models;
+    uai::ai::app_ui::AppUi touch_ui(touch_models);
+    uai::ai::app_ui::AppUi shell_ui(shell_models);
+    Tap(touch_ui, uai::ai::app_ui::WidgetId::kOpenMenu);
+    UiCamera camera;
+    uai::ai::shell::ExposureMode mode;
+    const auto check = [&](uai::ai::app_ui::WidgetId widget, const uai::ai::shell::Request &request) {
+        Tap(touch_ui, widget);
+        const auto reply = uai::ai::shell::Apply(request, camera, shell_ui, mode);
+        shell_ui.RecordOperationResult(reply.code);
+        EXPECT_EQ(reply.code, 0);
+        EXPECT_EQ(touch_ui.ModelMask(), shell_ui.ModelMask());
+        EXPECT_EQ(touch_ui.ShowBoxes(), shell_ui.ShowBoxes());
+        EXPECT_EQ(touch_ui.AiExposureEnabled(), shell_ui.AiExposureEnabled());
+        EXPECT_STREQ(touch_ui.OperationText(), shell_ui.OperationText());
+    };
+    using uai::ai::shell::Action;
+    using uai::ai::app_ui::WidgetId;
+    check(WidgetId::kPerson, {Action::kModels, {6}});
+    check(WidgetId::kFace, {Action::kModels, {4}});
+    check(WidgetId::kSegmentation, {Action::kModels, {0}});
+    check(WidgetId::kToggleBoxes, {Action::kBoxes, {0}});
+    check(WidgetId::kAiExposure, {Action::kAiExposure, {0}});
+    check(WidgetId::kAiExposure, {Action::kAiExposure, {1}});
+    touch_ui.RecordOperationResult(7);
+    touch_ui.UpdateStatus(100U);
+    EXPECT_STREQ(touch_ui.OperationText(), "APPLY ERROR 7");
 }
 
 /* Guards the generated header: every widget of every screen must lie on the
@@ -387,7 +517,7 @@ TEST(
         return PixelAt(pixels, static_cast<std::uint16_t>(bounds.x + 6U), static_cast<std::uint16_t>(bounds.y + 6U));
     };
     EXPECT_EQ(sample(), ButtonOf(uai::ai::app_ui::WidgetId::kAiExposure).style.checked_fill);
-    const auto exposure_tap = Tap(ui, uai::ai::app_ui::WidgetId::kAiExposure);
+    const auto exposure_tap = Tap(ui, uai::ai::app_ui::WidgetId::kAiExposure, false);
     EXPECT_EQ(exposure_tap.type, uai::ai::ui::EventType::kTap);
     EXPECT_TRUE(ui.AiExposureEnabled());
     ui.SetAiExposureEnabled(false);
@@ -402,7 +532,7 @@ TEST(
     Tap(ui, uai::ai::app_ui::WidgetId::kToggleBoxes);
     EXPECT_FALSE(ui.ShowBoxes());
     EXPECT_FALSE(ui.AiExposureEnabled());
-    Tap(ui, uai::ai::app_ui::WidgetId::kAiExposure);
+    Tap(ui, uai::ai::app_ui::WidgetId::kAiExposure, false);
     EXPECT_FALSE(ui.AiExposureEnabled());
     ui.SetAiExposureEnabled(true);
     EXPECT_TRUE(ui.AiExposureEnabled());

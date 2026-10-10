@@ -93,9 +93,13 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 
 メモリ配置はビルド時に`host_app/auto_static_memory_layout`が解決し、リンカスクリプトと`static_memory_layout`用ヘッダを`build-ai-app-person/generated/`へ生成します。
 
-UIの機能IDと操作IDは`config/ui_feature_catalog.json`に定義します。`config/ui_layout.json`の`feature`/`operation`はこれと照合され、`make ui-layout`でC++のバインディングを生成します。MakeまたはCMakeからのビルド時には`ui-layout-check`で生成物の一致も確認します。AI露出のタッチはカメラ所有タスクでシェルと同じHW適用経路を通り、失敗した場合は表示状態を切り替えません。現時点の機能カタログはID一覧であり、機能間制約や表示・操作可否を定義するものではありません。
+UIの機能IDと操作IDは`config/ui_feature_catalog.json`に定義します。`config/ui_layout.json`の`feature`/`operation`はこれと照合され、`make ui-layout`でC++のバインディングを生成します。MakeまたはCMakeからのビルド時には`ui-layout-check`で生成物の一致も確認します。カタログはID一覧であり、実行時の制約は[shell/owner.hpp](src/shell/owner.hpp)の`CheckConstraints`で判定します。
 
-画面は2つあります。カメラ画面では下段の角丸の`PERSON`、`FACE`、`SEG`ボタンが各モデルの推論を有効/無効にし（有効なモデルは色付き）、カプセル形の`BOXES`は検出枠とマスクの表示を切り替えます。上端のラベルはモデルごとの推論レート（`PERSON 7.5  FACE 7.3  SEG --  FPS`）、右側の数値表示`DET`は直近の検出数です。右の十字パッドはカメラの背面ホイールのように使います。上下で最小信頼度を±5 %、左右でモデルの組み合わせ（プリセット）を前後に切り替え、中央で`BOXES`をトグル、指をリングに沿って回すと45°ごとに最小信頼度が5 %ずつ変わります。右上の丸いハンバーガーをタップすると単色背景の設定画面に切り替わり、スライダーで表示する枠の最小信頼度（`MIN CONFIDENCE %`。パッドでの変更も反映されます）、ダイヤルでステータスの更新周期（`STATUS MS`、100〜2000 ms）を変えられます。`MODELS`ホイールを上下にドラッグするか、その右の三角の矢印キーをタップするとモデルの組み合わせ（`ALL`、`PERSON`、`FACE`、`SEG`、`PERSON+FACE`）を一度に選べ、カメラ画面のボタンと互いに同期します。`PERSON FPS`は人物検出のレートを数値で出し、右上にはロゴ画像（`config/ui/logo.png`）を表示します。左上の丸い矢印でカメラ画面に戻ります。操作はUARTに`ui: tap id=4 models=6`、`ui: screen=1`、`ui: min confidence=35%`、`ui: wheel=FACE models=2`のように出ます。タッチコントローラ（GT911、I2C2）の初期化に失敗しても起動は続行し、`touch: controller unavailable; on-screen UI disabled`を出します。ウィジェットや画面の追加・変更は`make -C userspace/ai-app ui-designer`（または`host_app/ui_designer`のCLI）で行い、`make -C userspace/ai-app ui-layout`でヘッダを再生成します。このコマンドは`clang-format-21`も使います。ハンドラは`src/ui/app_ui.cpp`にあります（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。
+画面は2つあります。カメラ画面の上端にモデル別FPSと露出の読み戻しを表示し、右上のメニューボタンで設定画面へ移ります。設定画面の`PERSON`・`FACE`・`SEG`、`INFERENCE OVERLAY`、`AI EXPOSURE`はカメラ所有タスクの`ApplyTouch`からシェルと同じ`Apply`へ渡し、確定した状態をボタンへ反映します。confidenceのスライダーと更新周期のダイヤルはUI内の値を変更します。左上の矢印でカメラ画面へ戻ります。
+
+AI露出ON中はAEの手動切替・手動値設定・独自統計領域を拒否します。手動値は`camera ae off`後だけ受け付けます。AI露出がビルドで利用不可ならボタンを暗くしてタッチを無効化し、シェルからの有効化も拒否します。読み戻しで失敗した露出操作は確定せず、直前の制御値を再適用します。復元失敗は状態不明として通知するため、`camera status`で実値を確認してから再設定してください。設定画面の`APPLIED` / `APPLY ERROR <code>`は最後の操作結果であり、定期統計更新では消しません。
+
+タッチコントローラ（GT911、I2C2）の初期化に失敗しても起動は続行し、`touch: controller unavailable; on-screen UI disabled`を出します。レイアウト変更は`make -C userspace/ai-app ui-designer`で編集し、`make -C userspace/ai-app ui-layout`でヘッダを再生成します。このコマンドは`clang-format-21`も使います（[docs/middleware/ui.md](../../docs/middleware/ui.md)）。
 
 ## 主な生成物
 
@@ -128,7 +132,7 @@ ST-LINKからの読み出しに加え、シェルの`trace ai` / `trace cpu`でU
 | `models [none\|person\|face\|seg\|person+face\|all\|0..7]` | 現在のモデル選択の表示・切り替え |
 | `ui [status\|boxes on/off\|exposure on/off]` | UI状態と枠/AI露出の切り替え |
 | `diag <frame\|brightness\|input\|input_display\|inference\|fps\|display\|timing> [on/off]` | 実行時診断の取得・変更 |
-| `trace <ai\|cpu>` | トレースリングを一時停止し、形式・バージョン・長さ・CRC32付きのHEXフレームを送る |
+| `trace <ai\|cpu> [pause\|resume\|status]` | 指定なしなら転送中だけ停止する。`pause`は記録停止を保持し、`resume`までUART転送後もリングを固定する。`status`は保持状態を表示する |
 
 カメラとUIの変更は表示タスクへ要求し、適用失敗時にはエラーコードを返します。応答がタイムアウトした場合も要求が後から適用され得るため、`camera status`または`ui status`で確認してください。`trace cpu`は512 KiBをHEXで転送するので115200 bpsでは数分かかり、転送中はCPUトレースの記録が停止します。転送ログはminicomのキャプチャ（Ctrl-A、L）等で保存し、次のように検証・復元します。
 
@@ -139,9 +143,17 @@ python3 host_app/ai_model_monitor/decode_uart_trace.py /tmp/cpu-uart.log /tmp/cp
 uv run --project host_app python host_app/cpu_task_monitor/cpu_task_monitor.py /tmp/cpu-trace.bin --json /tmp/cpu-trace.json --csv /tmp/cpu-trace.csv
 ```
 
+UARTとST-LINKの同一スナップショット比較では、シェルで`trace ai pause`、`trace ai`を送り、`@TRACE END`までログを保存します。停止を保持したまま、別端末で起動中FWと一致するビルドから`thread-monitor-dump`を取得し、次を実行します。
+
+```sh
+make -C userspace/ai-app thread-monitor-dump THREAD_MONITOR_DUMP=/tmp/ai-swd.bin
+python3 host_app/ai_model_monitor/decode_uart_trace.py /tmp/ai-uart.log /tmp/ai-trace.bin --compare /tmp/ai-swd.bin
+```
+
+取得後はシェルで`trace ai resume`を送ってください。CPUも`trace cpu pause`・`trace cpu`と`cpu-task-monitor-dump`で同様に取得し、最後に`trace cpu resume`します。比較中にリセット・書込み・記録再開を行わず、失敗や中断時にも明示的に再開します。記録停止はカメラ・推論の停止ではありません。
+
 新しいコマンドは[src/shell/engine.hpp](src/shell/engine.hpp)の固定容量レジストリへ登録します。[src/shell/commands.hpp](src/shell/commands.hpp)の`RegisterAll`に登録関数を追加し、`src/shell/<command>.cpp`に引数検証と応答を実装してCMakeへ追加してください。カメラなど状態変更を伴う操作はシェルから直接触らず、[src/shell/mailbox.hpp](src/shell/mailbox.hpp)の要求を表示タスクへ渡します。
 
 ## 関連文書
 
-- [DESIGN.md](DESIGN.md): 表示優先とバッファ所有権の設計方針
-- [VERIFICATION_CHECKLIST.md](VERIFICATION_CHECKLIST.md): 実機確認の項目
+- [TODO.md](TODO.md): 実機確認の手順・合格条件・記録欄

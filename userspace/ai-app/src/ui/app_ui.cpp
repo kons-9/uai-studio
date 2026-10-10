@@ -72,6 +72,7 @@ void AppUi::Initialize()
     status_period_ms_ = static_cast<std::uint32_t>(Menu().Dials().Value(Id(WidgetId::kStatusPeriod)));
     Menu().Buttons().SetChecked(Id(WidgetId::kToggleBoxes), show_boxes_);
     Menu().Buttons().SetChecked(Id(WidgetId::kAiExposure), ai_exposure_enabled_);
+    Menu().Buttons().SetEnabled(Id(WidgetId::kAiExposure), AiExposureAvailable());
     SyncModelWidgets();
 }
 
@@ -106,17 +107,6 @@ void AppUi::SyncModelWidgets()
     buttons.SetChecked(Id(WidgetId::kSegmentation), (mask & task::ModelMaskBit(task::ModelBit::kSegmentation)) != 0U);
 }
 
-void AppUi::ToggleModel(
-    task::ModelBit bit,
-    std::uint16_t widget_id
-)
-{
-    const std::uint8_t mask = static_cast<std::uint8_t>(models_.ModelMask() ^ task::ModelMaskBit(bit));
-    models_.SetModelMask(mask);
-    SyncModelWidgets();
-    UAI_LOG_INFO("ui: tap id=%u models=%x\n", static_cast<unsigned int>(widget_id), static_cast<unsigned int>(mask));
-}
-
 void AppUi::SetMinConfidence(std::int32_t percent)
 {
     if (percent < 0)
@@ -128,26 +118,6 @@ void AppUi::SetMinConfidence(std::int32_t percent)
     UAI_LOG_INFO("ui: min confidence=%d%%\n", static_cast<int>(percent));
 }
 
-void AppUi::OnPersonTap(const ui::Event &event)
-{
-    ToggleModel(task::ModelBit::kPerson, event.widget_id);
-}
-
-void AppUi::OnFaceTap(const ui::Event &event)
-{
-    ToggleModel(task::ModelBit::kFace, event.widget_id);
-}
-
-void AppUi::OnSegmentationTap(const ui::Event &event)
-{
-    ToggleModel(task::ModelBit::kSegmentation, event.widget_id);
-}
-
-void AppUi::OnToggleBoxesTap(const ui::Event &)
-{
-    ToggleBoxes();
-}
-
 void AppUi::SetAiExposureEnabled(bool enabled)
 {
     ai_exposure_enabled_ = task::kAiExposureControl && enabled;
@@ -157,9 +127,14 @@ void AppUi::SetAiExposureEnabled(bool enabled)
     UAI_LOG_INFO("ui: ai exposure=%s\n", ai_exposure_enabled_ ? "on" : "off");
 }
 
-void AppUi::ToggleBoxes()
+void AppUi::RecordOperationResult(std::int32_t code)
 {
-    SetShowBoxes(!show_boxes_);
+    char text[ui::kLabelTextCapacity];
+    if (code == 0)
+        std::snprintf(text, sizeof(text), "APPLIED");
+    else
+        std::snprintf(text, sizeof(text), "APPLY ERROR %ld", static_cast<long>(code));
+    Menu().Labels().SetText(Id(WidgetId::kOperationStatus), text);
 }
 
 void AppUi::SetShowBoxes(bool enabled)

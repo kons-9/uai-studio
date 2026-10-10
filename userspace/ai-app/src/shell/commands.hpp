@@ -8,6 +8,7 @@
 
 #include "shell/engine.hpp"
 #include "shell/mailbox.hpp"
+#include "middleware/foundation/error.hpp"
 
 namespace uai::ai::shell {
 
@@ -20,8 +21,12 @@ struct Context {
     void (*memory_usage)(const Output &) = nullptr;
     void (*transfer_trace)(
         const Output &,
+        bool,
         bool
     ) = nullptr;
+    common::Error (*pause_trace)(bool) = nullptr;
+    void (*resume_trace)(bool) = nullptr;
+    bool trace_held[2]{};
 
     void Send(
         const Request &request,
@@ -45,8 +50,7 @@ struct Context {
             if (mailbox.Receive(&reply)) {
                 if (reply.code != 0)
                     output.Printf("error: apply code=%ld\r\n", static_cast<long>(reply.code));
-                else
-                    output.Write(reply.text);
+                output.Write(reply.text);
                 return;
             }
             wait_ms(1);

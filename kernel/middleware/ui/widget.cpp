@@ -73,7 +73,7 @@ Event ButtonPanel::Update(const TouchPoint &sample)
 
     if (sample.active && !was_active) {
         for (std::size_t index = 0U; index < count_; ++index) {
-            if (buttons_[index].Contains(sample.x, sample.y)) {
+            if (!disabled_[index] && buttons_[index].Contains(sample.x, sample.y)) {
                 pressed_index_ = static_cast<std::int32_t>(index);
                 event.type = EventType::kPress;
                 event.widget_id = buttons_[index].id;
@@ -98,15 +98,19 @@ void ButtonPanel::Paint(Canvas &canvas) const
     for (std::size_t index = 0U; index < count_; ++index) {
         const ButtonSpec &button = buttons_[index];
         const bool pressed = static_cast<std::int32_t>(index) == pressed_index_;
-        const std::uint16_t fill = pressed ? button.style.pressed_fill
-            : checked_[index]              ? button.style.checked_fill
-                                           : button.style.fill;
+        std::uint16_t fill = pressed ? button.style.pressed_fill
+            : checked_[index]        ? button.style.checked_fill
+                                     : button.style.fill;
+        const auto dim = [&](std::uint16_t color) {
+            return disabled_[index] ? static_cast<std::uint16_t>((color & 0xF7DEU) >> 1U) : color;
+        };
+        fill = dim(fill);
         canvas.FillShape(button.shape, button.bounds, fill);
-        canvas.DrawShapeFrame(button.shape, button.bounds, button.style.border_width, button.style.border);
+        canvas.DrawShapeFrame(button.shape, button.bounds, button.style.border_width, dim(button.style.border));
         if (button.icon != Icon::kNone) {
-            DrawIcon(canvas, button.bounds, button.icon, button.style.text);
+            DrawIcon(canvas, button.bounds, button.icon, dim(button.style.text));
         } else {
-            canvas.DrawTextCentered(button.bounds, button.label, button.style.text_scale, button.style.text);
+            canvas.DrawTextCentered(button.bounds, button.label, button.style.text_scale, dim(button.style.text));
         }
     }
 }
@@ -131,6 +135,25 @@ bool ButtonPanel::IsChecked(std::uint16_t id) const
 {
     const std::int32_t index = IndexOf(id);
     return index >= 0 && checked_[static_cast<std::size_t>(index)];
+}
+
+void ButtonPanel::SetEnabled(
+    std::uint16_t id,
+    bool enabled
+)
+{
+    const auto index = IndexOf(id);
+    if (index < 0)
+        return;
+    disabled_[static_cast<std::size_t>(index)] = !enabled;
+    if (!enabled && pressed_index_ == index)
+        pressed_index_ = -1;
+}
+
+bool ButtonPanel::IsEnabled(std::uint16_t id) const
+{
+    const auto index = IndexOf(id);
+    return index >= 0 && !disabled_[static_cast<std::size_t>(index)];
 }
 
 LabelPanel::LabelPanel(

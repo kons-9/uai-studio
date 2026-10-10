@@ -52,6 +52,8 @@ RGB565のフレームに描く表示部品と、タッチ入力を受ける部�
 
 `ButtonPanel`、`SliderPanel`、`DialPanel`、`WheelPanel`、`PadPanel`の`Update()`はポーリングごとに1回呼びます。タッチが始まった位置で担当する部品が決まり、ボタンとパッドは離したときに`kTap`、スライダー・ダイヤル・ホイール・パッドの回転は値が変わったときに`kChange`を返します。
 
+`ButtonPanel::SetEnabled(id, false)`はボタンを暗く描画し、入力を無効化します。押下中に無効化した場合はその押下も解除して、離した際の`kTap`を出しません。チェック状態は保持し、`IsEnabled(id)`で操作可否を取得できます。
+
 `Painter`はフレームに描く側のインターフェースで、各Panelと`PainterGroup`（複数のPainterを順に描く）、`Screen`が実装します。
 
 ## ScreenSpecとScreen

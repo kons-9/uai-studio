@@ -24,19 +24,20 @@ enum class WidgetId : std::uint16_t {
     kCloseMenu = 4U,
     kMenuTitle = 5U,
     kLogo = 6U,
-    kModelsCaption = 7U,
-    kModelsHint = 8U,
-    kPerson = 9U,
-    kFace = 10U,
-    kSegmentation = 11U,
-    kAiExposure = 12U,
-    kVisualizationCaption = 13U,
-    kVisualizationHint = 14U,
-    kToggleBoxes = 15U,
-    kMinConfidence = 16U,
-    kConfidenceHint = 17U,
-    kStatusPeriod = 18U,
-    kStatusHint = 19U,
+    kOperationStatus = 7U,
+    kModelsCaption = 8U,
+    kModelsHint = 9U,
+    kPerson = 10U,
+    kFace = 11U,
+    kSegmentation = 12U,
+    kAiExposure = 13U,
+    kVisualizationCaption = 14U,
+    kVisualizationHint = 15U,
+    kToggleBoxes = 16U,
+    kMinConfidence = 17U,
+    kConfidenceHint = 18U,
+    kStatusPeriod = 19U,
+    kStatusHint = 20U,
 };
 
 struct FeatureBinding {
@@ -216,6 +217,19 @@ inline constexpr ui::LabelSpec kMenuLabels[] = {
         },
     },
     {
+        static_cast<std::uint16_t>(WidgetId::kOperationStatus),
+        {24U, 72U, 752U, 24U},
+        "",
+        {
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            0U,
+            false,
+            2U,
+            ui::TextAlign::kLeft,
+            0U,
+        },
+    },
+    {
         static_cast<std::uint16_t>(WidgetId::kModelsCaption),
         {24U, 96U, 352U, 32U},
         "MODELS",
@@ -370,12 +384,8 @@ inline constexpr ui::ScreenSpec kScreens[] = {
 inline constexpr std::size_t kScreenCount = sizeof(kScreens) / sizeof(kScreens[0]);
 
 /* Handler methods the application must provide on its Handlers type:
- *   void OnFaceTap(const ui::Event &event);
  *   void OnMinConfidenceChange(const ui::Event &event);
- *   void OnPersonTap(const ui::Event &event);
- *   void OnSegmentationTap(const ui::Event &event);
  *   void OnStatusPeriodChange(const ui::Event &event);
- *   void OnToggleBoxesTap(const ui::Event &event);
  *   void ShowScreen(ScreenId screen);
  */
 template <typename Handlers>
@@ -391,18 +401,6 @@ bool Dispatch(
             return true;
         case WidgetId::kCloseMenu:
             handlers.ShowScreen(ScreenId::kMain);
-            return true;
-        case WidgetId::kPerson:
-            handlers.OnPersonTap(event);
-            return true;
-        case WidgetId::kFace:
-            handlers.OnFaceTap(event);
-            return true;
-        case WidgetId::kSegmentation:
-            handlers.OnSegmentationTap(event);
-            return true;
-        case WidgetId::kToggleBoxes:
-            handlers.OnToggleBoxesTap(event);
             return true;
         default:
             break;

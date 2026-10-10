@@ -80,9 +80,22 @@ void ShellTask::Run(
         );
         out.Write("memory: buffers are statically reserved; live heap usage unavailable\r\n");
     };
-    commands.transfer_trace = [](const Output &out, bool cpu) {
+    commands.pause_trace = [](bool cpu) {
         auto &root = task::GetTaskContext();
-        const auto status = cpu ? root.cpu_task_monitor.PauseTrace() : root.pipeline_task.PauseAiTrace();
+        return cpu ? root.cpu_task_monitor.PauseTrace() : root.pipeline_task.PauseAiTrace();
+    };
+    commands.resume_trace = [](bool cpu) {
+        auto &root = task::GetTaskContext();
+        if (cpu)
+            root.cpu_task_monitor.ResumeTrace();
+        else
+            root.pipeline_task.ResumeAiTrace();
+    };
+    commands.transfer_trace = [](const Output &out, bool cpu, bool held) {
+        auto &root = task::GetTaskContext();
+        const auto status = held ? common::Error{}
+            : cpu                ? root.cpu_task_monitor.PauseTrace()
+                                 : root.pipeline_task.PauseAiTrace();
         if (!status.Ok()) {
             out.Printf("error: trace pause code=%ld\r\n", static_cast<long>(status.Code()));
             return;
@@ -112,10 +125,12 @@ void ShellTask::Run(
             });
         else
             out.Write("error: trace buffer unavailable\r\n");
-        if (cpu)
-            root.cpu_task_monitor.ResumeTrace();
-        else
-            root.pipeline_task.ResumeAiTrace();
+        if (!held) {
+            if (cpu)
+                root.cpu_task_monitor.ResumeTrace();
+            else
+                root.pipeline_task.ResumeAiTrace();
+        }
     };
     if (!RegisterAll(engine, commands))
         common::Task::Halt("shell: register failed\n");

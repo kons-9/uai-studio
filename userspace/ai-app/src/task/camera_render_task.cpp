@@ -621,6 +621,7 @@ void CameraRenderTask::Run(CameraRenderContext context)
                 } else {
                     reply = shell::Apply(shell_request, context.camera, screen_ui, exposure_mode);
                 }
+                screen_ui.RecordOperationResult(reply.code);
                 context.shell_mailbox.Complete(reply);
                 if (shell_request.action == shell::Action::kCameraFps
                     || shell_request.action == shell::Action::kCameraFlip
@@ -650,9 +651,11 @@ void CameraRenderTask::Run(CameraRenderContext context)
                     const ui::Event event = screen_ui.HandleTouch(sample);
                     ui_dirty = ui_dirty || event.type != ui::EventType::kNone;
                     shell::Reply touch_reply{};
-                    if (shell::ApplyTouch(event, context.camera, screen_ui, exposure_mode, &touch_reply)
-                        && touch_reply.code != 0)
-                        UAI_LOG_WARN("ui: exposure apply failed code=%d\n", static_cast<int>(touch_reply.code));
+                    if (shell::ApplyTouch(event, context.camera, screen_ui, exposure_mode, &touch_reply)) {
+                        screen_ui.RecordOperationResult(touch_reply.code);
+                        if (touch_reply.code != 0)
+                            UAI_LOG_WARN("ui: apply failed code=%d\n", static_cast<int>(touch_reply.code));
+                    }
                     if (event.type == ui::EventType::kPress && context.diagnostics.display_trace) {
                         UAI_LOG_DEBUG(
                             "ui: press id=%u x=%u y=%u\n",

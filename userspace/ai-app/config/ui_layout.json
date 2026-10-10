@@ -46,6 +46,11 @@
           "source": "ui/logo.png"
         },
         {
+          "type": "label", "id": "operation_status", "text": "",
+          "x": 24, "y": 72, "width": 752, "height": 24,
+          "style": {"text": "#FFFFFF", "fill": null, "text_scale": 2, "align": "left", "padding": 0}
+        },
+        {
           "type": "label", "id": "models_caption", "text": "MODELS",
           "x": 24, "y": 96, "width": 352, "height": 32,
           "style": {"text": "#FFFFFF", "fill": null, "text_scale": 3, "align": "left", "padding": 0}
@@ -56,19 +61,19 @@
           "source": "ui/models_hint.png"
         },
         {
-          "type": "button", "id": "person", "label": "PERSON", "shape": "rounded", "on_tap": "OnPersonTap", "feature": "models", "operation": "toggle",
+          "type": "button", "id": "person", "label": "PERSON", "shape": "rounded", "feature": "models", "operation": "toggle",
           "x": 24, "y": 176, "width": 104, "height": 56,
           "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#C02020",
                     "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}
         },
         {
-          "type": "button", "id": "face", "label": "FACE", "shape": "rounded", "on_tap": "OnFaceTap", "feature": "models", "operation": "toggle",
+          "type": "button", "id": "face", "label": "FACE", "shape": "rounded", "feature": "models", "operation": "toggle",
           "x": 148, "y": 176, "width": 104, "height": 56,
           "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2040C0",
                     "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}
         },
         {
-          "type": "button", "id": "segmentation", "label": "SEG", "shape": "rounded", "on_tap": "OnSegmentationTap", "feature": "models", "operation": "toggle",
+          "type": "button", "id": "segmentation", "label": "SEG", "shape": "rounded", "feature": "models", "operation": "toggle",
           "x": 272, "y": 176, "width": 104, "height": 56,
           "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#20A040",
                     "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}
@@ -90,7 +95,7 @@
           "source": "ui/visualization_hint.png"
         },
         {
-          "type": "button", "id": "toggle_boxes", "label": "INFERENCE OVERLAY", "shape": "rounded", "on_tap": "OnToggleBoxesTap", "feature": "boxes", "operation": "toggle",
+          "type": "button", "id": "toggle_boxes", "label": "INFERENCE OVERLAY", "shape": "rounded", "feature": "boxes", "operation": "toggle",
           "x": 424, "y": 176, "width": 352, "height": 56,
           "style": {"fill": "#404040", "pressed_fill": "#202020", "checked_fill": "#2060C0",
                     "border": "#FFFFFF", "text": "#FFFFFF", "text_scale": 2, "border_width": 2}

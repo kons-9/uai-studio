@@ -55,12 +55,20 @@ public:
 
     bool ShowBoxes() const { return show_boxes_; }
     bool AiExposureEnabled() const { return ai_exposure_enabled_; }
+    bool AiExposureAvailable() const { return task::kAiExposureControl; }
     void SetShowBoxes(bool enabled);
     void SetAiExposureEnabled(bool enabled);
     void SetModelMask(std::uint8_t mask);
     std::uint8_t ModelMask() const { return models_.ModelMask(); }
     std::int32_t MinConfidencePercent() const { return min_confidence_percent_; }
     const char *StatusText() const;
+    void RecordOperationResult(std::int32_t code);
+    const char *OperationText() const
+    {
+        return screens_[static_cast<std::size_t>(ScreenId::kMenu)].Labels().Text(
+            static_cast<std::uint16_t>(WidgetId::kOperationStatus)
+        );
+    }
     const char *ExposureText() const
     {
         return Main().Labels().Text(static_cast<std::uint16_t>(WidgetId::kExposureStatus));
@@ -68,10 +76,6 @@ public:
 
     /* Handlers bound in config/ui_layout.json. */
     void ShowScreen(ScreenId screen);
-    void OnPersonTap(const ui::Event &event);
-    void OnFaceTap(const ui::Event &event);
-    void OnSegmentationTap(const ui::Event &event);
-    void OnToggleBoxesTap(const ui::Event &event);
     void OnMinConfidenceChange(const ui::Event &event);
     void OnStatusPeriodChange(const ui::Event &event);
 
@@ -87,11 +91,6 @@ private:
         Initialize();
     }
     void Initialize();
-    void ToggleModel(
-        task::ModelBit bit,
-        std::uint16_t widget_id
-    );
-    void ToggleBoxes();
     void SetMinConfidence(std::int32_t percent);
     /* Reflects the model mask on the menu buttons. */
     void SyncModelWidgets();

@@ -240,6 +240,11 @@ public:
         bool checked
     );
     bool IsChecked(std::uint16_t id) const;
+    void SetEnabled(
+        std::uint16_t id,
+        bool enabled
+    );
+    bool IsEnabled(std::uint16_t id) const;
     std::size_t Count() const { return count_; }
 
 private:
@@ -249,6 +254,7 @@ private:
     std::int32_t pressed_index_ = -1;
     bool touch_active_ = false;
     bool checked_[kMaxButtons] = {};
+    bool disabled_[kMaxButtons] = {};
 };
 
 inline constexpr std::size_t kMaxLabels = 8U;

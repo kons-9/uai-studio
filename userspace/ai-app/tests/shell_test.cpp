@@ -118,6 +118,14 @@ struct FakeCamera {
     uai::ai::camera::Geometry geometry{};
     bool fail_auto = false;
     bool fail_read = false;
+    unsigned read_calls = 0U;
+    unsigned fail_read_on = 0U;
+    unsigned fail_auto_on = 0U;
+    unsigned auto_calls = 0U;
+    unsigned manual_calls = 0U;
+    unsigned statistics_calls = 0U;
+    unsigned restore_calls = 0U;
+    bool fail_restore = false;
     struct Counters {
         unsigned frame_event_count = 4;
         unsigned pipe2_frame_event_count = 3;
@@ -127,7 +135,8 @@ struct FakeCamera {
     };
     uai::ai::common::Error ReadState(uai::ai::camera::State *output)
     {
-        if (fail_read)
+        ++read_calls;
+        if (fail_read || read_calls == fail_read_on)
             return {uai::ai::common::ErrorCode::kHardware};
         *output = state;
         return {};
@@ -140,7 +149,8 @@ struct FakeCamera {
     Counters GetDiagnostics() const { return {}; }
     uai::ai::common::Error AutoExposure(bool enabled)
     {
-        if (fail_auto)
+        ++auto_calls;
+        if (fail_auto || auto_calls == fail_auto_on)
             return {uai::ai::common::ErrorCode::kHardware};
         state.auto_exposure = enabled;
         return {};
@@ -155,12 +165,14 @@ struct FakeCamera {
         std::int32_t gain
     )
     {
+        ++manual_calls;
         state.reported_exposure_us = exposure;
         state.reported_gain_mdB = gain;
         return {};
     }
     uai::ai::common::Error Statistics(uai::ai::camera::Rect area)
     {
+        ++statistics_calls;
         state.statistics = area;
         return {};
     }
@@ -169,19 +181,157 @@ struct FakeCamera {
         geometry = next;
         return {};
     }
+    uai::ai::common::Error ApplyState(const uai::ai::camera::State &previous)
+    {
+        ++restore_calls;
+        if (fail_restore)
+            return {uai::ai::common::ErrorCode::kHardware};
+        state = previous;
+        return {};
+    }
 };
 
 struct FakeUi {
     bool enabled = true;
+    bool available = true;
     bool boxes = true;
     std::uint8_t mask = 7;
     bool AiExposureEnabled() const { return enabled; }
+    bool AiExposureAvailable() const { return available; }
     void SetAiExposureEnabled(bool value) { enabled = value; }
     bool ShowBoxes() const { return boxes; }
     void SetShowBoxes(bool value) { boxes = value; }
     std::uint8_t ModelMask() const { return mask; }
     void SetModelMask(std::uint8_t value) { mask = value; }
 };
+
+TEST(
+    ShellOwner,
+    ExposureConstraintRejectionDoesNotTouchHardwareOrState
+)
+{
+    FakeCamera camera;
+    FakeUi ui;
+    uai::ai::shell::ExposureMode mode{true, true};
+    using uai::ai::shell::Action;
+    const uai::ai::shell::Request requests[] = {
+        {Action::kCameraAe, {0}},
+        {Action::kCameraManual, {9000, 1200}},
+        {Action::kCameraStatistics, {10, 20, 100, 80}},
+    };
+    for (const auto &request : requests) {
+        const auto reply = uai::ai::shell::Apply(request, camera, ui, mode);
+        EXPECT_NE(reply.code, 0);
+        EXPECT_NE(std::string(reply.text).find("rejected"), std::string::npos);
+    }
+    EXPECT_EQ(camera.auto_calls, 0U);
+    EXPECT_EQ(camera.manual_calls, 0U);
+    EXPECT_EQ(camera.statistics_calls, 0U);
+    EXPECT_TRUE(ui.AiExposureEnabled());
+    EXPECT_TRUE(mode.manual);
+    EXPECT_TRUE(mode.custom_statistics);
+}
+
+TEST(
+    ShellOwner,
+    UnavailableExposureIsRejectedBeforeHardwareAccess
+)
+{
+    FakeCamera camera;
+    FakeUi ui;
+    ui.enabled = false;
+    ui.available = false;
+    uai::ai::shell::ExposureMode mode;
+    const auto reply = uai::ai::shell::Apply({uai::ai::shell::Action::kAiExposure, {1}}, camera, ui, mode);
+    EXPECT_NE(reply.code, 0);
+    EXPECT_EQ(camera.read_calls, 0U);
+    EXPECT_EQ(camera.auto_calls, 0U);
+    EXPECT_FALSE(ui.enabled);
+}
+
+TEST(
+    ShellOwner,
+    ReadbackFailureRestoresPreviousAeWithoutCommittingUi
+)
+{
+    FakeCamera camera;
+    camera.state.auto_exposure = false;
+    camera.fail_read_on = 2U;
+    FakeUi ui;
+    ui.enabled = false;
+    uai::ai::shell::ExposureMode mode{true, true};
+    const auto reply = uai::ai::shell::Apply({uai::ai::shell::Action::kAiExposure, {1}}, camera, ui, mode);
+    EXPECT_NE(reply.code, 0);
+    EXPECT_NE(std::string(reply.text).find("restored"), std::string::npos);
+    EXPECT_FALSE(camera.state.auto_exposure);
+    EXPECT_FALSE(ui.enabled);
+    EXPECT_TRUE(mode.manual);
+    EXPECT_TRUE(mode.custom_statistics);
+}
+
+TEST(
+    ShellOwner,
+    FailedRestoreExplicitlyReportsUnknownCameraState
+)
+{
+    FakeCamera camera;
+    camera.state.auto_exposure = false;
+    camera.fail_read_on = 2U;
+    camera.fail_auto_on = 2U;
+    FakeUi ui;
+    ui.enabled = false;
+    uai::ai::shell::ExposureMode mode{true, true};
+    const auto reply = uai::ai::shell::Apply({uai::ai::shell::Action::kAiExposure, {1}}, camera, ui, mode);
+    EXPECT_NE(reply.code, 0);
+    EXPECT_NE(std::string(reply.text).find("unknown"), std::string::npos);
+    EXPECT_FALSE(ui.enabled);
+    EXPECT_TRUE(mode.manual);
+}
+
+TEST(
+    ShellOwner,
+    DisablingAlreadyOffExposurePreservesManualSettings
+)
+{
+    FakeCamera camera;
+    camera.state.auto_exposure = false;
+    FakeUi ui;
+    ui.enabled = false;
+    uai::ai::shell::ExposureMode mode{true, true};
+    const auto reply = uai::ai::shell::Apply({uai::ai::shell::Action::kAiExposure, {0}}, camera, ui, mode);
+    EXPECT_EQ(reply.code, 0);
+    EXPECT_EQ(camera.auto_calls, 0U);
+    EXPECT_TRUE(mode.manual);
+    EXPECT_TRUE(mode.custom_statistics);
+}
+
+TEST(
+    ShellOwner,
+    FailedReadbackDoesNotCommitManualOrCustomStatisticsMode
+)
+{
+    using uai::ai::shell::Action;
+    const uai::ai::shell::Request requests[] = {
+        {Action::kCameraAe, {0}},
+        {Action::kCameraStatistics, {10, 20, 100, 80}},
+    };
+    for (const auto &request : requests) {
+        FakeCamera camera;
+        camera.fail_read_on = 2U;
+        const auto previous = camera.state;
+        FakeUi ui;
+        ui.enabled = false;
+        uai::ai::shell::ExposureMode mode;
+        const auto reply = uai::ai::shell::Apply(request, camera, ui, mode);
+        EXPECT_NE(reply.code, 0);
+        EXPECT_FALSE(mode.manual);
+        EXPECT_FALSE(mode.custom_statistics);
+        EXPECT_EQ(camera.restore_calls, 1U);
+        EXPECT_EQ(camera.state.auto_exposure, previous.auto_exposure);
+        EXPECT_EQ(camera.state.statistics.x, previous.statistics.x);
+        EXPECT_NE(std::string(reply.text).find("restored"), std::string::npos);
+    }
+}
 
 TEST(
     ShellOwner,
@@ -288,7 +438,7 @@ TEST(
     context.memory_usage = [](const Output &out) {
         out.Write("memory ok\r\n");
     };
-    context.transfer_trace = [](const Output &out, bool) {
+    context.transfer_trace = [](const Output &out, bool, bool) {
         out.Write("trace ok\r\n");
     };
     ASSERT_TRUE(uai::ai::shell::RegisterAll(fixture.engine, context));
@@ -313,6 +463,55 @@ TEST(
     ASSERT_TRUE(mailbox.Take(&request));
     EXPECT_EQ(request.action, uai::ai::shell::Action::kAiExposure);
     EXPECT_EQ(request.values[0], 0);
+}
+
+TEST(
+    ShellTrace,
+    HoldsAiAndCpuIndependentlyUntilExplicitResume
+)
+{
+    Fixture fixture;
+    uai::ai::shell::Mailbox mailbox;
+    uai::ai::shell::Context context{fixture.engine, mailbox};
+    static std::vector<std::string> operations;
+    operations.clear();
+    context.pause_trace = [](bool cpu) {
+        operations.push_back(cpu ? "pause cpu" : "pause ai");
+        return uai::ai::common::Error{};
+    };
+    context.resume_trace = [](bool cpu) {
+        operations.push_back(cpu ? "resume cpu" : "resume ai");
+    };
+    context.transfer_trace = [](const Output &, bool cpu, bool held) {
+        operations.push_back(std::string(cpu ? "transfer cpu " : "transfer ai ") + (held ? "held" : "running"));
+    };
+    ASSERT_TRUE(uai::ai::shell::RegisterTrace(fixture.engine, context));
+    fixture.Send("trace ai pause\ntrace ai pause\ntrace ai\ntrace cpu\ntrace ai status\n");
+    EXPECT_EQ(operations, (std::vector<std::string>{"pause ai", "transfer ai held", "transfer cpu running"}));
+    EXPECT_TRUE(context.trace_held[0U]);
+    EXPECT_FALSE(context.trace_held[1U]);
+    fixture.Send("trace cpu pause\ntrace ai resume\ntrace ai invalid\n");
+    EXPECT_FALSE(context.trace_held[0U]);
+    EXPECT_TRUE(context.trace_held[1U]);
+    EXPECT_NE(fixture.output.find("trace ai=paused"), std::string::npos);
+    EXPECT_NE(fixture.output.find("trace ai=running"), std::string::npos);
+}
+
+TEST(
+    ShellTrace,
+    FailedPauseIsNeverReportedAsHeld
+)
+{
+    Fixture fixture;
+    uai::ai::shell::Mailbox mailbox;
+    uai::ai::shell::Context context{fixture.engine, mailbox};
+    context.pause_trace = [](bool) {
+        return uai::ai::common::Error{uai::ai::common::ErrorCode::kNotInitialized};
+    };
+    ASSERT_TRUE(uai::ai::shell::RegisterTrace(fixture.engine, context));
+    fixture.Send("trace cpu pause\n");
+    EXPECT_FALSE(context.trace_held[1U]);
+    EXPECT_NE(fixture.output.find("error: trace pause"), std::string::npos);
 }
 
 TEST(
