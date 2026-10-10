@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 
 extern "C" {
@@ -31,10 +32,20 @@ enum class LogLevel : std::uint8_t {
 /* Temporarily enabled for NPU timing investigation.  Per-inference timing
  * output is throttled in AiRuntime so it does not flood the UART. */
 inline constexpr LogLevel kLogLevel = LogLevel::kInfo;
+inline std::atomic<LogLevel> gRuntimeLogLevel{kLogLevel};
 
-constexpr bool IsLogEnabled(LogLevel level)
+inline LogLevel GetLogLevel()
 {
-    return static_cast<std::uint8_t>(level) <= static_cast<std::uint8_t>(kLogLevel);
+    return gRuntimeLogLevel.load(std::memory_order_relaxed);
+}
+inline void SetLogLevel(LogLevel level)
+{
+    gRuntimeLogLevel.store(level, std::memory_order_relaxed);
+}
+
+inline bool IsLogEnabled(LogLevel level)
+{
+    return static_cast<std::uint8_t>(level) <= static_cast<std::uint8_t>(GetLogLevel());
 }
 
 inline const UB *ToMonitorText(const char *text)

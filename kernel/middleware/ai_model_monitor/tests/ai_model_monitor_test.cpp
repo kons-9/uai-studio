@@ -142,6 +142,27 @@ TEST(
 
 TEST(
     AiModelMonitor,
+    TraceIsStableWhilePausedAndResumes
+)
+{
+    std::memset(trace_memory, 0, sizeof(trace_memory));
+    AiModelMonitor monitor;
+    ASSERT_TRUE(monitor.Start().Ok());
+    RunMonitorCycle();
+    const auto *header = reinterpret_cast<const ThreadMonitorTraceHeader *>(trace_memory);
+    const std::uint32_t before = header->record_count;
+    ASSERT_TRUE(monitor.PauseTrace().Ok());
+    monitor.ObserveAiRuntimeStep(Step(1U, 20U, true));
+    RunMonitorCycle();
+    EXPECT_EQ(header->record_count, before);
+    monitor.ResumeTrace();
+    RunMonitorCycle();
+    EXPECT_GT(header->record_count, before);
+    EXPECT_TRUE(monitor.Stop().Ok());
+}
+
+TEST(
+    AiModelMonitor,
     RecoversTimingAfterUnmatchedBegins
 )
 {

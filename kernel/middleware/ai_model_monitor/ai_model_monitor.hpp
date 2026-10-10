@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -22,6 +23,8 @@ class AiModelMonitor final {
 public:
     common::Error Start();
     common::Error Stop();
+    common::Error PauseTrace();
+    void ResumeTrace();
     /* Register the trace label before Start initializes the shared buffer. */
     common::Error RegisterModelName(
         ai_runtime::AiModelId model_id,
@@ -33,6 +36,11 @@ public:
     bool Active() const { return monitor_task_id_ != 0; }
 
 private:
+    enum class TraceGate : std::uint8_t {
+        kIdle,
+        kWriting,
+        kPaused
+    };
     static constexpr std::size_t kPendingTraceEventCapacity = 128U;
 
     struct PendingTraceEvent {
@@ -84,6 +92,7 @@ private:
     std::uint32_t Now() const;
 
     ID monitored_task_id_ = 0;
+    std::atomic<TraceGate> trace_gate_{TraceGate::kIdle};
     ID monitor_task_id_ = 0;
     volatile bool stop_requested_ = false;
     volatile bool operation_active_ = false;

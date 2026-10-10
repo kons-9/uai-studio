@@ -256,6 +256,24 @@ common::Error AiModelMonitor::Stop()
     return {common::ErrorCode::kOk};
 }
 
+common::Error AiModelMonitor::PauseTrace()
+{
+    if (monitor_task_id_ == 0 || trace_header_ == nullptr)
+        return {common::ErrorCode::kNotInitialized};
+    for (unsigned attempt = 0; attempt < 100U; ++attempt) {
+        TraceGate idle = TraceGate::kIdle;
+        if (trace_gate_.compare_exchange_strong(idle, TraceGate::kPaused, std::memory_order_acq_rel))
+            return {};
+        (void)tk_dly_tsk(1);
+    }
+    return {common::ErrorCode::kTimeout};
+}
+
+void AiModelMonitor::ResumeTrace()
+{
+    trace_gate_.store(TraceGate::kIdle, std::memory_order_release);
+}
+
 void AiModelMonitor::ObserveAiRuntimeStep(const ai_runtime::StepTrace &trace)
 {
     if (monitor_task_id_ == 0 || trace_header_ == nullptr)
@@ -411,18 +429,24 @@ void AiModelMonitor::Run()
         if (stop_requested_)
             return;
 
+        TraceGate idle = TraceGate::kIdle;
+        if (!trace_gate_.compare_exchange_strong(idle, TraceGate::kWriting, std::memory_order_acquire))
+            continue;
+
         T_RTSK task_status = {};
         const ER reference_status = tk_ref_tsk(monitored_task_id_, &task_status);
         const std::uint32_t now = Now();
         FlushPendingTraceEvents();
         if (reference_status != E_OK) {
             ReportFault(now, nullptr, reference_status, TraceFaultCode::kTaskReference);
+            trace_gate_.store(TraceGate::kIdle, std::memory_order_release);
             continue;
         }
         RecordSample(now, task_status);
         if (operation_active_ && now - last_progress_tick_ > kOperationTimeoutTicks) {
             ReportFault(now, &task_status, E_OK, TraceFaultCode::kOperationTimeout);
         }
+        trace_gate_.store(TraceGate::kIdle, std::memory_order_release);
     }
 }
 

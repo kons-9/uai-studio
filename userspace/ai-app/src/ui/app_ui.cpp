@@ -150,7 +150,12 @@ void AppUi::OnToggleBoxesTap(const ui::Event &)
 
 void AppUi::OnAiExposureTap(const ui::Event &)
 {
-    ai_exposure_enabled_ = task::kAiExposureControl && !ai_exposure_enabled_;
+    SetAiExposureEnabled(!ai_exposure_enabled_);
+}
+
+void AppUi::SetAiExposureEnabled(bool enabled)
+{
+    ai_exposure_enabled_ = task::kAiExposureControl && enabled;
     Menu().Buttons().SetChecked(Id(WidgetId::kAiExposure), ai_exposure_enabled_);
     last_stats_tick_ = 0U;
     UAI_LOG_INFO("ui: ai exposure=%s\n", ai_exposure_enabled_ ? "on" : "off");
@@ -158,9 +163,20 @@ void AppUi::OnAiExposureTap(const ui::Event &)
 
 void AppUi::ToggleBoxes()
 {
-    show_boxes_ = !show_boxes_;
+    SetShowBoxes(!show_boxes_);
+}
+
+void AppUi::SetShowBoxes(bool enabled)
+{
+    show_boxes_ = enabled;
     Menu().Buttons().SetChecked(Id(WidgetId::kToggleBoxes), show_boxes_);
     UAI_LOG_INFO("ui: boxes=%s\n", show_boxes_ ? "on" : "off");
+}
+
+void AppUi::SetModelMask(std::uint8_t mask)
+{
+    models_.SetModelMask(mask);
+    SyncModelWidgets();
 }
 
 void AppUi::OnMinConfidenceChange(const ui::Event &event)

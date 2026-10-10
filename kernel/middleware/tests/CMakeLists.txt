@@ -80,3 +80,20 @@ target_include_directories(ui_layout_test BEFORE PRIVATE
     "${UAI_ROOT}/kernel/utkernel/linux/include"
     "${UAI_ROOT}/userspace/ai-app/src"
 )
+
+uai_add_host_test(shell_test
+    "${UAI_ROOT}/userspace/ai-app/tests/shell_test.cpp"
+    "${UAI_ROOT}/userspace/ai-app/src/shell/help.cpp"
+    "${UAI_ROOT}/userspace/ai-app/src/shell/uptime.cpp"
+    "${UAI_ROOT}/userspace/ai-app/src/shell/tasks.cpp"
+    "${UAI_ROOT}/userspace/ai-app/src/shell/memory.cpp"
+    "${UAI_ROOT}/userspace/ai-app/src/shell/log.cpp"
+    "${UAI_ROOT}/userspace/ai-app/src/shell/camera.cpp"
+    "${UAI_ROOT}/userspace/ai-app/src/shell/models.cpp"
+    "${UAI_ROOT}/userspace/ai-app/src/shell/ui.cpp"
+    "${UAI_ROOT}/userspace/ai-app/src/shell/diagnostics.cpp"
+    "${UAI_ROOT}/userspace/ai-app/src/shell/trace.cpp"
+)
+target_include_directories(shell_test PRIVATE
+    "${UAI_ROOT}/userspace/ai-app/src"
+)

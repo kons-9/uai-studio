@@ -150,6 +150,8 @@ public:
     }
     std::uint8_t ModelMask() const override { return model_mask_.load(std::memory_order_relaxed); }
     PipelineStats Stats() const override;
+    common::Error PauseAiTrace();
+    void ResumeAiTrace();
 
 private:
     explicit PipelineTask(memory_manager::MemoryManager &memory) : inference_frames_(memory) {}

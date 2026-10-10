@@ -52,6 +52,7 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | `src/task/application_initialize_task.cpp` | ドライバー初期化と各タスクの起動 |
 | `src/task/camera_render_task.cpp` | カメラフレームの取得とLCD表示。タッチをポーリングし、画面上のボタンを処理 |
 | `src/task/pipeline_task.cpp` | モデル登録と3レーンのパイプライン実行 |
+| `src/shell/` | UART行編集・コマンド登録・所有タスクへの要求/応答。コマンドごとに別の`.cpp`を配置 |
 | `src/task/task_context.hpp` | 共有資源とタスク参照の保持、各タスク用コンテキストの組み立て |
 | `src/task/application_initialize_task.hpp`、`src/task/camera_render_task.hpp`、`src/task/pipeline_task.hpp` | タスクごとに必要な依存を列挙するコンテキストとスタック。パイプラインのフレーム解放と結果選別 |
 | `src/task/task_config.hpp` | 動作モード、診断設定、キュー・スタックのサイズ |
@@ -111,7 +112,32 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 | `thread-monitor` | AIパイプラインの実行トレースを取得してPNG化 | PSRAM `0x91C40000`（32 KiB） |
 | `cpu-task-monitor` | タスク別CPU使用率とループ時間を取得してPNG化 | PSRAM `0x91C48000`（512 KiB） |
 
-どちらも実行中のボードからST-LINKで読み出します。PSRAMは揮発性のため、リセット前に取得してください。解析ツールは[host_app/README.md](../../host_app/README.md)を参照してください。
+ST-LINKからの読み出しに加え、シェルの`trace ai` / `trace cpu`でUART経由の転送もできます。PSRAMは揮発性のため、リセット前に取得してください。解析ツールは[host_app/README.md](../../host_app/README.md)を参照してください。
+
+## UARTシェル
+
+ボードのST-LINK VCPを115200 bps、8N1で開きます（`make -C userspace/ai-app monitor`）。モデル変更後は先に`make -C userspace/ai-app ai-load`を実行し、**UARTモニターを開いたまま別の端末で**`make -C userspace/ai-app ram-run`を実行します。起動時の`camera: pipe1=started pipe2=started`と`shell ready; type help`を確認し、コマンドを改行で送ってください。CR/LF、Backspaceに対応します。受信エラーや長すぎる行は破棄されます。
+
+| コマンド | 内容 |
+| --- | --- |
+| `help`、`uptime`、`tasks`、`memory` | コマンド一覧、稼働時間、タスク状態、静的に予約したバッファ容量（実使用ヒープ量は取得不可） |
+| `log [error\|warn\|info\|debug\|trace]` | ログレベルの取得・変更 |
+| `camera [status\|ae on/off\|comp -4..4\|manual us mdB\|stats x y w h\|fps 10..30\|flip h v\|crop x y w h]` | 状態・診断値の取得とカメラ設定。`manual`は`ae off`後、`stats`はAI露出OFF時だけ受け付ける |
+| `models [none\|person\|face\|seg\|person+face\|all\|0..7]` | 現在のモデル選択の表示・切り替え |
+| `ui [status\|boxes on/off\|exposure on/off]` | UI状態と枠/AI露出の切り替え |
+| `diag <frame\|brightness\|input\|input_display\|inference\|fps\|display\|timing> [on/off]` | 実行時診断の取得・変更 |
+| `trace <ai\|cpu>` | トレースリングを一時停止し、形式・バージョン・長さ・CRC32付きのHEXフレームを送る |
+
+カメラとUIの変更は表示タスクへ要求し、適用失敗時にはエラーコードを返します。応答がタイムアウトした場合も要求が後から適用され得るため、`camera status`または`ui status`で確認してください。`trace cpu`は512 KiBをHEXで転送するので115200 bpsでは数分かかり、転送中はCPUトレースの記録が停止します。転送ログはminicomのキャプチャ（Ctrl-A、L）等で保存し、次のように検証・復元します。
+
+```sh
+python3 host_app/ai_model_monitor/decode_uart_trace.py /tmp/ai-uart.log /tmp/ai-trace.bin
+python3 host_app/ai_model_monitor/ai_model_monitor.py decode /tmp/ai-trace.bin -o /tmp/ai-trace.json
+python3 host_app/ai_model_monitor/decode_uart_trace.py /tmp/cpu-uart.log /tmp/cpu-trace.bin
+uv run --project host_app python host_app/cpu_task_monitor/cpu_task_monitor.py /tmp/cpu-trace.bin --json /tmp/cpu-trace.json --csv /tmp/cpu-trace.csv
+```
+
+新しいコマンドは[src/shell/engine.hpp](src/shell/engine.hpp)の固定容量レジストリへ登録します。[src/shell/commands.hpp](src/shell/commands.hpp)の`RegisterAll`に登録関数を追加し、`src/shell/<command>.cpp`に引数検証と応答を実装してCMakeへ追加してください。カメラなど状態変更を伴う操作はシェルから直接触らず、[src/shell/mailbox.hpp](src/shell/mailbox.hpp)の要求を表示タスクへ渡します。
 
 ## 関連文書
 

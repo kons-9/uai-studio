@@ -47,8 +47,31 @@ common::Error ConsoleRegisterLayer::Write(
     std::size_t size
 )
 {
-    for (std::size_t index = 0; index < size; ++index)
-        tm_putchar(static_cast<unsigned char>(text[index]));
+    char line[321]{};
+    std::size_t used = 0;
+    for (std::size_t index = 0; index < size; ++index) {
+        if (text[index] == '\r' && index + 1U < size && text[index + 1U] == '\n')
+            continue;
+        if (text[index] == '\0') {
+            if (used != 0) {
+                line[used] = '\0';
+                tm_putstring(reinterpret_cast<const UB *>(line));
+                used = 0;
+            }
+            tm_putchar(0);
+            continue;
+        }
+        line[used++] = text[index];
+        if (text[index] == '\n' || used == sizeof(line) - 1U) {
+            line[used] = '\0';
+            tm_putstring(reinterpret_cast<const UB *>(line));
+            used = 0;
+        }
+    }
+    if (used != 0) {
+        line[used] = '\0';
+        tm_putstring(reinterpret_cast<const UB *>(line));
+    }
     return {};
 }
 }

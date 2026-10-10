@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -45,16 +46,16 @@ inline constexpr bool kCopyInferenceFrames = kInferenceMode != InferenceMode::kD
  * Pipe2 drops and inference freshness without per-frame UART traffic. */
 struct DiagnosticsConfig {
     bool register_dump = false;
-    bool camera_frame_trace = false;
-    bool camera_brightness = false;
-    bool inference_input = false;
-    bool inference_input_display = false;
-    bool inference_trace = false;
+    std::atomic<bool> camera_frame_trace{false};
+    std::atomic<bool> camera_brightness{false};
+    std::atomic<bool> inference_input{false};
+    std::atomic<bool> inference_input_display{false};
+    std::atomic<bool> inference_trace{false};
     /* Keep the low-rate aggregate enabled while measuring Pipe2/NPU
      * freshness. Per-frame trace remains opt-in because UART is intrusive. */
-    bool inference_fps = true;
-    bool display_trace = false;
-    bool display_timing = false;
+    std::atomic<bool> inference_fps{true};
+    std::atomic<bool> display_trace{false};
+    std::atomic<bool> display_timing{false};
 };
 
 inline constexpr std::size_t kFrameQueueDepth = 4U;

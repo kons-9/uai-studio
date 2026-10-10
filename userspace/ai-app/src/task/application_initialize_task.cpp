@@ -170,6 +170,9 @@ void ApplicationInitializeTask::Run(ApplicationInitializeContext context)
     }
     context.app_stage = 6U;
 
+    TaskContext &root = GetTaskContext();
+    root.shell_task.Start(root.cpu_task_monitor, root.shell_ready);
+
     common::Task::RunForever(
         context.cpu_task_monitor,
         "application_initialize",

@@ -280,4 +280,23 @@ TEST(
     ASSERT_TRUE(runtime.Process(camera, 252, true).Ok());
     EXPECT_EQ(runtime.DisplayValues().source, exposure_control::Source::kFace);
 }
+
+TEST(
+    ExposureRuntime,
+    AllowsExplicitManualAndStatisticsOverridesWhileDisabled
+)
+{
+    exposure_control::Runtime runtime;
+    FakeCamera camera;
+    ASSERT_TRUE(runtime.Process(camera, 0, false).Ok());
+    camera.state.auto_exposure = false;
+    ASSERT_TRUE(runtime.Process(camera, 250, false, false).Ok());
+    EXPECT_FALSE(camera.state.auto_exposure);
+    camera.state.auto_exposure = true;
+    camera.state.statistics = {10, 20, 100, 80};
+    ASSERT_TRUE(runtime.Process(camera, 500, false, true, false).Ok());
+    EXPECT_EQ(camera.state.statistics.x, 10U);
+    ASSERT_TRUE(runtime.Process(camera, 750, false).Ok());
+    EXPECT_EQ(camera.state.statistics.width, camera.state.sensor_width);
+}
 }

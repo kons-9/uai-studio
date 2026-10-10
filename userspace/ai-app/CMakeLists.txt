@@ -278,6 +278,17 @@ add_executable(${AI_APP_TARGET}
     src/task/application_initialize_task.cpp
     src/task/camera_render_task.cpp
     src/ui/app_ui.cpp
+    src/shell/task.cpp
+    src/shell/help.cpp
+    src/shell/uptime.cpp
+    src/shell/tasks.cpp
+    src/shell/memory.cpp
+    src/shell/log.cpp
+    src/shell/camera.cpp
+    src/shell/models.cpp
+    src/shell/ui.cpp
+    src/shell/diagnostics.cpp
+    src/shell/trace.cpp
     ${AI_INFERENCE_TASK_SOURCES}
     ${AI_MODEL_SOURCES}
     "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dcmipp.c"

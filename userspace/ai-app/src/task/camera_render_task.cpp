@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 
 #include <tk/tkernel.h>
@@ -20,6 +21,7 @@
 #include "ui/app_ui.hpp"
 #include "ui/ui_layout.hpp"
 #include "exposure_control/runtime.hpp"
+#include "shell/owner.hpp"
 
 extern "C" {
 #include "stm32n6xx_hal.h"
@@ -392,6 +394,7 @@ void CameraRenderTask::Run(CameraRenderContext context)
 
     inference::BoxSet active_boxes = initial;
     exposure_control::Runtime exposure;
+    shell::ExposureMode exposure_mode{};
     std::uint32_t last_exposure_error_tick = 0;
     std::uint32_t next_inference = common::Task::Now() + kInferencePeriod;
 
@@ -490,8 +493,70 @@ void CameraRenderTask::Run(CameraRenderContext context)
             }
 
             const std::uint32_t now = common::Task::Now();
+            shell::Request shell_request{};
+            if (context.shell_mailbox.Take(&shell_request)) {
+                shell::Reply reply{};
+                if (shell_request.action == shell::Action::kDiagnostics) {
+                    std::atomic<bool> *option = nullptr;
+                    constexpr const char *names[] = {
+                        "frame", "brightness", "input", "input_display", "inference", "fps", "display", "timing"
+                    };
+                    switch (shell_request.values[0]) {
+                    case 0:
+                        option = &context.diagnostics.camera_frame_trace;
+                        break;
+                    case 1:
+                        option = &context.diagnostics.camera_brightness;
+                        break;
+                    case 2:
+                        option = &context.diagnostics.inference_input;
+                        break;
+                    case 3:
+                        option = &context.diagnostics.inference_input_display;
+                        break;
+                    case 4:
+                        option = &context.diagnostics.inference_trace;
+                        break;
+                    case 5:
+                        option = &context.diagnostics.inference_fps;
+                        break;
+                    case 6:
+                        option = &context.diagnostics.display_trace;
+                        break;
+                    case 7:
+                        option = &context.diagnostics.display_timing;
+                        break;
+                    default:
+                        break;
+                    }
+                    if (option == nullptr) {
+                        reply.code = static_cast<std::int32_t>(common::ErrorCode::kInvalidArgument);
+                    } else {
+                        if (shell_request.values[1] != -1) {
+                            option->store(shell_request.values[1] != 0, std::memory_order_relaxed);
+                            if (shell_request.values[0] == 7)
+                                context.lcd.SetTimingDiagnostics(option->load(std::memory_order_relaxed));
+                        }
+                        std::snprintf(
+                            reply.text,
+                            sizeof(reply.text),
+                            "diag %s=%s\r\n",
+                            names[shell_request.values[0]],
+                            option->load(std::memory_order_relaxed) ? "on" : "off"
+                        );
+                    }
+                } else {
+                    reply = shell::Apply(shell_request, context.camera, screen_ui, exposure_mode);
+                }
+                context.shell_mailbox.Complete(reply);
+            }
             if constexpr (kAiExposureControl) {
                 const bool ai_exposure_enabled = screen_ui.AiExposureEnabled();
+                const auto auto_status = shell::FollowUiExposure(
+                    ai_exposure_enabled, previous_exposure_enabled, context.camera, exposure_mode
+                );
+                if (!auto_status.Ok())
+                    auto_status.LogStatus("shell: restore ae");
                 const auto exposure_results =
                     context.pipeline_task.ConsumeExposureResults([&](const inference::BoxSet &result) {
                         if (ai_exposure_enabled && previous_exposure_enabled)
@@ -501,7 +566,9 @@ void CameraRenderTask::Run(CameraRenderContext context)
                 if (!exposure_results.error.Ok() && exposure_results.error.Code() != common::ErrorCode::kNoFrame)
                     exposure_results.error.LogStatus("exposure-results");
                 const auto previous_area = exposure.DisplayValues().applied;
-                const auto exposure_status = exposure.Process(context.camera, now, ai_exposure_enabled);
+                const auto exposure_status = exposure.Process(
+                    context.camera, now, ai_exposure_enabled, !exposure_mode.manual, !exposure_mode.custom_statistics
+                );
                 const auto &values = exposure.DisplayValues();
                 if (exposure_status.Ok() && values.available
                     && (previous_area.x != values.applied.x || previous_area.y != values.applied.y

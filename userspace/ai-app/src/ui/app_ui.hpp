@@ -53,6 +53,10 @@ public:
 
     bool ShowBoxes() const { return show_boxes_; }
     bool AiExposureEnabled() const { return ai_exposure_enabled_; }
+    void SetShowBoxes(bool enabled);
+    void SetAiExposureEnabled(bool enabled);
+    void SetModelMask(std::uint8_t mask);
+    std::uint8_t ModelMask() const { return models_.ModelMask(); }
     std::int32_t MinConfidencePercent() const { return min_confidence_percent_; }
     const char *StatusText() const;
     const char *ExposureText() const

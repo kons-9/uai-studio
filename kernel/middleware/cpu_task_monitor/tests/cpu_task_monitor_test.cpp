@@ -132,6 +132,14 @@ TEST(
     EXPECT_EQ(records[2].dispatch_count, 1U);
     EXPECT_EQ(records[3].type, static_cast<std::uint8_t>(CpuTaskMonitorTraceRecordType::kTaskLoop));
     EXPECT_EQ(records[3].cycles, 15U);
+    ASSERT_TRUE(monitor.PauseTrace().Ok());
+    monitor.RecordTaskLoop(2, monitor.BeginTaskLoop());
+    uai_test_dwt.CYCCNT = 210U;
+    monitor.Report();
+    EXPECT_EQ(header->record_count, 4U);
+    monitor.ResumeTrace();
+    monitor.RecordTaskLoop(2, monitor.BeginTaskLoop());
+    EXPECT_EQ(header->record_count, 5U);
     EXPECT_TRUE(monitor.Stop().Ok());
     EXPECT_EQ(dispatch_hook.exec, nullptr);
     EXPECT_EQ(interrupt_hook.enter, nullptr);

@@ -17,6 +17,8 @@
 #include "middleware/foundation/error.hpp"
 #include "middleware/pipeline/frame_types.hpp"
 #include "memory_manager/memory_manager.hpp"
+#include "shell/mailbox.hpp"
+#include "shell/task.hpp"
 #include "task/application_initialize_task.hpp"
 #include "task/camera_render_task.hpp"
 #include "task/pipeline_task.hpp"
@@ -38,12 +40,15 @@ public:
     uai::ai::camera::CameraManagement &camera = camera::CameraManagement::Instance();
     uai::ai::touch::TouchManagement &touch = touch::TouchManagement::Instance();
     uai::ai::middleware::cpu_task_monitor::CpuTaskMonitor cpu_task_monitor;
+    shell::Mailbox shell_mailbox;
+    shell::ShellTask &shell_task = shell::ShellTask::Instance();
 
     volatile std::uint32_t app_stage = 0U;
     volatile bool external_nor_ready = false;
     volatile bool touch_ready = false;
     ID external_memory_ready = -1;
     ID pipeline_work_ready = -1;
+    ID shell_ready = -1;
     DiagnosticsConfig diagnostics;
 
     CameraRenderContext CameraContext()
@@ -58,7 +63,8 @@ public:
             pipeline_task,
             external_nor_ready,
             touch_ready,
-            diagnostics
+            diagnostics,
+            shell_mailbox
         };
     }
 

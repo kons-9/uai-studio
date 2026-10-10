@@ -362,6 +362,16 @@ PipelineStats PipelineTask::Stats() const
     return stats;
 }
 
+common::Error PipelineTask::PauseAiTrace()
+{
+    return g_app.ai_model_monitor.PauseTrace();
+}
+
+void PipelineTask::ResumeAiTrace()
+{
+    g_app.ai_model_monitor.ResumeTrace();
+}
+
 namespace {
 
 void PublishBoxes(

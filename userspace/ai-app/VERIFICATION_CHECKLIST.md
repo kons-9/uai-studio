@@ -24,6 +24,14 @@
 - [ ] **AWB** — 統計領域の切り替え前後でホワイトバランスと画面全体の色を比較する。AWBへの悪影響がある場合は全画面維持または固定モードを検討する。
 - [ ] **性能・安定性** — ON/OFFでISP/CSIエラー件数と両Pipeのフレーム進行を比較する。`thread-monitor`と`cpu-task-monitor`で推論FPSとCPU時間を計測し、露出制御による停止や性能低下がないか確認する。
 
+## UARTシェル（実機未確認）
+
+- [ ] **起動** — UARTモニターを先に開いてからRAMロードし、`camera: pipe1=started pipe2=started`と`shell ready; type help`を確認する。
+- [ ] **操作** — `help`、`camera status`、`tasks`、`memory`を確認する。入力超過・受信エラー・未知コマンドから復帰し、ログと応答が判読できることを確認する。
+- [ ] **状態変更** — `camera ae off`、`camera manual`、`camera stats`、`ui exposure on/off`、`models`、`diag`を操作し、ガード拒否、適用失敗、読み戻し、UIとの同期を確認する。
+- [ ] **転送** — `trace ai`と`trace cpu`のUARTログを復元してCRC32を検証する。同じスナップショットのSWD dumpとJSON/CSVを比較する。
+- [ ] **継続動作** — 連続入力とトレース転送の間も両Pipe・LCD・推論が進むことを確認し、転送前後のCPU/AIトレース記録が再開することを確認する。
+
 ## 判定上の注意
 
 - `lcd: frame presented` は、アプリケーションが表示バッファをLCDドライバーへ渡せたことを示すログであり、パネルに画像が見えた証拠ではない。LCD実表示は目視確認する。

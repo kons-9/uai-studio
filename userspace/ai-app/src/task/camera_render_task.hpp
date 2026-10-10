@@ -25,6 +25,9 @@ class LcdManagement;
 namespace uai::ai::touch {
 class TouchManagement;
 }
+namespace uai::ai::shell {
+class Mailbox;
+}
 
 namespace uai::ai::task {
 
@@ -40,7 +43,8 @@ struct CameraRenderContext {
     PipelineTask &pipeline_task;
     const volatile bool &external_nor_ready;
     const volatile bool &touch_ready;
-    const DiagnosticsConfig &diagnostics;
+    DiagnosticsConfig &diagnostics;
+    shell::Mailbox &shell_mailbox;
 };
 
 class CameraRenderTask final {

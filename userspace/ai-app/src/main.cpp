@@ -6,6 +6,7 @@ extern "C" {
 #include "stm32n6xx_hal.h"
 
 void NPU0_IRQHandler(UINT intno);
+void USART1_IRQHandler(void);
 void IAC_IRQHandler(void);
 }
 
@@ -80,12 +81,16 @@ extern "C" INT usermain(void)
     iac_interrupt.intatr = TA_ASM;
     iac_interrupt.inthdr = reinterpret_cast<FP>(IAC_IRQHandler);
     const ER iac_interrupt_status = tk_def_int(static_cast<UINT>(IAC_IRQn), &iac_interrupt);
+    T_DINT uart_interrupt = {};
+    uart_interrupt.intatr = TA_HLNG;
+    uart_interrupt.inthdr = reinterpret_cast<FP>(USART1_IRQHandler);
+    const ER uart_interrupt_status = tk_def_int(static_cast<UINT>(USART1_IRQn), &uart_interrupt);
     UAI_LOG_INFO(
         "ai: kernel interrupts npu=%x iac=%x\n",
         static_cast<unsigned int>(npu_interrupt_status),
         static_cast<unsigned int>(iac_interrupt_status)
     );
-    if (npu_interrupt_status != E_OK || iac_interrupt_status != E_OK) {
+    if (npu_interrupt_status != E_OK || iac_interrupt_status != E_OK || uart_interrupt_status != E_OK) {
         uai::ai::common::Task::Halt("ai: interrupt registration failed\n");
     }
     if (context.diagnostics.register_dump) {
@@ -105,6 +110,12 @@ extern "C" INT usermain(void)
     if (context.pipeline_work_ready < E_OK) {
         uai::ai::common::Task::Halt("ai: pipeline event flag create failed\n");
     }
+
+    T_CFLG shell_flag = {};
+    shell_flag.flgatr = TA_TFIFO | TA_WMUL;
+    context.shell_ready = tk_cre_flg(&shell_flag);
+    if (context.shell_ready < E_OK)
+        uai::ai::common::Task::Halt("ai: shell event flag create failed\n");
 
     if (!context.pipeline_task.InferenceFrames().Create().Ok()) {
         uai::ai::common::Task::Halt("ai: frame queue create failed\n");

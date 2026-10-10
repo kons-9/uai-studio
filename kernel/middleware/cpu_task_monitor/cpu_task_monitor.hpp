@@ -27,6 +27,8 @@ class CpuTaskMonitor final {
 public:
     common::Error Start();
     common::Error Stop();
+    common::Error PauseTrace();
+    void ResumeTrace();
     common::Error RegisterTask(
         ID task_id,
         const char *name
@@ -96,6 +98,7 @@ private:
     static CpuTaskMonitor *volatile active_instance_;
 
     volatile bool active_ = false;
+    bool trace_paused_ = false;
     volatile ID current_task_id_ = 0;
     volatile std::uint32_t last_cycles_ = 0U;
     volatile std::uint32_t report_start_cycles_ = 0U;
@@ -119,6 +122,8 @@ class CpuTaskMonitor final {
 public:
     common::Error Start() { return {}; }
     common::Error Stop() { return {}; }
+    common::Error PauseTrace() { return {common::ErrorCode::kNotInitialized}; }
+    void ResumeTrace() {}
     common::Error RegisterTask(
         ID,
         const char *

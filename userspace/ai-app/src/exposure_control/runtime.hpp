@@ -22,7 +22,9 @@ public:
     common::Error Process(
         Camera &camera,
         std::uint32_t now,
-        bool enabled = true
+        bool enabled = true,
+        bool restore_auto = true,
+        bool manage_statistics = true
     )
     {
         if (enabled_ != enabled) {
@@ -53,12 +55,12 @@ public:
         mapping.vertical = geometry.vertical;
         controller_.Step(now, mapping);
         const auto &requested = controller_.DisplayValues().requested;
-        if (!enabled && !state.auto_exposure) {
+        if (!enabled && restore_auto && !state.auto_exposure) {
             status = camera.AutoExposure(true);
             if (status.Ok())
                 status = camera.ReadState(&state);
         }
-        if (state.auto_exposure
+        if (manage_statistics && state.auto_exposure
             && (requested.x != state.statistics.x || requested.y != state.statistics.y
                 || requested.width != state.statistics.width || requested.height != state.statistics.height)) {
             status = camera.Statistics({requested.x, requested.y, requested.width, requested.height});

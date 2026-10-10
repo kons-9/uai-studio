@@ -135,6 +135,8 @@ void CpuTaskMonitor::AppendTraceRecord(const CpuTaskMonitorTraceRecord &record)
     }
 
     InterruptMaskGuard guard;
+    if (trace_paused_)
+        return;
 
     trace_format::AppendTraceRecord(
         trace_header_,
@@ -246,6 +248,9 @@ void CpuTaskMonitor::UpdateTraceTaskName(ID task_id)
         || task_id >= static_cast<ID>(kTaskSlotCount)) {
         return;
     }
+    InterruptMaskGuard guard;
+    if (trace_paused_)
+        return;
     const std::size_t index = static_cast<std::size_t>(task_id);
     CpuTaskMonitorTraceTaskName &entry = trace_task_names_[index];
     entry = {};
@@ -320,6 +325,25 @@ common::Error CpuTaskMonitor::Stop()
         return {common::ErrorCode::kInvalidState};
     }
     return {common::ErrorCode::kOk};
+}
+
+common::Error CpuTaskMonitor::PauseTrace()
+{
+    if (trace_header_ == nullptr)
+        return {common::ErrorCode::kNotInitialized};
+    InterruptMaskGuard guard;
+    trace_paused_ = true;
+    return {};
+}
+
+void CpuTaskMonitor::ResumeTrace()
+{
+    {
+        InterruptMaskGuard guard;
+        trace_paused_ = false;
+    }
+    for (ID task_id = 1; task_id < static_cast<ID>(kTaskSlotCount); ++task_id)
+        UpdateTraceTaskName(task_id);
 }
 
 CpuTaskMonitor::TaskSlot *CpuTaskMonitor::FindTaskSlot(ID task_id)
