@@ -24,15 +24,7 @@ UART_BAUD ?= 115200
 # Classic STM32CubeMX 6.x CLI generation for STM32N657 (not CubeMX2/C5).
 # Set CUBEMX_EXECUTABLE to the Linux STM32CubeMX launcher when installed.
 CUBEMX_EXECUTABLE ?= STM32CubeMX
-ifeq ($(APP_TARGET),experiment-ai)
-CUBEMX_IOC ?= userspace/experiment-ai/config/stm32n6570-dk-experiment-ai.ioc
-else ifeq ($(APP_TARGET),ai-app)
-CUBEMX_IOC ?= userspace/ai-app/config/stm32n6570-dk-ai-app.ioc
-else ifeq ($(APP_TARGET),mini-ai-app)
-CUBEMX_IOC ?= userspace/mini-ai-app/config/stm32n6570-dk-mini-ai-app.ioc
-else
-CUBEMX_IOC ?= userspace/$(APP_TARGET)/config/stm32n6570-dk-fullsecure.ioc
-endif
+CUBEMX_IOC ?= $(SAMPLE_DEFAULT_IOC)
 CUBEMX_OUTPUT_DIR ?= $(BUILD_DIR)/cubemx
 
 # STM32CubeN6 package root, required by experiments that compile the camera,

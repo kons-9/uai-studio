@@ -7,7 +7,6 @@ SAMPLE_DEFAULT_IOC := $(SAMPLE_DIR)/config/stm32n6570-dk-ai-app.ioc
 ENABLE_AI := 1
 ENABLE_THREAD_MONITOR := 1
 ENABLE_CPU_TASK_MONITOR := 1
-CUBEMX_GENERATOR := script
 UI_LAYOUT_JSON := $(SAMPLE_DIR)/config/ui_layout.json
 UI_LAYOUT_HEADER := $(SAMPLE_DIR)/src/ui/ui_layout.hpp
 
