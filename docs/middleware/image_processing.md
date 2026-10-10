@@ -65,7 +65,7 @@ for (const auto &test : graphics::kVerificationCases) {
 - 既定ケースはDMA2D向けの契約です。unalignedな出力とresizeを拒否することも確認します。CPUの`Reference()`自体はこれらをサポートするため、そのままDMA2Dバックエンドの代用にはなりません。別のバックエンドでは`VerificationCase`を選択・定義してください。
 - 検証器は32byte境界に整列した4バッファを内包し、約25KiBを使用します。小さいタスクスタック上へ置かず、静的領域等に配置してください。同じ検証器を複数タスクから同時に実行しないでください。
 
-このmiddlewareはクロック・RIF・HAL初期化やIRQ・カメラの開始を行いません。ホストテストは演算と検証器を確認するもので、実DMA転送・キャッシュ整合・周辺機器の健全性の証明ではありません。それらは独立した[experiment-hw-test](../../userspace/experiment-hw-test/README.md)で確認します。
+このmiddlewareはクロック・RIF・HAL初期化やIRQ・カメラの開始を行いません。ホストテストは演算と検証器を確認するもので、実DMA転送・キャッシュ整合・周辺機器の健全性の証明ではありません。それらは独立した[experiment-hw-test](https://github.com/kons-9/uai-studio/blob/main/userspace/experiment-hw-test/README.md)で確認します。
 
 共有アプリでは[dma2d driver](../driver.md#dma2d)の`Dma2dManagement::Instance()`を`device`として渡せます。driverの初期化は検証前に行います。driver自身がキャッシュ操作と転送停止を担当するため、通常は検証器のcache hookを省略できます。
 
