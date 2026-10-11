@@ -125,6 +125,10 @@ bool RegisterUi(
     Engine &engine,
     Context &context
 );
+bool RegisterTestFaceOutput(
+    Engine &engine,
+    Context &context
+);
 bool RegisterDiagnostics(
     Engine &engine,
     Context &context
@@ -142,7 +146,7 @@ inline bool RegisterAll(
     return RegisterHelp(engine, context) && RegisterUptime(engine, context) && RegisterTasks(engine, context)
         && RegisterMemory(engine, context) && RegisterLog(engine, context) && RegisterCamera(engine, context)
         && RegisterModels(engine, context) && RegisterUi(engine, context) && RegisterDiagnostics(engine, context)
-        && RegisterTrace(engine, context);
+        && RegisterTestFaceOutput(engine, context) && RegisterTrace(engine, context);
 }
 
 } // namespace uai::ai::shell

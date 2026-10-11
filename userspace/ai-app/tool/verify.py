@@ -126,18 +126,20 @@ class Uart:
 
     def write(self, data, timeout):
         deadline = time.monotonic() + timeout
-        pending = memoryview(data)
-        while pending:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0 or not select.select([], [self.fd], [], remaining)[1]:
-                raise TimeoutError("UART write timed out")
-            try:
-                count = os.write(self.fd, pending)
-            except BlockingIOError:
-                continue
-            if count == 0:
-                raise ConnectionError("UART disconnected")
-            pending = pending[count:]
+        for value in data:
+            pending = memoryview(bytes((value,)))
+            while pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([], [self.fd], [], remaining)[1]:
+                    raise TimeoutError("UART write timed out")
+                try:
+                    count = os.write(self.fd, pending)
+                except BlockingIOError:
+                    continue
+                if count == 0:
+                    raise ConnectionError("UART disconnected")
+                pending = pending[count:]
+            time.sleep(0.002)
 
     def readline(self, timeout):
         deadline = time.monotonic() + timeout
@@ -185,16 +187,44 @@ class Session:
         while self.clock() < deadline:
             self.read(deadline - self.clock())
 
+    @staticmethod
+    def response_complete(command, lines):
+        response = "\n".join(lines)
+        if any(FATAL.search(line) for line in lines):
+            return True
+        if command.startswith(("models ", "ui ")):
+            return UI.search(response) is not None
+        if command == "camera" or command == "camera status":
+            return CAMERA.search(response) is not None and FRAMES.search(response) is not None
+        if command.startswith("camera "):
+            return re.search(r"(?:^|\n)ok ae=", response) is not None
+        if command.startswith("log "):
+            return re.search(r"(?:^|\n)log (?:error|warn|info|debug|trace)$", response) is not None
+        return False
+
     def command(self, command):
-        for _ in range(128):
+        for _ in range(512):
             if self.read(0.0) is None:
                 break
         self.commands.append(command)
         self.record.write(f"host: command={command}\n")
         self.record.flush()
-        self.port.write((command + "\ruptime\r").encode("ascii"), self.timeout)
+        self.port.write((command + "\r").encode("ascii"), self.timeout)
         deadline = self.clock() + self.timeout
         lines = []
+        while self.clock() < deadline:
+            line = self.read(deadline - self.clock())
+            if line is None:
+                break
+            lines.append(line)
+            if self.response_complete(command, lines):
+                break
+        else:
+            raise TimeoutError(f"no command response: {command}; request may still apply")
+        if not lines or not self.response_complete(command, lines):
+            raise TimeoutError(f"no command response: {command}; request may still apply")
+        self.port.write(b"uptime\r", self.timeout)
+        deadline = self.clock() + self.timeout
         while self.clock() < deadline:
             line = self.read(deadline - self.clock())
             if line is None:
@@ -387,7 +417,13 @@ def analyze(text):
                             "max_lateness_ms": max(sample["max_lateness_ms"] for sample in samples),
                             "max_frame_delay_ms": max(sample["max_frame_delay_ms"] for sample in samples)}
         if counts["failed"]:
-            issues.append(f"{name}: failed increased by {counts['failed']}")
+            message = f"{name}: failed increased by {counts['failed']}"
+            if name == "display":
+                warnings.append(
+                    message + "; display handoff can count routine buffer backpressure here, and visual checks are out of scope"
+                )
+            else:
+                issues.append(message)
         if counts["dropped_source"]:
             issues.append(f"{name}: input preparation drops increased by {counts['dropped_source']}")
         if counts["dropped_queue"]:

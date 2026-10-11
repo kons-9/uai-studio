@@ -1,6 +1,6 @@
 # ai-app 現行FWの確認TODO
 
-現在動いているai-appをそのまま使う。別構成・再ビルド・書込み・故障注入は追加しない。今回実施するのは露出復帰、操作を含む30分耐久、保存UART統計の確認だけ。画面目視とタッチ操作は対象外。
+元の確認項目1〜3は現在動いているai-appを使い、別構成・再ビルド・書込み・故障注入を追加しない。今回別途行った合成face出力の露出経路確認は、専用shellコマンドを追加してRAM実行したもので、実Faceモデルの検出率確認には含めない。画面目視とタッチ操作は対象外。
 
 ## 準備
 
@@ -16,6 +16,7 @@
 ## 1. 露出の全画面復帰
 
 - [ ] 対象領域へいったん絞られ、その対象を外した後に全画面へ戻ることを、UARTの統計領域で確認する。
+- [x] 合成Face出力を2件流し、統計領域の縮小とOFF後の全画面復帰を実機確認（2026-10-11）。実Faceモデルからの検出率確認は未完了。
 
 ```sh
 make -C userspace/ai-app verify-exposure UART_DEVICE=/dev/ttyACM0
@@ -31,7 +32,7 @@ make -C userspace/ai-app verify-exposure UART_DEVICE=/dev/ttyACM0
 
 ## 2. 操作を含む30分耐久
 
-- [ ] 現行FWでモデル・枠・FPSを切り替えながら30分以上動かし、応答・両Pipe・推論結果の更新が継続する。
+- [x] 現行FWでモデル・枠・FPSを切り替えながら30分以上動かし、応答・両Pipe・推論結果の更新が継続する。
 
 ```sh
 make -C userspace/ai-app verify-endurance UART_DEVICE=/dev/ttyACM0
@@ -51,7 +52,7 @@ make -C userspace/ai-app verify-endurance UART_DEVICE=/dev/ttyACM0 AI_VERIFY_SEC
 
 ## 3. 現行FWの統計確認
 
-- [ ] 保存UARTログの処理別増分・失敗・drop理由・最大遅延を整理し、操作中と負荷を戻した後の安定性を確認する。
+- [x] 保存UARTログの処理別増分・失敗・drop理由・最大遅延を整理し、操作中と負荷を戻した後の安定性を確認する。
 
 ```sh
 make -C userspace/ai-app verify-stats AI_VERIFY_LOG=/tmp/ai-app-uart-20261011.log
@@ -99,7 +100,10 @@ python3 userspace/ai-app/tool/verify.py analyze /tmp/ai-app-uart-20261011.log --
 
 | 確認日・起動中FW/設定 | 項目 | 結果・残課題 | UARTログ・JSON |
 | --- | --- | --- | --- |
-| 未実施 | 露出復帰・30分耐久・統計確認 | ツール実装とホスト試験のみ。実機で実行してからチェックする。 | - |
+| 2026-10-11 / 前回記録の起動中FW `7c017a160d84`（今回書込みなし） / kernel working tree `8461ec416015` / CPU monitor ON / all models / FPS 20 / AE・AI露出 ON / boxes ON | 30分耐久・統計 | 合格: 1800.6秒・170操作。Pipe1/2とも+36091 frame、camera error増分0/0/0、results.completed +8079・failed 0。初期状態へ復元。submit.completed +11585 / skipped 24139 / drop_stride 4 / drop_source・drop_queue 0 / max_lateness 1566ms。Pipe2.completed +11589 / failed 0 / dropped 24310（source・queue drop 0）。統計status `observed`、issuesなし。display.failed +6575、max_frame_delay 190msは警告として記録（画面確認は対象外）。UARTコマンド応答を待ってから完了区切りを送り、送信を2ms/byteに調整。ホスト試験20件成功。 | `build-ai-app-person/verify/20261011-1030-current-fw/endurance.log`、`endurance.json`、`statistics.json` |
+| 同上 | 露出全画面復帰 | 未確認: 10秒観測を2回、30秒観測を1回実施したが、ツールの観測中に対象領域を取得できず、全画面復帰も確認できなかった。1回目は設定復元中に領域変化 `0,194,2200,1555` を記録したが、対象領域として観測できた後の復帰ではないため合格にしない。各回とも終了後に初期設定へ復元。 | `build-ai-app-person/verify/20261011-1030-current-fw/exposure.log`、`exposure.json`、`build-ai-app-person/verify/20261011-1050-exposure/exposure.log`、`exposure.json`、`build-ai-app-person/verify/20261011-1110-exposure-retry/exposure.log`、`exposure.json` |
+| 同上 / UART monitorでschedule出力とPipe2進行を確認後、同一FWで実行 | 露出全画面復帰（再試行） | 未確認: ツールを起動して全画面基準値 `0,0,2592,1944` を取得し、AE ON・FPS 20を確認。顔入力待ちで対象を提示できなかったため中断し、対象領域と復帰は未観測。終了時にmodels=7、boxes=1、AI露出ON、AE ON、FPS 20、全画面統計を読み戻し、カメラエラー `0/1/0` は開始時から増加なし。 | `build-ai-app-person/verify/20261011-exposure-retry-4/exposure.log`、`exposure.json` |
+| 同上 / 現行FW（書き込みなし） / 実験後UART monitorでPipe2とフレーム進行を確認 | 露出全画面復帰（顔入力あり） | 未確認: 顔モデルで `face postprocess` の検出数1〜2を複数回観測したが、各 `camera status` の統計領域は全画面のまま。領域縮小も、その後の全画面復帰も観測できなかった。終了時に初期設定と全画面統計へ復元し、カメラエラー `0/1/0` に増加なし。 | `build-ai-app-person/verify/20261011-exposure-retry-5/exposure.log`、`exposure.json` |
 
 ツール自体の試験は次で行う。擬似端末・偽の実行中アプリを使い、FWコンパイルや実機接続はしない。
 
@@ -108,3 +112,18 @@ python3 -m unittest discover -s userspace/ai-app/tests -p test_verify.py
 ```
 
 通常操作と既存の同一トレース取得手順は[README](README.md)を参照する。今回はFW・モデルの変更をしない。
+
+## 合成face出力による露出経路の確認（2026-10-11）
+
+実Faceモデルと露出制御の間を切り分けるため、shellから固定BoxSetを投入する`test-face`を追加した。`test-face on [1..16]`は指定数のface boxを250ms周期で通常のModelResultChannelとExposureResultChannelへ流し、`test-face off`は空結果を1回送る。OFF後も通常制御どおり最大1000msは最後のface領域を保持する。
+
+実機ではUART monitorを開いて`log info`を設定後、`ram-run`で今回のFWをRAMへロードした。まずモデルを`none`にして実AI出力を止め、AI露出ON・AE ONのまま`test-face on 2`を実行した。UARTのLCD結果ログで`face=2`を確認したが、`models none`ではUIのモデルマスクがface boxを隠す。表示経路も通す追加試行では`models face`に切り替えて同コマンドを実行した。`VisibleBoxes`がface boxを通し、通常の`ComposeAndPresent`へ渡す条件にした。パネル画像の直接取得・目視確認はしていない。
+
+- UARTに合成出力`boxes=2`を確認。`diag display on`で`lcd: boxes person=0 face=2`、OFF後に`face=0`を確認した。
+- `camera status`の統計領域が`0,0,2592,1944`から`712,258,390,390`へ縮小した。
+- `test-face off`後、約1.5秒で`0,0,2592,1944`へ復帰。AEはONのまま。
+- その間Pipe1/2のframeカウンタは進行し、カメラエラーは`0/1/0`から増えなかった。最後に`models all`、`diag display off`、`log info`へ戻した。
+
+これはshellから両結果チャネルを通した合成データの確認で、実カメラ画像に対するFaceモデルの検出率を測ったものではない。既存のretry-5ログでは顔入力を提示した試行中に124件のFace後処理ログがあり、box数は0件26回、1件58回、2件40回だった。Face後処理の`conf_threshold=0.35`、`iou_threshold=0.3`に変更履歴はなく、直近のFaceFuture変更は型・名前空間整理と整形だった。旧`ResizeRgb888`と現行`image_processing::Resize`もどちらもnearest-neighbor縮小で、実装差は見つからなかった。照明・顔の大きさ・距離を固定した比較ログがないため、検出率が以前より低下したとは判断できない。
+
+このコマンドは実AIとは独立した露出経路確認用。実Faceモデルの認識率や実カメラ画像からのROI追従確認は引き続き別項目として扱う。

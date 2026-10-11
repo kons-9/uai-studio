@@ -200,6 +200,9 @@ Reply Apply(
         break;
     case Action::kUiStatus:
         break;
+    case Action::kTestFaceOutput:
+        status = {common::ErrorCode::kInvalidArgument};
+        break;
     case Action::kDiagnostics:
         status = {common::ErrorCode::kInvalidArgument};
         break;

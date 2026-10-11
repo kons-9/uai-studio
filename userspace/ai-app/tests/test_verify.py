@@ -96,10 +96,15 @@ class VerificationTest(unittest.TestCase):
         class Port:
             def __init__(self):
                 self.lines = []
+                self.sent = []
             def write(self, data, timeout):
-                self.sent = data
-                self.lines = ["camera status", "cpu: period=100 cycles irq=0% count=0 unknown=0",
-                              "fps=20 frames=1/1 errors=0/0/0", "uptime", "uptime 42 ms"]
+                self.sent.append(data)
+                if data == b"camera status\r":
+                    self.lines.extend(["camera status", "cpu: period=100 cycles irq=0% count=0 unknown=0",
+                                        "camera ae=1 stats=0,0,2592,1944",
+                                        "fps=20 frames=1/1 errors=0/0/0"])
+                elif data == b"uptime\r":
+                    self.lines.append("uptime 42 ms")
             def readline(self, timeout):
                 if not self.lines:
                     raise TimeoutError()
@@ -109,7 +114,7 @@ class VerificationTest(unittest.TestCase):
         session = verify.Session(port, record)
         response = session.command("camera status")
         self.assertIn("fps=20", response)
-        self.assertEqual(port.sent, b"camera status\ruptime\r")
+        self.assertEqual(port.sent, [b"camera status\r", b"uptime\r"])
         self.assertIn("host: command=camera status", record.getvalue())
 
     def test_command_error_is_rejected_after_completion(self):
@@ -117,7 +122,10 @@ class VerificationTest(unittest.TestCase):
             def __init__(self):
                 self.lines = []
             def write(self, data, timeout):
-                self.lines = ["error: apply code=2", "failed: camera readback", "uptime 42 ms"]
+                if data == b"camera fps 20\r":
+                    self.lines.extend(["error: apply code=2", "failed: camera readback"])
+                elif data == b"uptime\r":
+                    self.lines.append("uptime 42 ms")
             def readline(self, timeout):
                 if not self.lines:
                     raise TimeoutError()
@@ -135,6 +143,14 @@ class VerificationTest(unittest.TestCase):
     def test_failure_increase_and_transport_errors_fail(self):
         self.assertEqual(verify.analyze(schedule(1) + schedule(2, failed=1))["status"], "fail")
         self.assertEqual(verify.analyze("error: response timeout\n")["status"], "fail")
+
+    def test_display_failures_are_reported_as_warnings_for_current_scope(self):
+        first = schedule(1).replace("name=submit", "name=display")
+        second = schedule(2, failed=3).replace("name=submit", "name=display")
+        result = verify.analyze(first + second)
+        self.assertEqual(result["status"], "observed")
+        self.assertEqual(result["issues"], [])
+        self.assertIn("display: failed increased by 3", result["warnings"][0])
 
     def test_existing_startup_error_is_not_counted_as_a_new_error(self):
         text = ("fps=20 frames=10/10 errors=0/1/0\n" + schedule(1)
@@ -194,10 +210,18 @@ class VerificationTest(unittest.TestCase):
         failures = []
         def device():
             try:
-                received = os.read(master, 1024)
-                if received != b"ui status\ruptime\r":
-                    raise AssertionError(received)
-                os.write(master, b"ui status\r\nmodels=7 boxes=1 ai_exposure=1\r\nuptime 42 ms\r\n")
+                received = bytearray()
+                while not received.endswith(b"\r"):
+                    received.extend(os.read(master, 1))
+                if bytes(received) != b"ui status\r":
+                    raise AssertionError(bytes(received))
+                os.write(master, b"ui status\r\nmodels=7 boxes=1 ai_exposure=1\r\n")
+                received.clear()
+                while not received.endswith(b"\r"):
+                    received.extend(os.read(master, 1))
+                if bytes(received) != b"uptime\r":
+                    raise AssertionError(bytes(received))
+                os.write(master, b"uptime\r\nuptime 42 ms\r\n")
             except BaseException as error:
                 failures.append(error)
         try:

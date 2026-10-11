@@ -287,6 +287,7 @@ add_executable(${AI_APP_TARGET}
     src/shell/camera.cpp
     src/shell/models.cpp
     src/shell/ui.cpp
+    src/shell/test_face_output.cpp
     src/shell/diagnostics.cpp
     src/shell/trace.cpp
     ${AI_INFERENCE_TASK_SOURCES}

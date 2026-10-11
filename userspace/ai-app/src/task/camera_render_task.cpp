@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -31,6 +32,29 @@ extern "C" {
 namespace uai::ai::task {
 
 namespace {
+
+constexpr std::uint32_t kSyntheticFaceIntervalMs = 250U;
+
+inference::BoxSet SyntheticFaceBoxes(
+    std::uint32_t count,
+    std::uint32_t capture_sequence
+)
+{
+    inference::BoxSet boxes{};
+    boxes.model_sequence = capture_sequence;
+    boxes.capture_sequence = capture_sequence;
+    boxes.face_valid = true;
+    boxes.face.count = std::min<std::uint32_t>(count, inference::kMaxBoxes);
+    for (std::uint32_t index = 0U; index < boxes.face.count; ++index) {
+        auto &box = boxes.face.boxes[index];
+        box.x = static_cast<std::int16_t>(80U + (index % 4U) * 160U);
+        box.y = static_cast<std::int16_t>(40U + (index / 4U) * 96U);
+        box.width = 80;
+        box.height = 80;
+        box.confidence = 0.90F + static_cast<float>(index) * 0.005F;
+    }
+    return boxes;
+}
 
 struct RenderFeatures {
     bool input_display = false;
@@ -472,6 +496,13 @@ void CameraRenderTask::Run(CameraRenderContext context)
 
     state.diagnostics = CameraDiagnosticState(common::Task::Now());
     UINT wake_reasons = 0U;
+    bool synthetic_face_enabled = false;
+    bool synthetic_face_clear_pending = false;
+    bool synthetic_face_logged = false;
+    std::uint32_t synthetic_face_count = 0U;
+    std::uint32_t synthetic_face_last_tick = 0U;
+    std::uint32_t synthetic_face_last_capture = 0U;
+    std::uint32_t synthetic_face_update_sequence = 0U;
     common::Task::RunForever(
         context.cpu_task_monitor,
         "camera_render",
@@ -569,7 +600,31 @@ void CameraRenderTask::Run(CameraRenderContext context)
                 did_work = true;
                 ui_dirty = true;
                 shell::Reply reply{};
-                if (shell_request.action == shell::Action::kDiagnostics) {
+                if (shell_request.action == shell::Action::kTestFaceOutput) {
+                    if (shell_request.values[0] != 0) {
+                        synthetic_face_enabled = true;
+                        synthetic_face_clear_pending = false;
+                        synthetic_face_logged = false;
+                        synthetic_face_count = static_cast<std::uint32_t>(shell_request.values[1]);
+                        synthetic_face_last_tick = now - kSyntheticFaceIntervalMs;
+                        synthetic_face_last_capture = snapshot.pipe2_latest_capture_sequence;
+                        std::snprintf(
+                            reply.text,
+                            sizeof(reply.text),
+                            "test-face=on boxes=%lu; emitting through exposure results\r\n",
+                            static_cast<unsigned long>(synthetic_face_count)
+                        );
+                    } else {
+                        synthetic_face_enabled = false;
+                        synthetic_face_clear_pending = true;
+                        std::snprintf(reply.text, sizeof(reply.text), "test-face=off; face hold expires in 1000ms\r\n");
+                    }
+                    UAI_LOG_INFO(
+                        "ai: test-face %s boxes=%u\n",
+                        synthetic_face_enabled ? "on" : "off",
+                        static_cast<unsigned int>(synthetic_face_count)
+                    );
+                } else if (shell_request.action == shell::Action::kDiagnostics) {
                     std::atomic<bool> *option = nullptr;
                     constexpr const char *names[] = {
                         "frame", "brightness", "input", "input_display", "inference", "fps", "display", "timing"
@@ -636,6 +691,49 @@ void CameraRenderTask::Run(CameraRenderContext context)
                             || geometry.crop.height != state.geometry.crop.height)) {
                         state.geometry = geometry;
                         reset_results();
+                    }
+                }
+            }
+            if (synthetic_face_enabled || synthetic_face_clear_pending) {
+                const std::uint32_t capture_sequence = snapshot.pipe2_latest_capture_sequence;
+                const bool have_new_frame =
+                    static_cast<std::int32_t>(capture_sequence - synthetic_face_last_capture) > 0;
+                const bool due = synthetic_face_clear_pending
+                    || (synthetic_face_last_tick == 0U || now - synthetic_face_last_tick >= kSyntheticFaceIntervalMs);
+                if (have_new_frame && due) {
+                    const std::uint32_t count = synthetic_face_enabled ? synthetic_face_count : 0U;
+                    const inference::BoxSet boxes = SyntheticFaceBoxes(count, capture_sequence);
+                    synthetic_face_update_sequence =
+                        std::max(synthetic_face_update_sequence, state.results.boxes.model_sequence) + 1U;
+                    ModelResultSnapshot display_result{};
+                    display_result.boxes = boxes;
+                    display_result.boxes.model_sequence = synthetic_face_update_sequence;
+                    display_result.stamps[1] = {true, now, synthetic_face_update_sequence};
+                    display_result.generation = context.pipeline_task.Generation();
+                    const common::Error display_status = context.pipeline_task.PublishResult(display_result);
+                    if (!display_status.Ok())
+                        display_status.LogStatus("test-face-results");
+                    const common::Error publish_status =
+                        context.pipeline_task.PublishExposureResult(boxes, context.pipeline_task.Generation());
+                    if (publish_status.Ok()) {
+                        synthetic_face_last_capture = capture_sequence;
+                        synthetic_face_last_tick = now;
+                        if (synthetic_face_enabled && !synthetic_face_logged) {
+                            UAI_LOG_INFO(
+                                "ai: test-face output seq=%u boxes=%u\n",
+                                static_cast<unsigned int>(capture_sequence),
+                                static_cast<unsigned int>(boxes.face.count)
+                            );
+                            synthetic_face_logged = true;
+                        }
+                        if (synthetic_face_clear_pending) {
+                            synthetic_face_clear_pending = false;
+                            UAI_LOG_INFO(
+                                "ai: test-face empty output seq=%u\n", static_cast<unsigned int>(capture_sequence)
+                            );
+                        }
+                    } else {
+                        publish_status.LogStatus("test-face-output");
                     }
                 }
             }
