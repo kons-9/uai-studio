@@ -37,7 +37,7 @@ userspace/mini-ai-app/
 
 | 領域 | 使い手 |
 | --- | --- |
-| `APP` | コード、データ、スタック（AXISRAM1） |
+| `APP` | コード、データ、スタック（AXISRAM1/2） |
 | `MODEL_FLASH` | Neural-ARTのcommand blob（NOR、`ai-load`で書く） |
 | `PSRAM_CAPTURE`/`PSRAM_DISPLAY` | Pipe1のDMA先とLCDの表示面、各2枚 |
 | `PSRAM_INFERENCE`/`PSRAM_INFERENCE_SOURCE`/`PSRAM_SCRATCH` | Pipe2のDMA先（モデル出力領域込み）、スナップショット、作業領域 |
@@ -114,9 +114,10 @@ add_dependencies(uai-driver-overrides mini-ai-app-memory-layout)
 
 ## 確認
 
-モデル生成物がまだないので、ここでは生成器だけを手で動かして確認します。`stai_network.h`の形だけ用意すれば動きます（出力は捨ててよい）。
+生成器は`stai_network.h`だけでなく、`network.c`、`network_ecblobs.h`、`network_data.xSPI2.bin`も読み、入出力サイズ・NPUメモリプール・command blob容量・重み容量を確認します。仮のヘッダだけでは動きません。未生成なら先にpersonモデルを生成します（オプションの説明は[第7章](07-model.md)）。生成済みなら最初のコマンドは省略できます。
 
 ```sh
+make -C userspace/mini-ai-app ai-models
 python3 host_app/auto_static_memory_layout all \
   --board userspace/mini-ai-app/config/board_memory.json \
   --application userspace/mini-ai-app/config/application_memory.json \

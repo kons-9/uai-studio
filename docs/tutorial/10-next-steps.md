@@ -18,7 +18,7 @@ mini-ai-appは、ai-appから「1モデル・同期推論・UIなし」に削っ
 
 ## 機能を足すときの順番
 
-1. **2つ目のモデル**: `tool/generate_model.sh <name>`で生成し、`model_layout.json`と`board_memory.json`（command blobの枠）に追加、`<name>_network.c`で名前を付け替えて取り込みます。推論タスクで`npu.Preload()`→`SelectModel()`で切り替えます（[NPU](../driver.md)）。入力サイズが480x480でなければ前処理（CPU縮小とcleanキャッシュ）が要ります。
+1. **2つ目のモデル**: ai-appの`tool/generate_model.sh <name>`で生成し、`model_layout.json`と`board_memory.json`（command blobの枠）に追加、`<name>_network.c`で名前を付け替えて取り込みます。Makefileの`AI_MODEL_NAMES`とCMakeのモデルソース・blob抽出対象も追加し、検証と後処理をモデルごとに用意します。推論タスクが`Accessor`を保持している間は、`Accessor::Get()`で得たドライバに`Ownership()`を渡して`Preload()`→`SelectModel()`を呼びます（[NPU](../driver/npu.md)）。入力サイズが480x480でなければ前処理（CPU縮小とcleanキャッシュ）が要ります。
 2. **パイプライン化**: 推論が複数モデルになり、NPU待ちの間にCPUが遊ぶのが気になったら`ai_runtime`へ移します。`PersonDecoder`は後処理ステップにそのまま使えます。
 3. **UI**: `ui_designer`でボタンを置き、`ComposeAndPresent()`の`overlay`に`ButtonPanel`を渡します。タッチは`TouchManagement`をLCDの後に初期化します。
 4. **計測の拡張**: `ai_model_monitor`は`ai_runtime`のトレースフックから記録するので、2の後に有効になります。
@@ -30,10 +30,11 @@ mini-ai-appは、ai-appから「1モデル・同期推論・UIなし」に削っ
 | フレームの時刻記録（`input_preparation_*_ms`） | `InferenceFrame`、各`Future::Preprocess()` |
 | 推論結果の統合（複数モデルの枠を1つの`BoxSet`に） | `pipeline_task.cpp`の`PublishBoxes()` |
 | NORが読めないときのモデル単位の無効化 | `external_nor_ready`と`g_app.enabled` |
-| IACハンドラのRISAF詳細ログ | `main.cpp`（mini-ai-appにも同じものがあります） |
+
+IACハンドラとRISAF12の詳細ログは、mini-ai-appにも`src/main.cpp`に残しています。アクセス保護違反の診断は、最小アプリでも共通です。
 
 ## 関連資料
 
-- [ドライバー](../driver.md): カメラ、LCD、NPU、PSRAM、NOR、RIF、キャッシュの使い方
+- [ドライバー](../driver/index.md): HW別の説明、ドライバーAPI、ユースケース
 - [ミドルウェア](../middleware/index.md): `memory_manager`、`message_channel`、`task`、`ai_runtime`、モニタ
 - [カーネル](../kernel/index.md): ビルド構成、起動の流れ、μT-Kernel

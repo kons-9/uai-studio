@@ -72,7 +72,7 @@ make -C kernel/middleware/pipeline/tests test
 
 ## キャッシュとの関係
 
-PSRAM上のバッファはDキャッシュの対象です。所有権が移るときは`CacheManagement`で対応するキャッシュ操作を行います（[ドライバー](../driver.md)）。
+PSRAM上のバッファはDキャッシュの対象です。所有権が移るときは`CacheManagement`で対応するキャッシュ操作を行います（[キャッシュドライバー](../driver/cache.md)）。
 
 | 所有権の移動 | キャッシュ操作 |
 | --- | --- |

@@ -36,4 +36,4 @@ STM32_Programmer_CLI        <app>.bin を 0x34000400 へ書き、MSP/PC を設�
 
 ## 外部メモリとRIF
 
-`main()`はRIF（Resource Isolation Framework）の基本設定（`SystemIsolation_Config()`）と、カメラを使うアプリではDCMIPP/LTDCのマスター属性の設定を行います。ただしコールドブート直後のXSPI1/XSPI2はまだ保護されたままなので、アプリの初期化タスクが`rif::RifManagement`でアクセス権を設定し、PSRAMとNORのドライバーを初期化して初めて、`0x90000000`（PSRAM）と`0x70000000`（NOR）がメモリマップされます。この順序は[ドライバーの初期化の順序](../driver.md)にまとめています。
+`main()`はRIF（Resource Isolation Framework）の基本設定（`SystemIsolation_Config()`）と、カメラを使うアプリではDCMIPP/LTDCのマスター属性の設定を行います。ただしコールドブート直後のXSPI1/XSPI2はまだ保護されたままなので、アプリの初期化タスクが`rif::RifManagement`でアクセス権を設定し、PSRAMとNORのドライバーを初期化して初めて、`0x90000000`（PSRAM）と`0x70000000`（NOR）がメモリマップされます。この順序は[ドライバーの初期化の順序](../driver/common.md)にまとめています。

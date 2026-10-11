@@ -1,0 +1,5 @@
+SAMPLE_DEFAULT_IOC := $(SAMPLE_DIR)/config/stm32n6570-dk-fullsecure.ioc
+APP_TARGETS := test ui-tool
+EXPERIMENT_PREKERNEL_READY ?= ON
+APP_CMAKE_SETTINGS := EXPERIMENT_PREKERNEL_READY
+UI_TOOL_MODULE := tool.feature_constraints

@@ -52,13 +52,13 @@ sudo apt install build-essential cmake git python3 minicom \
 
 | パッケージ | 用途 |
 | --- | --- |
-| `cmake`、`build-essential` | CMake 3.16以上とGNU Make 4.4以上 |
+| `cmake`、`build-essential` | CMake 3.16以上とGNU Make |
 | `gcc-arm-none-eabi`など | Cortex-M55向けのクロスコンパイラ。PATHにない場合は`local.mk`の`ARM_NONE_EABI_TOOLCHAIN_PATH`で場所を指定します |
-| `python3` | モデル生成スクリプトとメモリ配置の生成 |
+| `python3` | Python 3.10以上。Makeの共通実行入口、モデル生成とメモリ配置の生成 |
 | `minicom` | `make monitor`が使うUARTモニタ |
 | `uv`（任意） | `thread-monitor`、`cpu-task-monitor`の解析ツールの依存を用意します。[uvの導入方法](https://docs.astral.sh/uv/getting-started/installation/)を参照してください |
 
-`make --version`でGNU Make 4.4以上を確認してください。ディストリビューションの標準版が古い場合は、4.4以上を別途導入してPATHで優先します。CubeMXの複数成果物と、並列ビルド・書き込みの順序をMakeで管理するために必要です。
+`make --version`でGNU Make、`python3 --version`でPython 3.10以上を確認してください。Makeは薄い入口とし、CubeMXの更新判定やビルド・書き込みの順序は共通スクリプトで管理します。
 
 ### STの無償ツール
 

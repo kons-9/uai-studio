@@ -157,15 +157,8 @@ set(AI_COMPONENT_ROOT
 # consumes the generated contract directly.
 set(AI_MEMORY_LAYOUT_GENERATOR_DIR
     "${PROJECT_SOURCE_DIR}/host_app/auto_static_memory_layout")
-set(AI_MEMORY_LAYOUT_GENERATOR_SOURCES
-    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/__init__.py"
-    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/__main__.py"
-    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/cli.py"
-    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/common.py"
-    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/emitters.py"
-    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/layout_core.py"
-    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/model_artifacts.py"
-    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/resolver.py")
+file(GLOB AI_MEMORY_LAYOUT_GENERATOR_SOURCES CONFIGURE_DEPENDS
+    "${AI_MEMORY_LAYOUT_GENERATOR_DIR}/*.py")
 set(AI_MEMORY_LAYOUT_GENERATED_DIR
     "${UAI_GENERATED_INCLUDE_DIR}")
 set(AI_MEMORY_LAYOUT_JSON
@@ -243,17 +236,11 @@ set(AI_MODEL_INCLUDE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/models/person"
     "${CMAKE_CURRENT_SOURCE_DIR}/models/face"
     "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation")
-set(AI_MODEL_C_API_SOURCES
-    "${AI_SRC_DIR}/models/person/person_model_runtime.c"
-    "${AI_SRC_DIR}/models/face/face_model_runtime.c"
-    "${AI_SRC_DIR}/models/segmentation/segmentation_model_runtime.c")
-set(AI_MODEL_SOURCES
-    "${AI_SRC_DIR}/models/person/npu_model.cpp"
-    "${AI_SRC_DIR}/models/person/future.cpp"
-    "${AI_SRC_DIR}/models/face/npu_model.cpp"
-    "${AI_SRC_DIR}/models/face/future.cpp"
-    "${AI_SRC_DIR}/models/segmentation/npu_model.cpp"
-    "${AI_SRC_DIR}/models/segmentation/future.cpp")
+file(GLOB_RECURSE AI_MODEL_C_API_SOURCES CONFIGURE_DEPENDS
+    "${AI_SRC_DIR}/models/*.c")
+file(GLOB_RECURSE AI_APP_SOURCES CONFIGURE_DEPENDS
+    "${AI_SRC_DIR}/*.c" "${AI_SRC_DIR}/*.cpp")
+list(REMOVE_ITEM AI_APP_SOURCES ${AI_MODEL_C_API_SOURCES})
 set(AI_MODEL_EXTRA_SOURCES
     "${AI_VISION_MODELS_PP_DIR}/Src/od_pp_st_yolox.c"
     "${AI_VISION_MODELS_PP_DIR}/Src/fd_pp_blazeface.c"
@@ -261,8 +248,6 @@ set(AI_MODEL_EXTRA_SOURCES
     "${AI_VISION_MODELS_PP_DIR}/Src/vision_models_pp.c")
 set(AI_MODEL_EXTRA_LIBRARIES
     "${AI_STEDGEAI_RUNTIME_LIBRARY}")
-set(AI_INFERENCE_TASK_SOURCES
-    src/task/pipeline_task.cpp)
 set(AI_NPU_CACHE_SOURCE
     "${AI_STEDGEAI_DIR}/Npu/Devices/STM32N6xx/npu_cache.c")
 # CubeMX already supplies the strong HAL cache MSP hooks. Some STEdgeAI
@@ -272,26 +257,9 @@ set_source_files_properties(${AI_NPU_CACHE_SOURCE} PROPERTIES
     COMPILE_DEFINITIONS
     "HAL_CACHEAXI_MspInit=sample_ai_STEDGEAI_HAL_CACHEAXI_MspInit;HAL_CACHEAXI_MspDeInit=sample_ai_STEDGEAI_HAL_CACHEAXI_MspDeInit")
 add_executable(${AI_APP_TARGET}
-    src/main.cpp
+    ${AI_APP_SOURCES}
     # Keep the strong kernel HAL overrides directly in the executable.
     $<TARGET_OBJECTS:uai-driver-overrides>
-    src/task/application_initialize_task.cpp
-    src/task/camera_render_task.cpp
-    src/ui/app_ui.cpp
-    src/shell/task.cpp
-    src/shell/help.cpp
-    src/shell/uptime.cpp
-    src/shell/tasks.cpp
-    src/shell/memory.cpp
-    src/shell/log.cpp
-    src/shell/camera.cpp
-    src/shell/models.cpp
-    src/shell/ui.cpp
-    src/shell/test_face_output.cpp
-    src/shell/diagnostics.cpp
-    src/shell/trace.cpp
-    ${AI_INFERENCE_TASK_SOURCES}
-    ${AI_MODEL_SOURCES}
     "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dcmipp.c"
     "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c.c"
     "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c_ex.c"
@@ -427,6 +395,18 @@ else()
             "ai-app-flash-images requires STM32_SigningTool_CLI"
         COMMAND ${CMAKE_COMMAND} -E false)
 endif()
+
+set_property(TARGET ${AI_APP_NAME}-flash-images PROPERTY UAI_FLASH_IMAGES
+    "${AI_FLASH_FSBL_IMAGE}"
+    "${AI_FLASH_APP_IMAGE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/person/network_data.hex"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation/network_data.hex"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/face/network_data.hex"
+    "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_person.hex"
+    "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_segmentation.hex"
+    "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_face.hex")
+set_property(TARGET ${AI_APP_NAME}-flash-images PROPERTY UAI_FLASH_ADDRESSES
+    AUTO 0x70100000 AUTO AUTO AUTO AUTO AUTO AUTO)
 
 add_library(${AI_MODEL_TARGET} STATIC
     ${AI_MODEL_C_API_SOURCES}

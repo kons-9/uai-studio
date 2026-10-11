@@ -6,8 +6,10 @@
 
 ```text
 userspace/<app>/
-  Makefile            APP_TARGET と ENABLE_* を決めて common.mk を読み込む
+    Makefile            common.mkを読み込む1行のラッパ
   CMakeLists.txt      <app>.elf を定義し、μT-Kernel とボード設定をリンクする
+    config/build.mk     Makeの機能フラグ、IOC、追加ターゲット
+    config/build.cmake  共通コンポーネント、ボード、IOC、起動値の設定
   config/*.ioc        CubeMX の設定
   src/main.cpp        usermain()
   src/hal_time.c      HAL_GetTick/HAL_Delay を μT-Kernel で置き換える（ドライバーを使わない場合）
@@ -34,10 +36,20 @@ extern "C" INT usermain(void)
 
 ### 2. CMakeLists.txtを書く
 
+先に`config/build.cmake`でアプリのビルド設定を宣言します。ルートCMakeは`project()`より前にこのファイルを読み込みます。最小アプリなら次の設定で足ります。
+
+```cmake
+set(UAI_DEFAULT_CUBEMX_IOC "${CMAKE_CURRENT_LIST_DIR}/stm32n6570-dk-fullsecure.ioc")
+set(UAI_BOARD_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/../src/board" "${CMAKE_CURRENT_LIST_DIR}")
+```
+
 `<app>.elf`と`<app>`ターゲットを定義します。`uai::utkernel`と`uai::stm32n6570_dk`をリンクし、リンカスクリプトは`UAI_STM32N6570_DK_LINKER_SCRIPT`を使えます。ビルド後に`objcopy`で`<app>.bin`を作ると`ram-run`で使えます。
 
 ```cmake
-add_executable(<app>.elf src/main.cpp src/hal_time.c)
+file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+add_executable(<app>.elf ${APP_SOURCES})
 target_link_libraries(<app>.elf PRIVATE uai::utkernel uai::stm32n6570_dk)
 target_link_options(<app>.elf PRIVATE
     "-T${UAI_STM32N6570_DK_LINKER_SCRIPT}"
@@ -51,22 +63,20 @@ add_custom_command(TARGET <app>.elf POST_BUILD
 add_custom_target(<app> DEPENDS <app>.elf)
 ```
 
-ルートの`CMakeLists.txt`の`APP_TARGET`の候補（`set_property(CACHE APP_TARGET PROPERTY STRINGS ...)`）に`<app>`を加えておくと、CMake GUIなどから選べます。必須ではありません。
+`APP_TARGET`の候補は`userspace/*/CMakeLists.txt`から自動収集されます。共通側のアプリ一覧や条件分岐を変更する必要はありません。設定項目とソース収集の基準は[ビルド構成](build.md)を参照してください。
 
 ### 3. Makefileを書く
 
-```make
-PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
-SAMPLE_DIR := $(PROJECT_ROOT)/userspace/<app>
-SAMPLE_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))
-APP_TARGET ?= <app>
-BUILD_DIR ?= $(PROJECT_ROOT)/build-<app>
-SAMPLE_DEFAULT_IOC := $(SAMPLE_DIR)/config/stm32n6570-dk-fullsecure.ioc
-ENABLE_AI := 0
-ENABLE_THREAD_MONITOR := 0
-ENABLE_CPU_TASK_MONITOR := 0
+アプリ名やレシピは書かず、共通入口を読み込むだけにします。
 
-include $(PROJECT_ROOT)/project-tools/make/common.mk
+```make
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../project-tools/make/common.mk)
+```
+
+Make側のアプリ固有値は`config/build.mk`へ置きます。ビルド先は既定で`build-<app>`、機能フラグは既定で無効なので、最小アプリではIOCの指定だけで足ります。
+
+```make
+SAMPLE_DEFAULT_IOC := $(SAMPLE_DIR)/config/stm32n6570-dk-fullsecure.ioc
 ```
 
 | 変数 | 内容 |
@@ -74,10 +84,13 @@ include $(PROJECT_ROOT)/project-tools/make/common.mk
 | `ENABLE_AI` | `setup`でモデル生成を行い、`ai-*`ターゲットを有効にします |
 | `ENABLE_THREAD_MONITOR` | `thread-monitor`ターゲットを有効にします |
 | `ENABLE_CPU_TASK_MONITOR` | CMakeに`UAI_CPU_TASK_MONITOR=ON`を渡し、`cpu-task-monitor`ターゲットを有効にします |
+| `AI_MODEL_NAMES` | `ENABLE_AI=1`のときに生成するモデル名を指定します |
+| `APP_TARGETS` | アプリ固有の既存ツールを呼ぶ追加ターゲットを指定します |
+| `APP_CMAKE_SETTINGS` | CMakeへ渡すアプリ固有の変数名を指定します |
 
 ### 4. IOCを置く
 
-CubeMXのIOCを`config/`に置きます。既存アプリのIOCをコピーするのが簡単です。IOCの名前を変えた場合は`SAMPLE_DEFAULT_IOC`も合わせます。
+CubeMXのIOCを`config/`に置きます。既存アプリのIOCをコピーするのが簡単です。IOCの名前を変えた場合は`SAMPLE_DEFAULT_IOC`と`config/build.cmake`の`UAI_DEFAULT_CUBEMX_IOC`も合わせます。
 
 ### 5. 動かす
 
@@ -87,15 +100,15 @@ make -C userspace/<app> monitor    # 別端末
 make -C userspace/<app> ram-run
 ```
 
-`STM32_RAM_ENTRY`と`STM32_RAM_STACK`の既定値（`local.mk.example`）は、`UAI_KERNEL_APPS`のアプリ（ai-app、mini-ai-app）以外では`0x34000800`と`0x34200000`です。独自のリンカスクリプトを使う場合は[起動の流れ](boot.md)を参照して合わせてください。
+RAM起動値をアプリ設定で指定しなければ、`STM32_RAM_ENTRY`と`STM32_RAM_STACK`の既定値は`0x34000800`と`0x34200000`です。独自のリンカスクリプトを使う場合は、`config/build.cmake`の`UAI_DEFAULT_RAM_ENTRY`と`UAI_DEFAULT_RAM_STACK`を[起動の流れ](boot.md)に合わせて指定します。
 
 ## ドライバーとミドルウェアを使う
 
-`kernel/driver`や`kernel/middleware`は、ルートの`CMakeLists.txt`の`UAI_KERNEL_APPS`に登録したアプリ（ai-app、mini-ai-app）のときだけ追加されます。別のアプリから使うには次が必要です。手順を章ごとに追ったものが[チュートリアル](../tutorial/index.md)で、完成形が`userspace/mini-ai-app`です。
+`kernel/driver`や`kernel/middleware`は、アプリの`config/build.cmake`で`UAI_USE_KERNEL_COMPONENTS`を有効にしたときだけ追加されます。別のアプリから使うには次が必要です。手順を章ごとに追ったものが[チュートリアル](../tutorial/index.md)で、完成形が`userspace/mini-ai-app`です。
 
-1. ルートの`CMakeLists.txt`の`UAI_KERNEL_APPS`に`<app>`を加える。これで`UAI_GENERATED_INCLUDE_DIR`の定義、`kernel/middleware`と`kernel/driver`の追加、既定IOC（`config/stm32n6570-dk-<app>.ioc`）、`STM32_RAM_ENTRY`/`STACK`、`UAI_CAMERA_LCD_CLOCKS`が切り替わる。
+1. `config/build.cmake`で`UAI_USE_KERNEL_COMPONENTS`を`ON`にする。これで`UAI_GENERATED_INCLUDE_DIR`が定義され、`kernel/middleware`と`kernel/driver`が追加される。カメラ・LCDを使うなら`UAI_CAMERA_LCD_CLOCKS`も`ON`にし、IOCとRAM起動値はアプリの配置に合わせて別途指定する。
 2. メモリ配置の生成を用意する。`config/board_memory.json`、`config/application_memory.json`、`config/model_layout.json`とリンカスクリプトの雛形を置き、mini-ai-appの`CMakeLists.txt`と同じように`auto_static_memory_layout`を呼ぶ（[memory](../middleware/memory.md)）。
 3. `uai::drivers`、`uai::middleware`、`uai::driver_overrides`をリンクする。`src/hal_time.c`は`uai::driver_overrides`に含まれるため不要になります。`uai_systick_count`だけはアプリで定義します。
-4. ドライバーを[初期化の順序](../driver.md)に従って初期化する。
+4. ドライバーを[初期化の順序](../driver/common.md)に従って初期化する。
 
-モデルを追加する場合の実装の要点は[ai_runtime](../middleware/ai_runtime.md)と[NPUドライバー](../driver.md)にあります。
+モデルを追加する場合の実装の要点は[ai_runtime](../middleware/ai_runtime.md)と[NPUドライバー](../driver/npu.md)にあります。

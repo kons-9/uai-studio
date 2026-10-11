@@ -1,0 +1,6 @@
+SAMPLE_DEFAULT_IOC := $(SAMPLE_DIR)/config/stm32n6570-dk-experiment-ai.ioc
+ENABLE_AI := 1
+ENABLE_THREAD_MONITOR := 1
+AI_MODEL_NAMES ?= person segmentation face
+THREAD_MONITOR_FORMAT := experiment
+CUBEMX_EXTRA_OUTPUTS := FSBL/STM32N657X0HXQ_AXISRAM2_fsbl.ld

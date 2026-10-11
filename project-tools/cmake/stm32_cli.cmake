@@ -30,13 +30,7 @@ elseif(NOT DEFINED CUBEMX_IOC)
     set(CUBEMX_IOC "" CACHE FILEPATH "CubeMX IOC input file")
 endif()
 if(NOT CUBEMX_IOC)
-    set(_uai_default_ioc
-        "${CMAKE_SOURCE_DIR}/userspace/${APP_TARGET}/config/stm32n6570-dk-fullsecure.ioc")
-    if(APP_TARGET IN_LIST UAI_KERNEL_APPS)
-        set(_uai_default_ioc
-            "${CMAKE_SOURCE_DIR}/userspace/${APP_TARGET}/config/stm32n6570-dk-${APP_TARGET}.ioc")
-    endif()
-    set(CUBEMX_IOC "${_uai_default_ioc}"
+    set(CUBEMX_IOC "${UAI_DEFAULT_CUBEMX_IOC}"
         CACHE FILEPATH "CubeMX IOC input file" FORCE)
 endif()
 
@@ -139,27 +133,13 @@ endif()
 set(STM32_RAM_ENTRY "$ENV{STM32_RAM_ENTRY}" CACHE STRING
     "RAM image execution address" FORCE)
 if(NOT STM32_RAM_ENTRY)
-    if(APP_TARGET STREQUAL "ai-app")
-        set(_stm32_default_ram_entry "0x34062001")
-    elseif(APP_TARGET IN_LIST UAI_KERNEL_APPS)
-        set(_stm32_default_ram_entry "0x34060001")
-    elseif(APP_TARGET STREQUAL "experiment-ai")
-        set(_stm32_default_ram_entry "0x34052001")
-    else()
-        set(_stm32_default_ram_entry "0x34000800")
-    endif()
-    set(STM32_RAM_ENTRY "${_stm32_default_ram_entry}" CACHE STRING
+    set(STM32_RAM_ENTRY "${UAI_DEFAULT_RAM_ENTRY}" CACHE STRING
         "RAM image execution address" FORCE)
 endif()
 set(STM32_RAM_STACK "$ENV{STM32_RAM_STACK}" CACHE STRING
     "Initial main stack pointer" FORCE)
 if(NOT STM32_RAM_STACK)
-    if(APP_TARGET IN_LIST UAI_KERNEL_APPS OR APP_TARGET STREQUAL "experiment-ai")
-        set(_stm32_default_ram_stack "0x34100000")
-    else()
-        set(_stm32_default_ram_stack "0x34200000")
-    endif()
-    set(STM32_RAM_STACK "${_stm32_default_ram_stack}" CACHE STRING
+    set(STM32_RAM_STACK "${UAI_DEFAULT_RAM_STACK}" CACHE STRING
         "Initial main stack pointer" FORCE)
 endif()
 set(STM32_RAM_XPSR "$ENV{STM32_RAM_XPSR}" CACHE STRING
@@ -281,75 +261,37 @@ function(uai_add_stm32_cli_targets app_target)
     if(STM32_PROGRAMMER_CLI AND STM32_EXTERNAL_LOADER)
         separate_arguments(_stm32_program_extra_args NATIVE_COMMAND
             "${STM32_PROGRAM_EXTRA_ARGS}")
-        if((app_target STREQUAL "experiment-ai" OR
-            app_target STREQUAL "ai-app") AND
-           TARGET ${app_target}-flash-images)
-            # Both AI applications are STM32N6 LRUN image sets. The FSBL, signed
-            # application, command blobs, and model weights occupy separate
-            # external-NOR ranges and must all be present for reset boot.
-            set(_ai_flash_dir
-                "${CMAKE_BINARY_DIR}/userspace/${app_target}")
-            set(_ai_model_dir
-                "${CMAKE_SOURCE_DIR}/userspace/${app_target}/models")
-            set(_ai_fsbl_image
-                "${CMAKE_SOURCE_DIR}/userspace/${app_target}/fsbl/stm32n6570-dk-ai_fsbl.hex")
-            if(NOT EXISTS "${_ai_fsbl_image}")
+        if(TARGET ${app_target}-flash-images)
+            get_target_property(_flash_images ${app_target}-flash-images
+            UAI_FLASH_IMAGES)
+            get_target_property(_flash_addresses ${app_target}-flash-images
+            UAI_FLASH_ADDRESSES)
+            list(LENGTH _flash_images _flash_image_count)
+            list(LENGTH _flash_addresses _flash_address_count)
+            if(NOT _flash_images OR NOT _flash_addresses OR
+               NOT _flash_image_count EQUAL _flash_address_count)
                 message(FATAL_ERROR
-                    "experiment-ai official FSBL is missing: ${_ai_fsbl_image}")
+                "${app_target}-flash-images requires matching UAI_FLASH_IMAGES and UAI_FLASH_ADDRESSES")
             endif()
+            set(_flash_commands)
+            foreach(_flash_image IN LISTS _flash_images)
+            list(POP_FRONT _flash_addresses _flash_address)
+            set(_flash_destination "${_flash_image}")
+            if(NOT _flash_address STREQUAL "AUTO")
+                list(APPEND _flash_destination "${_flash_address}")
+            endif()
+            list(APPEND _flash_commands
+                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
+                    "${STM32_PROGRAMMER_CLI}"
+                    -c "${_programmer_connection}"
+                    -el "${STM32_EXTERNAL_LOADER}"
+                    -w ${_flash_destination} -v
+                    ${_stm32_program_extra_args})
+            endforeach()
             add_custom_target(program
-                DEPENDS ${app_target}-flash-images ${app_target}
-                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
-                        "${STM32_PROGRAMMER_CLI}"
-                        -c "${_programmer_connection}"
-                        -el "${STM32_EXTERNAL_LOADER}"
-                        -w "${_ai_fsbl_image}" -v
-                        ${_stm32_program_extra_args}
-                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
-                        "${STM32_PROGRAMMER_CLI}"
-                        -c "${_programmer_connection}"
-                        -el "${STM32_EXTERNAL_LOADER}"
-                        -w "${_ai_flash_dir}/${app_target}-flash.bin"
-                           0x70100000 -v
-                        ${_stm32_program_extra_args}
-                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
-                        "${STM32_PROGRAMMER_CLI}"
-                        -c "${_programmer_connection}"
-                        -el "${STM32_EXTERNAL_LOADER}"
-                        -w "${_ai_model_dir}/person/network_data.hex" -v
-                        ${_stm32_program_extra_args}
-                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
-                        "${STM32_PROGRAMMER_CLI}"
-                        -c "${_programmer_connection}"
-                        -el "${STM32_EXTERNAL_LOADER}"
-                        -w "${_ai_model_dir}/segmentation/network_data.hex" -v
-                        ${_stm32_program_extra_args}
-                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
-                        "${STM32_PROGRAMMER_CLI}"
-                        -c "${_programmer_connection}"
-                        -el "${STM32_EXTERNAL_LOADER}"
-                        -w "${_ai_model_dir}/face/network_data.hex" -v
-                        ${_stm32_program_extra_args}
-                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
-                        "${STM32_PROGRAMMER_CLI}"
-                        -c "${_programmer_connection}"
-                        -el "${STM32_EXTERNAL_LOADER}"
-                        -w "${_ai_flash_dir}/network_blobs_person.hex" -v
-                        ${_stm32_program_extra_args}
-                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
-                        "${STM32_PROGRAMMER_CLI}"
-                        -c "${_programmer_connection}"
-                        -el "${STM32_EXTERNAL_LOADER}"
-                        -w "${_ai_flash_dir}/network_blobs_segmentation.hex" -v
-                        ${_stm32_program_extra_args}
-                COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
-                        "${STM32_PROGRAMMER_CLI}"
-                        -c "${_programmer_connection}"
-                        -el "${STM32_EXTERNAL_LOADER}"
-                        -w "${_ai_flash_dir}/network_blobs_face.hex" -v
-                        ${_stm32_program_extra_args}
-                USES_TERMINAL
-                VERBATIM)
+            ${_flash_commands}
+            DEPENDS ${app_target}-flash-images ${app_target}
+            USES_TERMINAL VERBATIM)
         elseif(STM32_PROGRAM_IMAGE)
             add_custom_target(program
                 COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}

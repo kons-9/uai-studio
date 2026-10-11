@@ -11,7 +11,7 @@
 | ボードとツールを用意して、ai-appを動かす | [はじめに](getting-started.md) |
 | 最小のAIアプリを一から組み立てる | [チュートリアル](tutorial/index.md) |
 | ビルドの仕組みと起動の流れを知る、アプリを追加する | [カーネル](kernel/index.md) |
-| カメラ、LCD、NPUなどの周辺機能を使う | [ドライバー](driver.md) |
+| カメラ、LCD、NPUなどの周辺機能を使う | [ドライバー](driver/index.md) |
 | 推論パイプライン、バッファ管理、モニターを使う | [ミドルウェア](middleware/index.md) |
 
 ## 構成

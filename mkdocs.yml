@@ -33,7 +33,21 @@ nav:
       - μT-Kernel: kernel/utkernel.md
       - 共通基盤（foundation）: kernel/common.md
       - アプリの追加: kernel/new-app.md
-  - ドライバー: driver.md
+  - ドライバー:
+      - 概要: driver/index.md
+      - 共通ルールと初期化順序: driver/common.md
+      - カメラ（IMX335 / DCMIPP）: driver/camera.md
+      - LCD（LTDC）: driver/lcd.md
+      - DMA2D: driver/dma2d.md
+      - タッチ（GT911）: driver/touch.md
+      - NPU（Neural-ART）: driver/npu.md
+      - キャッシュ: driver/cache.md
+      - PSRAM: driver/psram.md
+      - NOR Flash: driver/nor.md
+      - RIF: driver/rif.md
+      - コンソールUART: driver/console.md
+      - 汎用周辺機能: driver/peripheral.md
+      - ボード共通・診断: driver/board.md
   - ミドルウェア:
       - 概要: middleware/index.md
       - buffer: middleware/buffer.md
@@ -49,6 +63,13 @@ nav:
       - image_resizer: middleware/image_resizer.md
       - image_processing: middleware/image_processing.md
       - ui: middleware/ui.md
+  - ホストツール（host_app）:
+      - 概要: host_app/index.md
+            - ai_model_monitor: host_app/ai_model_monitor.md
+            - cpu_task_monitor: host_app/cpu_task_monitor.md
+            - auto_static_memory_layout: host_app/auto_static_memory_layout.md
+            - ui_designer: host_app/ui_designer.md
+            - セットアップと統合I/F: host_app/usage.md
 
 theme:
   name: material

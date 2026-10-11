@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 
-add_executable(experiment-hello-world.elf
-    src/main.cpp
-    src/hal_time.c
-)
+file(GLOB_RECURSE HELLO_WORLD_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+add_executable(experiment-hello-world.elf ${HELLO_WORLD_SOURCES})
 
 target_link_libraries(experiment-hello-world.elf PRIVATE
     uai::utkernel

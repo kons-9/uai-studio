@@ -10,6 +10,8 @@
 userspace/mini-ai-app/
   Makefile
   CMakeLists.txt
+    config/build.mk
+    config/build.cmake
   config/stm32n6570-dk-mini-ai-app.ioc
   src/main.cpp
   src/hal_time.c          （この章だけ。章2でドライバ側の実装に置き換わる）
@@ -17,21 +19,21 @@ userspace/mini-ai-app/
 
 ### Makefile
 
-アプリの`Makefile`は変数を決めて`common.mk`を読み込むだけです。この章ではAIとモニタを無効にしておきます。
+アプリの`Makefile`は`common.mk`を読み込む1行だけです。
 
 ```make
-PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
-SAMPLE_DIR := $(PROJECT_ROOT)/userspace/mini-ai-app
-SAMPLE_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))
-APP_TARGET ?= mini-ai-app
-BUILD_DIR ?= $(PROJECT_ROOT)/build-mini-ai-app
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../project-tools/make/common.mk)
+```
+
+### config/build.mk（この章の版）
+
+Makeのアプリ設定です。この章ではAIとモニタを無効にしておきます。
+
+```make
 SAMPLE_DEFAULT_IOC := $(SAMPLE_DIR)/config/stm32n6570-dk-mini-ai-app.ioc
 ENABLE_AI := 0
 ENABLE_THREAD_MONITOR := 0
 ENABLE_CPU_TASK_MONITOR := 0
-CUBEMX_GENERATOR := script
-
-include $(PROJECT_ROOT)/project-tools/make/common.mk
 ```
 
 ### IOC
@@ -44,13 +46,25 @@ sed 's/stm32n6570-dk-ai-app/stm32n6570-dk-mini-ai-app/g' \
     > userspace/mini-ai-app/config/stm32n6570-dk-mini-ai-app.ioc
 ```
 
+### config/build.cmake（この章の版）
+
+ルートCMakeが読むアプリのビルド設定です。この章では共有コンポーネントを有効にせず、最小アプリのRAM起動値を使います。
+
+```cmake
+set(UAI_DEFAULT_CUBEMX_IOC "${CMAKE_CURRENT_LIST_DIR}/stm32n6570-dk-mini-ai-app.ioc")
+set(UAI_BOARD_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/../src/board" "${CMAKE_CURRENT_LIST_DIR}")
+```
+
 ### CMakeLists.txt（この章の版）
 
 experiment-hello-worldと同じです。`uai::utkernel`（μT-Kernel）と`uai::stm32n6570_dk`（CubeMX生成コードとRAM起動）をリンクし、`objcopy`で`.bin`を作ります。
 
 ```cmake
 cmake_minimum_required(VERSION 3.16)
-add_executable(mini-ai-app.elf src/main.cpp src/hal_time.c)
+file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+add_executable(mini-ai-app.elf ${APP_SOURCES})
 target_link_libraries(mini-ai-app.elf PRIVATE uai::utkernel uai::stm32n6570_dk)
 target_link_options(mini-ai-app.elf PRIVATE
     "-T${UAI_STM32N6570_DK_LINKER_SCRIPT}"
@@ -113,7 +127,7 @@ make -C userspace/mini-ai-app monitor    # 別端末
 make -C userspace/mini-ai-app ram-run
 ```
 
-UARTに`hello from mini-ai-app`が出れば完了です。この章では`STM32_RAM_ENTRY`/`STM32_RAM_STACK`の既定値（`0x34000800`/`0x34200000`）が使われます。章2でカーネルアプリとして登録すると、mini-ai-appは`0x34060001`/`0x34100000`、ai-appは`0x34062001`/`0x34100000`に切り替わります。
+UARTに`hello from mini-ai-app`が出れば完了です。この章では`STM32_RAM_ENTRY`/`STM32_RAM_STACK`の既定値（`0x34000800`/`0x34200000`）が使われます。章2でアプリ設定を更新すると、mini-ai-appは`0x34060001`/`0x34100000`を使います。完成形のai-appは`0x34062001`/`0x34100000`を指定しています。
 
 !!! note "リポジトリ上の完成形との関係"
-    リポジトリの`mini-ai-app`は章2の登録（`UAI_KERNEL_APPS`）が済んでいるため、この章の状態のまま`mini-ai-app`という名前でビルドするとミドルウェアの生成物を要求されます。この章だけを試すなら、同じ内容の[experiment-hello-world](https://github.com/kons-9/uai-studio/tree/main/userspace/experiment-hello-world)を`make -C userspace/experiment-hello-world ram-run`で動かすか、別名のディレクトリで作業してください。
+    リポジトリの`mini-ai-app`は第2章の`config/build.cmake`で共通コンポーネントが有効になり、モデルとメモリ配置も必要な完成形です。この章の最小構成だけを試すなら、[experiment-hello-world](https://github.com/kons-9/uai-studio/tree/main/userspace/experiment-hello-world)を使い、先に`make -C userspace/experiment-hello-world monitor`を別端末で開いてから`make -C userspace/experiment-hello-world ram-run`を実行してください。自分で組み立てる場合は、別名のディレクトリで作業し、MakefileとCMakeのアプリ名・パスもその名前に揃えます。

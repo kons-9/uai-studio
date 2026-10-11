@@ -1,10 +1,9 @@
 set(EXPERIMENT_RUNTIME "${CMAKE_CURRENT_LIST_DIR}")
-set(_experiment_pre_kernel_default ON)
-option(EXPERIMENT_PREKERNEL_READY "Enable integrated camera board configuration" ${_experiment_pre_kernel_default})
+option(EXPERIMENT_PREKERNEL_READY "Enable integrated camera board configuration" ON)
 if(NOT EXPERIMENT_PREKERNEL_READY)
     message(FATAL_ERROR "pre-kernel integration is disabled for ${APP_TARGET}.")
 endif()
-if(NOT UAI_CAMERA_BOARD_APP STREQUAL "${APP_TARGET}")
+if(NOT UAI_CAMERA_BOARD_INCLUDE_DIR)
     message(FATAL_ERROR "${APP_TARGET} must use its own camera board profile")
 endif()
 
@@ -25,17 +24,10 @@ set(CAMERA_BSP "${CAMERA_DRIVER_DIR}/board/stm32n6570_discovery_camera.c")
 set_source_files_properties("${CAMERA_BSP}" PROPERTIES COMPILE_DEFINITIONS
     "HAL_DCMIPP_PIPE_VsyncEventCallback=camera_pipe2_bsp_HAL_DCMIPP_PIPE_VsyncEventCallback;HAL_DCMIPP_PIPE_FrameEventCallback=camera_pipe2_bsp_HAL_DCMIPP_PIPE_FrameEventCallback")
 
+file(GLOB_RECURSE CAMERA_RUNTIME_SOURCES CONFIGURE_DEPENDS
+    "${CAMERA_RUNTIME_SRC}/*.c" "${CAMERA_RUNTIME_SRC}/*.cpp")
 add_executable(${TARGET_NAME}
-    "${CAMERA_RUNTIME_SRC}/main.cpp" "${CAMERA_RUNTIME_SRC}/isp_camera.cpp"
-    "${CAMERA_RUNTIME_SRC}/bsp_device.cpp" "${CAMERA_RUNTIME_SRC}/frame_events.c"
-    ${EXPERIMENT_EXTENSION}
-    "${CAMERA_DRIVER_DIR}/camera_driver.cpp"
-    "${CAMERA_DRIVER_DIR}/display_driver.cpp"
-    "${CAMERA_DRIVER_DIR}/frame_buffer.cpp"
-    "${CAMERA_DRIVER_DIR}/board/hal_time.c"
-    "${CAMERA_DRIVER_DIR}/board/dcmipp_callbacks.c"
-    "${CAMERA_DRIVER_DIR}/board/irq_handlers.c"
-    "${CAMERA_BSP}"
+    ${CAMERA_RUNTIME_SOURCES} ${EXPERIMENT_EXTENSION}
     "${BSP}/stm32n6570_discovery_bus.c"
     "${BSP}/stm32n6570_discovery_xspi.c"
     "${BSP}/stm32n6570_discovery_lcd.c"
@@ -43,7 +35,6 @@ add_executable(${TARGET_NAME}
     "${COMPONENTS}/mx66uw1g45g/mx66uw1g45g.c"
     "${COMPONENTS}/imx335/imx335.c"
     "${COMPONENTS}/imx335/imx335_reg.c"
-    "${CAMERA_DRIVER_DIR}/board/isp_core.c"
     "${ISP}/isp/Src/isp_algo.c"
     "${ISP}/isp/Src/isp_services.c")
 

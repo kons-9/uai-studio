@@ -17,6 +17,7 @@ src/task/inference_task.cpp           モデルの初期化と1フレームの�
 void InferenceTask::Run()
 {
     AppContext &app = App();
+    UINT pattern = 0U;
     tk_wai_flg(app.external_memory_ready, kExternalMemoryReady, TWF_ANDW, &pattern, TMO_FEVR);
     if (!app.external_nor_ready) { /* 警告を出して眠る。カメラ表示は続く */ }
 
@@ -112,13 +113,15 @@ inference::Box ProjectToCapture(const YoloxDetection &d)
 ## なぜそうするか
 
 - 所有権: `TakeCompletedInference()`で受けたフレームは「カメラが書き終えた」状態、`ClaimInferenceBuffer()`で「推論が使用中」、`ReleaseInferenceBuffer()`で「DMAが再利用できる」状態になります。`Claim`が`kOwnership`で失敗するのは、キューに残っている間にスロットが再利用された古いフレームです。この場合は何も返す必要がありません（[memory_manager](../middleware/memory_manager.md)）。
-- キャッシュ: 入力はDMAが書き、出力はNPUが書きます。どちらもCPUのキャッシュには入っていないので、読む前に`PrepareForCpuRead()`（invalidate）します。入力をCPUで加工していないので、clean（`PrepareForPeripheralRead()`）は不要です。CPUで縮小した画像を入力にする場合（ai-appのface/segmentation）は、書いた後にcleanが要ります（[キャッシュ](../driver.md)）。
-- 同期実行: `Run()`は`StartRun()`＋`WaitRun()`で、NPU割り込みがイベントフラグを立てるまでこのタスクだけが待ちます。カメラタスクは優先度5で別に回っているので表示は止まりません。前処理・NPU・後処理を別タスクで重ねて流すのがai-appの`ai_runtime`です（[次のステップ](10-next-steps.md)）。
+- キャッシュ: 入力はDMAが書き、出力はNPUが書きます。どちらもCPUのキャッシュには入っていないので、読む前に`PrepareForCpuRead()`（invalidate）します。入力をCPUで加工していないので、clean（`PrepareForPeripheralRead()`）は不要です。CPUで縮小した画像を入力にする場合（ai-appのface/segmentation）は、書いた後にcleanが要ります（[キャッシュ](../driver/cache.md)）。
+- 同期実行: `Run()`は`StartRun()`＋`WaitRun()`で、NPU割り込みがイベントフラグを立てるまでこのタスクだけが待ちます。カメラタスクは優先度5で別に回っているので表示は止まりません。このNPU待ちは`RunForever`の`process`内にあるため、CPUモニタのループ時間には含まれます（[第9章](09-run-and-measure.md)）。前処理・NPU・後処理を別タスクで重ねて流すのがai-appの`ai_runtime`です（[次のステップ](10-next-steps.md)）。
 - `Accessor`を起動時に1回だけ取り、以後はそのトークンで`driver.Run(writer)`のように呼びます。`NpuManagement`の簡易メソッドは呼び出しごとに所有権を取るため、`Accessor`を持ったまま呼ぶと自分自身を待ってしまいます。
 
 ## 確認
 
 ```sh
+make -C userspace/mini-ai-app monitor    # 別端末。すでに開いていれば追加しない
+make -C userspace/mini-ai-app ai-load    # 初回とモデル・command blobの変更時
 make -C userspace/mini-ai-app ram-run
 ```
 
@@ -131,6 +134,6 @@ mini: first inference seq=... boxes=...
 mini: inference/s=... pipe2=... drops=... csi_errors=...
 ```
 
-カメラの前に人が立つとLCDに枠が出ます。`inference/s`はNPUの実行時間で決まります（personモデルは10 fps台）。`drops`はPipe2のフレームが推論に間に合わず捨てられた数で、推論より速いカメラでは増え続けて正常です。
+カメラの前に人が立つとLCDに枠が出ます。`inference/s`はおおむね1秒ごとの完了件数で、NPU実行だけでなく後処理やタスクの待ち時間にも影響されます。`drops`はカメラドライバの`pipe2_drop_count`で、推論バッファを確保できずPipe2が捨て先へ流した累計です。チャネルが古いフレームを置き換えた件数ではありません。推論がカメラより遅い場合は、映像と推論が進んでいれば増加だけで異常とは判断しません。
 
 `mini: model does not match this application`で止まる場合は、生成したモデルの入力サイズか出力数が違います（別のモデルファイルを指定した、`--inputs-ch-position`を変えた等）。`error: component=npu.init`は重みかblobがNORに無い・古いことが多いので、`ai-load`をやり直してください。

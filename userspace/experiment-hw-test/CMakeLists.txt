@@ -12,40 +12,21 @@ set(BSP "${STM32CUBE_N6_DIR}/Drivers/BSP/STM32N6570-DK")
 set(COMPONENTS "${STM32CUBE_N6_DIR}/Drivers/BSP/Components")
 set(ISP "${STM32CUBE_N6_DIR}/Middlewares/ST/STM32_ISP_Library")
 set(CAMERA_RUNTIME "${CMAKE_CURRENT_SOURCE_DIR}/src/camera_runtime")
-if(NOT UAI_CAMERA_BOARD_APP STREQUAL APP_TARGET)
+if(NOT UAI_CAMERA_BOARD_INCLUDE_DIR)
     message(FATAL_ERROR "hw-test requires its own integrated camera board profile")
 endif()
+file(GLOB_RECURSE HWTEST_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+foreach(selection SDMMC ETHERNET USB AUDIO EXTERNAL_INPUT)
+    option(HWTEST_ENABLE_${selection} "Select the external ${selection} fixture (compile-time blocked until integrated)" OFF)
+    if(NOT HWTEST_ENABLE_${selection})
+        string(TOLOWER "${selection}" _fixture)
+        list(FILTER HWTEST_SOURCES EXCLUDE REGEX "/tests/${_fixture}_driver/")
+    endif()
+endforeach()
 add_executable(${TARGET_NAME}
-    src/main.cpp
-    src/integration.cpp
-    src/ui/display.cpp
-    src/middleware/ui/canvas.cpp
-    src/middleware/ui/widget.cpp
-    src/camera_runtime/bsp_device.cpp
-    src/camera_runtime/isp_camera.cpp
-    src/camera_runtime/frame_events.c
-    src/camera_runtime/driver/camera_driver.cpp
-    src/camera_runtime/driver/frame_buffer.cpp
-    src/camera_runtime/driver/board/stm32n6570_discovery_camera.c
-    src/camera_runtime/driver/board/dcmipp_callbacks.c
-    src/camera_runtime/driver/board/irq_handlers.c
-    src/camera_runtime/driver/board/isp_core.c
-    src/tests/suite.cpp
-    src/tests/display_driver/test.cpp
-    src/tests/rng_driver/test.cpp
-    src/tests/hash_driver/test.cpp
-    src/tests/crc_driver/test.cpp
-    src/tests/gpdma_driver/test.cpp
-    src/tests/hpdma_driver/test.cpp
-    src/tests/rtc_driver/test.cpp
-    src/tests/tim_driver/test.cpp
-    src/tests/sram_driver/test.cpp
-    src/tests/psram_driver/test.cpp
-    src/tests/nor_driver/test.cpp
-    src/tests/dma2d_driver/test.cpp
-    src/tests/dma2d_driver/suite.cpp
-    src/driver/board/hal_time.c
-    src/driver/c_bsp/stm32n6570_discovery_xspi.c
+    ${HWTEST_SOURCES}
     "${BSP}/stm32n6570_discovery_lcd.c"
     "${BSP}/stm32n6570_discovery_bus.c"
     "${COMPONENTS}/imx335/imx335.c"
@@ -76,25 +57,6 @@ foreach(module dcmipp dma2d rng hash crc crc_ex rif dma dma_ex rtc rtc_ex tim ti
             "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_${module}.c")
     endif()
 endforeach()
-
-foreach(selection SDMMC ETHERNET USB AUDIO EXTERNAL_INPUT)
-    option(HWTEST_ENABLE_${selection} "Select the external ${selection} fixture (compile-time blocked until integrated)" OFF)
-endforeach()
-if(HWTEST_ENABLE_SDMMC)
-    target_sources(${TARGET_NAME} PRIVATE src/tests/sdmmc_driver/test.cpp)
-endif()
-if(HWTEST_ENABLE_ETHERNET)
-    target_sources(${TARGET_NAME} PRIVATE src/tests/ethernet_driver/test.cpp)
-endif()
-if(HWTEST_ENABLE_USB)
-    target_sources(${TARGET_NAME} PRIVATE src/tests/usb_driver/test.cpp)
-endif()
-if(HWTEST_ENABLE_AUDIO)
-    target_sources(${TARGET_NAME} PRIVATE src/tests/audio_driver/test.cpp)
-endif()
-if(HWTEST_ENABLE_EXTERNAL_INPUT)
-    target_sources(${TARGET_NAME} PRIVATE src/tests/external_input_driver/test.cpp)
-endif()
 
 target_include_directories(${TARGET_NAME} BEFORE PRIVATE
     config

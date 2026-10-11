@@ -8,10 +8,12 @@
 
 ```text
 userspace/mini-ai-app/
-  Makefile                       APP_TARGET、AI_MODEL_NAMES=person、ai-appのモデル生成を共有
+  Makefile                       共通Make入口を読み込む1行のラッパ
   CMakeLists.txt                 メモリ配置の生成、モデルライブラリ、アプリ
   stm32n6570-dk-npu-ram.ld       リンカスクリプトの雛形（生成器がMEMORYと予約領域を書き換える）
   config/
+    build.mk                       Makeの機能フラグ、personモデル生成の共有先
+    build.cmake                    共通コンポーネント、カメラとRAM起動値
     stm32n6570-dk-mini-ai-app.ioc  CubeMX設定（ai-appと同じ周辺機能）
     board_memory.json              物理メモリ領域とcommand blobの置き場所
     application_memory.json        キャプチャ/表示/推論バッファの数とサイズ

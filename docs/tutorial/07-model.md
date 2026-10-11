@@ -6,7 +6,7 @@ ST YOLOX nano（person）をSTEdgeAIでNeural-ART向けに変換し、生成さ�
 
 ## モデルの生成
 
-生成はai-appの[tool/generate_model.sh](../../userspace/ai-app/tool/generate_model.sh)を使います。mini-ai-appの`Makefile`は`AI_MODELS_DIR`をai-appの`models`に向け、`AI_MODEL_NAMES := person`で対象を絞っています。
+生成はai-appの[tool/generate_model.sh](https://github.com/kons-9/uai-studio/blob/main/userspace/ai-app/tool/generate_model.sh)を使います。mini-ai-appの`Makefile`は`AI_MODELS_DIR`をai-appの`models`に向け、`AI_MODEL_NAMES := person`で対象を絞っています。
 
 ```make
 ENABLE_AI := 1
@@ -18,7 +18,9 @@ AI_MODEL_NAMES := person
 make -C userspace/mini-ai-app ai-models    # personモデルのダウンロードと生成
 ```
 
-`stedgeai generate`は次のオプションで動きます（[tool/generate_model.sh](../../userspace/ai-app/tool/generate_model.sh)）。
+`setup`もモデル生成を先に行いますが、後処理ソースの取得は行いません。CMakeの`AI_VISION_MODELS_PP_DIR`は既定で`userspace/ai-app/third_party/vision_models_pp`を参照し、`Inc/od_st_yolox_pp_if.h`と`Src/od_pp_st_yolox.c`などを確認します。別の場所に用意した場合は、CMake構成時に`-DAI_VISION_MODELS_PP_DIR=<path>`で指定します。STEdgeAIランタイムは`STEDGEAI_LIB_DIR`で指定します。
+
+`stedgeai generate`は次のオプションで動きます（[tool/generate_model.sh](https://github.com/kons-9/uai-studio/blob/main/userspace/ai-app/tool/generate_model.sh)）。
 
 | オプション | 意味 |
 | --- | --- |
@@ -92,6 +94,8 @@ public:
 
 生成コードとNeural-ARTランタイムのソース（`ll_aton_*.c`）、後処理ソース（`od_pp_st_yolox.c`など）を1つの静的ライブラリにまとめ、`-include inttypes.h`と`NPU0_IRQHandler=LL_ATON_NPU0_IRQHandler`を付けてコンパイルします。後者はNPU割り込みをドライバ側のラッパで受けるためです。
 
+BSP・Components・ISPの共有ソースは共通ドライバ側が提供するため、アプリ側に重複して列挙しません。HAL上書きは第2章の`$<TARGET_OBJECTS:uai-driver-overrides>`で直接追加します。また、STEdgeAIの`npu_cache.c`にある`HAL_CACHEAXI_MspInit`/`HAL_CACHEAXI_MspDeInit`を別名にし、CubeMX側の実装と衝突させないようにしています。
+
 ```cmake
 add_library(mini-ai-app_models STATIC
     "${MINI_SRC_DIR}/model/person_network.c"
@@ -116,7 +120,7 @@ add_custom_command(TARGET mini-ai-app.elf POST_BUILD
 
 ## なぜそうするか
 
-- Neural-ARTのモデルは「重み」（`network_data`、NORの`0x70380000`）と「command blob」（epochごとのNPU命令列、NORの`0x70500000`）と「ランタイム記述」（`network.c`、アプリにリンク）の3つに分かれます。前2つはNORに書き、アプリを変えても書き直さなくてよいようにしています。
+- Neural-ARTのモデルは「重み」（`network_data`、NORの`0x70380000`）と「command blob」（epochごとのNPU命令列、NORの`0x70500000`）と「ランタイム記述」（`network.c`、アプリにリンク）の3つに分かれます。重みとcommand blobが変わらなければNORの書き直しは不要ですが、モデルを再生成した場合はアプリとNORの生成物を揃えてください。
 - `network.c`が生成されたときのll_atonバージョンと、リンクするランタイムのバージョンが違うと実機で動きません。CMakeは`ll_aton_version.h`と`network.c`を比べて構成時に止めます。
 - `--no-outputs-allocation`のため、`GetOutputs()`はnullptrを返します。章8でこれを確認してから、推論バッファ内の出力領域を`SetOutputs()`で渡します。
 
@@ -124,7 +128,8 @@ add_custom_command(TARGET mini-ai-app.elf POST_BUILD
 
 ```sh
 make -C userspace/mini-ai-app build
+make -C userspace/mini-ai-app monitor    # 別端末。すでに開いていれば追加しない
 make -C userspace/mini-ai-app ai-load     # 重み（network_data.hex）とblob（network_blobs_person.hex）をNORへ
 ```
 
-`ai-load`は`STM32_Programmer_CLI`と外部ローダ（`MX66UW1G45G_STM32N6570-DK.stldr`）で書き込み、`-v`で検証します。`Programming AI weights: .../person/network_data.hex`と`Programming AI command blob: .../network_blobs_person.hex`の両方が成功すれば完了です。モデルを変えない限り再実行は不要です。
+`ai-load`はビルドしてから、`STM32_Programmer_CLI`と外部ローダ（`MX66UW1G45G_STM32N6570-DK.stldr`）で書き込み、`-v`で検証します。`Programming AI weights: .../person/network_data.hex`と`Programming AI command blob: .../network_blobs_person.hex`の両方が成功すれば完了です。どちらの生成物も変わらない限り再実行は不要です。

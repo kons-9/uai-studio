@@ -4,17 +4,21 @@
 
 ```text
 make -C userspace/<app> <target>
-  -> userspace/<app>/Makefile         APP_TARGET、BUILD_DIR、ENABLE_* を決める
+    -> userspace/<app>/Makefile         common.mkを読み込む1行のラッパ
   -> project-tools/make/common.mk     includeの入口。自身の位置からパスを決める
+      -> config/build.mk              アプリのMake設定と追加ターゲット
      -> defaults.mk                  local.mk、既定値、パス正規化、環境変数
-     -> commands.mk                  成果物とコマンドの依存関係
+      -> commands.mk                  利用可能なターゲットと実行入口
+    -> project-tools/scripts/app_task.py 生成の更新判定、処理順、既存ツールへの委譲
   -> cmake -S . -B <build> -DAPP_TARGET=<app> ...
-  -> CMakeLists.txt（ルート）         kernel/* と userspace/<app> を追加する
+    -> CMakeLists.txt（ルート）
+      -> userspace/<app>/config/build.cmake  共通コンポーネント、ボード、IOC、起動値
+      -> kernel/* と userspace/<app>         宣言された構成でターゲットを追加する
 ```
 
-ルートの`CMakeLists.txt`は`APP_TARGET`で選んだ`userspace/<APP_TARGET>/CMakeLists.txt`を読み込みます。各アプリの`Makefile`は`APP_TARGET`とビルド先を決めて`project-tools/make/common.mk`を読み込むだけなので、通常は`make -C userspace/<app> <target>`で操作します。ホスト固有の値は`project-tools/host-config/local.mk`に置きます（[はじめに](../getting-started.md)）。
+ルートの`CMakeLists.txt`は`APP_TARGET`で選んだ`userspace/<APP_TARGET>/CMakeLists.txt`を読み込みます。各アプリの`Makefile`は共通入口を読み込む1行だけです。アプリ名はMakefileのディレクトリから決まり、ビルド先や機能は`config/build.mk`で指定します。通常は`make -C userspace/<app> <target>`で操作します。ホスト固有の値は`project-tools/host-config/local.mk`に置きます（[はじめに](../getting-started.md)）。
 
-GNU Make 4.4以上が必要です。複数成果物を一度に生成するグループターゲットと、並列実行時の順序を指定する`.WAIT`を使います。
+GNU MakeとPython 3.10以上を使います。Makeは設定の受け渡しとターゲットの入口だけを持ち、生成・書き込みの手順や更新判定はPython側で管理します。複数ゴールは1つのディスパッチへ渡し、指定順に実行して共通の依存処理を重複させません。GNU Make 4.4固有のグループターゲットや`.WAIT`には依存しません。
 
 include先は`common.mk`自身の場所から絶対パスで決めます。`BUILD_DIR`、`CONFIG_FILE`、`CUBEMX_IOC`、`CUBEMX_OUTPUT_DIR`などに指定する相対パスは、コマンドラインで上書きした場合もリポジトリルート基準です。別ディレクトリから`make -f /absolute/path/to/userspace/<app>/Makefile <target>`と呼んでも同じ場所を使います。パスを含まない`cmake`、`python3`などのコマンド名はPATHで検索します。
 
@@ -30,7 +34,47 @@ include先は`common.mk`自身の場所から絶対パスで決めます。`BUIL
 | `uai::drivers` | STATIC | `kernel/driver`。`uai::utkernel`と`uai::middleware`に依存 |
 | `uai::driver_overrides` | OBJECT | HALの弱シンボル（`HAL_GetTick`、`HAL_Delay`、DCMIPPコールバック）を上書きするコード。実行ファイルへ直接入れます |
 
-`uai::middleware`と`uai::drivers`は`APP_TARGET`がルート`CMakeLists.txt`の`UAI_KERNEL_APPS`（ai-app、mini-ai-app）にあるときだけ追加されます。生成したメモリ配置ヘッダを置く`UAI_GENERATED_INCLUDE_DIR`（`<build>/generated`）も同じ条件で定義されます。
+`uai::middleware`と`uai::drivers`は、アプリの`config/build.cmake`で`UAI_USE_KERNEL_COMPONENTS`を有効にしたときだけ追加されます。生成したメモリ配置ヘッダを置く`UAI_GENERATED_INCLUDE_DIR`（`<build>/generated`）も同じ条件で定義されます。共通側はアプリ名の一覧を持ちません。
+
+## アプリのビルド設定
+
+`config/build.mk`はMake側の設定です。`ENABLE_AI`、`ENABLE_THREAD_MONITOR`、`ENABLE_CPU_TASK_MONITOR`、`AI_MODEL_NAMES`、IOC、UIの入力・出力先を宣言します。アプリ固有の既存ツールを使うターゲットは`APP_TARGETS`、追加のCMake変数は`APP_CMAKE_SETTINGS`で指定します。レシピや条件分岐は置きません。
+
+各アプリの`config/build.cmake`を`project()`より前に読み込みます。設定はアプリが所有する通常のCMake変数で、アプリを切り替えても別のアプリの機能フラグがキャッシュから引き継がれないようにします。
+
+| 変数 | 既定値 | 内容 |
+| --- | --- | --- |
+| `UAI_USE_KERNEL_COMPONENTS` | `OFF` | 共有middleware、driver、生成メモリ契約を使う |
+| `UAI_DEFAULT_BUILD_TYPE` | 空 | `CMAKE_BUILD_TYPE`未指定時の既定値。ai-appは`MinSizeRel` |
+| `UAI_DEFAULT_CUBEMX_IOC` | アプリが指定 | アプリ所有のIOC。Makeの`SAMPLE_DEFAULT_IOC`と揃える |
+| `UAI_BOARD_INCLUDE_DIRS` | 空 | pre-kernelへ渡すアプリ所有のボードヘッダーと設定ディレクトリ |
+| `UAI_CAMERA_BOARD_INCLUDE_DIR` | 空 | アプリ内の独立したカメラボードヘッダー。指定時はμT-Kernelもこの設定を使う |
+| `UAI_CAMERA_LCD_CLOCKS` | `OFF` | カメラ・LCDのクロックとRIF設定を有効にする |
+| `UAI_BUILD_FLASH_FSBL` | `OFF` | CubeMX生成コードから独立したFlash起動用FSBLを構成する |
+| `UAI_DRIVER_PERIPHERAL_TESTS` | `OFF` | 共有driverをperipheralテスト構成にし、NPU cacheと不足HALを補う |
+| `UAI_DEFAULT_RAM_ENTRY` | `0x34000800` | RAM起動PCの既定値 |
+| `UAI_DEFAULT_RAM_STACK` | `0x34200000` | RAM起動MSPの既定値 |
+
+IOC、起動値、カメラクロックは独立した設定です。共有コンポーネントを有効にするだけでは自動で切り替わりません。環境変数による明示指定はアプリの既定値より優先されます。
+
+## ソースの収集
+
+アプリ所有の実装は、ターゲットの範囲に絞った`file(GLOB_RECURSE ... CONFIGURE_DEPENDS)`でC/C++を収集します。追加・削除時にCMakeが再構成されます。モデルのCラッパーは別ライブラリへ分け、カメラruntimeはそのディレクトリ内だけを収集します。HWテストの外部治具は`HWTEST_ENABLE_*`で選択します。
+
+共有driverはホスト用`tests`を除外し、strongなHAL上書きソースをSTATICライブラリへ混ぜず、`uai-driver-overrides`のOBJECTとして実行ファイルへ直接渡します。ベンダーHAL・STEdgeAIの選択実装、生成モデル、起動コードは、別構成の実装や重複シンボルを取り込まないよう必要なファイルの明示列挙を残します。
+
+## Flash画像の宣言
+
+複数画像を書き込むアプリは`<app>-flash-images`ターゲットに`UAI_FLASH_IMAGES`と`UAI_FLASH_ADDRESSES`を同じ件数・順序で設定します。共通`program`はモデル名や配置を推測せず、この宣言を順に実行します。アドレス`AUTO`はHEX内のアドレスを使い、BINには書き込み先を指定します。
+
+```cmake
+set_property(TARGET <app>-flash-images PROPERTY UAI_FLASH_IMAGES
+  "${BOOT_HEX}" "${APPLICATION_BIN}")
+set_property(TARGET <app>-flash-images PROPERTY UAI_FLASH_ADDRESSES
+  AUTO 0x70100000)
+```
+
+単一画像を直接書くアプリは、従来どおり`STM32_PROGRAM_IMAGE`と`STM32_PROGRAM_ADDRESS`を使えます。
 
 ## CMakeオプション
 
@@ -66,7 +110,7 @@ include先は`common.mk`自身の場所から絶対パスで決めます。`BUIL
 | `ai-load` | モデルの重みとcommand blobを外部NORへ書き込みます（`ai-load-weights`、`ai-load-blobs`） |
 | `ai-run` | `ai-load`の後に`ram-run`を実行します |
 
-モデル変換のオプション（`AI_MODEL_OPTIMIZATION`、`AI_MODEL_INPUT_DATA_TYPE`など）は`defaults.mk`に既定値があり、コマンドラインで上書きできます。依存関係はCMake構成時に確認します。`ai-build`はモデル生成の後にビルドし、`ai-load`はビルド、重み、command blobの順に実行します。`ai-run`はその後にRAM実行します。段階ごとに依存ターゲットと再帰makeで順序を保つため、GNU Make 4.3でも`make -j`でも処理順が変わりません。
+モデル変換のオプション（`AI_MODEL_OPTIMIZATION`、`AI_MODEL_INPUT_DATA_TYPE`など）は`defaults.mk`に既定値があり、コマンドラインで上書きできます。依存関係はCMake構成時に確認します。`ai-build`はモデル生成の後にビルドし、`ai-load`はビルド、重み、command blobの順に実行します。`ai-run`はその後にRAM実行します。共通スクリプトが順序を管理するため、再帰Makeを使わず、`make -j`でもこの順序を維持します。
 
 ### モニター（`ENABLE_THREAD_MONITOR=1`、`ENABLE_CPU_TASK_MONITOR=1`）
 
@@ -79,7 +123,7 @@ include先は`common.mk`自身の場所から絶対パスで決めます。`BUIL
 
 ## CubeMXの扱い
 
-HALの初期化コードはIOCから生成し、`<build>/cubemx`に置きます。`project-tools/scripts/cubemx-generate.sh`がIOCをビルドツリーへコピーしてから`STM32CubeMX -q`で生成するため、ソースツリーに生成物は入りません。IOCはアプリの`config/`に置き、`Makefile`の`SAMPLE_DEFAULT_IOC`または`local.mk`の`CUBEMX_IOC`で指定します。
+HALの初期化コードはIOCから生成し、`<build>/cubemx`に置きます。`project-tools/scripts/cubemx-generate.sh`がIOCをビルドツリーへコピーしてから`STM32CubeMX -q`で生成するため、ソースツリーに生成物は入りません。IOCはアプリの`config/`に置き、`config/build.mk`の`SAMPLE_DEFAULT_IOC`または`local.mk`の`CUBEMX_IOC`で指定します。
 
 `defaults.mk`の`CUBEMX_OUTPUTS`は、CMakeが使用する次の必須成果物を明示します。CubeMXが生成する全ファイルの一覧ではなく、構成・ビルドを開始するための最低限の契約です。
 
@@ -93,7 +137,7 @@ HALの初期化コードはIOCから生成し、`<build>/cubemx`に置きます�
 | `FSBL/STM32N657X0HXQ_AXISRAM2_fsbl.ld` | experiment-aiのFlash起動用FSBLのみ |
 | `.uai-settings`、`.uai-generated` | 生成設定の変更検出と正常完了の記録 |
 
-成果物と完了スタンプは一つのグループターゲットなので、並列Makeでも生成処理は一度です。IOC、生成スクリプト、Make定義、ホスト設定の更新、生成設定の差し替え、必須成果物の欠損で再生成します。CubeMXが成功を返しても必須ファイルが足りなければ失敗とし、CMake構成や書き込みへ進みません。完了スタンプは全成果物を確認した後だけ作るため、途中失敗の次回実行でも再生成します。
+`app_task.py`が成果物と完了スタンプを確認し、一度のMake呼出しでは生成処理を重複させません。IOC、生成スクリプト、アプリ設定を含むMake定義、ホスト設定の更新、生成設定の差し替え、必須成果物の欠損で再生成します。追加の必須成果物はアプリの`config/build.mk`で`CUBEMX_EXTRA_OUTPUTS`に宣言します。CubeMXが成功を返しても必須ファイルが足りなければ失敗とし、CMake構成や書き込みへ進みません。完了スタンプは全成果物を確認した後だけ作るため、途中失敗の次回実行でも再生成します。
 
 ```text
 IOC / 生成設定 / スクリプト

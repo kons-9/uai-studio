@@ -17,7 +17,7 @@ set(_memory_outputs
     "${UAI_GENERATED_INCLUDE_DIR}/middleware/memory/generated/static_memory_layout/raw.hpp"
     "${UAI_GENERATED_INCLUDE_DIR}/middleware/memory/generated/memory_config.hpp"
     "${UAI_GENERATED_INCLUDE_DIR}/memory-contract.ld")
-file(GLOB _memory_generator_sources
+file(GLOB _memory_generator_sources CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/host_app/auto_static_memory_layout/*.py")
 add_custom_command(OUTPUT ${_memory_outputs}
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tool/generate_memory.py"
@@ -31,48 +31,22 @@ add_custom_target(hw-test-memory-layout DEPENDS ${_memory_outputs})
 foreach(target uai-memory-layout uai-middleware uai-drivers uai-driver-overrides)
     add_dependencies(${target} hw-test-memory-layout)
 endforeach()
+file(GLOB_RECURSE HWTEST_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+foreach(selection SDMMC ETHERNET USB AUDIO EXTERNAL_INPUT)
+    option(HWTEST_ENABLE_${selection} "Select the external ${selection} fixture (compile-time blocked until integrated)" OFF)
+    if(NOT HWTEST_ENABLE_${selection})
+        string(TOLOWER "${selection}" _fixture)
+        list(FILTER HWTEST_SOURCES EXCLUDE REGEX "/tests/${_fixture}_driver/")
+    endif()
+endforeach()
 add_executable(${TARGET_NAME}
-    src/main.cpp
-    src/tests/integration.cpp
-    src/ui/display.cpp
-    src/tests/camera/buffers.cpp
-    src/tests/suite.cpp
-    src/tests/display_driver/test.cpp
-    src/tests/rng_driver/test.cpp
-    src/tests/hash_driver/test.cpp
-    src/tests/crc_driver/test.cpp
-    src/tests/gpdma_driver/test.cpp
-    src/tests/hpdma_driver/test.cpp
-    src/tests/rtc_driver/test.cpp
-    src/tests/tim_driver/test.cpp
-    src/tests/sram_driver/test.cpp
-    src/tests/psram_driver/test.cpp
-    src/tests/nor_driver/test.cpp
-    src/tests/dma2d_driver/test.cpp
-    src/tests/dma2d_driver/suite.cpp
+    ${HWTEST_SOURCES}
     $<TARGET_OBJECTS:uai-driver-overrides>
     "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c.c"
     "${STM32CUBE_N6_DIR}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_i2c_ex.c"
     "${STM32CUBE_N6_DIR}/Utilities/Fonts/font12.c")
-
-foreach(selection SDMMC ETHERNET USB AUDIO EXTERNAL_INPUT)
-    option(HWTEST_ENABLE_${selection} "Select the external ${selection} fixture (compile-time blocked until integrated)" OFF)
-endforeach()
-if(HWTEST_ENABLE_SDMMC)
-    target_sources(${TARGET_NAME} PRIVATE src/tests/sdmmc_driver/test.cpp)
-endif()
-if(HWTEST_ENABLE_ETHERNET)
-    target_sources(${TARGET_NAME} PRIVATE src/tests/ethernet_driver/test.cpp)
-endif()
-if(HWTEST_ENABLE_USB)
-    target_sources(${TARGET_NAME} PRIVATE src/tests/usb_driver/test.cpp)
-endif()
-if(HWTEST_ENABLE_AUDIO)
-    target_sources(${TARGET_NAME} PRIVATE src/tests/audio_driver/test.cpp)
-endif()
-if(HWTEST_ENABLE_EXTERNAL_INPUT)
-    target_sources(${TARGET_NAME} PRIVATE src/tests/external_input_driver/test.cpp)
-endif()
 
 target_include_directories(${TARGET_NAME} BEFORE PRIVATE
     config

@@ -28,7 +28,12 @@ common::Error InitializeDrivers(AppContext &app)
 
     app.cache.KeepClocksOnSleep();                               // スリープ中もクロックを維持
     app.psram.KeepClocksOnSleep();
-    if (app.external_nor_ready) { /* NorManagement::Accessor経由で同様 */ }
+    if (app.external_nor_ready) {
+        nor::NorManagement::Accessor nor_accessor;
+        status = app.nor.Acquire(&nor_accessor);
+        if (!status.Ok()) return status;
+        nor_accessor.KeepClocksOnSleep();
+    }
     npu::NpuDriver::KeepMemoryClocksOnSleep();
     app.lcd.KeepClocksOnSleep();
     app.camera.KeepClocksOnSleep();
@@ -52,7 +57,7 @@ void InitializeTask::Run()
         status.LogStatus("driver");
         common::Task::Halt("mini: driver initialization failed\n");
     }
-    UAI_LOG_INFO("mini: driver init done nor=%u\n", app.external_nor_ready);
+    UAI_LOG_INFO("mini: driver init done nor=%u\n", static_cast<unsigned int>(app.external_nor_ready));
 
     app.cpu_task_monitor.InitializeTraceBuffer();
     (void)tk_set_flg(app.external_memory_ready, kExternalMemoryReady);
@@ -68,15 +73,16 @@ void InitializeTask::Run()
 
 ## なぜそうするか
 
-- 順序の理由は[ドライバーの初期化の順序](../driver.md)にあります。コールドブート直後のXSPI1/2はRIFで保護されているので外部メモリより先にRIF、PSRAMの初期化はXSPIMをリセットするのでNORより先、LCDとカメラはバッファプール（`memory`）が要るので最後です。
-- NORが読めなくてもカメラ表示は動かします。`external_nor_ready`を見て推論タスクだけが止まります。モデルを書き込んでいないボードでも映像は出るので、章6までの確認に使えます。
+- 順序の理由は[ドライバーの初期化の順序](../driver/common.md)にあります。コールドブート直後のXSPI1/2はRIFで保護されているので外部メモリより先にRIF、PSRAMの初期化はXSPIMをリセットするのでNORより先、LCDとカメラはバッファプール（`memory`）が要るので最後です。
+- NORが初期化できなくてもカメラ表示は動かします。`external_nor_ready`を見て推論タスクだけが止まります。このフラグはNORの読み出しとメモリマップの成功を示すだけで、重みやcommand blobの内容は検証しません。未書き込みでも`nor=1`になり得るため、推論を動かす前に`ai-load`が必要です。
 - 初期化は深い呼び出しになるため、μT-Kernelの初期タスク（`usermain()`）ではなく専用スタックのタスクで行います。
 - `KeepClocksOnSleep()`は、タスクがすべて待ちに入ってCPUがスリープしたときに周辺機能のクロックが止まらないようにします。カメラのDMAやLTDCの走査はCPUが寝ていても続きます。
 
 ## 確認
 
 ```sh
+make -C userspace/mini-ai-app monitor    # 別端末。すでに開いていれば追加しない
 make -C userspace/mini-ai-app ram-run
 ```
 
-UARTに`mini: driver init begin`→`mini: driver init done nor=1`（モデル未書き込みなら`nor=0`とWarn）が出れば完了です。失敗した場合は`error: component=driver ...`の`code`を[エラーコード](../kernel/common.md)で引いてください。
+UARTに`mini: driver init begin`→`mini: driver init done nor=1`が出れば完了です。NOR初期化に失敗した場合は`nor=0`と`mini: NOR unavailable; inference disabled`が出ますが、カメラの初期化は続きます。ほかの初期化で失敗した場合は`error: component=driver ...`の`code`を[エラーコード](../kernel/common.md)で引いてください。

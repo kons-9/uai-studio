@@ -104,7 +104,8 @@ set(MINI_COMPONENT_ROOT "${MINI_CUBE_ROOT}/Drivers/BSP/Components")
 # ---------------------------------------------------------------------------
 set(MINI_LAYOUT_GENERATOR_DIR
     "${PROJECT_SOURCE_DIR}/host_app/auto_static_memory_layout")
-file(GLOB MINI_LAYOUT_GENERATOR_SOURCES "${MINI_LAYOUT_GENERATOR_DIR}/*.py")
+file(GLOB MINI_LAYOUT_GENERATOR_SOURCES CONFIGURE_DEPENDS
+    "${MINI_LAYOUT_GENERATOR_DIR}/*.py")
 set(MINI_LAYOUT_DIR "${UAI_GENERATED_INCLUDE_DIR}")
 set(MINI_LAYOUT_OUTPUTS
     "${MINI_LAYOUT_DIR}/memory_layout.json"
@@ -187,6 +188,8 @@ set(MINI_COMPILE_OPTIONS -O3)
 # Generated model + Neural-ART runtime library.
 # ---------------------------------------------------------------------------
 set(MINI_MODEL_TARGET ${MINI_APP_NAME}_models)
+file(GLOB_RECURSE MINI_MODEL_C_API_SOURCES CONFIGURE_DEPENDS
+    "${MINI_SRC_DIR}/model/*.c")
 set(MINI_NPU_CACHE_SOURCE
     "${MINI_STEDGEAI_DIR}/Npu/Devices/STM32N6xx/npu_cache.c")
 # CubeMX supplies the strong HAL cache MSP hooks; hide the package fallbacks.
@@ -194,7 +197,7 @@ set_source_files_properties(${MINI_NPU_CACHE_SOURCE} PROPERTIES
     COMPILE_DEFINITIONS
     "HAL_CACHEAXI_MspInit=mini_ai_STEDGEAI_HAL_CACHEAXI_MspInit;HAL_CACHEAXI_MspDeInit=mini_ai_STEDGEAI_HAL_CACHEAXI_MspDeInit")
 add_library(${MINI_MODEL_TARGET} STATIC
-    "${MINI_SRC_DIR}/model/person_network.c"
+    ${MINI_MODEL_C_API_SOURCES}
     "${MINI_STEDGEAI_DIR}/Npu/ll_aton/ecloader.c"
     "${MINI_STEDGEAI_DIR}/Npu/ll_aton/ll_aton.c"
     "${MINI_STEDGEAI_DIR}/Npu/ll_aton/ll_aton_cipher.c"
@@ -231,13 +234,11 @@ add_dependencies(${MINI_MODEL_TARGET} ${MINI_APP_NAME}-memory-layout)
 # ---------------------------------------------------------------------------
 # Application.
 # ---------------------------------------------------------------------------
+file(GLOB_RECURSE MINI_APP_SOURCES CONFIGURE_DEPENDS
+    "${MINI_SRC_DIR}/*.c" "${MINI_SRC_DIR}/*.cpp")
+list(REMOVE_ITEM MINI_APP_SOURCES ${MINI_MODEL_C_API_SOURCES})
 add_executable(${MINI_APP_TARGET}
-    src/main.cpp
-    src/task/initialize_task.cpp
-    src/task/camera_task.cpp
-    src/task/inference_task.cpp
-    src/model/person_model.cpp
-    src/model/person_decoder.cpp
+    ${MINI_APP_SOURCES}
     # Keep the strong kernel HAL overrides directly in the executable.
     $<TARGET_OBJECTS:uai-driver-overrides>
     "${MINI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dcmipp.c"

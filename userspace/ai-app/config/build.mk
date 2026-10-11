@@ -1,0 +1,11 @@
+BUILD_DIR ?= $(PROJECT_ROOT)/build-ai-app-person
+SAMPLE_DEFAULT_IOC := $(SAMPLE_DIR)/config/stm32n6570-dk-ai-app.ioc
+ENABLE_AI := 1
+ENABLE_THREAD_MONITOR := 1
+ENABLE_CPU_TASK_MONITOR := 1
+AI_MODEL_NAMES ?= person segmentation face
+UI_LAYOUT_JSON := $(SAMPLE_DIR)/config/ui_layout.json
+UI_LAYOUT_HEADER := $(SAMPLE_DIR)/src/ui/ui_layout.hpp
+UI_FEATURE_CATALOG := $(SAMPLE_DIR)/config/ui_feature_catalog.json
+VERIFY_TOOL := $(SAMPLE_DIR)/tool/verify.py
+APP_TARGETS := verify-exposure verify-endurance verify-stats

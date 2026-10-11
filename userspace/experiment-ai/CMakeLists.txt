@@ -161,18 +161,11 @@ set(AI_MODEL_INCLUDE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/models/person"
     "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation"
     "${CMAKE_CURRENT_SOURCE_DIR}/models/face")
-set(AI_MODEL_C_API_SOURCES
-    "${AI_SRC_DIR}/models/person/model_person.c"
-    "${AI_SRC_DIR}/models/segmentation/model_segmentation.c"
-    "${AI_SRC_DIR}/models/face/model_face.c")
-set(AI_MODEL_SOURCES
-    "${AI_SRC_DIR}/models/model.cpp"
-    "${AI_SRC_DIR}/models/person/model.cpp"
-    "${AI_SRC_DIR}/models/person/person_decoder.cpp"
-    "${AI_SRC_DIR}/models/segmentation/model.cpp"
-    "${AI_SRC_DIR}/models/segmentation/segmentation_decoder.cpp"
-    "${AI_SRC_DIR}/models/face/model.cpp"
-    "${AI_SRC_DIR}/models/face/face_decoder.cpp")
+file(GLOB_RECURSE AI_MODEL_C_API_SOURCES CONFIGURE_DEPENDS
+    "${AI_SRC_DIR}/models/*.c")
+file(GLOB_RECURSE AI_APP_SOURCES CONFIGURE_DEPENDS
+    "${AI_SRC_DIR}/*.c" "${AI_SRC_DIR}/*.cpp")
+list(REMOVE_ITEM AI_APP_SOURCES ${AI_MODEL_C_API_SOURCES})
 set(AI_MODEL_EXTRA_SOURCES
     "${AI_VISION_MODELS_PP_DIR}/Src/od_pp_st_yolox.c"
     "${AI_VISION_MODELS_PP_DIR}/Src/fd_pp_blazeface.c"
@@ -195,41 +188,8 @@ set_source_files_properties(${AI_CAMERA_BSP_SOURCE} PROPERTIES
     "HAL_DCMIPP_PIPE_VsyncEventCallback=sample_ai_HAL_DCMIPP_PIPE_VsyncEventCallback;HAL_DCMIPP_PIPE_FrameEventCallback=sample_ai_HAL_DCMIPP_PIPE_FrameEventCallback")
 
 add_executable(experiment-ai.elf
-    src/main.cpp
-    src/task/application_initialize_task.cpp
-    src/task/camera_render_task.cpp
-    src/task/inference_task.cpp
-    src/task/inference_postprocess_task.cpp
-    src/task/task_context.cpp
-    src/task/task_diagnostics.cpp
-    src/driver/camera_driver/sensor_driver/registers/imx335_registers.cpp
-    src/driver/camera_driver/camera_driver.cpp
-    src/image_resizer/image_resizer.cpp
-    src/driver/board/hal_time.c
-    src/driver/cache_driver/cache_driver.cpp
-    src/driver/nor_driver/registers/nor_registers.cpp
-    src/driver/nor_driver/nor_driver.cpp
-    src/driver/psram_driver/registers/psram_registers.cpp
-    src/driver/psram_driver/psram_driver.cpp
-    src/driver/rif_driver/rif_driver.cpp
-    src/driver/lcd_driver/registers/lcd_registers.cpp
-    src/driver/lcd_driver/lcd_driver.cpp
-    src/memory_allocator/memory_allocator.cpp
-    src/driver/npu_driver/registers/npu_registers.cpp
-    src/driver/npu_driver/npu_driver.cpp
-    src/driver/npu_driver/debug.cpp
-    src/npu_runtime/npu_runtime.cpp
-    src/npu_runtime/scheduler/scheduler.cpp
-    src/npu_runtime/inference_dispatcher/inference_dispatcher.cpp
-    src/npu_runtime/thread_monitor/thread_monitor.cpp
-    ${AI_MODEL_SOURCES}
-    # Project-owned ref-compatible BSP with a reset fallback for NOR left in
-    # OPI-DTR by the external loader.
-    "${AI_SRC_DIR}/driver/c_bsp/stm32n6570_discovery_xspi.c"
+    ${AI_APP_SOURCES}
     "${AI_BSP_ROOT}/stm32n6570_discovery_bus.c"
-    ${AI_CAMERA_BSP_SOURCE}
-    src/driver/camera_driver/dcmipp_driver/dcmipp_callbacks.c
-    src/driver/camera_driver/sensor_driver/imx335_driver.c
     "${AI_CUBE_ROOT}/Drivers/BSP/Components/imx335/imx335_reg.c"
     "${AI_BSP_ROOT}/stm32n6570_discovery_lcd.c"
     "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/isp/Src/isp_core.c"
@@ -364,6 +324,18 @@ else()
                 "experiment-ai-flash-images requires STM32_SigningTool_CLI"
         COMMAND ${CMAKE_COMMAND} -E false)
 endif()
+
+set_property(TARGET experiment-ai-flash-images PROPERTY UAI_FLASH_IMAGES
+    "${AI_FLASH_FSBL_IMAGE}"
+    "${AI_FLASH_APP_IMAGE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/person/network_data.hex"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/segmentation/network_data.hex"
+    "${CMAKE_CURRENT_SOURCE_DIR}/models/face/network_data.hex"
+    "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_person.hex"
+    "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_segmentation.hex"
+    "${CMAKE_CURRENT_BINARY_DIR}/network_blobs_face.hex")
+set_property(TARGET experiment-ai-flash-images PROPERTY UAI_FLASH_ADDRESSES
+    AUTO 0x70100000 AUTO AUTO AUTO AUTO AUTO AUTO)
 
 add_library(${AI_MODEL_TARGET} STATIC
     ${AI_MODEL_C_API_SOURCES}

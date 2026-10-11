@@ -67,7 +67,7 @@ for (const auto &test : graphics::kVerificationCases) {
 
 このmiddlewareはクロック・RIF・HAL初期化やIRQ・カメラの開始を行いません。ホストテストは演算と検証器を確認するもので、実DMA転送・キャッシュ整合・周辺機器の健全性の証明ではありません。それらは独立した[experiment-hw-test](https://github.com/kons-9/uai-studio/blob/main/userspace/experiment-hw-test/README.md)で確認します。
 
-共有アプリでは[dma2d driver](../driver.md#dma2d)の`Dma2dManagement::Instance()`を`device`として渡せます。driverの初期化は検証前に行います。driver自身がキャッシュ操作と転送停止を担当するため、通常は検証器のcache hookを省略できます。
+共有アプリでは[dma2d driver](../driver/dma2d.md)の`Dma2dManagement::Instance()`を`device`として渡せます。driverの初期化は検証前に行います。driver自身がキャッシュ操作と転送停止を担当するため、通常は検証器のcache hookを省略できます。
 
 ## テスト
 

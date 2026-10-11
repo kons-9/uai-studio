@@ -5,40 +5,22 @@ set(AI_BSP_ROOT "${AI_CUBE_ROOT}/Drivers/BSP/STM32N6570-DK")
 set(AI_COMPONENT_ROOT "${AI_CUBE_ROOT}/Drivers/BSP/Components")
 set(AI_ISP_ROOT "${AI_CUBE_ROOT}/Middlewares/ST/STM32_ISP_Library/isp")
 
-set(UAI_DRIVER_SOURCES
-    c_bsp/stm32n6570_discovery_xspi.c
-    board/register_diagnostics.cpp
-    board/interrupt_priority.cpp
-    board/time.cpp
-    console_driver/console_driver.cpp
-    console_driver/registers/console_registers.cpp
-    cache_driver/cache_driver.cpp
-    dma2d_driver/dma2d_driver.cpp
-    camera_driver/board_driver/stm32n6570_discovery_camera.c
-    camera_driver/camera_diagnostics.cpp
-    camera_driver/camera_driver.cpp
-    camera_driver/camera_controls.cpp
-    camera_driver/sensor_driver/imx335_driver.c
-    camera_driver/sensor_driver/registers/imx335_registers.cpp
-    camera_driver/sensor_driver/registers/isp_controls.cpp
-    lcd_driver/lcd_driver.cpp
-    lcd_driver/display_driver.cpp
-    lcd_driver/registers/lcd_registers.cpp
-    nor_driver/nor_driver.cpp
-    nor_driver/registers/nor_registers.cpp
-    npu_driver/debug.cpp
-    npu_driver/npu_driver.cpp
-    npu_driver/registers/npu_registers.cpp
-    psram_driver/psram_driver.cpp
-    psram_driver/registers/psram_registers.cpp
-    rif_driver/rif_driver.cpp
-    touch_driver/touch_driver.cpp
-    touch_driver/registers/touch_registers.cpp)
-    if(APP_TARGET STREQUAL "hw-test")
-        list(FILTER UAI_DRIVER_SOURCES EXCLUDE REGEX "^npu_driver/")
-        list(APPEND UAI_DRIVER_SOURCES peripheral_driver/peripheral_driver.cpp)
-    endif()
-list(TRANSFORM UAI_DRIVER_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
+set(UAI_DRIVER_OVERRIDE_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/board/hal_time.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/camera_driver/dcmipp_driver/dcmipp_callbacks.c")
+file(GLOB_RECURSE UAI_DRIVER_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/board/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/board/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/c_bsp/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*_driver/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*_driver/*.cpp")
+list(FILTER UAI_DRIVER_SOURCES EXCLUDE REGEX "/tests/")
+list(REMOVE_ITEM UAI_DRIVER_SOURCES ${UAI_DRIVER_OVERRIDE_SOURCES})
+if(UAI_DRIVER_PERIPHERAL_TESTS)
+    list(FILTER UAI_DRIVER_SOURCES EXCLUDE REGEX "/npu_driver/")
+else()
+    list(FILTER UAI_DRIVER_SOURCES EXCLUDE REGEX "/peripheral_driver/")
+endif()
 list(APPEND UAI_DRIVER_SOURCES
     "${AI_BSP_ROOT}/stm32n6570_discovery_lcd.c"
     "${AI_BSP_ROOT}/stm32n6570_discovery_bus.c"
@@ -65,7 +47,7 @@ if(NOT _generated_dma2d_enabled OR NOT EXISTS "${_generated_dma2d_source}")
         "${AI_CUBE_ROOT}/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dma2d.c")
 endif()
 
-if(APP_TARGET STREQUAL "hw-test")
+if(UAI_DRIVER_PERIPHERAL_TESTS)
     set(STEDGEAI_LIB_DIR "" CACHE PATH
         "STEdgeAI runtime root containing Inc/, Npu/, and Lib/")
     if(NOT STEDGEAI_LIB_DIR AND DEFINED ENV{STEDGEAI_LIB_DIR})
@@ -88,7 +70,7 @@ if(APP_TARGET STREQUAL "hw-test")
     if(NOT STEDGEAI_LIB_DIR OR NOT EXISTS "${_hwtest_npu_cache_dir}/npu_cache.h"
        OR NOT EXISTS "${_hwtest_npu_cache_dir}/npu_cache.c")
         message(FATAL_ERROR
-            "hw-test requires STEdgeAI NPU cache sources. Install STEdgeAI and configure "
+            "Peripheral driver tests require STEdgeAI NPU cache sources. Install STEdgeAI and configure "
             "with -DSTEDGEAI_LIB_DIR=/path/to/Middlewares/ST/AI (containing "
             "Npu/Devices/STM32N6xx/npu_cache.h and npu_cache.c).")
     endif()
@@ -122,7 +104,7 @@ set_source_files_properties(${AI_CAMERA_BSP_SOURCE} PROPERTIES
 add_library(uai-drivers STATIC ${UAI_DRIVER_SOURCES})
 add_library(uai::drivers ALIAS uai-drivers)
 
-if(APP_TARGET STREQUAL "hw-test")
+if(UAI_DRIVER_PERIPHERAL_TESTS)
     target_include_directories(uai-drivers BEFORE PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/peripheral_driver/include")
     target_include_directories(uai-drivers PRIVATE
@@ -179,9 +161,7 @@ target_link_libraries(uai-drivers PUBLIC
 # These strong HAL overrides must be linked directly into the final image so
 # they win over weak HAL callbacks. Compile them as a kernel object target so
 # they do not inherit userspace application include paths.
-add_library(uai-driver-overrides OBJECT
-    board/hal_time.c
-    camera_driver/dcmipp_driver/dcmipp_callbacks.c)
+add_library(uai-driver-overrides OBJECT ${UAI_DRIVER_OVERRIDE_SOURCES})
 add_library(uai::driver_overrides ALIAS uai-driver-overrides)
 target_link_libraries(uai-driver-overrides PRIVATE uai::drivers)
 target_compile_options(uai-driver-overrides PRIVATE

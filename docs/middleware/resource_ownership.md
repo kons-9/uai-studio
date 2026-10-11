@@ -24,7 +24,7 @@ using ResourceManagement =
     resource_ownership::ResourceOwnership<resource_ownership::MicroTKernelMutexBackend>;
 ```
 
-`kernel/driver/driver_ownership.hpp`がこの別名を定義し、各ドライバーは`Writer`付きのメソッドと`Accessor`を公開します。使い方は[ドライバー](../driver.md)を参照してください。
+`kernel/driver/driver_ownership.hpp`がこの別名を定義し、各ドライバーは`Writer`付きのメソッドと`Accessor`を公開します。使い方は[ドライバーの共通ルール](../driver/common.md)を参照してください。
 
 ## テスト
 
