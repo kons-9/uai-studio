@@ -456,7 +456,9 @@ common::Error Future::Postprocess()
     status = ConvertResult(decoded, &boxes);
     if (!status.Ok())
         return status;
-    context_.publish(context_.publish_context, boxes, context_.generation);
+    PublishCapturedResult(
+        context_.publish, context_.publish_context, boxes, frame_.capture_sequence, context_.generation
+    );
     if (!postprocess_stage_logged_) {
         UAI_LOG_INFO(
             "ai: face postprocess done seq=%u boxes=%u\n",

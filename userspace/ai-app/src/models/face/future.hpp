@@ -9,6 +9,7 @@
 #include "middleware/pipeline/frame_types.hpp"
 #include "middleware/buffer/buffer_types.hpp"
 #include "middleware/ai_runtime/inference_result_types.hpp"
+#include "models/result_publisher.hpp"
 #include "stai.h"
 
 namespace uai::ai::cache {
@@ -22,11 +23,7 @@ class NpuNetwork;
 
 namespace uai::ai::models::face {
 
-using PublishCallback = void (*)(
-    void *,
-    const inference::BoxSet &,
-    std::uint32_t
-);
+using models::PublishCallback;
 
 /* Runtime resources supplied by the application when a frame is submitted.
  * The Future owns the inference state; the application owns these services. */

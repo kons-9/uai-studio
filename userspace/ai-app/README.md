@@ -24,6 +24,8 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 
 [src/exposure_control/controller.hpp](src/exposure_control/controller.hpp)が領域選択・履歴・座標変換と表示値の整形を担当し、[runtime.hpp](src/exposure_control/runtime.hpp)がカメラ設定の適用・読み戻しを担当します。`PipelineTask`は累積した表示用結果とは別に、今回の推論結果だけを専用キューへ送ります。`CameraRenderTask`が結果を消費し、同じタスクからカメラを操作します。
 
+実モデルの後処理結果は[src/models/result_publisher.hpp](src/models/result_publisher.hpp)で撮像フレームの`capture_sequence`を設定して発行します。露出Controllerはこの番号で重複・古い結果を除外するため、空検出も含めて正しい番号を引き継ぎます。再初期化を区別するgenerationとは別の識別子です。
+
 - 顔、人物、segmentation前景の順に選び、顔・人物は最高信頼度の枠を1.5倍に拡張します。枠は800x480の表示座標、マスクは正方形入力の座標としてセンサ領域へ変換します。
 - モデルごとに最後の有効な結果を保持します。空の結果では期限を延長せず、最後の被写体から1秒後に次の候補または全画面へ戻ります。小さな領域変化は抑制します。
 - 設定と読み戻しは250ms間隔です。手動露出中は統計領域を操作せず、設定失敗とカメラ復旧後の設定消失は次回に再試行します。
@@ -32,7 +34,7 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 
 領域変更時はUARTに`exposure: source=... area=... exposure_us=... gain_mdB=... ae=...`を出します。sourceは0=全画面、1=顔、2=人物、3=前景です。
 
-ホスト確認は`cmake --build build/middleware-tests --target exposure_control_test frame_channels_test ui_layout_test`と対応するctestで行います。実機ではUARTを先に開き、起動とPipe1/2の開始に加え、UIからのON/OFF・領域変更・被写体消失時の全画面復帰・逆光での輝度改善・AWBへの影響・CPU時間と推論FPSを確認してください。未確認の判定基準は[VERIFICATION_CHECKLIST.md](VERIFICATION_CHECKLIST.md)にあります。ホストテストとARM構文チェックは実機確認を代替しません。
+ホスト確認は`cmake --build build/middleware-tests --target exposure_control_test frame_channels_test ui_layout_test`と対応するctestで行います。実機ではUARTを先に開き、起動とPipe1/2の開始に加え、対象範囲の操作と領域変更・被写体消失時の全画面復帰を確認してください。確認済みの証拠、残る項目、今回対象外の確認は[TODO.md](TODO.md)にあります。ホストテストとARM構文チェックは実機確認を代替しません。
 
 ## モデル
 

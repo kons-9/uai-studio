@@ -25,7 +25,7 @@ python3 userspace/experiment-model-load/tool/manifest.py verify --help
 
 初版形式は1モデルにつき52バイト: UAIM、u16版=1、u16サイズ=52、u32のruntime/kind/input_bytes/output_bytes、重みとblobそれぞれのaddress/bytes/CRC32、最後に先頭48バイトのCRC32。型・テンソル形状全体・署名はまだ含まない。同じ入出力バイト数でも互換とは限らず、この形式だけで任意モデルを実行してはならない。計画10の最終マニフェスト仕様として固定したものではない。
 
-対象は[10: モデル動的ロード](../../tmp/plans/10-model-dynamic-load.md)。マニフェスト、PSRAMステージング、対応が確認できた場合のrelocatableモデルの順に検証する。共有NPUドライバ、ai_runtime、メモリ契約、ai-load、pre-kernelは変更しない。
+対象はモデル動的ロード。マニフェスト、PSRAMステージング、対応が確認できた場合のrelocatableモデルの順に検証する。共有NPUドライバ、ai_runtime、メモリ契約、ai-load、pre-kernelは変更しない。
 
 ## このディレクトリに必要なもの
 

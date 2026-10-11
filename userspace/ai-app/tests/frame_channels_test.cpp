@@ -2,6 +2,7 @@
 #include "task/camera_render_state.hpp"
 #include "task/pipeline_state.hpp"
 #include "task/camera_render_wake.hpp"
+#include "models/result_publisher.hpp"
 #include <functional>
 
 #include <cstring>
@@ -606,6 +607,64 @@ TEST_F(
     );
     EXPECT_TRUE(drained.error.Ok());
     EXPECT_EQ(received, (std::vector<std::uint32_t>{20U}));
+}
+
+TEST_F(
+    FrameChannelsTest,
+    CapturedResultsKeepSequenceAndGenerationThroughBothChannels
+)
+{
+    struct Publication {
+        PostprocessState state;
+        ModelResultChannel display;
+        ExposureResultChannel exposure;
+    } publication;
+    publication.state.Reset(7U);
+    ASSERT_TRUE(publication.display.Create().Ok());
+    ASSERT_TRUE(publication.exposure.Create().Ok());
+    const models::PublishCallback publish =
+        [](void *context, const inference::BoxSet &boxes, std::uint32_t generation) {
+            auto &channels = *static_cast<Publication *>(context);
+            EXPECT_EQ(generation, channels.state.Generation());
+            channels.state.Merge(boxes, 100U);
+            EXPECT_TRUE(channels.display.PublishLatest(channels.state.Snapshot()).Ok());
+            EXPECT_TRUE(channels.exposure.PublishLatest(boxes, generation).Ok());
+        };
+    inference::BoxSet result{};
+    result.face_valid = true;
+    models::PublishCapturedResult(publish, &publication, result, 10U, 7U);
+    result.face.count = 1U;
+    result.face.boxes[0U] = {240, 160, 80, 80, 0.9F};
+    models::PublishCapturedResult(publish, &publication, result, 11U, 7U);
+    result.face.boxes[0U].x = 400;
+    models::PublishCapturedResult(publish, &publication, result, 12U, 7U);
+
+    exposure_control::Controller controller;
+    const exposure_control::Mapping mapping{2000U, 1200U, {0U, 0U, 2000U, 1200U}};
+    std::vector<std::uint32_t> sequences;
+    std::vector<std::uint32_t> requested_x;
+    const auto consumed = publication.exposure.Consume(
+        [&](const inference::BoxSet &boxes) {
+            sequences.push_back(boxes.capture_sequence);
+            controller.Observe(boxes, 100U);
+            controller.Step(100U, mapping);
+            requested_x.push_back(controller.DisplayValues().requested.x);
+        },
+        7U
+    );
+    ASSERT_TRUE(consumed.error.Ok());
+    EXPECT_EQ(sequences, (std::vector<std::uint32_t>{10U, 11U, 12U}));
+    EXPECT_EQ(requested_x, (std::vector<std::uint32_t>{0U, 550U, 950U}));
+    EXPECT_EQ(controller.DisplayValues().source, exposure_control::Source::kFace);
+    EXPECT_FALSE(controller.Step(1099U, mapping));
+    EXPECT_TRUE(controller.Step(1100U, mapping));
+    EXPECT_EQ(controller.DisplayValues().source, exposure_control::Source::kFullFrame);
+
+    ModelResultSnapshot snapshot;
+    ASSERT_TRUE(publication.display.DrainLatest(&snapshot).error.Ok());
+    EXPECT_EQ(snapshot.boxes.capture_sequence, 12U);
+    EXPECT_EQ(snapshot.generation, 7U);
+    EXPECT_EQ(snapshot.stamps[1U].update_sequence, 3U);
 }
 
 TEST_F(
