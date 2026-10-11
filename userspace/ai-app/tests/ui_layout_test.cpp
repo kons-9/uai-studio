@@ -2,6 +2,7 @@
 #include "middleware/ui/widget.hpp"
 #include "ui/app_ui.hpp"
 #include "ui/ui_layout.hpp"
+#include "ui/exposure_visualization.hpp"
 #include "task/camera_render_state.hpp"
 
 #include <gtest/gtest.h>
@@ -12,6 +13,110 @@
 #include <vector>
 
 namespace {
+
+TEST(
+    ExposureVisualization,
+    CountsOriginalLuminanceAndClippingWithoutChangingPixels
+)
+{
+    const std::array<std::uint16_t, 6U> pixels = {0U, 0xFFFFU, 0x8410U, 0xF800U, 0x07E0U, 0x001FU};
+    const auto original = pixels;
+    const auto histogram = uai::ai::app_ui::AnalyzeLuminance(pixels.data(), pixels.size());
+    EXPECT_EQ(histogram.samples, pixels.size());
+    EXPECT_EQ(histogram.bins[0U], 1U);
+    EXPECT_EQ(histogram.bins[255U], 1U);
+    EXPECT_EQ(histogram.shadows, 1U);
+    EXPECT_EQ(histogram.highlights, 1U);
+    EXPECT_EQ(uai::ai::app_ui::Rgb565Luminance(0xF800U), 76U);
+    EXPECT_EQ(uai::ai::app_ui::Rgb565Luminance(0x07E0U), 149U);
+    EXPECT_EQ(uai::ai::app_ui::Rgb565Luminance(0x001FU), 28U);
+    EXPECT_EQ(pixels, original);
+}
+
+TEST(
+    ExposureVisualization,
+    ThresholdsAreInclusiveAndEmptyImagesAreSafe
+)
+{
+    uai::ai::app_ui::LuminanceHistogram histogram;
+    for (const std::uint8_t luminance : {0U, 5U, 6U, 249U, 250U, 255U})
+        histogram.Add(luminance);
+    EXPECT_EQ(histogram.shadows, 2U);
+    EXPECT_EQ(histogram.highlights, 2U);
+    EXPECT_EQ(histogram.PercentTenths(histogram.shadows, histogram.samples), 333U);
+    EXPECT_EQ(histogram.PercentTenths(0U, 0U), 0U);
+    EXPECT_EQ(histogram.PercentTenths(384000U, 384000U), 1000U);
+    EXPECT_EQ(uai::ai::app_ui::AnalyzeLuminance(nullptr, 1U).samples, 0U);
+    EXPECT_EQ(uai::ai::app_ui::AnalyzeLuminance(nullptr, 0U).highlights, 0U);
+}
+
+TEST(
+    ExposureVisualization,
+    ZebraModesAreIndependentAndPreserveAlternatingSourcePixels
+)
+{
+    namespace app_ui = uai::ai::app_ui;
+    std::array<std::uint16_t, 24U> source{};
+    std::fill(source.begin() + 12U, source.end(), 0xFFFFU);
+    auto pixels = source;
+    uai::ai::ui::Canvas canvas(pixels.data(), 24U, 1U);
+    app_ui::ExposureVisualizationSettings settings;
+    app_ui::ExposureImagePainter(source.data(), 24U, 1U, settings).Paint(canvas);
+    EXPECT_EQ(pixels, source);
+    settings.zebra_white = true;
+    app_ui::ExposureImagePainter(source.data(), 24U, 1U, settings).Paint(canvas);
+    EXPECT_EQ(pixels[0U], source[0U]);
+    EXPECT_EQ(pixels[12U], app_ui::kWhiteZebraColor);
+    EXPECT_EQ(pixels[18U], source[18U]);
+    pixels = source;
+    settings.zebra_white = false;
+    settings.zebra_black = true;
+    app_ui::ExposureImagePainter(source.data(), 24U, 1U, settings).Paint(canvas);
+    EXPECT_EQ(pixels[0U], app_ui::kBlackZebraColor);
+    EXPECT_EQ(pixels[6U], source[6U]);
+    EXPECT_EQ(pixels[12U], source[12U]);
+    settings.zebra_white = true;
+    settings.histogram = true;
+    app_ui::ExposureImagePainter image(source.data(), 24U, 1U, settings);
+    image.Paint(canvas);
+    EXPECT_EQ(pixels[0U], app_ui::kBlackZebraColor);
+    EXPECT_EQ(pixels[12U], app_ui::kWhiteZebraColor);
+    EXPECT_EQ(image.Histogram().bins[0U], 12U);
+    EXPECT_EQ(image.Histogram().bins[255U], 12U);
+    EXPECT_EQ(image.Histogram().samples, source.size());
+    EXPECT_EQ(source[0U], 0U);
+    EXPECT_EQ(source[12U], 0xFFFFU);
+}
+
+TEST(
+    ExposureVisualization,
+    HistogramUsesRawFrameAndCanBeShownWithoutZebra
+)
+{
+    namespace app_ui = uai::ai::app_ui;
+    std::vector<std::uint16_t> source(800U * 480U, 0x8410U);
+    source.front() = 0U;
+    source.back() = 0xFFFFU;
+    auto pixels = source;
+    uai::ai::ui::Canvas canvas(pixels.data(), 800U, 480U);
+    app_ui::ExposureVisualizationSettings settings;
+    settings.histogram = true;
+    app_ui::ExposureImagePainter image(source.data(), 800U, 480U, settings);
+    image.Paint(canvas);
+    EXPECT_EQ(pixels, source);
+    EXPECT_EQ(image.Histogram().samples, source.size());
+    EXPECT_EQ(image.Histogram().shadows, 1U);
+    EXPECT_EQ(image.Histogram().highlights, 1U);
+    canvas.FillRect({0U, 0U, 800U, 32U}, 0U);
+    app_ui::LuminanceHistogramPainter(image).Paint(canvas);
+    EXPECT_EQ(image.Histogram().shadows, 1U);
+    EXPECT_EQ(image.Histogram().highlights, 1U);
+    EXPECT_EQ(pixels[429U * 800U + 22U], app_ui::kBlackZebraColor);
+    EXPECT_EQ(pixels[429U * 800U + 277U], app_ui::kWhiteZebraColor);
+    EXPECT_EQ(pixels[200U * 800U + 400U], source[200U * 800U + 400U]);
+    EXPECT_EQ(source.front(), 0U);
+    EXPECT_EQ(source.back(), 0xFFFFU);
+}
 
 struct FakeModels final : public uai::ai::task::ModelControl {
     std::uint8_t mask = uai::ai::task::kAllModelsMask;
@@ -588,6 +693,108 @@ TEST(
 
 TEST(
     AiAppUi,
+    HistogramAndBothZebrasToggleIndependentlyAndSurviveNavigation
+)
+{
+    using uai::ai::app_ui::WidgetId;
+    FakeModels models;
+    uai::ai::app_ui::AppUi ui(models);
+    EXPECT_FALSE(ui.VisualizationSettings().Enabled());
+    EXPECT_EQ(ui.VisualizationSettings().black_level, 5U);
+    EXPECT_EQ(ui.VisualizationSettings().white_level, 250U);
+    Tap(ui, WidgetId::kOpenMenu);
+    Tap(ui, WidgetId::kOpenVisualization);
+    EXPECT_EQ(ui.CurrentScreen(), uai::ai::app_ui::ScreenId::kVisualization);
+    EXPECT_FALSE(ui.ShowsCamera());
+    Tap(ui, WidgetId::kToggleHistogram);
+    EXPECT_TRUE(ui.VisualizationSettings().histogram);
+    EXPECT_FALSE(ui.VisualizationSettings().zebra_black);
+    EXPECT_FALSE(ui.VisualizationSettings().zebra_white);
+    Tap(ui, WidgetId::kZebraWhite);
+    Tap(ui, WidgetId::kZebraBlack);
+    Tap(ui, WidgetId::kToggleHistogram);
+    EXPECT_FALSE(ui.VisualizationSettings().histogram);
+    EXPECT_TRUE(ui.VisualizationSettings().zebra_black);
+    EXPECT_TRUE(ui.VisualizationSettings().zebra_white);
+    EXPECT_TRUE(ui.ShowBoxes());
+    EXPECT_TRUE(ui.AiExposureEnabled());
+    EXPECT_EQ(models.mask, uai::ai::task::kAllModelsMask);
+    const auto pixels = PaintToPixels(ui);
+    for (const auto widget : {WidgetId::kZebraBlack, WidgetId::kZebraWhite}) {
+        const auto bounds = BoundsOf(widget);
+        EXPECT_EQ(PixelAt(pixels, bounds.x + 6U, bounds.y + 6U), ButtonOf(widget).style.checked_fill);
+    }
+    Tap(ui, WidgetId::kCloseVisualization);
+    EXPECT_EQ(ui.CurrentScreen(), uai::ai::app_ui::ScreenId::kMenu);
+    Tap(ui, WidgetId::kOpenVisualization);
+    Tap(ui, WidgetId::kVisualizationCamera);
+    EXPECT_TRUE(ui.ShowsCamera());
+    EXPECT_TRUE(ui.VisualizationSettings().zebra_black);
+    EXPECT_TRUE(ui.VisualizationSettings().zebra_white);
+}
+
+TEST(
+    AiAppUi,
+    ClippingThresholdSlidersRemainSeparateAndClampToSafeRanges
+)
+{
+    using uai::ai::app_ui::WidgetId;
+    FakeModels models;
+    uai::ai::app_ui::AppUi ui(models);
+    Tap(ui, WidgetId::kOpenMenu);
+    Tap(ui, WidgetId::kOpenVisualization);
+    for (const auto widget : {WidgetId::kBlackLevel, WidgetId::kWhiteLevel}) {
+        const auto bounds = BoundsOf(widget);
+        const auto event = ui.HandleTouch(
+            {true,
+             static_cast<std::uint16_t>(bounds.x + bounds.width - 1U),
+             static_cast<std::uint16_t>(bounds.y + bounds.height - 4U)}
+        );
+        EXPECT_EQ(event.type, uai::ai::ui::EventType::kChange);
+        ui.HandleTouch({false, 0U, 0U});
+    }
+    EXPECT_EQ(ui.VisualizationSettings().black_level, 64U);
+    EXPECT_EQ(ui.VisualizationSettings().white_level, 255U);
+    ui.OnBlackLevelChange({uai::ai::ui::EventType::kChange, 0U, 0U, 0U, -1});
+    ui.OnWhiteLevelChange({uai::ai::ui::EventType::kChange, 0U, 0U, 0U, 0});
+    EXPECT_EQ(ui.VisualizationSettings().black_level, 0U);
+    EXPECT_EQ(ui.VisualizationSettings().white_level, 191U);
+    EXPECT_FALSE(ui.VisualizationSettings().Enabled());
+}
+
+TEST(
+    AiAppUi,
+    CameraFrameLayersKeepZebraBehindAnnotationsAndHistogramInFront
+)
+{
+    namespace app_ui = uai::ai::app_ui;
+    FakeModels models;
+    app_ui::AppUi ui(models);
+    Tap(ui, app_ui::WidgetId::kOpenMenu);
+    Tap(ui, app_ui::WidgetId::kOpenVisualization);
+    Tap(ui, app_ui::WidgetId::kToggleHistogram);
+    Tap(ui, app_ui::WidgetId::kZebraWhite);
+    Tap(ui, app_ui::WidgetId::kVisualizationCamera);
+    std::vector<std::uint16_t> source(800U * 480U, 0xFFFFU);
+    auto pixels = source;
+    uai::ai::ui::Canvas canvas(pixels.data(), 800U, 480U);
+    app_ui::ExposureImagePainter image(source.data(), 800U, 480U, ui.VisualizationSettings());
+    image.Paint(canvas);
+    canvas.DrawFrame({396U, 198U, 24U, 24U}, 2U, 0x07E0U);
+    canvas.DrawFrame({12U, 338U, 276U, 130U}, 2U, 0x07E0U);
+    app_ui::LuminanceHistogramPainter histogram(image);
+    const uai::ai::ui::Painter *painters[] = {&histogram, &ui.Overlay()};
+    uai::ai::ui::PainterGroup(painters, 2U).Paint(canvas);
+    EXPECT_EQ(image.Histogram().highlights, source.size());
+    EXPECT_EQ(pixels[200U * 800U + 396U], 0x07E0U);
+    EXPECT_EQ(pixels[338U * 800U + 12U], uai::ai::ui::Rgb565(0x80U, 0x80U, 0x80U));
+    EXPECT_EQ(pixels[5U * 800U + 700U], 0U);
+    EXPECT_EQ(source.front(), 0xFFFFU);
+    EXPECT_EQ(source.back(), 0xFFFFU);
+}
+
+TEST(
+    AiAppUi,
     StatusLabelShowsRatesPerEnabledModel
 )
 {
@@ -658,6 +865,17 @@ TEST(
         void OnPersonTap(const uai::ai::ui::Event &) { ++taps; }
         void OnFaceTap(const uai::ai::ui::Event &) { ++taps; }
         void OnSegmentationTap(const uai::ai::ui::Event &) { ++taps; }
+        void OnExposureVisualizationToggle(const uai::ai::ui::Event &) { ++taps; }
+        void OnBlackLevelChange(const uai::ai::ui::Event &event)
+        {
+            ++changes;
+            last_value = event.value;
+        }
+        void OnWhiteLevelChange(const uai::ai::ui::Event &event)
+        {
+            ++changes;
+            last_value = event.value;
+        }
         void OnMinConfidenceChange(const uai::ai::ui::Event &e)
         {
             ++changes;
@@ -695,6 +913,24 @@ TEST(
     EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, change));
     EXPECT_EQ(handlers.changes, 2);
     EXPECT_EQ(handlers.last_value, 1000);
+
+    for (const auto widget :
+         {uai::ai::app_ui::WidgetId::kToggleHistogram,
+          uai::ai::app_ui::WidgetId::kZebraBlack,
+          uai::ai::app_ui::WidgetId::kZebraWhite}) {
+        tap.widget_id = static_cast<std::uint16_t>(widget);
+        EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, tap));
+    }
+    EXPECT_EQ(handlers.taps, 3);
+    change.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kBlackLevel);
+    change.value = 12;
+    EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, change));
+    EXPECT_EQ(handlers.last_value, 12);
+    change.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kWhiteLevel);
+    change.value = 240;
+    EXPECT_TRUE(uai::ai::app_ui::Dispatch(handlers, change));
+    EXPECT_EQ(handlers.changes, 4);
+    EXPECT_EQ(handlers.last_value, 240);
 
     /* Images have no events. */
     change.widget_id = static_cast<std::uint16_t>(uai::ai::app_ui::WidgetId::kLogo);

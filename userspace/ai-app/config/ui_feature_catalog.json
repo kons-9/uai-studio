@@ -4,6 +4,11 @@
     {"id": "ai_exposure", "operations": ["toggle"]},
     {"id": "boxes", "operations": ["toggle"]},
     {"id": "confidence", "operations": ["set"]},
-    {"id": "status_period", "operations": ["set"]}
+    {"id": "status_period", "operations": ["set"]},
+    {"id": "histogram", "operations": ["toggle"]},
+    {"id": "zebra_black", "operations": ["toggle"]},
+    {"id": "zebra_white", "operations": ["toggle"]},
+    {"id": "black_level", "operations": ["set"]},
+    {"id": "white_level", "operations": ["set"]}
   ]
 }

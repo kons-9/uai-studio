@@ -20,6 +20,20 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 - 推論の初期化に失敗してもカメラ表示は継続します。
 - 前処理、NPU、後処理の各タスクは`kernel/middleware/ai_runtime`のDispatcherを1つずつ持ちます。
 
+## 輝度ヒストグラム・ゼブラ
+
+設定画面の`LUMA TOOLS`から`HISTOGRAM`、`BLACK ZEBRA`、`WHITE ZEBRA`を個別に切り替えます。初期状態はすべてOFFです。`CAMERA`で映像へ戻り、左上の矢印で設定画面へ戻れます。AI露出・モデル選択・推論枠表示とは独立した表示機能で、カメラの露出設定を変更しません。
+
+- `HISTOGRAM`: 映像左下に輝度0〜255の256階調を表示します。縦軸はそのフレームの最多階調に合わせて自動スケールします。`B`は暗部、`W`は明部の画素割合で、小数1桁の%表示です。対象階調はゼブラと同じ色で表示します。
+- `BLACK ZEBRA`: `BLACK LEVEL`以下の画素へシアンの斜線を重ねます。初期値は5、調整範囲は0〜64です。
+- `WHITE ZEBRA`: `WHITE LEVEL`以上の画素へ赤の斜線を重ねます。初期値は250、調整範囲は191〜255です。両方のゼブラを同時に有効にすることもできます。
+
+[描画処理](src/ui/exposure_visualization.hpp)はPipe1のRGB565全画素を使い、輝度を`(77 * R + 150 * G + 29 * B) / 256`の整数値に換算します。判定対象はISP処理後の表示画像であり、センサRAWの飽和やRGB各色の単独飽和を直接示すものではありません。既定のしきい値は白飛び・黒つぶれ付近の警告域です。
+
+集計はUI・推論枠・ゼブラを含まない元画像から行い、ゼブラはLCD用コピーだけを書き換えます。AI入力と撮像バッファは変更しません。ゼブラの上に推論枠を描き、最後にヒストグラムとステータスを描きます。設定画面と`inference_input_display`の診断表示には適用しません。全機能OFF時は画素解析を省略します。
+
+ホストの`ui_layout_test`で輝度の境界値、割合計算、ゼブラの独立性、元画像の保持、描画順序、画面遷移としきい値操作を確認します。実機向けビルド・書込み・UART起動確認・表示目視・CPU負荷の測定は未実施で、[TODO.md](TODO.md)の確認項目として残しています。
+
 ## 推論結果に応じた露出制御
 
 [src/exposure_control/controller.hpp](src/exposure_control/controller.hpp)が領域選択・履歴・座標変換と表示値の整形を担当し、[runtime.hpp](src/exposure_control/runtime.hpp)がカメラ設定の適用・読み戻しを担当します。`PipelineTask`は累積した表示用結果とは別に、今回の推論結果だけを専用キューへ送ります。`CameraRenderTask`が結果を消費し、同じタスクからカメラを操作します。
@@ -97,7 +111,7 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 
 UIの機能IDと操作IDは`config/ui_feature_catalog.json`に定義します。`config/ui_layout.json`の`feature`/`operation`はこれと照合され、`make ui-layout`でC++のバインディングを生成します。MakeまたはCMakeからのビルド時には`ui-layout-check`で生成物の一致も確認します。カタログはID一覧であり、実行時の制約は[shell/owner.hpp](src/shell/owner.hpp)の`CheckConstraints`で判定します。
 
-画面は2つあります。カメラ画面の上端にモデル別FPSと露出の読み戻しを表示し、右上のメニューボタンで設定画面へ移ります。設定画面の`PERSON`・`FACE`・`SEG`、`INFERENCE OVERLAY`、`AI EXPOSURE`はカメラ所有タスクの`ApplyTouch`からシェルと同じ`Apply`へ渡し、確定した状態をボタンへ反映します。confidenceのスライダーと更新周期のダイヤルはUI内の値を変更します。左上の矢印でカメラ画面へ戻ります。
+画面はカメラ・設定・`LUMA TOOLS`の3つです。カメラ画面の上端にモデル別FPSと露出の読み戻しを表示し、右上のメニューボタンで設定画面へ移ります。設定画面の`PERSON`・`FACE`・`SEG`、`INFERENCE OVERLAY`、`AI EXPOSURE`はカメラ所有タスクの`ApplyTouch`からシェルと同じ`Apply`へ渡し、確定した状態をボタンへ反映します。confidenceのスライダーと更新周期のダイヤルはUI内の値を変更します。左上の矢印でカメラ画面へ戻ります。
 
 AI露出ON中はAEの手動切替・手動値設定・独自統計領域を拒否します。手動値は`camera ae off`後だけ受け付けます。AI露出がビルドで利用不可ならボタンを暗くしてタッチを無効化し、シェルからの有効化も拒否します。読み戻しで失敗した露出操作は確定せず、直前の制御値を再適用します。復元失敗は状態不明として通知するため、`camera status`で実値を確認してから再設定してください。設定画面の`APPLIED` / `APPLY ERROR <code>`は最後の操作結果であり、定期統計更新では消しません。
 

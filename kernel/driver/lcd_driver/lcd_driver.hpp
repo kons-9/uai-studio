@@ -49,14 +49,16 @@ public:
         const pipeline::CaptureFrame &capture,
         const inference::BoxSet &boxes,
         const ui::Painter *overlay = nullptr,
-        bool log_copy_crc = false
+        bool log_copy_crc = false,
+        const ui::Painter *image_effect = nullptr
     );
     common::Error ComposeAndPresent(
         const pipeline::CaptureFrame &capture,
         const inference::BoxSet &boxes,
         const Writer &writer,
         const ui::Painter *overlay = nullptr,
-        bool log_copy_crc = false
+        bool log_copy_crc = false,
+        const ui::Painter *image_effect = nullptr
     );
     common::Error ComposeInferenceAndPresent(const pipeline::InferenceFrame &frame);
     common::Error ComposeInferenceAndPresent(
@@ -168,11 +170,12 @@ public:
         const pipeline::CaptureFrame &f,
         const inference::BoxSet &b,
         const ui::Painter *overlay = nullptr,
-        bool crc = false
+        bool crc = false,
+        const ui::Painter *image_effect = nullptr
     )
     {
         return WithWriter([&](LcdDriver &d, const Writer &w) {
-            return d.ComposeAndPresent(f, b, w, overlay, crc);
+            return d.ComposeAndPresent(f, b, w, overlay, crc, image_effect);
         });
     }
     common::Error ComposeInferenceAndPresent(const pipeline::InferenceFrame &f)

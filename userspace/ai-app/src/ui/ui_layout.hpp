@@ -15,6 +15,7 @@ inline constexpr std::uint16_t kScreenHeight = 480U;
 enum class ScreenId : std::uint16_t {
     kMain = 0U,
     kMenu = 1U,
+    kVisualization = 2U,
 };
 
 enum class WidgetId : std::uint16_t {
@@ -36,8 +37,17 @@ enum class WidgetId : std::uint16_t {
     kToggleBoxes = 16U,
     kMinConfidence = 17U,
     kConfidenceHint = 18U,
-    kStatusPeriod = 19U,
-    kStatusHint = 20U,
+    kOpenVisualization = 19U,
+    kStatusPeriod = 20U,
+    kStatusHint = 21U,
+    kCloseVisualization = 22U,
+    kVisualizationTitle = 23U,
+    kToggleHistogram = 24U,
+    kZebraBlack = 25U,
+    kZebraWhite = 26U,
+    kBlackLevel = 27U,
+    kWhiteLevel = 28U,
+    kVisualizationCamera = 29U,
 };
 
 struct FeatureBinding {
@@ -53,6 +63,11 @@ inline constexpr FeatureBinding kFeatureBindings[] = {
     {WidgetId::kToggleBoxes, "boxes", "toggle"},
     {WidgetId::kMinConfidence, "confidence", "set"},
     {WidgetId::kStatusPeriod, "status_period", "set"},
+    {WidgetId::kToggleHistogram, "histogram", "toggle"},
+    {WidgetId::kZebraBlack, "zebra_black", "toggle"},
+    {WidgetId::kZebraWhite, "zebra_white", "toggle"},
+    {WidgetId::kBlackLevel, "black_level", "set"},
+    {WidgetId::kWhiteLevel, "white_level", "set"},
 };
 
 inline constexpr ui::ButtonSpec kMainButtons[] = {
@@ -200,6 +215,22 @@ inline constexpr ui::ButtonSpec kMenuButtons[] = {
         ui::Icon::kNone,
         ui::Shape::kRounded,
     },
+    {
+        static_cast<std::uint16_t>(WidgetId::kOpenVisualization),
+        {424U, 240U, 352U, 48U},
+        "LUMA TOOLS",
+        {
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0x20U, 0x20U, 0x20U),
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            2U,
+            2U,
+        },
+        ui::Icon::kNone,
+        ui::Shape::kRounded,
+    },
 };
 
 inline constexpr ui::LabelSpec kMenuLabels[] = {
@@ -280,7 +311,7 @@ inline constexpr ui::SliderSpec kMenuSliders[] = {
 inline constexpr ui::DialSpec kMenuDials[] = {
     {
         static_cast<std::uint16_t>(WidgetId::kStatusPeriod),
-        {488U, 264U, 224U, 176U},
+        {488U, 296U, 224U, 144U},
         "STATUS MS",
         100,
         2000,
@@ -336,6 +367,142 @@ inline constexpr ui::ImageSpec kMenuImages[] = {
     },
 };
 
+inline constexpr ui::ButtonSpec kVisualizationButtons[] = {
+    {
+        static_cast<std::uint16_t>(WidgetId::kCloseVisualization),
+        {16U, 16U, 56U, 56U},
+        "",
+        {
+            ui::Rgb565(0x10U, 0x18U, 0x20U),
+            ui::Rgb565(0x30U, 0x40U, 0x50U),
+            ui::Rgb565(0x10U, 0x18U, 0x20U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            2U,
+            2U,
+        },
+        ui::Icon::kBack,
+        ui::Shape::kEllipse,
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kToggleHistogram),
+        {24U, 104U, 752U, 64U},
+        "HISTOGRAM",
+        {
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0x20U, 0x20U, 0x20U),
+            ui::Rgb565(0x00U, 0x8CU, 0x78U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            3U,
+            2U,
+        },
+        ui::Icon::kNone,
+        ui::Shape::kRounded,
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kZebraBlack),
+        {24U, 192U, 352U, 64U},
+        "BLACK ZEBRA",
+        {
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0x20U, 0x20U, 0x20U),
+            ui::Rgb565(0x00U, 0x68U, 0x78U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            3U,
+            2U,
+        },
+        ui::Icon::kNone,
+        ui::Shape::kRounded,
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kZebraWhite),
+        {424U, 192U, 352U, 64U},
+        "WHITE ZEBRA",
+        {
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0x20U, 0x20U, 0x20U),
+            ui::Rgb565(0xB0U, 0x30U, 0x30U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            3U,
+            2U,
+        },
+        ui::Icon::kNone,
+        ui::Shape::kRounded,
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kVisualizationCamera),
+        {624U, 16U, 152U, 56U},
+        "CAMERA",
+        {
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0x20U, 0x20U, 0x20U),
+            ui::Rgb565(0x40U, 0x40U, 0x40U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            2U,
+            2U,
+        },
+        ui::Icon::kNone,
+        ui::Shape::kRounded,
+    },
+};
+
+inline constexpr ui::LabelSpec kVisualizationLabels[] = {
+    {
+        static_cast<std::uint16_t>(WidgetId::kVisualizationTitle),
+        {88U, 24U, 480U, 40U},
+        "LUMA TOOLS",
+        {
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            0U,
+            false,
+            4U,
+            ui::TextAlign::kLeft,
+            0U,
+        },
+    },
+};
+
+inline constexpr ui::SliderSpec kVisualizationSliders[] = {
+    {
+        static_cast<std::uint16_t>(WidgetId::kBlackLevel),
+        {24U, 280U, 352U, 88U},
+        "BLACK LEVEL",
+        0,
+        64,
+        1,
+        5,
+        {
+            ui::Rgb565(0x30U, 0x40U, 0x50U),
+            ui::Rgb565(0x00U, 0xD8U, 0xF0U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            2U,
+            true,
+        },
+    },
+    {
+        static_cast<std::uint16_t>(WidgetId::kWhiteLevel),
+        {424U, 280U, 352U, 88U},
+        "WHITE LEVEL",
+        191,
+        255,
+        1,
+        250,
+        {
+            ui::Rgb565(0x30U, 0x40U, 0x50U),
+            ui::Rgb565(0xFFU, 0x40U, 0x40U),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            ui::Rgb565(0xFFU, 0xFFU, 0xFFU),
+            2U,
+            true,
+        },
+    },
+};
+
 /* Indexed by ScreenId. */
 inline constexpr ui::ScreenSpec kScreens[] = {
     {
@@ -380,12 +547,36 @@ inline constexpr ui::ScreenSpec kScreens[] = {
         nullptr,
         0U,
     },
+    {
+        static_cast<std::uint16_t>(ScreenId::kVisualization),
+        ui::Background::kSolid,
+        ui::Rgb565(0x10U, 0x18U, 0x20U),
+        kVisualizationButtons,
+        sizeof(kVisualizationButtons) / sizeof(kVisualizationButtons[0]),
+        kVisualizationLabels,
+        sizeof(kVisualizationLabels) / sizeof(kVisualizationLabels[0]),
+        kVisualizationSliders,
+        sizeof(kVisualizationSliders) / sizeof(kVisualizationSliders[0]),
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+        nullptr,
+        0U,
+    },
 };
 inline constexpr std::size_t kScreenCount = sizeof(kScreens) / sizeof(kScreens[0]);
 
 /* Handler methods the application must provide on its Handlers type:
+ *   void OnBlackLevelChange(const ui::Event &event);
+ *   void OnExposureVisualizationToggle(const ui::Event &event);
  *   void OnMinConfidenceChange(const ui::Event &event);
  *   void OnStatusPeriodChange(const ui::Event &event);
+ *   void OnWhiteLevelChange(const ui::Event &event);
  *   void ShowScreen(ScreenId screen);
  */
 template <typename Handlers>
@@ -402,6 +593,24 @@ bool Dispatch(
         case WidgetId::kCloseMenu:
             handlers.ShowScreen(ScreenId::kMain);
             return true;
+        case WidgetId::kOpenVisualization:
+            handlers.ShowScreen(ScreenId::kVisualization);
+            return true;
+        case WidgetId::kCloseVisualization:
+            handlers.ShowScreen(ScreenId::kMenu);
+            return true;
+        case WidgetId::kToggleHistogram:
+            handlers.OnExposureVisualizationToggle(event);
+            return true;
+        case WidgetId::kZebraBlack:
+            handlers.OnExposureVisualizationToggle(event);
+            return true;
+        case WidgetId::kZebraWhite:
+            handlers.OnExposureVisualizationToggle(event);
+            return true;
+        case WidgetId::kVisualizationCamera:
+            handlers.ShowScreen(ScreenId::kMain);
+            return true;
         default:
             break;
         }
@@ -413,6 +622,12 @@ bool Dispatch(
             return true;
         case WidgetId::kStatusPeriod:
             handlers.OnStatusPeriodChange(event);
+            return true;
+        case WidgetId::kBlackLevel:
+            handlers.OnBlackLevelChange(event);
+            return true;
+        case WidgetId::kWhiteLevel:
+            handlers.OnWhiteLevelChange(event);
             return true;
         default:
             break;

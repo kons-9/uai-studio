@@ -963,9 +963,24 @@ void CameraRenderTask::Run(CameraRenderContext context)
                 }
                 /* Screens without the camera repaint from scratch; the capture
              * is still taken above so its buffer returns to the pool. */
-                status = features.shows_camera
-                    ? context.lcd.ComposeAndPresent(capture, screen_ui.VisibleBoxes(active_boxes), &screen_ui.Overlay())
-                    : context.lcd.PresentOverlay(screen_ui.Overlay());
+                const app_ui::ExposureImagePainter image(
+                    reinterpret_cast<const std::uint16_t *>(capture.buffer.address),
+                    static_cast<std::uint16_t>(pipeline::kCaptureFormat.width),
+                    static_cast<std::uint16_t>(pipeline::kCaptureFormat.height),
+                    screen_ui.VisualizationSettings()
+                );
+                const app_ui::LuminanceHistogramPainter histogram(image);
+                const ui::Painter *overlays[] = {&histogram, &screen_ui.Overlay()};
+                const ui::PainterGroup overlay(overlays, 2U);
+                const bool visualization_enabled = screen_ui.VisualizationSettings().Enabled();
+                status = features.shows_camera ? context.lcd.ComposeAndPresent(
+                                                     capture,
+                                                     screen_ui.VisibleBoxes(active_boxes),
+                                                     visualization_enabled ? &overlay : &screen_ui.Overlay(),
+                                                     false,
+                                                     visualization_enabled ? &image : nullptr
+                                                 )
+                                               : context.lcd.PresentOverlay(screen_ui.Overlay());
                 auto &display = state.schedule.Stats(RenderOperation::kDisplay);
                 display.Finish(status.Ok());
                 if (status.Ok() && capture_ready) {

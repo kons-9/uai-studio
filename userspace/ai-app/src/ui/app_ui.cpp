@@ -1,5 +1,6 @@
 #include "ui/app_ui.hpp"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "middleware/foundation/log.hpp"
@@ -73,6 +74,11 @@ void AppUi::Initialize()
     Menu().Buttons().SetChecked(Id(WidgetId::kToggleBoxes), show_boxes_);
     Menu().Buttons().SetChecked(Id(WidgetId::kAiExposure), ai_exposure_enabled_);
     Menu().Buttons().SetEnabled(Id(WidgetId::kAiExposure), AiExposureAvailable());
+    visualization_.black_level = static_cast<std::uint8_t>(Visualization().Sliders().Value(Id(WidgetId::kBlackLevel)));
+    visualization_.white_level = static_cast<std::uint8_t>(Visualization().Sliders().Value(Id(WidgetId::kWhiteLevel)));
+    Visualization().Buttons().SetChecked(Id(WidgetId::kToggleHistogram), visualization_.histogram);
+    Visualization().Buttons().SetChecked(Id(WidgetId::kZebraBlack), visualization_.zebra_black);
+    Visualization().Buttons().SetChecked(Id(WidgetId::kZebraWhite), visualization_.zebra_white);
     SyncModelWidgets();
 }
 
@@ -160,6 +166,41 @@ void AppUi::OnStatusPeriodChange(const ui::Event &event)
     status_period_ms_ = static_cast<std::uint32_t>(event.value > 0 ? event.value : 1);
     status_timer_.Reset();
     UAI_LOG_INFO("ui: status period=%u ms\n", static_cast<unsigned int>(status_period_ms_));
+}
+
+void AppUi::OnExposureVisualizationToggle(const ui::Event &event)
+{
+    bool *enabled = nullptr;
+    switch (static_cast<WidgetId>(event.widget_id)) {
+    case WidgetId::kToggleHistogram:
+        enabled = &visualization_.histogram;
+        break;
+    case WidgetId::kZebraBlack:
+        enabled = &visualization_.zebra_black;
+        break;
+    case WidgetId::kZebraWhite:
+        enabled = &visualization_.zebra_white;
+        break;
+    default:
+        return;
+    }
+    *enabled = !*enabled;
+    Visualization().Buttons().SetChecked(event.widget_id, *enabled);
+    UAI_LOG_INFO(
+        "ui: visualization id=%u enabled=%u\n", static_cast<unsigned int>(event.widget_id), *enabled ? 1U : 0U
+    );
+}
+
+void AppUi::OnBlackLevelChange(const ui::Event &event)
+{
+    visualization_.black_level = static_cast<std::uint8_t>(std::clamp<std::int32_t>(event.value, 0, 64));
+    Visualization().Sliders().SetValue(Id(WidgetId::kBlackLevel), visualization_.black_level);
+}
+
+void AppUi::OnWhiteLevelChange(const ui::Event &event)
+{
+    visualization_.white_level = static_cast<std::uint8_t>(std::clamp<std::int32_t>(event.value, 191, 255));
+    Visualization().Sliders().SetValue(Id(WidgetId::kWhiteLevel), visualization_.white_level);
 }
 
 bool AppUi::UpdateStatus(

@@ -10,6 +10,7 @@
 #include "task/model_control.hpp"
 #include "task/task_config.hpp"
 #include "ui/ui_layout.hpp"
+#include "ui/exposure_visualization.hpp"
 #include "exposure_control/controller.hpp"
 #include "middleware/task/periodic.hpp"
 
@@ -55,6 +56,7 @@ public:
 
     bool ShowBoxes() const { return show_boxes_; }
     bool AiExposureEnabled() const { return ai_exposure_enabled_; }
+    const ExposureVisualizationSettings &VisualizationSettings() const { return visualization_; }
     bool AiExposureAvailable() const { return task::kAiExposureControl; }
     void SetShowBoxes(bool enabled);
     void SetAiExposureEnabled(bool enabled);
@@ -78,6 +80,9 @@ public:
     void ShowScreen(ScreenId screen);
     void OnMinConfidenceChange(const ui::Event &event);
     void OnStatusPeriodChange(const ui::Event &event);
+    void OnExposureVisualizationToggle(const ui::Event &event);
+    void OnBlackLevelChange(const ui::Event &event);
+    void OnWhiteLevelChange(const ui::Event &event);
 
 private:
     template <std::size_t... Index>
@@ -97,12 +102,14 @@ private:
     ui::Screen &Main() { return screens_[static_cast<std::size_t>(ScreenId::kMain)]; }
     const ui::Screen &Main() const { return screens_[static_cast<std::size_t>(ScreenId::kMain)]; }
     ui::Screen &Menu() { return screens_[static_cast<std::size_t>(ScreenId::kMenu)]; }
+    ui::Screen &Visualization() { return screens_[static_cast<std::size_t>(ScreenId::kVisualization)]; }
 
     task::ModelControl &models_;
     ui::Screen screens_[kScreenCount];
     std::size_t current_ = static_cast<std::size_t>(ScreenId::kMain);
     bool show_boxes_ = true;
     bool ai_exposure_enabled_ = task::kAiExposureControl;
+    ExposureVisualizationSettings visualization_{};
     std::int32_t min_confidence_percent_ = 0;
     std::uint32_t status_period_ms_ = 500U;
     task::PipelineStats last_stats_{};

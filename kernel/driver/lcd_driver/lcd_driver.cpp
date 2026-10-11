@@ -370,14 +370,15 @@ common::Error LcdDriver::ComposeAndPresent(
     const pipeline::CaptureFrame &capture,
     const inference::BoxSet &boxes,
     const ui::Painter *overlay,
-    bool log_copy_crc
+    bool log_copy_crc,
+    const ui::Painter *image_effect
 )
 {
     Writer writer;
     common::Error status = management_->Acquire(&writer);
     if (!status.Ok())
         return status;
-    return ComposeAndPresent(capture, boxes, writer, overlay, log_copy_crc);
+    return ComposeAndPresent(capture, boxes, writer, overlay, log_copy_crc, image_effect);
 }
 
 common::Error LcdDriver::ComposeAndPresent(
@@ -385,7 +386,8 @@ common::Error LcdDriver::ComposeAndPresent(
     const inference::BoxSet &boxes,
     const Writer &writer,
     const ui::Painter *overlay,
-    bool log_copy_crc
+    bool log_copy_crc,
+    const ui::Painter *image_effect
 )
 {
     common::Error ownership = management_->Validate(writer);
@@ -468,15 +470,17 @@ common::Error LcdDriver::ComposeAndPresent(
     const std::uint32_t copied_crc = log_copy_crc
         ? Crc32(reinterpret_cast<const std::uint8_t *>(display.buffer.address), memory_manager::kCaptureBufferBytes)
         : 0U;
+    ui::Canvas canvas(
+        reinterpret_cast<std::uint16_t *>(display.buffer.address),
+        static_cast<std::uint16_t>(pipeline::kCaptureFormat.width),
+        static_cast<std::uint16_t>(pipeline::kCaptureFormat.height)
+    );
+    if (image_effect != nullptr)
+        image_effect->Paint(canvas);
     DrawMask(display, boxes);
     DrawInferenceRegion(display);
     DrawBoxes(display, boxes);
     if (overlay != nullptr) {
-        ui::Canvas canvas(
-            reinterpret_cast<std::uint16_t *>(display.buffer.address),
-            static_cast<std::uint16_t>(pipeline::kCaptureFormat.width),
-            static_cast<std::uint16_t>(pipeline::kCaptureFormat.height)
-        );
         overlay->Paint(canvas);
     }
 
