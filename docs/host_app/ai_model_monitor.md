@@ -19,7 +19,7 @@ version 5のdumpにはモデル名テーブルが含まれます。最大16モ�
 
 ## 使い方
 
-コマンドはリポジトリルートで実行します。`decode`と`analyze`はPython標準ライブラリだけで動きます。`visualize`と`all`は`matplotlib`が必要なので、[共通のセットアップ](usage.md#準備)を済ませてください。
+コマンドはリポジトリルートで実行します。`decode`と`analyze`はPython標準ライブラリだけで動きます。`visualize`と`all`は`matplotlib`が必要なので、[共通のセットアップ](usage.md#setup)を済ませてください。
 
 ### 1. raw dumpをJSONへ変換する
 

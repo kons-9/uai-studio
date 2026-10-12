@@ -4,7 +4,7 @@
 
 コマンドはリポジトリルートで実行します。
 
-## 準備
+## 準備 { #setup }
 
 Python 3.10以上と`uv`を用意し、依存パッケージをインストールします。`uv`が未導入の場合は[公式の導入手順](https://docs.astral.sh/uv/getting-started/installation/)を参照してください。
 
@@ -96,7 +96,7 @@ python3 -m host_app model-loader --help
 python3 -m host_app feature-constraints --help
 ```
 
-`model-loader`と`feature-constraints`はuserspace側のCLIです。詳しい操作は[概要の関連ツール一覧](index.md#userspaceの関連ツール)から参照してください。
+`model-loader`と`feature-constraints`はuserspace側のCLIです。詳しい操作は[概要の関連ツール一覧](index.md#userspace-tools)から参照してください。
 
 ## 困ったとき
 

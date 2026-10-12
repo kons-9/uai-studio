@@ -65,11 +65,11 @@ nav:
       - ui: middleware/ui.md
   - ホストツール（host_app）:
       - 概要: host_app/index.md
-            - ai_model_monitor: host_app/ai_model_monitor.md
-            - cpu_task_monitor: host_app/cpu_task_monitor.md
-            - auto_static_memory_layout: host_app/auto_static_memory_layout.md
-            - ui_designer: host_app/ui_designer.md
-            - セットアップと統合I/F: host_app/usage.md
+      - ai_model_monitor: host_app/ai_model_monitor.md
+      - cpu_task_monitor: host_app/cpu_task_monitor.md
+      - auto_static_memory_layout: host_app/auto_static_memory_layout.md
+      - ui_designer: host_app/ui_designer.md
+      - セットアップと統合I/F: host_app/usage.md
 
 theme:
   name: material
@@ -82,6 +82,7 @@ theme:
 
 markdown_extensions:
   - admonition
+  - attr_list
   - tables
   - toc:
       permalink: true
