@@ -113,8 +113,9 @@ SECTIONS
 
   /* Keep the launch entry away from the normal code range so the first fetch
    * cannot be satisfied by an instruction-cache line from the old image. */
-  /* Leave growth room after .rodata before the cache-sanitizing launch entry. */
-  .text.uai_ram_entry 0x34062000 :
+  /* Keep the cache-sanitizing launch entry clear of the growing .rodata and
+   * runtime metadata. The current app needs space through 0x34062634 here. */
+  .text.uai_ram_entry 0x34063000 :
   {
     . = ALIGN(4);
     KEEP(*(.text.uai_ram_entry))

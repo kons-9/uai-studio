@@ -323,6 +323,8 @@ target_link_libraries(${AI_APP_TARGET} PRIVATE
 
 set(AI_LINKER_SCRIPT
     "${AI_MEMORY_LAYOUT_LINKER}")
+set_property(TARGET ${AI_APP_TARGET}
+    PROPERTY UAI_RAM_ENTRY_SYMBOL uai_ram_entry)
 target_link_options(${AI_APP_TARGET} PRIVATE
     "-T${AI_LINKER_SCRIPT}"
     "-Wl,--undefined=NPU0_IRQHandler"
