@@ -1,10 +1,10 @@
 /*
  * experiment-ai development image.
  *
- * Keep executable code and application state in AXISRAM1, leaving AXISRAM2-6
- * to the generated NPU memory pools.  The generated Neural-ART command blob
- * is placed in the memory-mapped NOR region and emitted as a separate flash
- * image by the experiment-ai build.
+ * Keep executable code and most application state in the 1 MiB internal APP
+ * region, leaving AXISRAM2-6 to the generated NPU memory pools. The generated
+ * Neural-ART command blob is placed in the memory-mapped NOR region and emitted
+ * as a separate flash image by the experiment-ai build.
  */
 /* A RAM image can inherit stale CPU cache lines from the previous image.
  * Start through the cache-sanitizing trampoline before entering CubeMX's
@@ -34,6 +34,8 @@ MEMORY
   PSRAM_PIPE2_DROP (rwx) : ORIGIN = 0x91B40000, LENGTH = 0x00100000
   PSRAM_TRACE (rwx) : ORIGIN = 0x91C40000, LENGTH = 0x00008000
   PSRAM_CPU_TRACE (rwx) : ORIGIN = 0x91C48000, LENGTH = 0x00080000
+  /* Face decoder output and keypoint scratch live in the gap before scratch. */
+  PSRAM_POSTPROCESS (rwx) : ORIGIN = 0x91CC8000, LENGTH = 0x00038000
   PSRAM_SCRATCH (rwx) : ORIGIN = 0x91D00000, LENGTH = 0x00100000
   /* Immutable Pipe2 snapshots used when a completed frame is reused for the
    * next model. This range is outside the active camera, NPU, and scratch
@@ -337,6 +339,18 @@ SECTIONS
     . = . + 0x000A8C00;
     __sample_ai_inference_source2_end__ = .;
   } >PSRAM_INFERENCE_SOURCE
+
+  /* These face post-processing arrays are used only after PSRAM is initialized.
+   * Keep them out of APP's internal SRAM, which is near capacity. */
+  .sample_ai_face_postprocess (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __sample_ai_face_postprocess_start__ = .;
+    *(.psram_bss.face)
+    *(.psram_bss.face.*)
+    . = ALIGN(32);
+    __sample_ai_face_postprocess_end__ = .;
+  } >PSRAM_POSTPROCESS
 
   /DISCARD/ :
   {

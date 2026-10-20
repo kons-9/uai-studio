@@ -113,7 +113,7 @@ CameraRenderTask は最新の結果をPipe1のフレームへ合成してLCDへ�
 
 `DiagnosticsConfig`は既定で`inference_fps`だけが有効です。T-MonitorのUART出力は遅いため、フレーム単位の診断（`inference_trace`、`inference_input`など）は調査時だけ有効にしてください。`inference_input_display`を有効にすると、LCDにNPUへ渡す入力画像を表示します。
 
-メモリ配置はビルド時に`host_app/auto_static_memory_layout`が解決し、リンカスクリプトと`static_memory_layout`用ヘッダを`build-ai-app-person/generated/`へ生成します。
+メモリ配置はビルド時に`host_app/auto_static_memory_layout`が解決し、リンカスクリプトと`static_memory_layout`用ヘッダを`build-ai-app-person/generated/`へ生成します。Face後処理の出力・キーポイント配列はPSRAMの専用領域（`0x91CC8000`）へ置き、NPU用AXI SRAMとアプリの起動時データ領域が重ならないようにしています。これらの配列はPSRAM初期化後に初期化します。
 
 UIの機能IDと操作IDは`config/ui_feature_catalog.json`に定義します。`config/ui_layout.json`の`feature`/`operation`はこれと照合され、`make ui-layout`でC++のバインディングを生成します。MakeまたはCMakeからのビルド時には`ui-layout-check`で生成物の一致も確認します。カタログはID一覧であり、実行時の制約は[shell/owner.hpp](src/shell/owner.hpp)の`CheckConstraints`で判定します。
 
