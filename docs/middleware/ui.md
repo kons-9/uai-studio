@@ -61,7 +61,11 @@ RGB565のフレームに描く表示部品と、タッチ入力を受ける部�
 `ScreenSpec`は1ページ分の記述で、`Background`（`kCamera`: カメラ画像の上に描く、`kSolid`: `color`で塗りつぶしてから描く）と、そのページの各ウィジェットの表を持ちます。`Screen`は1つの`ScreenSpec`に対する実行時状態（種類ごとのPanel）で、`Update()`はボタン、スライダー、ダイヤル、ホイール、パッドへ振り分け、`Paint()`は背景、画像、ボタン、スライダー、ダイヤル、ホイール、パッド、数値、ラベルの順に描きます。
 
 ```cpp
-ui::Screen screens[] = {ui::Screen(app_ui::kScreens[0]), ui::Screen(app_ui::kScreens[1])};
+ui::Screen screens[] = {
+    ui::Screen(app_ui::kScreens[0]),
+    ui::Screen(app_ui::kScreens[1]),
+    ui::Screen(app_ui::kScreens[2]),
+};
 ui::Screen *current = &screens[0];
 
 const ui::Event event = current->Update(sample);
@@ -81,22 +85,26 @@ if (current->Spec().background == ui::Background::kCamera) {
 | --- | --- |
 | `userspace/ai-app/config/ui_layout.json` | レイアウトの定義。`ui_designer`（ブラウザまたはCLI）で編集します |
 | `userspace/ai-app/src/ui/ui_layout.hpp` | 生成されたヘッダ。`make -C userspace/ai-app ui-layout`で再生成します |
-| `userspace/ai-app/src/ui/app_ui.hpp` | `AppUi`。全画面の`Screen`と現在の画面を持ち、`Dispatch()`が呼ぶハンドラ（`OnPersonTap`、`OnMinConfidenceChange`、`ShowScreen`など）を実装します。パイプラインへは`task::ModelControl`経由で触るためホストでテストできます |
+| `userspace/ai-app/src/ui/app_ui.hpp` | `AppUi`。全画面の`Screen`と現在の画面を持ち、生成ヘッダから呼ばれるコールバックを実装します。モデル選択・推論枠・AI露出のタップは`shell::ApplyTouch()`からシェルと同じ処理へ渡し、パイプラインへは`task::ModelControl`経由で触ります |
 | `userspace/ai-app/src/task/model_control.hpp` | `ModelBit`、`PipelineStats`、`ModelControl`。`PipelineTask`が実装し、フレームタスクはマスクにあるモデルだけに推論を投入します |
 | `userspace/ai-app/src/task/camera_render_task.cpp` | 10 msごとにタッチを`AppUi::HandleTouch()`へ渡し、`UpdateStatus()`でラベルを更新し、現在の画面がカメラなら`ComposeAndPresent()`、そうでなければ`PresentOverlay()`で表示します。カメラ画面でないときもキャプチャは取り出してバッファを返します |
 
-画面は2つあります。
+ai-appのレイアウトは`ui_layout.json`から`ui_layout.hpp`と`ui_layout_images.hpp`へ生成され、ビルド時に`ui_designer validate`と`generate --check`で設定・機能カタログ・生成物の一致を確認します。`feature`と`operation`はホスト側の編集・検証用メタデータです。画面遷移と値変更は生成ヘッダの`Dispatch()`、モデル選択や露出などのアプリ操作は`AppUi`と`shell::ApplyTouch()`が処理します。
+
+画面は3つあります。
 
 | 画面 | ウィジェット | 動作 |
 | --- | --- | --- |
-| `main`（カメラ） | `PERSON` / `FACE` / `SEG` | タップでそのモデルの推論を有効/無効。有効なモデルは`checked_fill`で塗られ、無効にすると枠とマスクも消える。UARTに`ui: tap id=N models=MASK` |
-| | `BOXES` | 検出枠とマスクの表示切り替え。UARTに`ui: tap id=N boxes=on/off` |
-| | ハンバーガー（右上） | `navigate: menu`で設定画面へ。UARTに`ui: screen=1` |
-| | `status`（上端） | モデルごとの推論完了レート`PERSON 7.5  FACE 7.3  SEG --  FPS`（`--`は無効）。パイプライン停止時は`AI PIPELINE OFF` |
-| | `detections`（右上、背景なし） | 最新の検出数`DET N` |
-| `menu`（単色） | 戻る矢印（左上） | `navigate: main`でカメラ画面へ |
-| | `MIN CONFIDENCE %`（スライダー） | この値未満の信頼度の枠を表示から除外。UARTに`ui: min confidence=N%` |
-| | `STATUS UPDATE MS`（スライダー） | `status`ラベルの更新周期。UARTに`ui: status period=N ms` |
+| `main`（カメラ） | `status`、`exposure_status` | モデル別FPSと露出状態を表示 |
+| | メニューボタン（右上） | `navigate: menu`で設定画面へ |
+| `menu`（単色） | `PERSON` / `FACE` / `SEG` | 対応モデルの推論を有効・無効にします |
+| | `INFERENCE OVERLAY` / `AI EXPOSURE` | 推論結果の重ね描画とAI露出制御を切り替えます |
+| | `CONFIDENCE %`（スライダー） | この値未満の信頼度の検出枠を表示から除外します |
+| | `STATUS MS`（ダイヤル） | ステータス表示の更新周期を設定します |
+| | `LUMA TOOLS` | 輝度表示設定へ進みます。操作結果は`APPLIED`または`APPLY ERROR`で表示します |
+| `visualization`（単色） | `HISTOGRAM` / `BLACK ZEBRA` / `WHITE ZEBRA` | ヒストグラムと黒・白ゼブラを個別に切り替えます |
+| | `BLACK LEVEL` / `WHITE LEVEL`（スライダー） | ゼブラ判定しきい値を設定します |
+| | `CAMERA` | カメラ画面へ戻ります。左上の矢印では設定画面へ戻ります |
 
 タッチコントローラの初期化に失敗した場合は`touch: controller unavailable; on-screen UI disabled`を出し、画面は描画されますがタッチは読みません。
 

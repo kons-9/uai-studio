@@ -11,6 +11,7 @@ from typing import Any, Iterable
 
 SUPPORTED_FORMATS = {"json", "toml", "yaml", "yml"}
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+INPUT_SECTION_RE = re.compile(r"^\.[A-Za-z0-9_.*?+-]+$")
 SIZE_RE = re.compile(
     r"^(?P<number>(?:0[xX][0-9a-fA-F]+|[0-9]+))(?:\s*(?P<unit>[kKmMgG]))?$"
 )
@@ -373,6 +374,17 @@ def normalize_layout(document: dict[str, Any]) -> dict[str, Any]:
         noload = raw.get("noload", True)
         if not isinstance(noload, bool):
             raise LayoutError(f"{context}.noload must be boolean")
+        input_sections = raw.get("input_sections", [])
+        if not isinstance(input_sections, list) or any(
+            not isinstance(pattern, str)
+            or not INPUT_SECTION_RE.fullmatch(pattern)
+            for pattern in input_sections
+        ):
+            raise LayoutError(
+                f"{context}.input_sections must be an array of linker input-section patterns"
+            )
+        if len(set(input_sections)) != len(input_sections):
+            raise LayoutError(f"{context}.input_sections contains duplicates")
         current = used_by_memory[memory]
         current = (current + alignment_value - 1) // alignment_value * alignment_value
         used_by_memory[memory] = current + size_value
@@ -388,6 +400,7 @@ def normalize_layout(document: dict[str, Any]) -> dict[str, Any]:
                 "alignment": ld_number(alignment, f"{context}.alignment"),
                 "alignment_value": alignment_value,
                 "noload": noload,
+                "input_sections": input_sections,
             }
         )
 
@@ -567,10 +580,22 @@ def generate_static_sections(layout: dict[str, Any]) -> str:
                 [
                     f"    . = ALIGN({allocation['alignment']});",
                     f"    __{allocation['symbol']}_start__ = .;",
-                    f"    . = . + {allocation['size']};",
-                    f"    __{allocation['symbol']}_end__ = .;",
                 ]
             )
+            lines.extend(
+                f"    KEEP(*({pattern}))"
+                for pattern in allocation["input_sections"]
+            )
+            if allocation["input_sections"]:
+                # Keep the generated reservation size authoritative while
+                # retaining real input sections. If they outgrow the declared
+                # capacity, GNU ld rejects the backwards location-counter move.
+                lines.append(
+                    f"    . = __{allocation['symbol']}_start__ + {allocation['size']};"
+                )
+            else:
+                lines.append(f"    . = . + {allocation['size']};")
+            lines.append(f"    __{allocation['symbol']}_end__ = .;")
         lines.extend([f"  }} >{first['memory']}", ""])
         blocks.append("\n".join(lines))
     return "\n".join(blocks).rstrip() + "\n"

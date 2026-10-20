@@ -325,6 +325,8 @@ set(AI_LINKER_SCRIPT
     "${AI_MEMORY_LAYOUT_LINKER}")
 set_property(TARGET ${AI_APP_TARGET}
     PROPERTY UAI_RAM_ENTRY_SYMBOL uai_ram_entry)
+set_property(TARGET ${AI_APP_TARGET}
+    PROPERTY UAI_RAM_CONNECT_UNDER_RESET TRUE)
 target_link_options(${AI_APP_TARGET} PRIVATE
     "-T${AI_LINKER_SCRIPT}"
     "-Wl,--undefined=NPU0_IRQHandler"

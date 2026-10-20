@@ -25,10 +25,10 @@ STM32_Programmer_CLI        <app>.bin を 0x34000400 へ書き、MSP/PC を設�
 | 変数 | 内容 | ai-appの値 |
 | --- | --- | --- |
 | `STM32_RAM_ADDRESS` | `.bin`を書き込む先頭アドレス | `0x34000400` |
-| `STM32_RAM_ENTRY` | 再開時のPC。`uai_ram_entry`のアドレス（Thumbのため最下位ビットが1） | ai-app: `0x34062001` |
+| `STM32_RAM_ENTRY` | 再開時のPC。一般のアプリでは`uai_ram_entry`のアドレス（Thumbのため最下位ビットが1） | ai-app: 最終ELFから自動取得（ビルドごとに変わる） |
 | `STM32_RAM_STACK` | 再開時のMSP | `0x34100000` |
 
-独自のリンカスクリプトを使う場合は、`uai_ram_entry`の配置に合わせてこれらを変更してください。値はELFの`arm-none-eabi-nm <app>.elf | grep uai_ram_entry`で確認できます。
+ai-appは最終ELFのstrongな`uai_ram_entry`を`arm-none-eabi-nm`で読み、毎回の`ram-run`でPCを決めます。またUnder Reset接続でロードするため、トランポリンを`.rodata`や実行時テーブルの後ろへ順次配置できます。ほかのアプリでシンボル自動取得を使わない場合は、`STM32_RAM_ENTRY`をELFの`uai_ram_entry`に合わせて設定してください。
 
 ## 外部Flashからの起動
 

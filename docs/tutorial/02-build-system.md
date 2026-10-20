@@ -66,7 +66,7 @@ volatile std::uint32_t uai_systick_count = 0U;
 ## なぜそうするか
 
 - ミドルウェアは`memory_config.hpp`（バッファ数、モデル出力サイズ）に依存し、ドライバは`static_memory_layout`（PSRAM上のアドレス）に依存します。どちらもアプリの設定から生成されるので、アプリなしにはビルドできません。アプリ自身が共有コンポーネントの使用を宣言し、ルートはその宣言を読み込んでターゲットを追加します。
-- `STM32_RAM_ENTRY`は`uai_ram_entry`の配置アドレスです。章3で入れるリンカスクリプト雛形は`.text.uai_ram_entry`を固定配置し、ai-appは`.rodata`の増加に合わせて`0x34062000`を使います。
+- この章の`mini-ai-app`は`.text.uai_ram_entry`を`0x34060000`へ固定配置し、`UAI_DEFAULT_RAM_ENTRY`にThumb bit込みの`0x34060001`を指定します。通常の`ai-app`はUnder Reset接続と最終ELFからのシンボル取得を使い、トランポリンを実行時テーブルの後ろへ順次配置するため、手動でアドレスを動かしません。
 - `UAI_CAMERA_LCD_CLOCKS`はCubeMXの`main()`にカメラ・LCDのクロック有効化とDCMIPP/LTDCのRIF設定を追加します（[起動の流れ](../kernel/boot.md)）。
 
 ## 確認

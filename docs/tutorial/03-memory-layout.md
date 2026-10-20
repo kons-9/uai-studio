@@ -77,7 +77,7 @@ userspace/mini-ai-app/
 
 雛形で守る必要があるもの:
 
-- `ENTRY(uai_ram_entry)`と`.text.uai_ram_entry 0x34060000`。`STM32_RAM_ENTRY`と対応します。
+- `ENTRY(uai_ram_entry)`と、この章の`mini-ai-app`で使う`.text.uai_ram_entry 0x34060000`。通常の`ai-app`はUnder Reset接続でトランポリンを実行時テーブルの直後へ順次配置し、`ram-run`が最終ELFからシンボルのアドレスを取得します。
 - `__end = .;`と`/DISCARD/ :`。生成器が予約セクションを差し込む目印です。
 - JSONの`reservations`にある各`section`名のセクションが1つずつあること。無いとエラーになります。
 

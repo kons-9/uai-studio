@@ -113,6 +113,10 @@ def resolve_document(
         )
         if count <= 0:
             raise LayoutError(f"{context}.count must be positive")
+        if "input_sections" in reservation and count != 1:
+            raise LayoutError(
+                f"{context}.input_sections can only be used with count=1"
+            )
         if "size_ref" in reservation:
             size = int(get_path(document, reservation["size_ref"], context))
         else:
@@ -123,17 +127,18 @@ def resolve_document(
             name = reservation["name"]
             if count > 1:
                 name = f"{name}{index}"
-            allocations.append(
-                {
-                    "name": name,
-                    "key": format_template(reservation["key"], index),
-                    "memory": reservation["memory"],
-                    "section": reservation["section"],
-                    "size": f"0x{size:X}",
-                    "alignment": int(reservation.get("alignment", alignment)),
-                    "noload": bool(reservation.get("noload", True)),
-                }
-            )
+            allocation = {
+                "name": name,
+                "key": format_template(reservation["key"], index),
+                "memory": reservation["memory"],
+                "section": reservation["section"],
+                "size": f"0x{size:X}",
+                "alignment": int(reservation.get("alignment", alignment)),
+                "noload": bool(reservation.get("noload", True)),
+            }
+            if "input_sections" in reservation:
+                allocation["input_sections"] = reservation["input_sections"]
+            allocations.append(allocation)
     document["allocations"] = allocations
 
     def indexed_region_count(prefix: str) -> int:

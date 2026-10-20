@@ -26,6 +26,15 @@
       "alignment": 32
     },
     {
+      "name": "face_postprocess",
+      "key": "kFacePostprocess",
+      "memory": "PSRAM_POSTPROCESS",
+      "section": "sample_ai_face_postprocess",
+      "size": "0x00010A00",
+      "alignment": 32,
+      "input_sections": [".psram_bss.face", ".psram_bss.face.*"]
+    },
+    {
       "name": "capture",
       "key": "kCapture{index}",
       "memory": "PSRAM_CAPTURE",

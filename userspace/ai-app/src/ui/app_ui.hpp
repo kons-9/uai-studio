@@ -17,11 +17,9 @@
 namespace uai::ai::app_ui {
 
 /*
- * On-screen UI for ai-app: a camera screen with a status bar and menu
- * button, and a settings screen with model and visualization controls.
- * Widget geometry
- * comes from the generated ui_layout.hpp; this class owns the run-time
- * state of every screen and the handlers that the generated Dispatch() calls.
+ * On-screen UI for ai-app: camera, settings, and LUMA TOOLS screens.
+ * Widget geometry comes from the generated ui_layout.hpp; this class owns
+ * each screen's run-time state and the handlers called by generated Dispatch().
  */
 class AppUi final {
 public:

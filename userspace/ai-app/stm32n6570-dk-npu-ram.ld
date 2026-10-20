@@ -113,11 +113,9 @@ SECTIONS
     . = ALIGN(4);
   } >APP
 
-  /* Keep the launch entry away from the normal code range so the first fetch
-   * cannot be satisfied by an instruction-cache line from the old image. */
-  /* Keep the cache-sanitizing launch entry clear of the growing .rodata and
-   * runtime metadata. The current app needs space through 0x34062634 here. */
-  .text.uai_ram_entry 0x34063000 :
+  /* ram-run connects under reset before loading the image, so the launch
+   * trampoline can be packed directly after the runtime tables. */
+  .text.uai_ram_entry :
   {
     . = ALIGN(4);
     KEEP(*(.text.uai_ram_entry))
@@ -340,8 +338,8 @@ SECTIONS
     __sample_ai_inference_source2_end__ = .;
   } >PSRAM_INFERENCE_SOURCE
 
-  /* These face post-processing arrays are used only after PSRAM is initialized.
-   * Keep them out of APP's internal SRAM, which is near capacity. */
+  /* Template placeholder: auto_static_memory_layout replaces this output
+   * section with the PSRAM_POSTPROCESS allocation and its input-section rules. */
   .sample_ai_face_postprocess (NOLOAD) :
   {
     . = ALIGN(32);

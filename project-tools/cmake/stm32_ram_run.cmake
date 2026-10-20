@@ -7,6 +7,10 @@ if(NOT DEFINED STM32_RAM_NM OR NOT DEFINED STM32_RAM_ELF OR
     message(FATAL_ERROR "Missing STM32 RAM launch configuration")
 endif()
 
+if(STM32_RAM_CONNECT_UNDER_RESET)
+    string(APPEND STM32_PROGRAMMER_CONNECTION " mode=UR")
+endif()
+
 execute_process(
     COMMAND "${STM32_RAM_NM}" -n "${STM32_RAM_ELF}"
     RESULT_VARIABLE _nm_result

@@ -213,6 +213,14 @@ function(uai_add_stm32_cli_targets app_target)
         endif()
         if(_stm32_ram_entry_symbol)
             if(CMAKE_NM)
+                get_property(_stm32_ram_connect_under_reset
+                    TARGET "${app_target}.elf"
+                    PROPERTY UAI_RAM_CONNECT_UNDER_RESET)
+                set(_stm32_ram_reset_argument)
+                if(_stm32_ram_connect_under_reset)
+                    set(_stm32_ram_reset_argument
+                        -DSTM32_RAM_CONNECT_UNDER_RESET=ON)
+                endif()
                 add_custom_target(ram-run
                     COMMAND ${CMAKE_COMMAND} -E env ${_stm32_cli_environment}
                             ${CMAKE_COMMAND}
@@ -225,6 +233,7 @@ function(uai_add_stm32_cli_targets app_target)
                             "-DSTM32_RAM_ADDRESS=${STM32_RAM_ADDRESS}"
                             "-DSTM32_RAM_STACK=${STM32_RAM_STACK}"
                             "-DSTM32_RAM_XPSR=${STM32_RAM_XPSR}"
+                            ${_stm32_ram_reset_argument}
                             -P "${CMAKE_SOURCE_DIR}/project-tools/cmake/stm32_ram_run.cmake"
                     DEPENDS "${app_target}"
                     USES_TERMINAL
