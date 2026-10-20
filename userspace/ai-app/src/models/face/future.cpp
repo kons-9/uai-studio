@@ -71,10 +71,8 @@ struct RawDetection {
 };
 
 fd_blazeface_pp_static_param_t g_face_params{};
-__attribute__((section(".psram_bss.face"), aligned(32)))
-fd_pp_outBuffer_t g_face_output[kTotalBoxes]{};
-__attribute__((section(".psram_bss.face"), aligned(32)))
-fd_pp_keyPoints_t g_face_keypoints[kTotalBoxes][kKeypoints]{};
+__attribute__((section(".psram_bss.face"), aligned(32))) fd_pp_outBuffer_t g_face_output[kTotalBoxes]{};
+__attribute__((section(".psram_bss.face"), aligned(32))) fd_pp_keyPoints_t g_face_keypoints[kTotalBoxes][kKeypoints]{};
 std::size_t g_output_order[kExpectedOutputs]{};
 bool g_decoder_initialized = false;
 
