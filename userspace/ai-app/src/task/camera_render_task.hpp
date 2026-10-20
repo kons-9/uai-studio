@@ -33,6 +33,7 @@ class Mailbox;
 namespace uai::ai::task {
 
 class PipelineTask;
+class ExposureAnalysisTask;
 
 struct CameraRenderContext {
     memory_manager::MemoryManager &memory;
@@ -42,6 +43,7 @@ struct CameraRenderContext {
     touch::TouchManagement &touch;
     middleware::cpu_task_monitor::CpuTaskMonitor &cpu_task_monitor;
     PipelineTask &pipeline_task;
+    ExposureAnalysisTask &exposure_task;
     const volatile bool &external_nor_ready;
     const volatile bool &touch_ready;
     DiagnosticsConfig &diagnostics;

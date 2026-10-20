@@ -36,6 +36,7 @@ namespace uai::ai::task {
 
 class CameraRenderTask;
 class PipelineTask;
+class ExposureAnalysisTask;
 
 struct ApplicationInitializeContext {
     memory_manager::MemoryManager &memory;
@@ -48,6 +49,7 @@ struct ApplicationInitializeContext {
     middleware::cpu_task_monitor::CpuTaskMonitor &cpu_task_monitor;
     CameraRenderTask &camera_task;
     PipelineTask &pipeline_task;
+    ExposureAnalysisTask &exposure_task;
     volatile std::uint32_t &app_stage;
     volatile bool &external_nor_ready;
     volatile bool &touch_ready;

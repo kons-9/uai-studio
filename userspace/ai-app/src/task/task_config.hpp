@@ -59,6 +59,7 @@ inline constexpr std::size_t kFrameQueueDepth = 4U;
 inline constexpr std::size_t kResultQueueDepth = 4U;
 inline constexpr SZ kInitializationTaskStackSize = 32U * 1024U;
 inline constexpr SZ kCameraTaskStackSize = 32U * 1024U;
+inline constexpr SZ kExposureAnalysisTaskStackSize = 8U * 1024U;
 inline constexpr SZ kPipelineTaskStackSize = 16U * 1024U;
 inline constexpr SZ kPipelinePostprocessTaskStackSize = 16U * 1024U;
 

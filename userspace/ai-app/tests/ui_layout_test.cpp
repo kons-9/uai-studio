@@ -10,9 +10,144 @@
 #include <algorithm>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
+
+TEST(
+    ExposureAnalysis,
+    SamplingDoesNotWaitAndCalculationOnlyRunsOnWorker
+)
+{
+    namespace app_ui = uai::ai::app_ui;
+    app_ui::ExposureAnalysis analysis;
+    app_ui::ExposureVisualizationSettings settings;
+    settings.histogram = true;
+    std::vector<std::uint16_t> source(800U * 480U, 0xFFFFU);
+    EXPECT_EQ(analysis.Latest(settings, 0U), nullptr);
+    EXPECT_TRUE(analysis.ReadyToSubmit(settings, 0U));
+    ASSERT_TRUE(analysis.TrySubmit(source.data(), 800U, 480U, settings, 1U, 0U));
+    EXPECT_FALSE(analysis.ReadyToSubmit(settings, 200U));
+    EXPECT_EQ(analysis.Latest(settings, 0U), nullptr);
+    EXPECT_FALSE(analysis.TrySubmit(source.data(), 800U, 480U, settings, 2U, 200U));
+    std::fill(source.begin(), source.end(), 0U);
+    ASSERT_TRUE(analysis.ProcessPending());
+    const auto *result = analysis.Latest(settings, 200U);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->histogram.samples, app_ui::kExposureSampleCount);
+    EXPECT_EQ(result->histogram.highlights, app_ui::kExposureSampleCount);
+    EXPECT_EQ(result->capture_sequence, 1U);
+    EXPECT_STREQ(result->highlights_text.data(), "W 100.0%");
+    EXPECT_FALSE(analysis.ProcessPending());
+    EXPECT_FALSE(analysis.ReadyToSubmit(settings, 199U));
+    EXPECT_TRUE(analysis.ReadyToSubmit(settings, 200U));
+    EXPECT_FALSE(analysis.TrySubmit(source.data(), 800U, 480U, settings, 2U, 199U));
+    EXPECT_TRUE(analysis.TrySubmit(source.data(), 800U, 480U, settings, 2U, 200U));
+}
+
+TEST(
+    ExposureAnalysis,
+    PublishedResultStaysImmutableUntilConsumerTakesLatest
+)
+{
+    namespace app_ui = uai::ai::app_ui;
+    app_ui::ExposureAnalysis analysis;
+    app_ui::ExposureVisualizationSettings settings;
+    settings.histogram = true;
+    settings.zebra_white = true;
+    const std::uint16_t white = 0xFFFFU;
+    const std::uint16_t black = 0U;
+    ASSERT_TRUE(analysis.TrySubmit(&white, 1U, 1U, settings, 1U, 0U));
+    ASSERT_TRUE(analysis.ProcessPending());
+    const auto *held = analysis.Latest(settings, 0U);
+    ASSERT_NE(held, nullptr);
+    for (std::uint32_t sequence = 2U; sequence <= 5U; ++sequence) {
+        ASSERT_TRUE(analysis.TrySubmit(&black, 1U, 1U, settings, sequence, sequence * 200U));
+        ASSERT_TRUE(analysis.ProcessPending());
+        EXPECT_EQ(held->capture_sequence, 1U);
+        EXPECT_EQ(held->histogram.highlights, app_ui::kExposureSampleCount);
+    }
+    const auto *latest = analysis.Latest(settings, 1000U);
+    ASSERT_NE(latest, nullptr);
+    EXPECT_EQ(latest->capture_sequence, 5U);
+    EXPECT_EQ(latest->histogram.shadows, app_ui::kExposureSampleCount);
+    EXPECT_EQ(latest->zebra[0U], 0U);
+    EXPECT_EQ(analysis.Latest(settings, 2001U), nullptr);
+    settings.white_level = 240U;
+    EXPECT_EQ(analysis.Latest(settings, 1000U), nullptr);
+    settings = {};
+    EXPECT_FALSE(analysis.TrySubmit(&white, 1U, 1U, settings, 6U, 2200U));
+    EXPECT_EQ(analysis.Latest(settings, 1000U), nullptr);
+}
+
+TEST(
+    ExposureAnalysis,
+    ConcurrentWorkerCannotOverwriteTheDisplayedResult
+)
+{
+    namespace app_ui = uai::ai::app_ui;
+    app_ui::ExposureAnalysis analysis;
+    app_ui::ExposureVisualizationSettings settings;
+    settings.histogram = true;
+    settings.zebra_white = true;
+    const std::uint16_t white = 0xFFFFU;
+    const std::uint16_t black = 0U;
+    ASSERT_TRUE(analysis.TrySubmit(&white, 1U, 1U, settings, 1U, 0U));
+    ASSERT_TRUE(analysis.ProcessPending());
+    std::atomic<bool> done{false};
+    std::atomic<std::uint32_t> published{0U};
+    std::thread worker([&] {
+        while (!done.load(std::memory_order_acquire)) {
+            if (analysis.ProcessPending())
+                published.fetch_add(1U, std::memory_order_relaxed);
+            else
+                std::this_thread::yield();
+        }
+        if (analysis.ProcessPending())
+            published.fetch_add(1U, std::memory_order_relaxed);
+    });
+    for (std::uint32_t sequence = 2U; sequence <= 2000U; ++sequence) {
+        const auto now = sequence * 200U;
+        const auto *source = sequence % 2U == 0U ? &black : &white;
+        (void)analysis.TrySubmit(source, 1U, 1U, settings, sequence, now);
+        const auto *held = analysis.Latest(settings, now);
+        if (held != nullptr) {
+            const auto held_sequence = held->capture_sequence;
+            const auto highlights = held_sequence % 2U == 0U ? 0U : app_ui::kExposureSampleCount;
+            const auto shadows = app_ui::kExposureSampleCount - highlights;
+            std::this_thread::yield();
+            EXPECT_EQ(held->capture_sequence, held_sequence);
+            EXPECT_EQ(held->histogram.highlights, highlights);
+            EXPECT_EQ(held->histogram.shadows, shadows);
+            EXPECT_EQ(held->histogram.samples, app_ui::kExposureSampleCount);
+            EXPECT_EQ(held->zebra[0U], highlights == 0U ? 0U : 2U);
+        } else {
+            std::this_thread::yield();
+        }
+    }
+    done.store(true, std::memory_order_release);
+    worker.join();
+    EXPECT_GT(published.load(std::memory_order_relaxed), 0U);
+}
+
+TEST(
+    ExposureAnalysis,
+    PeriodAndResultAgeRemainCorrectAcrossClockWrap
+)
+{
+    namespace app_ui = uai::ai::app_ui;
+    app_ui::ExposureAnalysis analysis;
+    app_ui::ExposureVisualizationSettings settings;
+    settings.histogram = true;
+    const std::uint16_t white = 0xFFFFU;
+    ASSERT_TRUE(analysis.TrySubmit(&white, 1U, 1U, settings, 1U, UINT32_MAX - 99U));
+    ASSERT_TRUE(analysis.ProcessPending());
+    EXPECT_FALSE(analysis.ReadyToSubmit(settings, 99U));
+    EXPECT_TRUE(analysis.ReadyToSubmit(settings, 100U));
+    EXPECT_NE(analysis.Latest(settings, 900U), nullptr);
+    EXPECT_EQ(analysis.Latest(settings, 901U), nullptr);
+}
 
 TEST(
     ExposureVisualization,
@@ -56,36 +191,45 @@ TEST(
 )
 {
     namespace app_ui = uai::ai::app_ui;
-    std::array<std::uint16_t, 24U> source{};
-    std::fill(source.begin() + 12U, source.end(), 0xFFFFU);
+    app_ui::ExposureAnalysis analysis;
+    std::vector<std::uint16_t> source(800U * 480U, 0U);
+    for (std::size_t row = 0U; row < 480U; ++row)
+        std::fill_n(source.begin() + row * 800U + 400U, 400U, 0xFFFFU);
     auto pixels = source;
-    uai::ai::ui::Canvas canvas(pixels.data(), 24U, 1U);
+    uai::ai::ui::Canvas canvas(pixels.data(), 800U, 480U);
     app_ui::ExposureVisualizationSettings settings;
-    app_ui::ExposureImagePainter(source.data(), 24U, 1U, settings).Paint(canvas);
+    app_ui::ExposureImagePainter(nullptr, settings).Paint(canvas);
     EXPECT_EQ(pixels, source);
+    const auto analyze = [&](std::uint32_t now) {
+        EXPECT_TRUE(analysis.TrySubmit(source.data(), 800U, 480U, settings, now, now));
+        EXPECT_TRUE(analysis.ProcessPending());
+        return analysis.Latest(settings, now);
+    };
     settings.zebra_white = true;
-    app_ui::ExposureImagePainter(source.data(), 24U, 1U, settings).Paint(canvas);
+    app_ui::ExposureImagePainter(analyze(0U), settings).Paint(canvas);
     EXPECT_EQ(pixels[0U], source[0U]);
-    EXPECT_EQ(pixels[12U], app_ui::kWhiteZebraColor);
-    EXPECT_EQ(pixels[18U], source[18U]);
+    EXPECT_EQ(pixels[400U], app_ui::kWhiteZebraColor);
+    EXPECT_EQ(pixels[408U], source[408U]);
     pixels = source;
     settings.zebra_white = false;
     settings.zebra_black = true;
-    app_ui::ExposureImagePainter(source.data(), 24U, 1U, settings).Paint(canvas);
+    app_ui::ExposureImagePainter(analyze(200U), settings).Paint(canvas);
     EXPECT_EQ(pixels[0U], app_ui::kBlackZebraColor);
-    EXPECT_EQ(pixels[6U], source[6U]);
-    EXPECT_EQ(pixels[12U], source[12U]);
+    EXPECT_EQ(pixels[8U], source[8U]);
+    EXPECT_EQ(pixels[400U], source[400U]);
     settings.zebra_white = true;
     settings.histogram = true;
-    app_ui::ExposureImagePainter image(source.data(), 24U, 1U, settings);
+    const auto *result = analyze(400U);
+    ASSERT_NE(result, nullptr);
+    app_ui::ExposureImagePainter image(result, settings);
     image.Paint(canvas);
     EXPECT_EQ(pixels[0U], app_ui::kBlackZebraColor);
-    EXPECT_EQ(pixels[12U], app_ui::kWhiteZebraColor);
-    EXPECT_EQ(image.Histogram().bins[0U], 12U);
-    EXPECT_EQ(image.Histogram().bins[255U], 12U);
-    EXPECT_EQ(image.Histogram().samples, source.size());
+    EXPECT_EQ(pixels[400U], app_ui::kWhiteZebraColor);
+    EXPECT_EQ(result->histogram.bins[0U], app_ui::kExposureSampleCount / 2U);
+    EXPECT_EQ(result->histogram.bins[255U], app_ui::kExposureSampleCount / 2U);
+    EXPECT_EQ(result->histogram.samples, app_ui::kExposureSampleCount);
     EXPECT_EQ(source[0U], 0U);
-    EXPECT_EQ(source[12U], 0xFFFFU);
+    EXPECT_EQ(source[400U], 0xFFFFU);
 }
 
 TEST(
@@ -94,28 +238,93 @@ TEST(
 )
 {
     namespace app_ui = uai::ai::app_ui;
+    app_ui::ExposureAnalysis analysis;
     std::vector<std::uint16_t> source(800U * 480U, 0x8410U);
-    source.front() = 0U;
-    source.back() = 0xFFFFU;
+    source[4U * 800U + 4U] = 0U;
+    source[476U * 800U + 796U] = 0xFFFFU;
     auto pixels = source;
     uai::ai::ui::Canvas canvas(pixels.data(), 800U, 480U);
     app_ui::ExposureVisualizationSettings settings;
     settings.histogram = true;
-    app_ui::ExposureImagePainter image(source.data(), 800U, 480U, settings);
+    ASSERT_TRUE(analysis.TrySubmit(source.data(), 800U, 480U, settings, 1U, 0U));
+    ASSERT_TRUE(analysis.ProcessPending());
+    const auto *result = analysis.Latest(settings, 0U);
+    ASSERT_NE(result, nullptr);
+    app_ui::ExposureImagePainter image(result, settings);
     image.Paint(canvas);
     EXPECT_EQ(pixels, source);
-    EXPECT_EQ(image.Histogram().samples, source.size());
-    EXPECT_EQ(image.Histogram().shadows, 1U);
-    EXPECT_EQ(image.Histogram().highlights, 1U);
+    EXPECT_EQ(result->histogram.samples, app_ui::kExposureSampleCount);
+    EXPECT_EQ(result->histogram.shadows, 1U);
+    EXPECT_EQ(result->histogram.highlights, 1U);
     canvas.FillRect({0U, 0U, 800U, 32U}, 0U);
     app_ui::LuminanceHistogramPainter(image).Paint(canvas);
-    EXPECT_EQ(image.Histogram().shadows, 1U);
-    EXPECT_EQ(image.Histogram().highlights, 1U);
+    EXPECT_EQ(result->histogram.shadows, 1U);
+    EXPECT_EQ(result->histogram.highlights, 1U);
     EXPECT_EQ(pixels[429U * 800U + 22U], app_ui::kBlackZebraColor);
     EXPECT_EQ(pixels[429U * 800U + 277U], app_ui::kWhiteZebraColor);
     EXPECT_EQ(pixels[200U * 800U + 400U], source[200U * 800U + 400U]);
-    EXPECT_EQ(source.front(), 0U);
-    EXPECT_EQ(source.back(), 0xFFFFU);
+    EXPECT_EQ(source[4U * 800U + 4U], 0U);
+    EXPECT_EQ(source[476U * 800U + 796U], 0xFFFFU);
+}
+
+TEST(
+    ExposureVisualization,
+    MissingOrMismatchedResultsLeaveTheCameraUntouched
+)
+{
+    namespace app_ui = uai::ai::app_ui;
+    app_ui::ExposureVisualizationSettings settings;
+    settings.histogram = true;
+    settings.zebra_white = true;
+    std::vector<std::uint16_t> pixels(800U * 480U, 0x8410U);
+    const auto original = pixels;
+    uai::ai::ui::Canvas canvas(pixels.data(), 800U, 480U);
+    app_ui::ExposureImagePainter missing(nullptr, settings);
+    missing.Paint(canvas);
+    app_ui::LuminanceHistogramPainter(missing).Paint(canvas);
+    app_ui::ExposureAnalysisResult result;
+    result.valid = true;
+    result.settings = settings;
+    result.settings.white_level = 240U;
+    app_ui::ExposureImagePainter mismatched(&result, settings);
+    mismatched.Paint(canvas);
+    app_ui::LuminanceHistogramPainter(mismatched).Paint(canvas);
+    EXPECT_EQ(pixels, original);
+}
+
+TEST(
+    ExposureVisualization,
+    ReusesCompletedResultWithoutWaitingForTheNextAnalysis
+)
+{
+    namespace app_ui = uai::ai::app_ui;
+    app_ui::ExposureAnalysis analysis;
+    app_ui::ExposureVisualizationSettings settings;
+    settings.histogram = true;
+    settings.zebra_white = true;
+    const std::uint16_t white = 0xFFFFU;
+    const std::uint16_t black = 0U;
+    ASSERT_TRUE(analysis.TrySubmit(&white, 1U, 1U, settings, 1U, 0U));
+    ASSERT_TRUE(analysis.ProcessPending());
+    const auto *completed = analysis.Latest(settings, 0U);
+    ASSERT_NE(completed, nullptr);
+    ASSERT_TRUE(analysis.TrySubmit(&black, 1U, 1U, settings, 2U, 200U));
+    for (std::uint32_t now = 200U; now <= 400U; now += 50U) {
+        const auto *result = analysis.Latest(settings, now);
+        ASSERT_EQ(result, completed);
+        std::vector<std::uint16_t> pixels(800U * 480U, black);
+        uai::ai::ui::Canvas canvas(pixels.data(), 800U, 480U);
+        app_ui::ExposureImagePainter image(result, settings);
+        image.Paint(canvas);
+        app_ui::LuminanceHistogramPainter(image).Paint(canvas);
+        EXPECT_EQ(pixels[0U], app_ui::kWhiteZebraColor);
+        EXPECT_EQ(result->capture_sequence, 1U);
+    }
+    ASSERT_TRUE(analysis.ProcessPending());
+    const auto *result = analysis.Latest(settings, 400U);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->capture_sequence, 2U);
+    EXPECT_EQ(result->histogram.highlights, 0U);
 }
 
 struct FakeModels final : public uai::ai::task::ModelControl {
@@ -778,14 +987,19 @@ TEST(
     std::vector<std::uint16_t> source(800U * 480U, 0xFFFFU);
     auto pixels = source;
     uai::ai::ui::Canvas canvas(pixels.data(), 800U, 480U);
-    app_ui::ExposureImagePainter image(source.data(), 800U, 480U, ui.VisualizationSettings());
+    app_ui::ExposureAnalysis analysis;
+    ASSERT_TRUE(analysis.TrySubmit(source.data(), 800U, 480U, ui.VisualizationSettings(), 1U, 0U));
+    ASSERT_TRUE(analysis.ProcessPending());
+    const auto *result = analysis.Latest(ui.VisualizationSettings(), 0U);
+    ASSERT_NE(result, nullptr);
+    app_ui::ExposureImagePainter image(result, ui.VisualizationSettings());
     image.Paint(canvas);
     canvas.DrawFrame({396U, 198U, 24U, 24U}, 2U, 0x07E0U);
     canvas.DrawFrame({12U, 338U, 276U, 130U}, 2U, 0x07E0U);
     app_ui::LuminanceHistogramPainter histogram(image);
     const uai::ai::ui::Painter *painters[] = {&histogram, &ui.Overlay()};
     uai::ai::ui::PainterGroup(painters, 2U).Paint(canvas);
-    EXPECT_EQ(image.Histogram().highlights, source.size());
+    EXPECT_EQ(result->histogram.highlights, app_ui::kExposureSampleCount);
     EXPECT_EQ(pixels[200U * 800U + 396U], 0x07E0U);
     EXPECT_EQ(pixels[338U * 800U + 12U], uai::ai::ui::Rgb565(0x80U, 0x80U, 0x80U));
     EXPECT_EQ(pixels[5U * 800U + 700U], 0U);

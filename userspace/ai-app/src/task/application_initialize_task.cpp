@@ -159,6 +159,7 @@ void ApplicationInitializeTask::Run(ApplicationInitializeContext context)
     /* Keep the hardware initialization ahead of both application tasks, but
      * do the work on a dedicated stack rather than the small µT-Kernel
      * initial-task stack. */
+    context.exposure_task.Start(context.cpu_task_monitor);
     context.camera_task.Start(context.cpu_task_monitor);
     context.app_stage = 5U;
     if constexpr (kInferenceMode == InferenceMode::kNpu) {

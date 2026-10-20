@@ -21,6 +21,7 @@
 #include "shell/task.hpp"
 #include "task/application_initialize_task.hpp"
 #include "task/camera_render_task.hpp"
+#include "task/exposure_analysis_task.hpp"
 #include "task/pipeline_task.hpp"
 #include "task/task_config.hpp"
 
@@ -33,6 +34,7 @@ public:
     ApplicationInitializeTask &application_task = ApplicationInitializeTask::Instance();
     CameraRenderTask &camera_task = CameraRenderTask::Instance();
     PipelineTask &pipeline_task = PipelineTask::Instance(memory);
+    ExposureAnalysisTask &exposure_task = ExposureAnalysisTask::Instance();
     uai::ai::cache::CacheManagement &cache = cache::CacheManagement::Instance();
     uai::ai::psram::PsramManagement &psram = psram::PsramManagement::Instance();
     uai::ai::rif::RifManagement &rif = rif::RifManagement::Instance();
@@ -61,6 +63,7 @@ public:
             touch,
             cpu_task_monitor,
             pipeline_task,
+            exposure_task,
             external_nor_ready,
             touch_ready,
             diagnostics,
@@ -97,6 +100,7 @@ public:
             cpu_task_monitor,
             camera_task,
             pipeline_task,
+            exposure_task,
             app_stage,
             external_nor_ready,
             touch_ready,
