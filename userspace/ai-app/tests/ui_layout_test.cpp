@@ -73,7 +73,7 @@ TEST(
     EXPECT_EQ(latest->capture_sequence, 5U);
     EXPECT_EQ(latest->histogram.shadows, app_ui::kExposureSampleCount);
     EXPECT_EQ(latest->zebra[0U], 0U);
-    EXPECT_EQ(analysis.Latest(settings, 2001U), nullptr);
+    EXPECT_EQ(analysis.Latest(settings, 2001U), latest);
     settings.white_level = 240U;
     EXPECT_EQ(analysis.Latest(settings, 1000U), nullptr);
     settings = {};
@@ -133,7 +133,7 @@ TEST(
 
 TEST(
     ExposureAnalysis,
-    PeriodAndResultAgeRemainCorrectAcrossClockWrap
+    PeriodAndRetainedResultRemainCorrectAcrossClockWrap
 )
 {
     namespace app_ui = uai::ai::app_ui;
@@ -145,8 +145,10 @@ TEST(
     ASSERT_TRUE(analysis.ProcessPending());
     EXPECT_FALSE(analysis.ReadyToSubmit(settings, 99U));
     EXPECT_TRUE(analysis.ReadyToSubmit(settings, 100U));
-    EXPECT_NE(analysis.Latest(settings, 900U), nullptr);
-    EXPECT_EQ(analysis.Latest(settings, 901U), nullptr);
+    const auto *result = analysis.Latest(settings, 900U);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(analysis.Latest(settings, 901U), result);
+    EXPECT_EQ(analysis.Latest(settings, 60000U), result);
 }
 
 TEST(
@@ -294,7 +296,7 @@ TEST(
 
 TEST(
     ExposureVisualization,
-    ReusesCompletedResultWithoutWaitingForTheNextAnalysis
+    KeepsHistogramVisibleWithoutNewInputOrWhileAnalysisIsPending
 )
 {
     namespace app_ui = uai::ai::app_ui;
@@ -308,8 +310,9 @@ TEST(
     ASSERT_TRUE(analysis.ProcessPending());
     const auto *completed = analysis.Latest(settings, 0U);
     ASSERT_NE(completed, nullptr);
-    ASSERT_TRUE(analysis.TrySubmit(&black, 1U, 1U, settings, 2U, 200U));
-    for (std::uint32_t now = 200U; now <= 400U; now += 50U) {
+    ASSERT_EQ(analysis.Latest(settings, 5000U), completed);
+    ASSERT_TRUE(analysis.TrySubmit(&black, 1U, 1U, settings, 2U, 5200U));
+    for (std::uint32_t now = 5200U; now <= 7200U; now += 200U) {
         const auto *result = analysis.Latest(settings, now);
         ASSERT_EQ(result, completed);
         std::vector<std::uint16_t> pixels(800U * 480U, black);
@@ -318,10 +321,11 @@ TEST(
         image.Paint(canvas);
         app_ui::LuminanceHistogramPainter(image).Paint(canvas);
         EXPECT_EQ(pixels[0U], app_ui::kWhiteZebraColor);
+        EXPECT_EQ(pixels[338U * 800U + 12U], uai::ai::ui::Rgb565(0x80U, 0x80U, 0x80U));
         EXPECT_EQ(result->capture_sequence, 1U);
     }
     ASSERT_TRUE(analysis.ProcessPending());
-    const auto *result = analysis.Latest(settings, 400U);
+    const auto *result = analysis.Latest(settings, 7200U);
     ASSERT_NE(result, nullptr);
     EXPECT_EQ(result->capture_sequence, 2U);
     EXPECT_EQ(result->histogram.highlights, 0U);

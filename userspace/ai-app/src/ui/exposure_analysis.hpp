@@ -14,7 +14,6 @@ inline constexpr std::uint16_t kExposureSampleWidth = 100U;
 inline constexpr std::uint16_t kExposureSampleHeight = 60U;
 inline constexpr std::size_t kExposureSampleCount = kExposureSampleWidth * kExposureSampleHeight;
 inline constexpr std::uint32_t kExposureAnalysisPeriodMs = 200U;
-inline constexpr std::uint32_t kExposureResultMaxAgeMs = 1000U;
 
 struct ExposureVisualizationSettings {
     bool histogram = false;
@@ -189,16 +188,13 @@ public:
 
     const ExposureAnalysisResult *Latest(
         const ExposureVisualizationSettings &settings,
-        std::uint32_t now
+        std::uint32_t
     )
     {
         if ((middle_.load(std::memory_order_acquire) & kDirty) != 0U)
             front_ = middle_.exchange(front_, std::memory_order_acq_rel) & kIndexMask;
         const auto &result = results_[front_];
-        return settings.Enabled() && result.valid && result.settings.Matches(settings)
-                && now - result.sampled_ms <= kExposureResultMaxAgeMs
-            ? &result
-            : nullptr;
+        return settings.Enabled() && result.valid && result.settings.Matches(settings) ? &result : nullptr;
     }
 
 private:
